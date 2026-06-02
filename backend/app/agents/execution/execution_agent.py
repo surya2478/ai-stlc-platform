@@ -1,0 +1,202 @@
+"""
+Agent 8 — Test Execution Agent
+Simulates test execution and produces structured pass/fail results for each test case.
+In a real pipeline this would invoke actual Playwright/Pytest runners; here it uses
+the LLM to generate realistic execution results with error messages for failing tests.
+"""
+import json
+import re
+import random
+from typing import Any, TypedDict
+
+from langgraph.graph import StateGraph, END
+
+from app.agents.base.base_agent import BaseAgent, AgentResult
+from app.llm.provider import get_llm
+from app.config import get_settings
+
+settings = get_settings()
+
+
+# ── State ──────────────────────────────────────────────────────────────────────
+
+class ExecutionState(TypedDict):
+    test_cases: list[dict]
+    environment: str
+    suite_name: str
+    results: list[dict]
+    errors: list[str]
+
+
+# ── Prompts ───────────────────────────────────────────────────────────────────
+
+EXECUTION_SYSTEM = """You are a CI/CD test execution engine returning realistic test results.
+
+For each test case provided, generate an execution result. Each result object must contain:
+- test_case_id: the source test case ID string (e.g. "TC-0001")
+- test_name: descriptive test name (based on test case title)
+- status: "passed" | "failed" | "skipped"
+  - Roughly 70% passed, 20% failed, 10% skipped for realism
+  - Negative/boundary tests should fail more often
+  - Performance/security tests can be skipped
+- duration_ms: execution time in milliseconds (100-8000, longer for complex tests)
+- error_message: null if passed/skipped; realistic error message if failed
+  - Examples: "AssertionError: Expected 200, got 401", "TimeoutError: Locator not found after 30s",
+    "TypeError: Cannot read property 'id' of undefined", "AssertionError: Form validation not triggered"
+- stack_trace: null if passed/skipped; short stack trace if failed (2-3 lines)
+- logs: list of log strings showing execution steps (3-5 entries regardless of status)
+
+Output ONLY a valid JSON array. No extra text.
+"""
+
+
+# ── Nodes ──────────────────────────────────────────────────────────────────────
+
+async def _execute_tests(state: ExecutionState) -> ExecutionState:
+    llm = get_llm(settings.default_llm_provider, settings.default_llm_model)
+    errors = []
+
+    tc_summaries = []
+    for tc in state["test_cases"]:
+        tc_summaries.append({
+            "id": tc.get("test_case_id", tc.get("id")),
+            "title": tc.get("title"),
+            "test_type": tc.get("test_type", "functional"),
+            "priority": tc.get("priority", "Medium"),
+            "steps_count": len(tc.get("steps") or []),
+        })
+
+    prompt = f"""Environment: {state['environment']}
+Suite: {state['suite_name']}
+
+Execute the following {len(tc_summaries)} test cases and return results:
+
+{json.dumps(tc_summaries, indent=2)}"""
+
+    try:
+        response = await llm.achat(
+            messages=[
+                {"role": "system", "content": EXECUTION_SYSTEM},
+                {"role": "user", "content": prompt},
+            ]
+        )
+        text = response.strip()
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+        if match:
+            results = json.loads(match.group(0))
+        else:
+            results = []
+            errors.append("Could not parse execution results JSON from LLM")
+    except Exception as exc:
+        results = []
+        errors.append(f"Execution agent error: {str(exc)}")
+
+    return {**state, "results": results, "errors": errors}
+
+
+def _finalise_results(state: ExecutionState) -> ExecutionState:
+    """Ensure required fields and compute summary."""
+    finalised = []
+    for r in state["results"]:
+        status = r.get("status", "passed")
+        if status not in ("passed", "failed", "skipped"):
+            status = "passed"
+        finalised.append({
+            "test_case_id": r.get("test_case_id"),
+            "test_name": r.get("test_name", "Unknown test"),
+            "status": status,
+            "duration_ms": r.get("duration_ms", 500),
+            "error_message": r.get("error_message") if status == "failed" else None,
+            "stack_trace": r.get("stack_trace") if status == "failed" else None,
+            "logs": r.get("logs", []),
+        })
+    return {**state, "results": finalised}
+
+
+# ── Graph ──────────────────────────────────────────────────────────────────────
+
+def _build_graph() -> Any:
+    graph = StateGraph(ExecutionState)
+    graph.add_node("execute", _execute_tests)
+    graph.add_node("finalise", _finalise_results)
+    graph.set_entry_point("execute")
+    graph.add_edge("execute", "finalise")
+    graph.add_edge("finalise", END)
+    return graph.compile()
+
+
+_graph = _build_graph()
+
+
+# ── Agent Class ────────────────────────────────────────────────────────────────
+
+class ExecutionAgentResult:
+    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
+        self.success = success
+        self.data = data
+        self.logs = logs
+        self.error = error
+
+
+class TestExecutionAgent(BaseAgent):
+    """Executes test cases and returns structured pass/fail results."""
+
+    async def run(
+        self,
+        test_cases: list[dict],
+        environment: str = "staging",
+        suite_name: str = "Test Suite",
+    ) -> ExecutionAgentResult:
+        self._logs.clear()
+        self.log("info", "start", f"Executing {len(test_cases)} tests on '{environment}'")
+
+        if not test_cases:
+            return ExecutionAgentResult(
+                success=False,
+                error="No test cases provided",
+                data={},
+                logs=self._logs,
+            )
+
+        initial_state: ExecutionState = {
+            "test_cases": test_cases,
+            "environment": environment,
+            "suite_name": suite_name,
+            "results": [],
+            "errors": [],
+        }
+
+        final_state = await _graph.ainvoke(initial_state)
+        results = final_state["results"]
+        errors = final_state["errors"]
+
+        for e in errors:
+            self.log("warning", "warning", e)
+
+        passed = sum(1 for r in results if r["status"] == "passed")
+        failed = sum(1 for r in results if r["status"] == "failed")
+        skipped = sum(1 for r in results if r["status"] == "skipped")
+
+        self.log("info", "complete", f"Execution complete — {passed} passed / {failed} failed / {skipped} skipped")
+
+        return ExecutionAgentResult(
+            success=True,
+            data={
+                "results": results,
+                "summary": {
+                    "total": len(results),
+                    "passed": passed,
+                    "failed": failed,
+                    "skipped": skipped,
+                },
+            },
+            logs=self._logs,
+        )
+
+    async def _run(self, input_data: dict) -> dict:
+        result = await self.run(
+            test_cases=input_data.get("test_cases", []),
+            environment=input_data.get("environment", "staging"),
+            suite_name=input_data.get("suite_name", "Test Suite"),
+        )
+        return result.data
