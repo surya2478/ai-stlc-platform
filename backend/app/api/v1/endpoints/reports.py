@@ -1,44 +1,59 @@
 """
 Reports endpoints - Phase 7.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, func
 
-from app.api.deps import DBSession, OptionalUser
+from app.api.deps import CurrentUser, DBSession, require_entity_project_access, require_permission, require_project_access
+from app.config import get_settings
 from app.models.report import Report
-from app.models.project import Project
 from app.models.requirement import Requirement
 from app.models.test_case import TestCase
 from app.models.test_scenario import TestScenario
 from app.models.execution import ExecutionRun, ExecutionResult
 from app.models.defect import DefectDraft
 from app.schemas.report import ReportOut, AgentReportTrigger
-from app.services import report_service
+from app.services import agent_run_service, report_service, traceability_service
+from app.services.agent_dispatch_service import enqueue_agent_run
+from app.services.display_id_service import display_id, temporary_id
+from app.services.rbac_service import APPROVE_RELEASE_REPORT
 from app.agents.reporting.reporting_agent import TestReportingAgent
 
 router = APIRouter()
+settings = get_settings()
+
+
+def _run_agents_synchronously() -> bool:
+    return False
 
 
 @router.get("/project/{project_id}", response_model=list[ReportOut])
-async def list_reports(project_id: int, db: DBSession, current_user: OptionalUser):
+async def list_reports(project_id: int, db: DBSession, current_user: CurrentUser):
+    await require_project_access(project_id, current_user, db)
     return await report_service.list_reports(db, project_id)
 
 
 @router.get("/{report_id}", response_model=ReportOut)
-async def get_report(report_id: int, db: DBSession, current_user: OptionalUser):
+async def get_report(report_id: int, db: DBSession, current_user: CurrentUser):
     report = await report_service.get_report(db, report_id)
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
+    await require_entity_project_access(report, current_user, db)
     return report
 
 
 @router.post("/agent/generate-report")
-async def trigger_reporting_agent(body: AgentReportTrigger, db: DBSession, current_user: OptionalUser):
+async def trigger_reporting_agent(
+    body: AgentReportTrigger,
+    db: DBSession,
+    current_user: CurrentUser,
+    include_drafts: bool = Query(False),
+):
     """Trigger Agent 11 - aggregates all project metrics and generates an AI QA report."""
-    r = await db.execute(select(Project).where(Project.id == body.project_id))
-    project = r.scalar_one_or_none()
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    project = await require_permission(APPROVE_RELEASE_REPORT, body.project_id, current_user, db)
+
+    rule14_metrics = await traceability_service.reporting_metrics(db, body.project_id, include_drafts=include_drafts)
 
     # Aggregate metrics from all tables
     async def count(model, *filters):
@@ -48,13 +63,13 @@ async def trigger_reporting_agent(body: AgentReportTrigger, db: DBSession, curre
         res = await db.execute(q)
         return res.scalar_one()
 
-    total_reqs = await count(Requirement)
+    total_reqs = await count(Requirement) if include_drafts else rule14_metrics["requirements"]["total"]
     approved_reqs = await count(Requirement, Requirement.status == "approved")
-    total_tcs = await count(TestCase)
+    total_tcs = await count(TestCase) if include_drafts else rule14_metrics["test_cases"]["total"]
     approved_tcs = await count(TestCase, TestCase.status == "approved")
     auto_candidate_tcs = await count(TestCase, TestCase.automation_candidate == True)
     total_scenarios = await count(TestScenario)
-    total_runs = await count(ExecutionRun)
+    total_runs = await count(ExecutionRun) if include_drafts else rule14_metrics["execution"]["total_runs"]
 
     # Latest run stats
     latest_run_res = await db.execute(
@@ -69,16 +84,17 @@ async def trigger_reporting_agent(body: AgentReportTrigger, db: DBSession, curre
         latest_pass_pct = round(latest_run.passed / latest_run.total_tests * 100, 1)
 
     # Aggregate all execution results
-    all_runs_res = await db.execute(
-        select(ExecutionRun).where(ExecutionRun.project_id == body.project_id)
-    )
+    run_stmt = select(ExecutionRun).where(ExecutionRun.project_id == body.project_id)
+    if not include_drafts:
+        run_stmt = run_stmt.where(ExecutionRun.status == "approved")
+    all_runs_res = await db.execute(run_stmt)
     all_runs = all_runs_res.scalars().all()
     total_passed = sum(r.passed for r in all_runs)
     total_failed = sum(r.failed for r in all_runs)
     total_skipped = sum(r.skipped for r in all_runs)
 
     # Defect metrics
-    total_defects = await count(DefectDraft)
+    total_defects = await count(DefectDraft) if include_drafts else rule14_metrics["defects"]["total"]
     critical_defects = await count(DefectDraft, DefectDraft.severity == "Critical")
     high_defects = await count(DefectDraft, DefectDraft.severity == "High")
     medium_defects = await count(DefectDraft, DefectDraft.severity == "Medium")
@@ -119,6 +135,34 @@ async def trigger_reporting_agent(body: AgentReportTrigger, db: DBSession, curre
         },
     }
 
+    if not _run_agents_synchronously():
+        agent_run, task_id = await enqueue_agent_run(
+            db,
+            project_id=body.project_id,
+            user_id=current_user.id,
+            agent_name="test_reporting",
+            input_data={
+                "metrics": metrics,
+                "project_name": project.name,
+                "report_type": body.report_type,
+            },
+            metadata={"metrics": metrics},
+        )
+        return JSONResponse(
+            status_code=202,
+            content={"message": "Report generation queued", "agent_run_id": agent_run.id, "task_id": task_id},
+        )
+
+    user_id = current_user.id
+    agent_run = await agent_run_service.start_agent_run(
+        db,
+        project_id=body.project_id,
+        user_id=user_id,
+        agent_name="test_reporting",
+        input_data=body.model_dump(mode="json"),
+        metadata={"metrics": metrics},
+    )
+
     agent = TestReportingAgent()
     agent_result = await agent.run(
         metrics=metrics,
@@ -127,16 +171,20 @@ async def trigger_reporting_agent(body: AgentReportTrigger, db: DBSession, curre
     )
 
     if not agent_result.success:
+        await agent_run_service.fail_agent_run(
+            db,
+            agent_run,
+            error_message=agent_result.error or "Agent failed",
+            agent_result=agent_result,
+        )
+        await db.commit()
         raise HTTPException(status_code=500, detail=agent_result.error or "Agent failed")
 
     rep_data = agent_result.data["report"]
-    count_res = await db.execute(select(func.count()).where(Report.project_id == body.project_id))
-    rep_count = count_res.scalar_one()
-
     report = Report(
         project_id=body.project_id,
-        created_by=(current_user.id if current_user else 1),
-        report_id=f"RPT-{(rep_count + 1):04d}",
+        created_by=user_id,
+        report_id=temporary_id("RPT"),
         report_type=body.report_type,
         title=rep_data.get("title", f"{body.report_type.capitalize()} Report"),
         summary=rep_data.get("summary"),
@@ -146,11 +194,30 @@ async def trigger_reporting_agent(body: AgentReportTrigger, db: DBSession, curre
         risks=rep_data.get("risks", []),
         recommendations=rep_data.get("recommendations", []),
         status="draft",
+        agent_run_id=agent_run.id,
         metadata_={"raw_metrics": metrics},
     )
     db.add(report)
     await db.flush()
+    report.report_id = display_id("RPT", report.id)
+    await db.flush()
     await db.refresh(report)
+    await traceability_service.create_lineage(
+        db,
+        project_id=body.project_id,
+        parent_type="project",
+        parent_id=body.project_id,
+        child_type="report",
+        child_id=report.id,
+        agent_run_id=agent_run.id,
+        metadata={"include_drafts": include_drafts},
+    )
+    await agent_run_service.complete_agent_run(
+        db,
+        agent_run,
+        agent_result=agent_result,
+        output_data={"report_id": report.id, "report_ref": report.report_id},
+    )
     await db.commit()
 
     return {
@@ -158,4 +225,5 @@ async def trigger_reporting_agent(body: AgentReportTrigger, db: DBSession, curre
         "report_id": report.id,
         "report_ref": report.report_id,
         "title": report.title,
+        "agent_run_id": agent_run.id,
     }

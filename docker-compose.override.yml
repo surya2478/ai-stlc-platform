@@ -1,0 +1,28 @@
+services:
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
+  backend:
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - stlc_storage:/app/storage
+      - .:/repo
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  # ── Celery Worker ───────────────────────────────────────────────────────────
+  worker:
+    volumes:
+      - ./backend:/app
+      - stlc_storage:/app/storage
+      - .:/repo
+
+  # ── Next.js Frontend ────────────────────────────────────────────────────────
+  frontend:
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev

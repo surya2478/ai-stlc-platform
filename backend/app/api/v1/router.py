@@ -5,9 +5,9 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     health, projects, users, documents,
-    requirements, test_plans,
-    automation, execution, defects,
-    reports, agents, settings,
+    requirements, test_plans, test_cases,
+    test_data, automation, execution, defects,
+    reports, agents, settings, jira, traceability, llm, rag,
 )
 
 api_router = APIRouter()
@@ -18,9 +18,16 @@ api_router.include_router(projects.router, prefix="/projects", tags=["Projects"]
 api_router.include_router(documents.router, prefix="/documents", tags=["Documents"])
 api_router.include_router(requirements.router, prefix="/requirements", tags=["Requirements"])
 api_router.include_router(test_plans.router, prefix="/test-plans", tags=["Test Plans"])
+api_router.include_router(test_cases.router, prefix="/test-cases", tags=["Test Cases"])
+api_router.include_router(test_data.router, prefix="/test-data", tags=["Test Data"])
 api_router.include_router(automation.router, prefix="/automation", tags=["Automation"])
 api_router.include_router(execution.router, prefix="/execution", tags=["Execution"])
 api_router.include_router(defects.router, prefix="/defects", tags=["Defects"])
+api_router.include_router(jira.router, prefix="/jira", tags=["Jira"])
+api_router.include_router(traceability.router, prefix="/traceability", tags=["Traceability"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(agents.router, prefix="/agent-runs", tags=["Agent Runs"])
+api_router.include_router(agents.router, prefix="/agents", tags=["Agent Runs"])
 api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
+api_router.include_router(llm.router, tags=["LLM Settings"])
+api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])

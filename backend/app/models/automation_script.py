@@ -29,4 +29,8 @@ class AutomationScript(TimestampMixin, Base):
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
     project: Mapped["Project"] = relationship("Project", back_populates="automation_scripts")
-    test_case: Mapped["TestCase | None"] = relationship("TestCase", back_populates="automation_scripts")
+    test_case: Mapped["TestCase | None"] = relationship(
+        "TestCase",
+        back_populates="automation_scripts",
+        foreign_keys=[test_case_id],
+    )

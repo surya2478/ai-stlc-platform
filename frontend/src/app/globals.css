@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 210 20% 98%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
@@ -24,6 +24,17 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+
+    /* Custom Design Tokens */
+    --sidebar-bg: #091225;
+    --sidebar-border: #13223f;
+    --sidebar-fg: #94a3b8;
+    --sidebar-hover-bg: #13223f;
+    --sidebar-active-bg: #1e293b;
+    --sidebar-active-fg: #ffffff;
+    --primary-blue: #1b59f8;
+    --ai-cyan: #06b6d4;
+    --ai-violet: #8b5cf6;
   }
   .dark {
     --background: 222.2 84% 4.9%;
@@ -52,3 +63,27 @@
   * { @apply border-border; }
   body { @apply bg-background text-foreground; }
 }
+
+/* AI accents and utility classes */
+.ai-glow-card {
+  position: relative;
+}
+.ai-glow-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--ai-cyan), var(--ai-violet));
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+.bg-sidebar {
+  background-color: var(--sidebar-bg);
+}
+
+.border-sidebar {
+  border-color: var(--sidebar-border);
+}
+

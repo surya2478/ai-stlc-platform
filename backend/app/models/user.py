@@ -18,5 +18,10 @@ class User(TimestampMixin, Base):
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Relationships
-    projects: Mapped[list["Project"]] = relationship("Project", back_populates="owner", lazy="select")
+    projects: Mapped[list["Project"]] = relationship("Project", back_populates="owner", lazy="select", foreign_keys="[Project.owner_id]")
     approval_actions: Mapped[list["ApprovalAction"]] = relationship("ApprovalAction", back_populates="user", lazy="select")
+    project_memberships: Mapped[list["ProjectMembership"]] = relationship(
+        "ProjectMembership",
+        back_populates="user",
+        lazy="select",
+    )

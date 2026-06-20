@@ -8,6 +8,7 @@ Every agent (Phase 2+) extends this class to get:
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -68,13 +69,16 @@ class BaseAgent(ABC):
         """Core logic — implemented by each concrete agent."""
         ...
 
-    async def run(self, input_data: dict, agent_run_id: int | None = None) -> AgentResult:
+    async def run(self, input_data: dict, agent_run_id: int | None = None, timeout: float | None = 120.0) -> AgentResult:
         """Execute the agent and return a structured result."""
         self._logs.clear()
         start = time.monotonic()
         self.log("info", "start", f"Agent '{self.name}' started")
         try:
-            output = await self._run(input_data)
+            if timeout is not None:
+                output = await asyncio.wait_for(self._run(input_data), timeout=timeout)
+            else:
+                output = await self._run(input_data)
             duration = time.monotonic() - start
             self.log("info", "complete", f"Agent '{self.name}' completed in {duration:.1f}s")
             return AgentResult(
@@ -86,14 +90,15 @@ class BaseAgent(ABC):
             )
         except Exception as exc:
             duration = time.monotonic() - start
-            self.log("error", "error", str(exc))
+            error_msg = f"Agent execution timed out after {timeout} seconds." if isinstance(exc, (asyncio.TimeoutError, TimeoutError)) else str(exc)
+            self.log("error", "error", error_msg)
             logger.exception("Agent '%s' failed", self.name)
             return AgentResult(
                 agent_name=self.name,
                 agent_run_id=agent_run_id,
                 status="failed",
                 output={},
-                error=str(exc),
+                error=error_msg,
                 duration_seconds=duration,
             )
 

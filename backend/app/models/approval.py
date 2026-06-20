@@ -31,6 +31,14 @@ class ApprovalAction(TimestampMixin, Base):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     changes_requested: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    source: Mapped[str] = mapped_column(String(50), nullable=False, default="platform")
+    actor_role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    old_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    jira_issue_key: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    request_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True, index=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="approval_actions")

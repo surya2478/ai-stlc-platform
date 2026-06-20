@@ -9,14 +9,276 @@ Every agent imports `get_llm()` — provider choice is transparent to agents.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Protocol
+from typing import Any, Awaitable, Callable, Protocol, TypeVar
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+T = TypeVar("T")
+
+
+class LLMCircuitOpenError(RuntimeError):
+    """Raised when an LLM provider circuit is temporarily open."""
+
+
+@dataclass
+class _CircuitState:
+    failures: int = 0
+    opened_at: float | None = None
+    last_error: str | None = None
+
+
+@dataclass
+class _RateLimitSnapshot:
+    provider: str
+    base_url: str
+    model: str
+    observed_at: str
+    retry_after_seconds: str | None = None
+    limit_requests: str | None = None
+    remaining_requests: str | None = None
+    reset_requests: str | None = None
+    limit_tokens: str | None = None
+    remaining_tokens: str | None = None
+    reset_tokens: str | None = None
+    source_status_code: int | None = None
+
+
+@dataclass(frozen=True)
+class LLMRouteOverride:
+    provider: str
+    model: str
+    temperature: float | None = None
+    max_tokens: int | None = None
+    timeout_seconds: int | None = None
+
+
+_circuits: dict[str, _CircuitState] = {}
+_latest_rate_limits: dict[str, _RateLimitSnapshot] = {}
+_route_override: ContextVar[LLMRouteOverride | None] = ContextVar("llm_route_override", default=None)
+
+
+def set_llm_route_override(route: LLMRouteOverride | None) -> Token:
+    return _route_override.set(route)
+
+
+def reset_llm_route_override(token: Token) -> None:
+    _route_override.reset(token)
+
+
+def _get_circuit(key: str) -> _CircuitState:
+    return _circuits.setdefault(key, _CircuitState())
+
+
+def _reset_expired_circuit(state: _CircuitState) -> None:
+    if state.opened_at is None:
+        return
+    reset_seconds = max(1, settings.llm_circuit_breaker_reset_seconds)
+    if time.monotonic() - state.opened_at >= reset_seconds:
+        state.failures = 0
+        state.opened_at = None
+        state.last_error = None
+
+
+def _normalize_header_mapping(headers: Any) -> dict[str, str]:
+    if headers is None:
+        return {}
+    try:
+        items = headers.items()
+    except Exception:
+        return {}
+    normalized: dict[str, str] = {}
+    for key, value in items:
+        normalized[str(key).lower()] = str(value)
+    return normalized
+
+
+def _record_rate_limit_snapshot(
+    *,
+    provider: str,
+    base_url: str,
+    model: str,
+    headers: Any,
+    status_code: int | None = None,
+) -> None:
+    header_map = _normalize_header_mapping(headers)
+    interesting_headers = (
+        "retry-after",
+        "x-ratelimit-limit-requests",
+        "x-ratelimit-remaining-requests",
+        "x-ratelimit-reset-requests",
+        "x-ratelimit-limit-tokens",
+        "x-ratelimit-remaining-tokens",
+        "x-ratelimit-reset-tokens",
+    )
+    if not any(header_map.get(name) for name in interesting_headers):
+        return
+
+    snapshot = _RateLimitSnapshot(
+        provider=provider,
+        base_url=base_url,
+        model=model,
+        observed_at=datetime.now(timezone.utc).isoformat(),
+        retry_after_seconds=header_map.get("retry-after"),
+        limit_requests=header_map.get("x-ratelimit-limit-requests"),
+        remaining_requests=header_map.get("x-ratelimit-remaining-requests"),
+        reset_requests=header_map.get("x-ratelimit-reset-requests"),
+        limit_tokens=header_map.get("x-ratelimit-limit-tokens"),
+        remaining_tokens=header_map.get("x-ratelimit-remaining-tokens"),
+        reset_tokens=header_map.get("x-ratelimit-reset-tokens"),
+        source_status_code=status_code,
+    )
+    _latest_rate_limits[f"{provider}:{base_url}:{model}"] = snapshot
+
+
+def get_latest_rate_limit_snapshot(provider: str, base_url: str, model: str) -> dict[str, Any] | None:
+    snapshot = _latest_rate_limits.get(f"{provider}:{base_url}:{model}")
+    if snapshot is None:
+        return None
+    return {
+        "provider": snapshot.provider,
+        "base_url": snapshot.base_url,
+        "model": snapshot.model,
+        "observed_at": snapshot.observed_at,
+        "retry_after_seconds": snapshot.retry_after_seconds,
+        "limit_requests": snapshot.limit_requests,
+        "remaining_requests": snapshot.remaining_requests,
+        "reset_requests": snapshot.reset_requests,
+        "limit_tokens": snapshot.limit_tokens,
+        "remaining_tokens": snapshot.remaining_tokens,
+        "reset_tokens": snapshot.reset_tokens,
+        "source_status_code": snapshot.source_status_code,
+    }
+
+
+def validate_vision_configuration(provider: str | None = None, model: str | None = None) -> str | None:
+    """Return a user-facing validation error when UI vision analysis is not runnable."""
+    resolved_provider = (provider or settings.default_llm_provider).lower()
+    resolved_model = (model or settings.default_vision_model).strip()
+
+    if not resolved_model:
+        return (
+            "UI image analysis is not configured because no vision model is set. "
+            "Configure DEFAULT_VISION_MODEL to a multimodal model such as llava, qwen2.5vl, gpt-4o-mini, or gemini-2.0-flash."
+        )
+
+    if resolved_provider == "ollama":
+        return None
+
+    if resolved_provider == "openai":
+        if not settings.openai_api_key:
+            return (
+                "UI image analysis is not configured because OPENAI_API_KEY is missing. "
+                "Add an API key for a vision-capable OpenAI model or switch to Ollama with llava/qwen2.5vl."
+            )
+        return None
+
+    if resolved_provider == "google_gemini":
+        if not (settings.google_gemini_api_key or settings.gemini_api_key or settings.google_api_key):
+            return (
+                "UI image analysis is not configured because no Google Gemini API key is set. "
+                "Add GOOGLE_GEMINI_API_KEY or switch to Ollama with llava/qwen2.5vl."
+            )
+        return None
+
+    if resolved_provider == "huggingface":
+        return (
+            "UI image analysis is not supported for the Hugging Face provider in this deployment. "
+            "Use Ollama with llava/qwen2.5vl, OpenAI with a vision-capable model, or Google Gemini."
+        )
+
+    return (
+        f"UI image analysis is not enabled for the current provider '{resolved_provider}'. "
+        "This deployment currently validates vision analysis only for ollama, openai, and google_gemini. "
+        "Use a vision-capable model such as llava, qwen2.5vl, gpt-4o-mini, or gemini-2.0-flash."
+    )
+
+
+def _exception_status_code(exc: Exception) -> int | None:
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+    response = getattr(exc, "response", None)
+    response_status = getattr(response, "status_code", None)
+    return response_status if isinstance(response_status, int) else None
+
+
+def _exception_headers(exc: Exception) -> Any:
+    response = getattr(exc, "response", None)
+    return getattr(response, "headers", None)
+
+
+def _is_retriable_llm_error(exc: Exception) -> bool:
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError, ConnectionError, RuntimeError)):
+        return True
+
+    try:
+        import httpx
+    except Exception:  # pragma: no cover - httpx is installed in runtime
+        httpx = None
+
+    if httpx is not None and isinstance(
+        exc,
+        (
+            httpx.TimeoutException,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+        ),
+    ):
+        return True
+
+    status_code = _exception_status_code(exc)
+    if status_code is not None:
+        return status_code == 429 or status_code >= 500
+
+    return False
+
+
+async def _with_retries(circuit_key: str, operation: Callable[[], Awaitable[T]]) -> T:
+    """Run an LLM call with retry/backoff and a simple in-process circuit breaker."""
+    state = _get_circuit(circuit_key)
+    _reset_expired_circuit(state)
+    if state.opened_at is not None:
+        detail = f" Last error: {state.last_error}" if state.last_error else ""
+        raise LLMCircuitOpenError(f"LLM circuit is open for {circuit_key}.{detail}")
+
+    attempts = max(1, settings.llm_max_retries + 1)
+    for attempt in range(attempts):
+        try:
+            result = await operation()
+            state.failures = 0
+            state.opened_at = None
+            state.last_error = None
+            return result
+        except Exception as exc:
+            if not _is_retriable_llm_error(exc):
+                logger.exception("LLM call failed with non-retriable error: %s", circuit_key)
+                raise
+
+            state.failures += 1
+            state.last_error = f"{type(exc).__name__}: {exc}"
+            should_open = state.failures >= max(1, settings.llm_circuit_breaker_failures)
+            if should_open:
+                state.opened_at = time.monotonic()
+                logger.exception("LLM circuit opened for %s", circuit_key)
+                raise
+            if attempt >= attempts - 1:
+                logger.exception("LLM call failed after %s attempt(s): %s", attempts, circuit_key)
+                raise
+            delay = max(0.0, settings.llm_retry_backoff_seconds) * (2**attempt)
+            logger.warning("LLM call failed for %s; retrying in %.2fs", circuit_key, delay)
+            if delay:
+                await asyncio.sleep(delay)
+
+    raise RuntimeError(f"LLM call failed unexpectedly for {circuit_key}")
 
 
 class LLMProvider(Protocol):
@@ -34,6 +296,14 @@ class LLMProvider(Protocol):
         """Chat-style generation with separate system and user messages.
 
         Convenience wrapper used by legacy agents. Delegates to achat().
+        """
+        ...
+
+    async def generate_vision(self, system: str, user: str, images_b64: list[str], **kwargs) -> str:
+        """Vision generation: text prompt + one or more base64-encoded images.
+
+        GAP-1: used by the UI screenshot analysis agent. Each provider maps the
+        images to its own multimodal message format.
         """
         ...
 
@@ -72,12 +342,16 @@ def _extract_ollama_options(kwargs: dict) -> tuple[dict, dict]:
 class OllamaProvider:
     """Wraps Ollama via httpx — no SDK required."""
 
-    def __init__(self, base_url: str, model: str):
+    def __init__(self, base_url: str, model: str, default_options: dict[str, Any] | None = None, timeout_seconds: int = 120):
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self._circuit_key = f"ollama:{self.base_url}:{self.model}"
+        self.default_options = default_options or {}
+        self.timeout_seconds = timeout_seconds
 
     async def acomplete(self, prompt: str, **kwargs) -> str:
         import httpx
+        kwargs = {**self.default_options, **kwargs}
         options, remaining = _extract_ollama_options(kwargs)
         payload: dict = {
             "model": self.model,
@@ -87,13 +361,18 @@ class OllamaProvider:
         }
         if options:
             payload["options"] = options
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(f"{self.base_url}/api/generate", json=payload)
-            resp.raise_for_status()
-            return resp.json().get("response", "")
+
+        async def _call() -> str:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                resp = await client.post(f"{self.base_url}/api/generate", json=payload)
+                resp.raise_for_status()
+                return resp.json().get("response", "")
+
+        return await _with_retries(self._circuit_key, _call)
 
     async def achat(self, messages: list[dict], **kwargs) -> str:
         import httpx
+        kwargs = {**self.default_options, **kwargs}
         options, remaining = _extract_ollama_options(kwargs)
         payload: dict = {
             "model": self.model,
@@ -103,16 +382,31 @@ class OllamaProvider:
         }
         if options:
             payload["options"] = options
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(f"{self.base_url}/api/chat", json=payload)
-            resp.raise_for_status()
-            return resp.json()["message"]["content"]
+
+        async def _call() -> str:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                resp = await client.post(f"{self.base_url}/api/chat", json=payload)
+                resp.raise_for_status()
+                return resp.json()["message"]["content"]
+
+        return await _with_retries(self._circuit_key, _call)
 
     async def generate(self, system: str, user: str, **kwargs) -> str:
         """Chat-style generation with separate system and user messages."""
         messages = [
             {"role": "system", "content": system},
             {"role": "user", "content": user},
+        ]
+        return await self.achat(messages, **kwargs)
+
+    async def generate_vision(self, system: str, user: str, images_b64: list[str], **kwargs) -> str:
+        """Vision generation via Ollama multimodal chat (e.g. llava, qwen2.5vl).
+
+        Ollama accepts raw base64 strings in the message-level "images" field.
+        """
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user, "images": images_b64},
         ]
         return await self.achat(messages, **kwargs)
 
@@ -120,22 +414,49 @@ class OllamaProvider:
 class OpenAICompatibleProvider:
     """Wraps any OpenAI-compatible endpoint (OpenAI, Groq, OpenRouter, Ollama OpenAI-mode)."""
 
-    def __init__(self, api_key: str, base_url: str, model: str):
+    def __init__(self, api_key: str, base_url: str, model: str, default_options: dict[str, Any] | None = None, timeout_seconds: int = 120):
         from openai import AsyncOpenAI
-        self._client = AsyncOpenAI(api_key=api_key or "ollama", base_url=base_url)
+        self._client = AsyncOpenAI(api_key=api_key or "ollama", base_url=base_url, timeout=timeout_seconds)
+        self.base_url = base_url
         self.model = model
+        self._circuit_key = f"openai:{base_url}:{self.model}"
+        self.default_options = default_options or {}
 
     async def acomplete(self, prompt: str, **kwargs) -> str:
         messages = [{"role": "user", "content": prompt}]
         return await self.achat(messages, **kwargs)
 
     async def achat(self, messages: list[dict], **kwargs) -> str:
-        resp = await self._client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            **kwargs,
-        )
-        return resp.choices[0].message.content or ""
+        kwargs = {**self.default_options, **kwargs}
+
+        async def _call() -> str:
+            try:
+                raw_resp = await self._client.with_raw_response.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    **kwargs,
+                )
+            except Exception as exc:
+                _record_rate_limit_snapshot(
+                    provider="openai",
+                    base_url=self.base_url,
+                    model=self.model,
+                    headers=_exception_headers(exc),
+                    status_code=_exception_status_code(exc),
+                )
+                raise
+
+            _record_rate_limit_snapshot(
+                provider="openai",
+                base_url=self.base_url,
+                model=self.model,
+                headers=getattr(raw_resp, "headers", None),
+                status_code=getattr(raw_resp, "status_code", None),
+            )
+            resp = raw_resp.parse()
+            return resp.choices[0].message.content or ""
+
+        return await _with_retries(self._circuit_key, _call)
 
     async def generate(self, system: str, user: str, **kwargs) -> str:
         """Chat-style generation with separate system and user messages."""
@@ -145,8 +466,286 @@ class OpenAICompatibleProvider:
         ]
         return await self.achat(messages, **kwargs)
 
+    async def generate_vision(self, system: str, user: str, images_b64: list[str], **kwargs) -> str:
+        """Vision generation via OpenAI-compatible multimodal content parts.
+
+        Images are sent as data-URI image_url parts (vision-capable model required).
+        """
+        content: list[dict] = [{"type": "text", "text": user}]
+        for img in images_b64:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{img}"},
+            })
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": content},
+        ]
+        return await self.achat(messages, **kwargs)
+
+
+class GoogleGeminiProvider:
+    """Minimal Gemini REST wrapper for project-level routing."""
+
+    def __init__(self, api_key: str, model: str, default_options: dict[str, Any] | None = None, timeout_seconds: int = 120):
+        self.api_key = api_key
+        self.model = model
+        self.default_options = default_options or {}
+        self.timeout_seconds = timeout_seconds
+        self._circuit_key = f"google_gemini:{self.model}"
+
+    @staticmethod
+    def _message_to_text(message: dict) -> str:
+        content = message.get("content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    parts.append(str(item.get("text", "")))
+            return "\n".join(parts)
+        return str(content)
+
+    async def acomplete(self, prompt: str, **kwargs) -> str:
+        return await self.achat([{"role": "user", "content": prompt}], **kwargs)
+
+    async def achat(self, messages: list[dict], **kwargs) -> str:
+        import httpx
+        opts = {**self.default_options, **kwargs}
+        contents = []
+        for message in messages:
+            role = "model" if message.get("role") == "assistant" else "user"
+            contents.append({"role": role, "parts": [{"text": self._message_to_text(message)}]})
+        payload: dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": opts.get("temperature"),
+                "maxOutputTokens": opts.get("max_tokens"),
+            },
+        }
+        payload["generationConfig"] = {k: v for k, v in payload["generationConfig"].items() if v is not None}
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+
+        async def _call() -> str:
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                    resp = await client.post(url, headers={"x-goog-api-key": self.api_key}, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    candidates = data.get("candidates") or []
+                    if not candidates:
+                        return ""
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    return "\n".join(str(part.get("text", "")) for part in parts)
+            except Exception as exc:
+                msg = str(exc)
+                if self.api_key and self.api_key in msg:
+                    msg = msg.replace(self.api_key, "***REDACTED***")
+                raise type(exc)(msg) from exc
+
+        return await _with_retries(self._circuit_key, _call)
+
+    async def generate(self, system: str, user: str, **kwargs) -> str:
+        return await self.achat(
+            [{"role": "user", "content": f"{system}\n\n{user}"}],
+            **kwargs,
+        )
+
+    async def generate_vision(self, system: str, user: str, images_b64: list[str], **kwargs) -> str:
+        import httpx
+        opts = {**self.default_options, **kwargs}
+        parts: list[dict[str, Any]] = [{"text": f"{system}\n\n{user}"}]
+        for image in images_b64:
+            parts.append({"inline_data": {"mime_type": "image/png", "data": image}})
+        payload = {
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {
+                "temperature": opts.get("temperature"),
+                "maxOutputTokens": opts.get("max_tokens"),
+            },
+        }
+        payload["generationConfig"] = {k: v for k, v in payload["generationConfig"].items() if v is not None}
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
+
+        async def _call() -> str:
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                    resp = await client.post(url, headers={"x-goog-api-key": self.api_key}, json=payload)
+                    resp.raise_for_status()
+                    candidates = resp.json().get("candidates") or []
+                    parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+                    return "\n".join(str(part.get("text", "")) for part in parts)
+            except Exception as exc:
+                msg = str(exc)
+                if self.api_key and self.api_key in msg:
+                    msg = msg.replace(self.api_key, "***REDACTED***")
+                raise type(exc)(msg) from exc
+
+        return await _with_retries(self._circuit_key, _call)
+
+
+class HuggingFaceInferenceProvider:
+    """Minimal Hugging Face Inference API wrapper for text generation."""
+
+    def __init__(self, api_key: str, model: str, default_options: dict[str, Any] | None = None, timeout_seconds: int = 120):
+        self.api_key = api_key
+        self.model = model
+        self.default_options = default_options or {}
+        self.timeout_seconds = timeout_seconds
+        self._circuit_key = f"huggingface:{self.model}"
+
+    async def acomplete(self, prompt: str, **kwargs) -> str:
+        import httpx
+        opts = {**self.default_options, **kwargs}
+        parameters = {
+            "temperature": opts.get("temperature"),
+            "max_new_tokens": opts.get("max_tokens"),
+            "return_full_text": False,
+        }
+        parameters = {k: v for k, v in parameters.items() if v is not None}
+        payload = {"inputs": prompt, "parameters": parameters}
+        url = f"https://api-inference.huggingface.co/models/{self.model}"
+
+        async def _call() -> str:
+            async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+                resp = await client.post(url, headers={"Authorization": f"Bearer {self.api_key}"}, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                if isinstance(data, list) and data:
+                    return str(data[0].get("generated_text", ""))
+                if isinstance(data, dict):
+                    return str(data.get("generated_text", ""))
+                return ""
+
+        return await _with_retries(self._circuit_key, _call)
+
+    async def achat(self, messages: list[dict], **kwargs) -> str:
+        prompt = "\n".join(f"{m.get('role', 'user')}: {m.get('content', '')}" for m in messages)
+        return await self.acomplete(prompt, **kwargs)
+
+    async def generate(self, system: str, user: str, **kwargs) -> str:
+        return await self.acomplete(f"{system}\n\n{user}", **kwargs)
+
+    async def generate_vision(self, system: str, user: str, images_b64: list[str], **kwargs) -> str:
+        raise NotImplementedError("Hugging Face vision routing is not enabled for this project provider.")
+
+
+def _default_options_from_route(route: LLMRouteOverride | None) -> dict[str, Any]:
+    if route is None:
+        return {}
+    options: dict[str, Any] = {}
+    if route.temperature is not None:
+        options["temperature"] = route.temperature
+    if route.max_tokens is not None:
+        options["max_tokens"] = route.max_tokens
+    return options
+
+
+def _build_llm(
+    provider: str,
+    model: str,
+    *,
+    default_options: dict[str, Any] | None = None,
+    timeout_seconds: int = 120,
+) -> LLMProvider:
+    logger.info("LLM provider: %s  model: %s", provider, model)
+
+    if provider == "ollama":
+        return OllamaProvider(
+            base_url=settings.ollama_base_url,
+            model=model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider == "openai":
+        if not settings.openai_api_key:
+            logger.warning("OPENAI_API_KEY is not set - OpenAI calls will fail")
+        return OpenAICompatibleProvider(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            model=settings.openai_model or model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider == "groq":
+        if not settings.groq_api_key:
+            logger.warning("GROQ_API_KEY is not set - Groq calls will fail")
+        return OpenAICompatibleProvider(
+            api_key=settings.groq_api_key,
+            base_url=settings.groq_base_url,
+            model=model or settings.groq_model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider == "openrouter":
+        if not settings.openrouter_api_key:
+            logger.warning("OPENROUTER_API_KEY is not set - OpenRouter calls will fail")
+        return OpenAICompatibleProvider(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+            model=model or settings.openrouter_model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider == "google_gemini":
+        api_key = settings.google_gemini_api_key or settings.gemini_api_key or settings.google_api_key
+        if not api_key:
+            logger.warning("GOOGLE_GEMINI_API_KEY is not set - Gemini calls will fail")
+        return GoogleGeminiProvider(
+            api_key=api_key,
+            model=model or settings.google_gemini_model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider == "huggingface":
+        api_key = settings.huggingface_api_key or settings.huggingfacehub_api_token
+        if not api_key:
+            logger.warning("HUGGINGFACE_API_KEY is not set - Hugging Face calls will fail")
+        return HuggingFaceInferenceProvider(
+            api_key=api_key,
+            model=model or settings.huggingface_model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider == "together":
+        if not settings.together_api_key:
+            logger.warning("TOGETHER_API_KEY is not set - Together AI calls will fail")
+        return OpenAICompatibleProvider(
+            api_key=settings.together_api_key,
+            base_url=settings.together_base_url,
+            model=model or settings.together_model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider == "cerebras":
+        if not settings.cerebras_api_key:
+            logger.warning("CEREBRAS_API_KEY is not set - Cerebras calls will fail")
+        return OpenAICompatibleProvider(
+            api_key=settings.cerebras_api_key,
+            base_url=settings.cerebras_base_url,
+            model=model or settings.cerebras_model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    if provider == "mistral":
+        if not settings.mistral_api_key:
+            logger.warning("MISTRAL_API_KEY is not set - Mistral AI calls will fail")
+        return OpenAICompatibleProvider(
+            api_key=settings.mistral_api_key,
+            base_url=settings.mistral_base_url,
+            model=model or settings.mistral_model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    raise ValueError("Unknown LLM provider: '%s'. Valid values: ollama, openai, groq, google_gemini, openrouter, huggingface, together, cerebras, mistral" % provider)
+
 
 @lru_cache
+def _get_cached_llm(provider: str, model: str) -> LLMProvider:
+    return _build_llm(provider, model)
+
+
 def get_llm(
     provider: str | None = None,
     model: str | None = None,
@@ -158,6 +757,19 @@ def get_llm(
         provider: Override DEFAULT_LLM_PROVIDER env. ("ollama" | "openai")
         model:    Override DEFAULT_LLM_MODEL env.
     """
+    route = _route_override.get()
+    if route is not None and (
+        provider is None
+        or provider == settings.default_llm_provider
+        or provider == route.provider
+    ):
+        return _build_llm(
+            route.provider.lower(),
+            route.model,
+            default_options=_default_options_from_route(route),
+            timeout_seconds=route.timeout_seconds or 120,
+        )
+
     resolved_provider = (provider or settings.default_llm_provider).lower()
     resolved_model = model or settings.default_llm_model
 
@@ -176,5 +788,123 @@ def get_llm(
             base_url=settings.openai_base_url,
             model=settings.openai_model or resolved_model,
         )
+    elif resolved_provider in ("together", "cerebras", "mistral"):
+        return _build_llm(resolved_provider, resolved_model)
     else:
-        raise ValueError(f"Unknown LLM provider: '{resolved_provider}'. Valid values: ollama, openai")
+        return _get_cached_llm(resolved_provider, resolved_model)
+
+
+async def get_llm_with_automatic_fallback(
+    routes: list,
+) -> LLMProvider:
+    """
+    Enterprise-grade automatic LLM failover.
+
+    Given an ordered list of LLMRouteConfig objects (primary first, then fallbacks
+    by priority, with system default last), returns the first provider whose
+    circuit breaker is *not* open.  Falls through silently to the next tier
+    when a circuit is open, so the caller never sees a LLMCircuitOpenError
+    as long as any standby is healthy.
+
+    Args:
+        routes: Ordered list of LLMRouteConfig from resolve_project_llm_routes().
+                The list must contain at least one entry (system default).
+
+    Returns:
+        First available LLMProvider instance.
+
+    Raises:
+        RuntimeError: Only when every tier has an open circuit breaker simultaneously.
+    """
+    for route in routes:
+        provider_key = route.provider_key.lower()
+        try:
+            llm = _build_llm(
+                provider_key,
+                route.model_name,
+                default_options={
+                    k: v for k, v in {
+                        "temperature": route.temperature,
+                        "max_tokens": route.max_tokens,
+                    }.items() if v is not None
+                },
+                timeout_seconds=route.timeout_seconds or 120,
+            )
+        except ValueError:
+            logger.warning("Automatic failover: skipping unknown provider '%s'", provider_key)
+            continue
+
+        # Inspect the circuit breaker for this provider without calling it.
+        # Build the circuit key the same way each provider class does.
+        if provider_key == "ollama":
+            circuit_key = f"ollama:{settings.ollama_base_url}:{route.model_name}"
+        elif provider_key == "google_gemini":
+            circuit_key = f"google_gemini:{route.model_name}"
+        elif provider_key == "huggingface":
+            circuit_key = f"huggingface:{route.model_name}"
+        else:
+            # OpenAI-compatible providers (openai, groq, together, cerebras, mistral, openrouter)
+            base_url = getattr(settings, f"{provider_key}_base_url", settings.openai_base_url)
+            circuit_key = f"openai:{base_url}:{route.model_name}"
+
+        state = _circuits.get(circuit_key)
+        if state is not None:
+            _reset_expired_circuit(state)
+            if state.opened_at is not None:
+                logger.warning(
+                    "Automatic failover: circuit open for '%s' (%s). Trying next provider.",
+                    provider_key,
+                    route.model_name,
+                )
+                continue
+
+        logger.info(
+            "Automatic failover: selected provider '%s' model '%s' (source: %s)",
+            provider_key,
+            route.model_name,
+            getattr(route, "source", "unknown"),
+        )
+        return llm
+
+    raise RuntimeError(
+        "All LLM providers have open circuit breakers. "
+        "Check provider API keys, network connectivity, and rate limits."
+    )
+
+
+@lru_cache
+def get_vision_llm(provider: str | None = None, model: str | None = None) -> LLMProvider:
+    """Return an LLM provider configured with a vision-capable model (GAP-1).
+
+    Uses DEFAULT_LLM_PROVIDER with DEFAULT_VISION_MODEL unless overridden.
+    Built directly (not via get_llm) so the vision model is honoured even for
+    the OpenAI-compatible provider, whose get_llm() path pins openai_model.
+    """
+    route = _route_override.get()
+    if route is not None and (
+        provider is None
+        or provider == settings.default_llm_provider
+        or provider == route.provider
+    ):
+        return _build_llm(
+            route.provider.lower(),
+            route.model,
+            default_options=_default_options_from_route(route),
+            timeout_seconds=route.timeout_seconds or 120,
+        )
+
+    resolved_provider = (provider or settings.default_llm_provider).lower()
+    resolved_model = model or settings.default_vision_model
+    logger.info("Vision LLM provider: %s  model: %s", resolved_provider, resolved_model)
+
+    if resolved_provider == "ollama":
+        return OllamaProvider(base_url=settings.ollama_base_url, model=resolved_model)
+    if resolved_provider == "openai":
+        if not settings.openai_api_key:
+            logger.warning("OPENAI_API_KEY is not set — OpenAI vision calls will fail")
+        return OpenAICompatibleProvider(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_base_url,
+            model=resolved_model,
+        )
+    return _get_cached_llm(resolved_provider, resolved_model)

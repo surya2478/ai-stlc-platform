@@ -12,7 +12,9 @@ from typing import Any, TypedDict
 from langgraph.graph import StateGraph, END
 
 from app.agents.base.base_agent import BaseAgent, AgentResult
+from app.agents.structured_schemas import ExecutionResultLLMOutput
 from app.llm.provider import get_llm
+from app.llm.structured import validate_structured_output, parse_and_validate_llm_list
 from app.config import get_settings
 
 settings = get_settings()
@@ -80,13 +82,7 @@ Execute the following {len(tc_summaries)} test cases and return results:
                 {"role": "user", "content": prompt},
             ]
         )
-        text = response.strip()
-        match = re.search(r'\[.*\]', text, re.DOTALL)
-        if match:
-            results = json.loads(match.group(0))
-        else:
-            results = []
-            errors.append("Could not parse execution results JSON from LLM")
+        results = parse_and_validate_llm_list(response, ExecutionResultLLMOutput)
     except Exception as exc:
         results = []
         errors.append(f"Execution agent error: {str(exc)}")
@@ -96,7 +92,26 @@ Execute the following {len(tc_summaries)} test cases and return results:
 
 def _finalise_results(state: ExecutionState) -> ExecutionState:
     """Ensure required fields and compute summary."""
+    def _to_text(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
+            return "\n".join(str(item) for item in value)
+        if isinstance(value, dict):
+            return json.dumps(value)
+        return str(value)
+
+    def _to_log_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        return [str(value)]
+
     finalised = []
+    errors = list(state["errors"])
     for r in state["results"]:
         status = r.get("status", "passed")
         if status not in ("passed", "failed", "skipped"):
@@ -106,11 +121,11 @@ def _finalise_results(state: ExecutionState) -> ExecutionState:
             "test_name": r.get("test_name", "Unknown test"),
             "status": status,
             "duration_ms": r.get("duration_ms", 500),
-            "error_message": r.get("error_message") if status == "failed" else None,
-            "stack_trace": r.get("stack_trace") if status == "failed" else None,
-            "logs": r.get("logs", []),
+            "error_message": _to_text(r.get("error_message")) if status == "failed" else None,
+            "stack_trace": _to_text(r.get("stack_trace")) if status == "failed" else None,
+            "logs": _to_log_list(r.get("logs")),
         })
-    return {**state, "results": finalised}
+    return {**state, "results": finalised, "errors": errors}
 
 
 # ── Graph ──────────────────────────────────────────────────────────────────────

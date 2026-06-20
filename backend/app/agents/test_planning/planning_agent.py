@@ -9,7 +9,9 @@ from typing import Any, TypedDict
 from langgraph.graph import StateGraph, END
 
 from app.agents.base.base_agent import BaseAgent
+from app.agents.structured_schemas import TestPlanLLMOutput
 from app.llm.provider import get_llm
+from app.llm.structured import validate_structured_output, parse_and_validate_llm_output
 from app.config import get_settings
 
 settings = get_settings()
@@ -75,13 +77,7 @@ Create a comprehensive test plan for this project."""
             temperature=0.2,
             max_tokens=4000,
         )
-        text = response.strip()
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            test_plan = json.loads(match.group(0))
-        else:
-            test_plan = {}
-            errors.append("Could not parse test plan JSON from LLM response")
+        test_plan = parse_and_validate_llm_output(response, TestPlanLLMOutput).model_dump(mode="json")
     except Exception as exc:
         test_plan = {}
         errors.append(f"Planning agent error: {str(exc)}")
@@ -91,6 +87,7 @@ Create a comprehensive test plan for this project."""
 
 def _validate_plan(state: PlanningState) -> PlanningState:
     """Ensure all required keys are present in the plan."""
+    errors = list(state["errors"])
     plan = state["test_plan"]
     required_keys = ["title", "scope", "test_types", "entry_criteria", "exit_criteria"]
     for key in required_keys:
@@ -98,7 +95,7 @@ def _validate_plan(state: PlanningState) -> PlanningState:
             plan[key] = []
     if "title" not in plan or not plan["title"]:
         plan["title"] = f"Test Plan — {state['project_name']}"
-    return {**state, "test_plan": plan}
+    return {**state, "test_plan": plan, "errors": errors}
 
 
 # ── Graph ──────────────────────────────────────────────────────────────────────

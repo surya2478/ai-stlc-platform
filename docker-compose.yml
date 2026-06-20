@@ -3,16 +3,17 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: stlc_db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: stlc_agents
+      POSTGRES_USER: ${POSTGRES_USER:-stlc_local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm}
+      POSTGRES_DB: ${POSTGRES_DB:-stlc_agents}
     volumes:
       - pg_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stlc_local}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,12 +22,14 @@ services:
   redis:
     image: redis:7-alpine
     container_name: stlc_redis
+    restart: unless-stopped
+    command: redis-server --requirepass 30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm --appendonly yes --save 60 1
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -37,22 +40,22 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: stlc_backend
+    restart: unless-stopped
+    user: "root"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/stlc_agents
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: ${DATABASE_URL:-postgresql://stlc_local:30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm@db:5432/stlc_agents}
+      REDIS_URL: ${REDIS_URL:-redis://:30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm@redis:6379/0}
     volumes:
-      - ./backend:/app
       - stlc_storage:/app/storage
-    ports:
-      - "8000:8000"
+      - .:/repo
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   # ── Celery Worker ───────────────────────────────────────────────────────────
   worker:
@@ -60,19 +63,23 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: stlc_worker
+    restart: unless-stopped
+    user: "root"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/stlc_agents
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: ${DATABASE_URL:-postgresql://stlc_local:30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm@db:5432/stlc_agents}
+      REDIS_URL: ${REDIS_URL:-redis://:30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm@redis:6379/0}
+      DB_POOL_ENABLED: "false"
     volumes:
-      - ./backend:/app
       - stlc_storage:/app/storage
+      - .:/repo
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=4
+
 
   # ── Next.js Frontend ────────────────────────────────────────────────────────
   frontend:
@@ -80,32 +87,31 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: stlc_frontend
+    restart: unless-stopped
     env_file: .env
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
-    ports:
-      - "3000:3000"
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000}
+      NEXT_PUBLIC_ENABLE_DEV_AUTH: ${NEXT_PUBLIC_ENABLE_DEV_AUTH:-false}
     depends_on:
       - backend
-    command: npm run dev
 
-  # ── Ollama (optional local LLM) ─────────────────────────────────────────────
-  ollama:
-    image: ollama/ollama:latest
-    container_name: stlc_ollama
+  # ── Nginx Proxy (HTTPS) ─────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: stlc_nginx
+    restart: unless-stopped
     ports:
-      - "11434:11434"
+      - "80:80"
+      - "443:443"
     volumes:
-      - ollama_data:/root/.ollama
-    profiles:
-      - ollama          # only starts with: docker compose --profile ollama up
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - frontend
+      - backend
 
 volumes:
   pg_data:
   redis_data:
   stlc_storage:
-  ollama_data:

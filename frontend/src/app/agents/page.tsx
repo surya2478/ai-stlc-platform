@@ -1,49 +1,49 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { agentRunsApi, projectsApi, type AgentRun, type Project } from "@/lib/api";
-import { Bot, CheckCircle, XCircle, Clock, AlertTriangle, RefreshCw, ChevronRight, Zap } from "lucide-react";
+import { Bot, CheckCircle, XCircle, Clock, AlertTriangle, RefreshCw, ChevronRight, Zap, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 // ── Agent pipeline definition ─────────────────────────────────────────────────
 
-const PIPELINE: { name: string; label: string; description: string; phase: string; color: string }[] = [
-  { name: "requirement_intake",  label: "Requirement Intake",   description: "Extracts requirements from uploaded documents",        phase: "Phase 2", color: "bg-blue-100 text-blue-700 border-blue-200" },
-  { name: "requirement_quality", label: "Quality Analysis",     description: "Validates and enriches requirements with QA lens",     phase: "Phase 2", color: "bg-cyan-100 text-cyan-700 border-cyan-200" },
-  { name: "test_planning",       label: "Test Planning",        description: "Generates structured test plan from requirements",     phase: "Phase 3", color: "bg-violet-100 text-violet-700 border-violet-200" },
-  { name: "test_scenario",       label: "Test Scenarios",       description: "Creates high-level test scenarios per requirement",    phase: "Phase 3", color: "bg-purple-100 text-purple-700 border-purple-200" },
-  { name: "test_case",           label: "Test Cases",           description: "Generates detailed step-by-step test cases",          phase: "Phase 3", color: "bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200" },
-  { name: "automation_script",   label: "Automation Scripts",   description: "Writes Playwright / Pytest scripts for automation",   phase: "Phase 4", color: "bg-pink-100 text-pink-700 border-pink-200" },
-  { name: "test_execution",      label: "Test Execution",       description: "Executes test suite and records pass/fail results",   phase: "Phase 5", color: "bg-rose-100 text-rose-700 border-rose-200" },
-  { name: "defect_analysis",     label: "Defect Analysis",      description: "Analyses failures and writes defect reports",         phase: "Phase 6", color: "bg-orange-100 text-orange-700 border-orange-200" },
-  { name: "test_reporting",      label: "QA Reporting",         description: "Aggregates metrics and generates executive report",   phase: "Phase 7", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+const PIPELINE = [
+  { name: "requirement_intake",  label: "Requirement Intake",   description: "Extracts requirements from uploaded documents",        phase: "Phase 2", color: "bg-blue-50 text-blue-700 border-blue-150" },
+  { name: "requirement_quality", label: "Quality Analysis",     description: "Validates and enriches requirements with QA lens",     phase: "Phase 2", color: "bg-cyan-50 text-cyan-700 border-cyan-150" },
+  { name: "test_planning",       label: "Test Planning",        description: "Generates structured test plan from requirements",     phase: "Phase 3", color: "bg-violet-50 text-violet-700 border-violet-150" },
+  { name: "test_scenario",       label: "Test Scenarios",       description: "Creates high-level test scenarios per requirement",    phase: "Phase 3", color: "bg-purple-50 text-purple-700 border-purple-150" },
+  { name: "test_case",           label: "Test Cases",           description: "Generates detailed step-by-step test cases",          phase: "Phase 3", color: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-150" },
+  { name: "automation_script",   label: "Automation Scripts",   description: "Writes Playwright / Pytest scripts for automation",   phase: "Phase 4", color: "bg-pink-50 text-pink-700 border-pink-150" },
+  { name: "test_execution",      label: "Test Execution",       description: "Executes test suite and records pass/fail results",   phase: "Phase 5", color: "bg-rose-50 text-rose-700 border-rose-150" },
+  { name: "defect_analysis",     label: "Defect Analysis",      description: "Analyses failures and writes defect reports",         phase: "Phase 6", color: "bg-orange-50 text-orange-700 border-orange-150" },
+  { name: "test_reporting",      label: "QA Reporting",         description: "Aggregates metrics and generates executive report",   phase: "Phase 7", color: "bg-emerald-50 text-emerald-700 border-emerald-150" },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StatusDot({ status }: { status: string | null }) {
-  if (!status) return <span className="w-2 h-2 rounded-full bg-gray-200 inline-block" />;
-  const map: Record<string, string> = {
-    completed: "bg-green-500",
-    running: "bg-blue-500 animate-pulse",
-    failed: "bg-red-500",
-    pending: "bg-yellow-400",
-    cancelled: "bg-gray-400",
-  };
-  return <span className={`w-2 h-2 rounded-full inline-block ${map[status] ?? "bg-gray-300"}`} />;
+function getStatusVariant(status: string): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" {
+  const s = status.toLowerCase();
+  if (s === "completed" || s === "passed" || s === "success") return "success";
+  if (s === "failed" || s === "error") return "destructive";
+  if (s === "running" || s === "pending") return "warning";
+  if (s === "cancelled") return "secondary";
+  return "outline";
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusDot({ status }: { status: string | null }) {
+  if (!status) return <span className="w-2 h-2 rounded-full bg-slate-200 inline-block" />;
   const map: Record<string, string> = {
-    completed: "bg-green-100 text-green-700",
-    running: "bg-blue-100 text-blue-700",
-    failed: "bg-red-100 text-red-700",
-    pending: "bg-yellow-100 text-yellow-700",
-    cancelled: "bg-gray-100 text-gray-600",
+    completed: "bg-emerald-500",
+    running: "bg-blue-500 animate-pulse",
+    failed: "bg-rose-500",
+    pending: "bg-amber-400",
+    cancelled: "bg-slate-450",
   };
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${map[status] ?? "bg-gray-100 text-gray-600"}`}>
-      {status}
-    </span>
-  );
+  return <span className={cn("w-2 h-2 rounded-full inline-block shrink-0", map[status.toLowerCase()] ?? "bg-slate-300")} />;
 }
 
 function formatDuration(secs: number | undefined): string {
@@ -57,43 +57,66 @@ function AgentPipelineCard({
   latestRun,
   runCount,
   onSelect,
+  isSelected,
 }: {
   agent: typeof PIPELINE[0];
   latestRun: AgentRun | null;
   runCount: number;
   onSelect: () => void;
+  isSelected: boolean;
 }) {
   return (
-    <div
+    <Card
       onClick={onSelect}
-      className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 cursor-pointer hover:border-gray-400 hover:shadow-md transition-all group"
+      className={cn(
+        "cursor-pointer hover:border-slate-350 hover:shadow-sm transition-all group p-4 flex flex-col justify-between h-full bg-white select-none",
+        isSelected ? "border-[#1b59f8] ring-1 ring-[#1b59f8]/10 bg-[#1b59f8]/5" : "border-slate-250"
+      )}
     >
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
+      <div className="space-y-2 mb-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <StatusDot status={latestRun?.status ?? null} />
-            <span className={`px-2 py-0.5 rounded text-xs font-medium border ${agent.color}`}>{agent.phase}</span>
+            <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold border capitalize", agent.color)}>
+              {agent.phase}
+            </span>
           </div>
-          <h3 className="text-sm font-semibold text-gray-800 group-hover:text-gray-900">{agent.label}</h3>
-          <p className="text-xs text-gray-500 mt-0.5 leading-snug">{agent.description}</p>
+          <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 shrink-0 transition-colors" />
         </div>
-        <ChevronRight size={14} className="text-gray-300 group-hover:text-gray-500 shrink-0 mt-1" />
+        <div>
+          <h3 className="text-xs font-bold text-slate-800 group-hover:text-slate-900 leading-tight">
+            {agent.label}
+          </h3>
+          <p className="text-[11px] font-semibold text-slate-400 mt-1 leading-relaxed">
+            {agent.description}
+          </p>
+        </div>
       </div>
-      <div className="flex items-center gap-3 pt-3 border-t border-gray-50 text-xs text-gray-400">
+      
+      <div className="flex items-center justify-between pt-2.5 border-t border-slate-50 text-[10px] text-slate-450 font-bold">
         {latestRun ? (
-          <>
-            <StatusBadge status={latestRun.status} />
-            <span className="flex items-center gap-1"><Clock size={10} /> {formatDuration(latestRun.duration_seconds)}</span>
-            <span className="ml-auto">{new Date(latestRun.created_at).toLocaleDateString()}</span>
-          </>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Badge variant={getStatusVariant(latestRun.status)} className="capitalize px-1.5 py-0 text-[9px]">
+              {latestRun.status}
+            </Badge>
+            <span className="flex items-center gap-1 font-bold text-slate-400 shrink-0">
+              <Clock className="h-3 w-3" /> 
+              {formatDuration(latestRun.duration_seconds)}
+            </span>
+            <span className="ml-auto text-slate-400 font-bold shrink-0">
+              {new Date(latestRun.created_at).toLocaleDateString()}
+            </span>
+          </div>
         ) : (
-          <span className="text-gray-300 italic">No runs yet</span>
+          <span className="text-slate-350 italic font-bold">No runs yet</span>
         )}
-        {runCount > 0 && (
-          <span className="ml-auto text-gray-400">{runCount} run{runCount !== 1 ? "s" : ""}</span>
+        {runCount > 0 && !latestRun && (
+          <span className="ml-auto text-slate-400 font-bold">
+            {runCount} run{runCount !== 1 ? "s" : ""}
+          </span>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -102,25 +125,34 @@ function RunHistoryRow({ run, onSelect }: { run: AgentRun; onSelect: (id: number
   return (
     <div
       onClick={() => onSelect(run.id)}
-      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-50 last:border-0"
+      className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50/50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors font-semibold text-xs text-slate-700"
     >
       <StatusDot status={run.status} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-700 truncate">{agentLabel}</p>
-        <p className="text-xs text-gray-400">{new Date(run.created_at).toLocaleString()}</p>
+        <p className="font-bold text-slate-800 truncate">{agentLabel}</p>
+        <p className="text-[10px] text-slate-400 font-bold mt-0.5">{new Date(run.created_at).toLocaleString()}</p>
       </div>
-      <StatusBadge status={run.status} />
-      <span className="text-xs text-gray-400 w-16 text-right">{formatDuration(run.duration_seconds)}</span>
-      {run.status === "failed" && <AlertTriangle size={14} className="text-red-400 shrink-0" />}
+      <div className="flex items-center gap-2">
+        <Badge variant={getStatusVariant(run.status)} className="capitalize text-[10px] py-0 px-2">
+          {run.status}
+        </Badge>
+        <span className="text-[10px] font-bold text-slate-400 w-16 text-right shrink-0">{formatDuration(run.duration_seconds)}</span>
+        {run.status === "failed" && <AlertTriangle size={14} className="text-rose-500 shrink-0" />}
+      </div>
     </div>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ── Main Content Component ───────────────────────────────────────────────────
 
-export default function AgentWorkflowPage() {
+function AgentWorkflowContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const selectedProject = Number(searchParams.get("project")) || null;
+
   const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<number | null>(null);
   const [allRuns, setAllRuns] = useState<AgentRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -129,10 +161,14 @@ export default function AgentWorkflowPage() {
     projectsApi.list()
       .then((r) => {
         setProjects(r.data);
-        if (r.data.length > 0) setSelectedProject(r.data[0].id);
+        if (r.data.length > 0 && !searchParams.get("project")) {
+          const params = new URLSearchParams(searchParams.toString());
+          params.set("project", String(r.data[0].id));
+          router.push(`${pathname}?${params.toString()}`);
+        }
       })
       .catch((e) => console.error("[Projects] Failed to load:", e?.response?.status));
-  }, []);
+  }, [searchParams, pathname, router]);
 
   const loadRuns = useCallback(async () => {
     if (!selectedProject) return;
@@ -148,130 +184,211 @@ export default function AgentWorkflowPage() {
   useEffect(() => { loadRuns(); }, [loadRuns]);
 
   // Build per-agent stats
-  const agentStats: Record<string, { latest: AgentRun | null; count: number }> = {};
-  for (const a of PIPELINE) {
-    const runs = allRuns.filter(r => r.agent_name === a.name);
-    agentStats[a.name] = {
-      latest: runs[0] ?? null,
-      count: runs.length,
-    };
-  }
+  const agentStats = useMemo(() => {
+    const stats: Record<string, { latest: AgentRun | null; count: number }> = {};
+    for (const a of PIPELINE) {
+      const runs = allRuns.filter(r => r.agent_name === a.name);
+      stats[a.name] = {
+        latest: runs[0] ?? null,
+        count: runs.length,
+      };
+    }
+    return stats;
+  }, [allRuns]);
 
-  const filteredRuns = selectedAgent
-    ? allRuns.filter(r => r.agent_name === selectedAgent)
-    : allRuns;
+  const filteredRuns = useMemo(() => {
+    return selectedAgent
+      ? allRuns.filter(r => r.agent_name === selectedAgent)
+      : allRuns;
+  }, [allRuns, selectedAgent]);
 
-  const summary = {
-    total: allRuns.length,
-    completed: allRuns.filter(r => r.status === "completed").length,
-    failed: allRuns.filter(r => r.status === "failed").length,
-    avgDuration: allRuns.filter(r => r.duration_seconds).length > 0
-      ? allRuns.filter(r => r.duration_seconds).reduce((a, r) => a + (r.duration_seconds ?? 0), 0) /
-        allRuns.filter(r => r.duration_seconds).length
-      : 0,
-  };
+  const summary = useMemo(() => {
+    const total = allRuns.length;
+    const completed = allRuns.filter(r => r.status === "completed").length;
+    const failed = allRuns.filter(r => r.status === "failed").length;
+    const timedRuns = allRuns.filter(r => r.duration_seconds);
+    const avgDuration = timedRuns.length > 0
+      ? timedRuns.reduce((sum, r) => sum + (r.duration_seconds ?? 0), 0) / timedRuns.length
+      : 0;
+
+    return { total, completed, failed, avgDuration };
+  }, [allRuns]);
+
+  const stats = useMemo(() => {
+    return [
+      {
+        title: "Total Agent Runs",
+        icon: Zap,
+        iconBg: "bg-blue-50 border-blue-100",
+        iconColor: "text-blue-505",
+        value: summary.total.toLocaleString(),
+        sublabel: "Runs",
+        footer: "Total triggers in project lifecycle",
+      },
+      {
+        title: "Completed Runs",
+        icon: CheckCircle,
+        iconBg: "bg-emerald-50 border-emerald-100",
+        iconColor: "text-emerald-505",
+        value: summary.completed.toLocaleString(),
+        sublabel: "Completed",
+        footer: `${summary.total > 0 ? ((summary.completed / summary.total) * 100).toFixed(1) : "0.0"}% successful execution`,
+      },
+      {
+        title: "Failed Runs",
+        icon: XCircle,
+        iconBg: "bg-rose-50 border-rose-100",
+        iconColor: "text-rose-505",
+        value: summary.failed.toLocaleString(),
+        sublabel: "Failed",
+        footer: `${summary.total > 0 ? ((summary.failed / summary.total) * 100).toFixed(1) : "0.0"}% failed runs logged`,
+      },
+      {
+        title: "Avg Duration",
+        icon: Clock,
+        iconBg: "bg-indigo-50 border-indigo-100",
+        iconColor: "text-indigo-505",
+        value: formatDuration(summary.avgDuration),
+        sublabel: "Avg",
+        footer: "Average runtime execution delay",
+      },
+    ];
+  }, [summary]);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 select-none pb-8 animate-fade-in">
+      {/* ── Title & Global Controls ────────────────────────────────────────────── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-100 rounded-lg">
-            <Bot size={22} className="text-indigo-600" />
+          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
+            <Bot className="h-6 w-6 text-[#1b59f8]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Agent Workflow</h1>
-            <p className="text-sm text-gray-500">Full 9-agent STLC pipeline — status, runs, and performance</p>
+            <h1 className="text-xl font-bold text-slate-900">Agent Workflow</h1>
+            <p className="text-xs text-slate-500 mt-1">Full 9-agent STLC pipeline — status monitor, executions, and runtime diagnostics</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <select
             value={selectedProject ?? ""}
-            onChange={(e) => setSelectedProject(Number(e.target.value))}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            onChange={(e) => {
+              const val = e.target.value;
+              const params = new URLSearchParams(searchParams.toString());
+              params.set("project", val);
+              router.push(`${pathname}?${params.toString()}`);
+            }}
+            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
+              backgroundPosition: 'right 0.5rem center',
+              backgroundSize: '1.25rem 1.25rem',
+              backgroundRepeat: 'no-repeat',
+            }}
           >
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <button
-            onClick={loadRuns}
-            disabled={loading}
-            className="p-2 rounded-lg border border-gray-200 hover:border-gray-400 text-gray-500 hover:text-gray-700 disabled:opacity-50"
-          >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          </button>
+
+          <Button variant="outline" size="sm" onClick={loadRuns} className="h-8 w-8 p-0 border-slate-200">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          </Button>
         </div>
       </div>
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "Total Agent Runs", value: summary.total, color: "text-gray-800", icon: Zap },
-          { label: "Completed", value: summary.completed, color: "text-green-600", icon: CheckCircle },
-          { label: "Failed", value: summary.failed, color: "text-red-500", icon: XCircle },
-          { label: "Avg Duration", value: formatDuration(summary.avgDuration), color: "text-indigo-600", icon: Clock },
-        ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm flex items-center gap-3">
-            <s.icon size={20} className={s.color} />
-            <div>
-              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-              <p className="text-xs text-gray-500">{s.label}</p>
+      {selectedProject && (
+        <>
+          {/* ── Status Counts Cards ─────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {stats.map((card) => {
+              const Icon = card.icon;
+              return (
+                <Card key={card.title} className="border-slate-200 hover:-translate-y-0.5 transition-all bg-white">
+                  <CardContent className="p-4 flex flex-col justify-between h-full space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className={cn("rounded-lg p-1.5 flex items-center justify-center shrink-0 border", card.iconBg)}>
+                        <Icon className={cn("h-4 w-4", card.iconColor)} />
+                      </div>
+                      <span className="text-xs font-bold text-slate-700 truncate">{card.title}</span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-xl font-bold text-slate-900">{card.value}</span>
+                      {card.sublabel && (
+                        <span className="text-[10px] font-bold text-slate-400">{card.sublabel}</span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-semibold border-t border-slate-50 pt-2">
+                      {card.footer}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* ── Pipeline Grid ─────────────────────────────────────────────────────── */}
+          <div className="space-y-3">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pipeline Agents Grid</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {PIPELINE.map((agent) => (
+                <div key={agent.name} className="relative">
+                  <AgentPipelineCard
+                    agent={agent}
+                    latestRun={agentStats[agent.name]?.latest ?? null}
+                    runCount={agentStats[agent.name]?.count ?? 0}
+                    onSelect={() => setSelectedAgent(selectedAgent === agent.name ? null : agent.name)}
+                    isSelected={selectedAgent === agent.name}
+                  />
+                </div>
+              ))}
             </div>
           </div>
-        ))}
-      </div>
 
-      {/* Pipeline grid */}
-      <div>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Pipeline Agents</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {PIPELINE.map((agent, idx) => (
-            <div key={agent.name} className="relative">
-              {idx < PIPELINE.length - 1 && idx % 3 !== 2 && (
-                <div className="absolute top-1/2 -right-1.5 z-10 text-gray-300 text-xs">▶</div>
-              )}
-              <AgentPipelineCard
-                agent={agent}
-                latestRun={agentStats[agent.name]?.latest ?? null}
-                runCount={agentStats[agent.name]?.count ?? 0}
-                onSelect={() => setSelectedAgent(selectedAgent === agent.name ? null : agent.name)}
-              />
+          {/* ── Run History List ──────────────────────────────────────────────────── */}
+          <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
+            <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Run History</h2>
+                {selectedAgent && (
+                  <span className="text-[10px] font-bold bg-[#1b59f8]/10 text-[#1b59f8] px-2 py-0.5 rounded-full border border-[#1b59f8]/20 flex items-center gap-1 select-none">
+                    {PIPELINE.find(a => a.name === selectedAgent)?.label}
+                    <button onClick={() => setSelectedAgent(null)} className="ml-1 hover:text-red-500 font-bold">×</button>
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{filteredRuns.length} runs logged</span>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Run history */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-gray-700">Run History</h2>
-            {selectedAgent && (
-              <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
-                {PIPELINE.find(a => a.name === selectedAgent)?.label}
-                <button onClick={() => setSelectedAgent(null)} className="ml-1 hover:text-red-500">×</button>
-              </span>
+            {loading ? (
+              <div className="flex justify-center py-12">
+                <RefreshCw className="h-6 w-6 animate-spin text-[#1b59f8]" />
+              </div>
+            ) : filteredRuns.length === 0 ? (
+              <div className="text-center py-16">
+                <Bot className="mx-auto text-slate-200 mb-3 h-8 w-8" />
+                <p className="text-xs font-bold text-slate-450">No agent runs recorded yet</p>
+                <p className="text-[10px] text-slate-400 font-semibold mt-1">Runs appear here as you run the AI actions across the platform</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                {filteredRuns.slice(0, 100).map((run) => (
+                  <RunHistoryRow key={run.id} run={run} onSelect={() => {}} />
+                ))}
+              </div>
             )}
-          </div>
-          <span className="text-xs text-gray-400">{filteredRuns.length} runs</span>
-        </div>
-        {loading ? (
-          <div className="flex justify-center py-10">
-            <span className="animate-spin w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full" />
-          </div>
-        ) : filteredRuns.length === 0 ? (
-          <div className="text-center py-12">
-            <Bot size={32} className="mx-auto text-gray-200 mb-2" />
-            <p className="text-sm text-gray-400">No agent runs recorded yet</p>
-            <p className="text-xs text-gray-300 mt-1">Runs appear here as you use the AI features across the platform</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-50 max-h-96 overflow-y-auto">
-            {filteredRuns.slice(0, 100).map((run) => (
-              <RunHistoryRow key={run.id} run={run} onSelect={() => {}} />
-            ))}
-          </div>
-        )}
-      </div>
+          </Card>
+        </>
+      )}
     </div>
+  );
+}
+
+export default function AgentWorkflowPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
+        <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
+        Loading Agent Workflow...
+      </div>
+    }>
+      <AgentWorkflowContent />
+    </Suspense>
   );
 }

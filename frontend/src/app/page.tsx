@@ -1,6 +1,15 @@
-import { redirect } from "next/navigation";
+"use client";
 
-// Root → redirect to dashboard
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getAccessToken } from "@/lib/api";
+
 export default function RootPage() {
-  redirect("/dashboard");
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace(getAccessToken() ? "/dashboard" : "/login");
+  }, [router]);
+
+  return null;
 }

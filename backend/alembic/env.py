@@ -14,8 +14,11 @@ import app.models  # noqa: F401  registers all models via __init__.py
 
 config = context.config
 
-# Override sqlalchemy.url with env var if present
-db_url = os.environ.get("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
+from app.config import get_settings
+
+# Override sqlalchemy.url with setting DATABASE_URL
+settings = get_settings()
+db_url = settings.database_url
 # Convert to async driver for engine creation
 if db_url and "postgresql://" in db_url:
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://").replace("postgres://", "postgresql+asyncpg://")

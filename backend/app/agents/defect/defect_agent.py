@@ -9,7 +9,9 @@ from typing import Any, TypedDict
 from langgraph.graph import StateGraph, END
 
 from app.agents.base.base_agent import BaseAgent, AgentResult
+from app.agents.structured_schemas import DefectLLMOutput
 from app.llm.provider import get_llm
+from app.llm.structured import validate_structured_output, clean_json_text
 from app.config import get_settings
 
 settings = get_settings()
@@ -106,9 +108,9 @@ def _parse_defects_json(text: str) -> tuple[list, str | None]:
         return parsed, None
 
     # Extract [...] array
-    match = re.search(r'\[[\s\S]*\]', clean)
-    if match:
-        parsed = _try(match.group(0))
+    cleaned_obj = clean_json_text(clean)
+    if cleaned_obj.startswith("["):
+        parsed = _try(cleaned_obj)
         if isinstance(parsed, list):
             return parsed, None
         return [], f"JSON parse error after repair. Snippet: {text[:200]}"
@@ -162,7 +164,13 @@ Analyse these {len(state['failed_results'])} failed test results and generate de
 def _validate_defects(state: DefectState) -> DefectState:
     """Ensure all required fields are present."""
     validated = []
+    errors = list(state["errors"])
     for d in state["defects"]:
+        try:
+            d = validate_structured_output(d, DefectLLMOutput).model_dump(mode="json")
+        except Exception as exc:
+            errors.append(f"Defect schema validation failed: {exc}")
+            continue
         validated.append({
             "execution_result_ref": d.get("execution_result_ref", "unknown"),
             "summary": d.get("summary", "Defect detected in automated test"),
@@ -175,7 +183,7 @@ def _validate_defects(state: DefectState) -> DefectState:
             "root_cause_hypothesis": d.get("root_cause_hypothesis", ""),
             "classification": d.get("classification", "product_defect"),
         })
-    return {**state, "defects": validated}
+    return {**state, "defects": validated, "errors": errors}
 
 
 # ── Graph ──────────────────────────────────────────────────────────────────────

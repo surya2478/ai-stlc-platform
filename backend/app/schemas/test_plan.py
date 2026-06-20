@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 
 
 # ── Test Plan ─────────────────────────────────────────────────────────────────
@@ -24,6 +24,7 @@ class TestPlanOut(BaseModel):
     resource_recommendation: str | None = None
     status: str
     agent_run_id: int | None = None
+    created_by: int
     metadata_: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
@@ -60,6 +61,8 @@ class TestScenarioOut(BaseModel):
     coverage_mapping: list | None = None
     status: str
     agent_run_id: int | None = None
+    created_by: int
+    metadata_: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -84,6 +87,45 @@ class TestCaseOut(BaseModel):
     severity: str
     test_type: str | None = None
     automation_candidate: bool
+    mode: str
+    execution_mode: str
+    automation_eligible: str
+    automation_status: str
+    automation_ready: bool = False
+    test_phase: str | None = None
+    telecom_domain: str | None = None
+    product_group: str | None = None
+    product: str | None = None
+    sub_request_type: str | None = None
+    external_tool: str | None = None
+    suite_id: str | None = None
+    external_tc_id: str | None = None
+    external_tc_url: str | None = None
+    automation_script_id: int | None = None
+    last_automation_status: str | None = None
+    last_automation_run_at: datetime | None = None
+    last_execution_run_id: int | None = None
+    latest_evidence_available: bool = False
+    evidence_url: str | None = None
+    jira_issue_key: str | None = None
+    jira_issue_id: str | None = None
+    jira_url: str | None = None
+    jira_final_status: str | None = None
+    jira_sync_status: str = "not_synced"
+    jira_last_synced_at: datetime | None = None
+    jira_sync_error: str | None = None
+    jira_test_key: str | None = None
+    approval_status: str
+    linked_requirement_id: int | None = None
+    linked_requirement_key: str | None = None
+    linked_scenario_id: int | None = None
+    linked_project_id: int | None = None
+    linked_release_version: str | None = None
+    linked_test_plan_id: int | None = None
+    created_by: int
+    updated_by: int | None = None
+    last_status_updated_by: int | None = None
+    last_status_updated_at: datetime | None = None
     status: str
     agent_run_id: int | None = None
     metadata_: dict[str, Any] | None = None
@@ -102,16 +144,79 @@ class TestCaseUpdate(BaseModel):
     bdd_scenario: str | None = None
     priority: str | None = None
     severity: str | None = None
+    test_type: str | None = None
     automation_candidate: bool | None = None
+    mode: str | None = None
+    execution_mode: str | None = None
+    automation_eligible: str | None = None
+    automation_status: str | None = None
+    automation_ready: bool | None = None
+    test_phase: str | None = None
+    telecom_domain: str | None = None
+    product_group: str | None = None
+    product: str | None = None
+    sub_request_type: str | None = None
+    external_tool: str | None = None
+    suite_id: str | None = None
+    external_tc_id: str | None = None
+    external_tc_url: HttpUrl | None = None
+    automation_script_id: int | None = None
+    last_automation_status: str | None = None
+    jira_issue_id: str | None = None
+    jira_url: HttpUrl | None = None
+    jira_final_status: str | None = None
+    jira_sync_status: str | None = None
+    jira_sync_error: str | None = None
+    jira_issue_key: str | None = None
+    jira_test_key: str | None = None
     status: str | None = None
+    approval_status: str | None = None
+    comment: str | None = None
+
+
+class TestCaseHistoryOut(BaseModel):
+    id: int
+    project_id: int
+    test_case_id: int
+    changed_by: int | None = None
+    field_name: str
+    old_value: str | None = None
+    new_value: str | None = None
+    source: str
+    comment: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TestCaseSummaryOut(BaseModel):
+    total: int
+    by_status: dict[str, int]
+    by_approval_status: dict[str, int]
+    by_automation_status: dict[str, int]
+    by_mode: dict[str, int]
+    by_jira_sync_status: dict[str, int]
+    by_priority: dict[str, int]
+    by_telecom_domain: dict[str, int]
+
+
+class TestCaseJiraSyncOut(BaseModel):
+    test_case_id: int
+    status: str
+    sync_job_id: int | None = None
+    task_id: str | None = None
 
 
 class AgentPlanTrigger(BaseModel):
     project_id: int
     requirement_ids: list[int]
+    # GAP-4c: set true to generate despite failed/low-quality requirements
+    override_quality_gate: bool = False
 
 
 class AgentCaseTrigger(BaseModel):
     project_id: int
     scenario_ids: list[int] | None = None
     requirement_ids: list[int] | None = None
+    # GAP-4c: set true to generate despite failed/low-quality requirements
+    override_quality_gate: bool = False

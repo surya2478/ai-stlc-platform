@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, String, Text, Float
+from sqlalchemy import ARRAY, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -8,6 +8,7 @@ from app.models.base import TimestampMixin
 
 class Requirement(TimestampMixin, Base):
     __tablename__ = "requirements"
+    __table_args__ = (UniqueConstraint("project_id", "requirement_id", name="uq_requirements_project_requirement_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
@@ -31,17 +32,73 @@ class Requirement(TimestampMixin, Base):
     risks: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     missing_information: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
-    # Optional Jira fields
+    # Telecom domain and classification fields.
+    qa_domain: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    telecom_domain: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    product_group: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
+    product: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    sub_request_type: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    test_phase: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+
+    impacted_systems: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    impacted_interfaces: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    impacted_products: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    impacted_channels: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    customer_segment: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    business_process: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    release_train: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    release_version: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    risk_level: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    regulatory_impact: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
+    revenue_impact: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
+    customer_impact: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
+    dependency_systems: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    upstream_systems: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    downstream_systems: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    api_interface_refs: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    environment_needs: Mapped[str | None] = mapped_column(Text, nullable=True)
+    test_data_needs: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nfr_requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    readiness_status: Mapped[str | None] = mapped_column(String(50), nullable=True, default="draft", index=True)
+
+    # Optional Jira fields and sync state.
     jira_issue_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     jira_issue_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     jira_priority: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    jira_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    jira_updated_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    jira_last_synced_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Linked document (if from upload)
-    source_document_id: Mapped[int | None] = mapped_column(ForeignKey("uploaded_documents.id"), nullable=True)
+    jira_issue_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    jira_status: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    jira_assignee: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    jira_reporter: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    jira_labels: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    jira_components: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    jira_fix_versions: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    jira_sprint: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    jira_epic_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sync_status: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(String(50), default="draft")
     # status: draft | pending_review | approved | rejected
 
+    # Quality denormalization for fast list queries.
+    quality_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    quality_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quality_verdict: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    deleted_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Linked document (if from upload)
+    source_document_id: Mapped[int | None] = mapped_column(ForeignKey("uploaded_documents.id"), nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
     # Relationships
@@ -51,6 +108,11 @@ class Requirement(TimestampMixin, Base):
     quality_reviews: Mapped[list["RequirementQualityReview"]] = relationship("RequirementQualityReview", back_populates="requirement")
     test_scenarios: Mapped[list["TestScenario"]] = relationship("TestScenario", back_populates="requirement")
     test_cases: Mapped[list["TestCase"]] = relationship("TestCase", back_populates="requirement")
+
+    @property
+    def effective_domain(self) -> str | None:
+        """Return the canonical domain, falling back to the legacy column."""
+        return self.telecom_domain or self.qa_domain
 
 
 class RequirementChunk(TimestampMixin, Base):

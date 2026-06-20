@@ -10,7 +10,9 @@ from typing import Any, TypedDict
 from langgraph.graph import StateGraph, END
 
 from app.agents.base.base_agent import BaseAgent, AgentResult
+from app.agents.structured_schemas import AutomationScriptLLMOutput
 from app.llm.provider import get_llm
+from app.llm.structured import validate_structured_output, clean_json_text
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,42 @@ def _parse_script_response(text: str, framework: str) -> tuple[dict | None, str 
             except json.JSONDecodeError:
                 return None
 
+    def _parse_loose_script_object(s: str) -> dict | None:
+        """
+        Recover common LLM output where the `code` value is emitted as a raw
+        multiline string with unescaped quotes inside the code body.
+        """
+        start = s.find("{")
+        end = s.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+
+        obj = s[start:end + 1]
+        code_match = re.search(r'"code"\s*:\s*"', obj)
+        if not code_match:
+            return None
+
+        code_start = code_match.end()
+        tail = obj[code_start:]
+        next_field = re.search(r'"\s*,\s*"setup_required"\s*:', tail)
+        if not next_field:
+            return None
+
+        code = tail[:next_field.start()].strip()
+        safe_obj = (
+            obj[:code_match.start()]
+            + '"code": "__CODE_PLACEHOLDER__", "setup_required":'
+            + tail[next_field.end():]
+        )
+        parsed = _try_parse(safe_obj)
+        if isinstance(parsed, list):
+            parsed = parsed[0] if parsed else None
+        if not isinstance(parsed, dict):
+            return None
+
+        parsed["code"] = code
+        return parsed
+
     # Try full parse first
     parsed = _try_parse(clean)
     if parsed is not None:
@@ -134,12 +172,19 @@ def _parse_script_response(text: str, framework: str) -> tuple[dict | None, str 
         if isinstance(parsed, dict):
             return parsed, None
 
+    loose = _parse_loose_script_object(clean)
+    if loose is not None:
+        return loose, None
+
     # Find first {...} object
-    match = re.search(r'\{[\s\S]*\}', clean)
-    if match:
-        parsed = _try_parse(match.group(0))
+    cleaned_obj = clean_json_text(clean)
+    if cleaned_obj.startswith("{"):
+        parsed = _try_parse(cleaned_obj)
         if parsed is not None:
             return (parsed[0] if isinstance(parsed, list) else parsed), None
+        loose = _parse_loose_script_object(cleaned_obj)
+        if loose is not None:
+            return loose, None
         return None, f"JSON parse error even after repair. Snippet: {text[:200]}"
 
     return None, f"No JSON object found in response (first 200 chars): {text[:200]}"
@@ -209,7 +254,13 @@ Return a single JSON object (not an array) with: test_case_id, framework, file_p
 def _validate_scripts(state: AutomationState) -> AutomationState:
     """Ensure required fields present in each script."""
     validated = []
+    errors = list(state["errors"])
     for s in state["scripts"]:
+        try:
+            s = validate_structured_output(s, AutomationScriptLLMOutput).model_dump(mode="json")
+        except Exception as exc:
+            errors.append(f"Automation script schema validation failed: {exc}")
+            continue
         if not s.get("code"):
             s["code"] = "# TODO: implement test\nimport pytest\n\ndef test_placeholder():\n    pass"
         if not s.get("framework"):
@@ -221,7 +272,7 @@ def _validate_scripts(state: AutomationState) -> AutomationState:
                 else ["pip install pytest pytest-asyncio httpx"]
             )
         validated.append(s)
-    return {**state, "scripts": validated}
+    return {**state, "scripts": validated, "errors": errors}
 
 
 # ── Graph ──────────────────────────────────────────────────────────────────────

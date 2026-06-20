@@ -6,7 +6,7 @@ import { Providers } from "@/components/providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "STLC Automation Platform",
+  title: "e& AI Test Automation System",
   description: "AI Agent–based End-to-End Software Test Life Cycle Automation",
 };
 

@@ -31,7 +31,9 @@ class ExecutionRun(TimestampMixin, Base):
     allure_report_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True)
+    simulated: Mapped[bool] = mapped_column(default=False)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
+
 
     project: Mapped["Project"] = relationship("Project", back_populates="execution_runs")
     results: Mapped[list["ExecutionResult"]] = relationship("ExecutionResult", back_populates="execution_run", cascade="all, delete-orphan")

@@ -4,6 +4,30 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, field_validator, model_validator
 
+PriorityCode = Literal["P1", "P2", "P3", "P4"]
+PriorityLabel = Literal["Critical", "High", "Medium", "Low"]
+PriorityValue = PriorityCode | PriorityLabel
+
+PRIORITY_NORMALIZATION: dict[str, PriorityLabel] = {
+    "p1": "Critical",
+    "p2": "High",
+    "p3": "Medium",
+    "p4": "Low",
+    "critical": "Critical",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+}
+
+
+def normalize_priority(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = PRIORITY_NORMALIZATION.get(value.strip().lower())
+    if not normalized:
+        raise ValueError("Priority must be one of: P1, P2, P3, P4, Critical, High, Medium, Low")
+    return normalized
+
 
 class DefectDraftOut(BaseModel):
     id: int
@@ -51,7 +75,7 @@ class DefectDraftUpdate(BaseModel):
     expected_result: str | None = None
     actual_result: str | None = None
     severity: Literal["Critical", "High", "Medium", "Low"] | None = None
-    priority: Literal["P1", "P2", "P3", "P4"] | None = None
+    priority: PriorityValue | None = None
     root_cause_hypothesis: str | None = None
     classification: Literal["product_defect", "automation_issue", "environment_issue", "test_data_issue"] | None = None
     jira_ready: bool | None = None
@@ -63,6 +87,11 @@ class DefectDraftUpdate(BaseModel):
         if v is not None and not v.strip():
             raise ValueError("Summary must not be blank")
         return v
+
+    @field_validator("priority")
+    @classmethod
+    def normalize_priority_value(cls, v: str | None) -> str | None:
+        return normalize_priority(v)
 
 
 class ApprovalRequest(BaseModel):
@@ -91,3 +120,26 @@ class JiraPushRequest(BaseModel):
         if not v:
             raise ValueError("defect_ids must contain at least one ID")
         return v
+
+
+class DefectDraftCreate(BaseModel):
+    project_id: int
+    test_case_id: int | None = None
+    execution_result_id: int | None = None
+    summary: str
+    description: str | None = None
+    steps_to_reproduce: list[str] | None = None
+    expected_result: str | None = None
+    actual_result: str | None = None
+    severity: Literal["Critical", "High", "Medium", "Low"] = "Medium"
+    priority: PriorityValue = "P3"
+    root_cause_hypothesis: str | None = None
+    classification: Literal["product_defect", "automation_issue", "environment_issue", "test_data_issue"] = "product_defect"
+
+    @field_validator("priority")
+    @classmethod
+    def normalize_priority_value(cls, v: str) -> str:
+        normalized = normalize_priority(v)
+        if normalized is None:
+            raise ValueError("Priority is required")
+        return normalized

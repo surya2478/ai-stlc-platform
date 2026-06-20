@@ -1,268 +1,162 @@
-# STLC Automation Platform
+# e& AI Test Automation System
 
-**AI Agent–based End-to-End Software Test Life Cycle Automation**
+AI-assisted Software Test Life Cycle automation for requirements, planning, test cases, automation scripts, execution analysis, defect triage, reporting, approvals, and project-level RBAC.
 
-A self-hosted, open-source QA command center that uses autonomous AI agents (LangGraph + LlamaIndex) to manage the complete STLC: requirement analysis, test planning, test case development, automated execution, defect reporting, and dashboard analytics.
+## Architecture
 
----
+- Frontend: Next.js 14, TypeScript, Tailwind CSS.
+- Backend: FastAPI, SQLAlchemy async, Alembic.
+- Data: PostgreSQL with pgvector image for future semantic search.
+- Queue: Redis plus Celery worker.
+- Agents: Requirement intake, quality review, test planning, scenario generation, test case generation, automation generation, execution analysis, defect analysis, and reporting.
+- Auth: JWT login with backend-enforced project membership and RBAC.
 
-## Architecture Overview
+The frontend can be deployed to Vercel. The backend, database, Redis, file storage, and Celery worker must be deployed to a backend-capable host such as Render, Railway, Fly.io, Azure Container Apps, AWS ECS, or a VM/Kubernetes environment.
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Next.js 14 Frontend  (Tailwind + shadcn/ui)        │
-│  Port 3000                                          │
-└────────────────────┬────────────────────────────────┘
-                     │ REST / JSON
-┌────────────────────▼────────────────────────────────┐
-│  FastAPI Backend                                    │
-│  Port 8000  ·  /docs (Swagger)  ·  /redoc           │
-│  ┌──────────────────────────────────────────────┐   │
-│  │ Auth │ Projects │ Docs │ Agents │ Execution  │   │
-│  │ Jira │ Tests    │ Defs │ Reports│ Approvals  │   │
-│  └──────────────────────────────────────────────┘   │
-└────┬──────────────────────┬──────────────────────┬──┘
-     │ SQLAlchemy async      │ Celery tasks          │
-┌────▼────┐          ┌──────▼──────┐         ┌──────▼──┐
-│PostgreSQL│         │Redis Queue  │         │File     │
-│+ pgvector│         │+ Result     │         │Storage  │
-└──────────┘         └─────────────┘         └─────────┘
-                            │
-                 ┌──────────▼──────────┐
-                 │  Celery Workers      │
-                 │  LangGraph Agents    │
-                 │  LlamaIndex RAG      │
-                 └──────────┬──────────┘
-                            │
-              ┌─────────────▼─────────────┐
-              │  LLM Providers (pluggable) │
-              │  · Ollama (local)          │
-              │  · OpenAI-compatible API   │
-              └────────────────────────────┘
-```
+## Repository Layout
 
----
-
-## Quick Start
-
-### Prerequisites
-
-- **Docker** 24+ and **Docker Compose** v2
-- 8 GB RAM minimum (16 GB recommended for local LLMs)
-- (Optional) [Ollama](https://ollama.com) installed locally for offline LLM support
-
-### 1. Clone and configure
-
-```bash
-git clone <your-repo>
-cd stlc-platform
-
-# Copy and edit environment variables
-cp .env.example .env
-# Edit .env — at minimum set APP_SECRET_KEY to a random string
-```
-
-### 2. Start the platform
-
-```bash
-# Standard startup (uses OpenAI-compatible or Ollama via .env)
-docker compose up --build
-
-# With local Ollama service included
-docker compose --profile ollama up --build
-```
-
-### 3. Access the platform
-
-| Service | URL |
-|---|---|
-| **Frontend Dashboard** | http://localhost:3000 |
-| **API (FastAPI)** | http://localhost:8000 |
-| **API Docs (Swagger)** | http://localhost:8000/docs |
-| **API Docs (ReDoc)** | http://localhost:8000/redoc |
-| **PostgreSQL** | localhost:5432 |
-| **Redis** | localhost:6379 |
-
-### 4. First steps
-
-1. Open http://localhost:3000
-2. Register a user account at http://localhost:8000/docs → `POST /api/v1/users/register`
-3. Create your first project
-4. Upload a requirement document or connect Jira
-5. Trigger the AI agent pipeline
-
----
-
-## Environment Variables
-
-Copy `.env.example` to `.env` and configure:
-
-| Variable | Description | Default |
-|---|---|---|
-| `APP_SECRET_KEY` | JWT signing secret — **change this** | `change-me` |
-| `DEFAULT_LLM_PROVIDER` | `ollama` or `openai` | `ollama` |
-| `DEFAULT_LLM_MODEL` | LLM model name | `llama3.1` |
-| `OLLAMA_BASE_URL` | Ollama server URL | `http://ollama:11434` |
-| `OPENAI_API_KEY` | OpenAI / Groq / OpenRouter key | _(empty)_ |
-| `OPENAI_BASE_URL` | OpenAI-compatible base URL | `https://api.openai.com/v1` |
-| `JIRA_BASE_URL` | Your Jira instance URL | _(empty)_ |
-| `JIRA_EMAIL` | Jira account email | _(empty)_ |
-| `JIRA_API_TOKEN` | Jira API token | _(empty)_ |
-
----
-
-## Project Structure
-
-```
+```text
 stlc-platform/
-├── docker-compose.yml          # All services: db, redis, backend, worker, frontend, ollama
-├── .env.example                # Environment variable template
-├── backend/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── alembic.ini
-│   ├── alembic/
-│   │   ├── env.py
-│   │   └── versions/
-│   │       └── 001_initial_schema.py   # All 20 tables
-│   └── app/
-│       ├── main.py                     # FastAPI app entry point
-│       ├── config.py                   # Pydantic settings
-│       ├── database.py                 # SQLAlchemy async engine
-│       ├── models/                     # 20 SQLAlchemy ORM models
-│       ├── schemas/                    # Pydantic request/response schemas
-│       ├── api/v1/endpoints/           # REST endpoint handlers
-│       ├── repositories/               # DB access layer (repository pattern)
-│       ├── services/                   # Business logic layer
-│       ├── agents/                     # AI agent implementations (Phase 2+)
-│       │   └── base/base_agent.py      # Abstract base class for all agents
-│       ├── llm/provider.py             # Pluggable LLM provider (Ollama / OpenAI)
-│       └── worker/                     # Celery background task queue
-└── frontend/
-    ├── Dockerfile
-    ├── package.json                    # Next.js 14 + Tailwind + Recharts
-    └── src/
-        ├── app/
-        │   ├── dashboard/              # Command center dashboard
-        │   └── projects/               # Project list + creation
-        ├── components/
-        │   ├── layout/                 # Sidebar, Header
-        │   └── dashboard/              # StatCard, charts, widgets
-        └── lib/
-            ├── api.ts                  # Axios API client
-            └── utils.ts
+  backend/                 FastAPI app, models, schemas, services, agents, Celery tasks
+  frontend/                Next.js app for the STLC command center
+  docker-compose.yml       Local full-stack runtime
+  .env.example             Safe environment template
+  ARCHITECTURE_BASELINE.md Baseline inventory and audit
+  IMPLEMENTATION_AUDIT.md  Implementation change log
 ```
 
----
+## Safe Local Setup
 
-## AI Agents (Phase 2+)
+1. Copy the environment template.
 
-All 11 agents extend `BaseAgent` and are dispatched via Celery:
+```bash
+cp .env.example .env
+```
 
-| # | Agent | Phase | Status |
-|---|---|---|---|
-| 1 | Requirement Intake Agent | Phase 2 | 🔜 Pending |
-| 2 | Requirement Quality Agent | Phase 2 | 🔜 Pending |
-| 3 | Test Planning Agent | Phase 3 | 🔜 Pending |
-| 4 | Test Scenario Agent | Phase 3 | 🔜 Pending |
-| 5 | Test Case Development Agent | Phase 3 | 🔜 Pending |
-| 6 | Test Data Agent | Phase 3 | 🔜 Pending |
-| 7 | Automation Script Agent | Phase 4 | 🔜 Pending |
-| 8 | Test Execution Agent | Phase 5 | 🔜 Pending |
-| 9 | Defect Analysis Agent | Phase 6 | 🔜 Pending |
-| 10 | Jira Defect Agent | Phase 6 | 🔜 Pending |
-| 11 | Test Reporting Agent | Phase 7 | 🔜 Pending |
+2. Edit `.env`.
 
----
+Set `APP_SECRET_KEY` to a long random value. Keep provider and Jira secrets empty unless you are actively testing those integrations.
 
-## Implementation Roadmap
+3. Optional local admin seed.
 
-| Phase | Focus | Key Deliverables |
-|---|---|---|
-| **1** ✅ | Foundation | Docker, FastAPI skeleton, full DB schema, Next.js dashboard, LLM abstraction |
-| **2** | Requirement Intake | File upload, PDF/DOCX extraction, Jira sync, Agents 1 & 2 |
-| **3** | Test Generation | Agents 3–6, test case repository UI, approval workflow |
-| **4** | Automation | Agent 7, Playwright/Pytest script generation, script repository UI |
-| **5** | Execution Engine | Agent 8, Pytest/Playwright runner, Allure reports |
-| **6** | Defect Management | Agents 9 & 10, Jira defect approval flow |
-| **7** | Reporting | Agent 11, coverage dashboard, PDF/Excel export |
-| **8** | Hardening | RBAC, audit logs, prompt injection protection, full Docker docs |
+Dev seeding is disabled by default. To seed a local admin, set these values only in your private `.env`:
 
----
+```env
+DEV_SEED_USER_ENABLED=true
+DEV_SEED_USER_EMAIL=your-local-admin@example.com
+DEV_SEED_USER_PASSWORD=replace-with-a-local-password
+```
 
-## Tech Stack
+4. Start the full stack.
 
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js 14, TypeScript, Tailwind CSS, shadcn/ui, Recharts, Lucide |
-| Backend | Python 3.11, FastAPI, SQLAlchemy 2 async, Alembic, Pydantic v2 |
-| Database | PostgreSQL 16 + pgvector |
-| Cache/Queue | Redis 7, Celery 5 |
-| AI Agents | LangGraph, LlamaIndex |
-| LLMs | Ollama (local), OpenAI-compatible (pluggable) |
-| Document Processing | PyMuPDF, python-docx, pandas, Unstructured.io |
-| Test Automation | Playwright, Pytest, HTTPX, Allure |
-| Auth | JWT (python-jose), bcrypt (passlib) |
+```bash
+docker compose up --build
+```
 
----
+5. Open the app.
 
-## Development
+- Frontend: http://localhost:3000
+- API docs: http://localhost:8000/docs
 
-### Run backend locally (without Docker)
+## Authentication
+
+Business endpoints require authentication. Use the login page at `/login`, or register a user through the API docs and then sign in. Platform admins can create users and assign project roles from `/users`.
+
+Public registration always creates a normal non-superuser account. Admin and superuser creation is protected by platform-admin endpoints.
+
+## RBAC Summary
+
+Project authorization is enforced in the backend. Key permissions include:
+
+- `view_project`
+- `manage_project`
+- `approve_requirements`
+- `approve_test_plans`
+- `approve_test_cases`
+- `generate_automation`
+- `execute_tests`
+- `raise_defects`
+- `push_defects_to_jira`
+- `approve_release_report`
+- `view_audit_logs`
+
+The UI uses token claims for display, but backend authorization is always loaded from the database.
+
+## Vercel Frontend Deployment
+
+Deploy only the `frontend/` directory to Vercel.
+
+Vercel project settings:
+
+- Root Directory: `frontend`
+- Framework Preset: Next.js
+- Build Command: `npm run build`
+- Install Command: `npm install`
+
+Required Vercel environment variables:
+
+```env
+NEXT_PUBLIC_API_URL=https://your-backend.example.com
+NEXT_PUBLIC_ENABLE_DEV_AUTH=false
+```
+
+Your backend must allow the Vercel origin in `ALLOWED_ORIGINS`.
+
+Example backend setting:
+
+```env
+ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+```
+
+## Backend Deployment Notes
+
+The backend requires:
+
+- PostgreSQL database
+- Redis broker/result backend
+- Persistent file storage mounted at `FILE_STORAGE_PATH`
+- One FastAPI web process
+- One Celery worker process
+- Alembic migrations before startup
+
+Production backend settings should include:
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_SECRET_KEY=replace-with-a-long-random-secret
+DATABASE_URL=postgresql://user:password@host:5432/database
+REDIS_URL=redis://host:6379/0
+RUN_AGENTS_SYNCHRONOUSLY=false
+DEV_SEED_USER_ENABLED=false
+```
+
+## GitHub Hygiene
+
+- `.env` and `.env.*` are ignored.
+- `.env.example` contains safe placeholders only.
+- Docker build contexts exclude secrets, caches, dependencies, and build output.
+- Do not commit real LLM keys, Jira tokens, local database dumps, generated uploads, or private documents.
+
+## Validation
+
+Common checks:
 
 ```bash
 cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+python -m compileall app tests
+python -m pytest
 
-# Start PostgreSQL and Redis (via Docker or locally)
-docker compose up db redis -d
-
-# Run migrations
-alembic upgrade head
-
-# Start API
-uvicorn app.main:app --reload --port 8000
+cd ../frontend
+npm run lint
+npm run build
 ```
 
-### Run frontend locally
+With Docker Compose:
 
 ```bash
-cd frontend
-npm install
-npm run dev
+docker compose exec -T backend python -m compileall app tests
+docker compose exec -T backend python -m pytest
+docker compose exec -T frontend npm run lint
+docker compose exec -T frontend npm run build
 ```
-
----
-
-## Human-in-the-Loop Approval Gates
-
-The platform enforces human approval before any destructive or external action:
-
-1. ✅ Approve interpreted requirements
-2. ✅ Approve test plan
-3. ✅ Approve test cases
-4. ✅ Approve automation scripts
-5. ✅ Approve test execution environment
-6. ✅ **Approve Jira defect creation** (Jira defects are NEVER created without this)
-7. ✅ Approve release report export
-
-All approvals are stored in the `approval_actions` table for audit.
-
----
-
-## Security
-
-- No secrets hardcoded — all via environment variables
-- JWT-based authentication
-- Passwords hashed with bcrypt
-- Jira API tokens encrypted at rest
-- File upload validation (type + size limits)
-- Prompt injection protection (Phase 8)
-- Role-based access control (Phase 8)
-
----
-
-## License
-
-MIT — Free for personal and commercial use.

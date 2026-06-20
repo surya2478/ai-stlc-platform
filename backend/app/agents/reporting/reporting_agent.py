@@ -10,7 +10,9 @@ from typing import Any, TypedDict
 from langgraph.graph import StateGraph, END
 
 from app.agents.base.base_agent import BaseAgent
+from app.agents.structured_schemas import ReportLLMOutput
 from app.llm.provider import get_llm
+from app.llm.structured import validate_structured_output, parse_and_validate_llm_output
 from app.config import get_settings
 
 settings = get_settings()
@@ -65,11 +67,7 @@ Generate a comprehensive QA status report."""
                 {"role": "user", "content": prompt},
             ]
         )
-        text = response.strip()
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        report = json.loads(match.group(0)) if match else {}
-        if not report:
-            errors.append("Could not parse report JSON")
+        report = parse_and_validate_llm_output(response, ReportLLMOutput).model_dump(mode="json")
     except Exception as exc:
         report = {}
         errors.append(f"Reporting agent error: {str(exc)}")
@@ -78,6 +76,7 @@ Generate a comprehensive QA status report."""
 
 
 def _validate_report(state: ReportState) -> ReportState:
+    errors = list(state["errors"])
     r = state["report"]
     if not r.get("title"):
         r["title"] = f"{state['report_type'].capitalize()} QA Report - {state['project_name']}"
@@ -89,7 +88,7 @@ def _validate_report(state: ReportState) -> ReportState:
     for key in ("risks", "recommendations"):
         if key not in r:
             r[key] = []
-    return {**state, "report": r}
+    return {**state, "report": r, "errors": errors}
 
 
 def _build_graph() -> Any:

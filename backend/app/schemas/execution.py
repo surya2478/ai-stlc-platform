@@ -9,11 +9,26 @@ class ExecutionResultOut(BaseModel):
     id: int
     execution_run_id: int
     test_case_id: int | None = None
+    automation_mapping_id: int | None = None
     test_name: str
     status: str
     duration_ms: int | None = None
+    execution_mode: str | None = None
+    external_tool_name: str | None = None
+    external_test_case_id: str | None = None
+    automation_execution_status: str | None = None
+    manual_execution_status: str | None = None
+    jira_execution_status: str | None = None
+    duration_seconds: float | None = None
     error_message: str | None = None
     stack_trace: str | None = None
+    screenshot_url: str | None = None
+    video_url: str | None = None
+    log_url: str | None = None
+    external_result_url: str | None = None
+    jira_issue_key: str | None = None
+    jira_test_key: str | None = None
+    raw_result_json: dict[str, Any] | None = None
     logs: list | None = None
     metadata_: dict[str, Any] | None = None
     created_at: datetime
@@ -26,9 +41,17 @@ class ExecutionRunOut(BaseModel):
     id: int
     project_id: int
     execution_id: str
+    test_cycle_id: str | None = None
+    source_type: str | None = None
+    external_tool_name: str | None = None
+    external_run_id: str | None = None
     suite_name: str | None = None
     environment: str | None = None
     status: str
+    triggered_by: int | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    duration_seconds: float | None = None
     total_tests: int
     passed: int
     failed: int
@@ -49,6 +72,7 @@ class AgentExecutionTrigger(BaseModel):
     automation_script_ids: list[int] | None = None
     environment: Literal["local", "staging", "production", "ci"] = "staging"
     suite_name: str | None = None
+    source_type: Literal["manual", "automation", "ai"] = "manual"
     metadata_: dict[str, Any] | None = None
 
     @model_validator(mode="after")

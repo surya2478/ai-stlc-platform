@@ -13,8 +13,14 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=[
         "app.worker.tasks.agent_tasks",
+        "app.worker.tasks.document_tasks",
+        "app.worker.tasks.jira_tasks",
+        "app.worker.tasks.rag_tasks",
+        "app.worker.tasks.retention_tasks",
     ],
 )
+
+from celery.schedules import crontab
 
 celery_app.conf.update(
     task_serializer="json",
@@ -26,4 +32,11 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     result_expires=86400,  # 24 hours
+    beat_schedule={
+        # Run all data retention tasks nightly at 02:00 UTC
+        "nightly-data-retention": {
+            "task": "retention_tasks.run_all_retention",
+            "schedule": crontab(hour=2, minute=0),
+        },
+    },
 )

@@ -1,17 +1,25 @@
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+
+class TokenProjectMembership(BaseModel):
+    project_id: int
+    role: str
+    permissions: list[str]
 
 
 class UserCreate(BaseModel):
     email: EmailStr
     full_name: str
-    password: str
+    password: str = Field(min_length=8, max_length=72)
     role: str = "qa_engineer"
+    is_superuser: bool = False
 
 
 class UserUpdate(BaseModel):
     full_name: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    is_superuser: bool | None = None
 
 
 class UserRead(BaseModel):
@@ -28,6 +36,8 @@ class UserRead(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    global_role: str | None = None
+    project_memberships: list[TokenProjectMembership] = []
 
 
 class TokenData(BaseModel):
