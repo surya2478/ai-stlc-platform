@@ -10,6 +10,7 @@ Pool configuration:
 """
 import logging
 from typing import AsyncGenerator
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -24,11 +25,39 @@ settings = get_settings()
 # ---------------------------------------------------------------------------
 # Async database URL
 # ---------------------------------------------------------------------------
-_db_url = settings.database_url.replace(
-    "postgresql://", "postgresql+asyncpg://"
-).replace(
-    "postgres://", "postgresql+asyncpg://"
-)
+def _build_async_db_url(database_url: str) -> tuple[str, dict]:
+    """
+    Convert a generic Postgres URL into an asyncpg-compatible SQLAlchemy URL.
+
+    Supabase examples commonly use `sslmode=require`, but asyncpg expects an
+    `ssl` argument instead. Normalize that here so production URLs copied from
+    Supabase work without manual rewriting.
+    """
+    async_url = database_url.replace(
+        "postgresql://", "postgresql+asyncpg://"
+    ).replace(
+        "postgres://", "postgresql+asyncpg://"
+    )
+    parts = urlsplit(async_url)
+    query_params = dict(parse_qsl(parts.query, keep_blank_values=True))
+    connect_args: dict = {}
+
+    sslmode = query_params.pop("sslmode", None)
+    if sslmode:
+        sslmode = sslmode.strip().lower()
+        if sslmode in {"require", "verify-ca", "verify-full"}:
+            connect_args["ssl"] = "require"
+        elif sslmode in {"disable", "allow", "prefer"}:
+            connect_args["ssl"] = sslmode
+
+    normalized_query = urlencode(query_params)
+    normalized_url = urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, normalized_query, parts.fragment)
+    )
+    return normalized_url, connect_args
+
+
+_db_url, _connect_args = _build_async_db_url(settings.database_url)
 
 # ---------------------------------------------------------------------------
 # Engine — pool strategy driven by config
@@ -61,6 +90,7 @@ else:
 engine = create_async_engine(
     _db_url,
     echo=settings.app_debug,
+    connect_args=_connect_args,
     **_pool_kwargs,
 )
 
