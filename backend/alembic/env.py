@@ -22,7 +22,9 @@ db_url = settings.database_url
 # Convert to async driver for engine creation
 if db_url and "postgresql://" in db_url:
     db_url = db_url.replace("postgresql://", "postgresql+asyncpg://").replace("postgres://", "postgresql+asyncpg://")
-config.set_main_option("sqlalchemy.url", db_url)
+# Alembic stores this value through configparser, where "%" has interpolation
+# meaning. Database passwords can contain URL-encoded values such as "%40".
+config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
