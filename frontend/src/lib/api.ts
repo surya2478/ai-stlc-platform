@@ -92,6 +92,12 @@ export interface TokenResponse {
   project_memberships?: TokenProjectMembership[];
 }
 
+export interface RegisterPayload {
+  email: string;
+  full_name: string;
+  password: string;
+}
+
 export function getAccessToken() {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem("stlc_auth_profile") ? "cookie-auth" : null;
@@ -130,6 +136,8 @@ export const authApi = {
     }
     return response;
   },
+  register: async (payload: RegisterPayload) =>
+    api.post("/users/register", payload),
   logout: async () => {
     try {
       await api.post("/users/logout");

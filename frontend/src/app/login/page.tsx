@@ -17,6 +17,7 @@ import {
   Shield,
   ArrowRight,
   Fingerprint,
+  UserPlus,
 } from "lucide-react";
 import { authApi, getAccessToken, getAuthProfile, type TokenResponse } from "@/lib/api";
 
@@ -31,8 +32,15 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [recoveryModalOpen, setRecoveryModalOpen] = useState(false);
   const [ssoModalOpen, setSsoModalOpen] = useState(false);
+  const [signupModalOpen, setSignupModalOpen] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [ssoNotice, setSsoNotice] = useState("");
+  const [signupName, setSignupName] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupLoading, setSignupLoading] = useState(false);
+  const [signupError, setSignupError] = useState("");
+  const [signupSuccess, setSignupSuccess] = useState("");
 
   useEffect(() => {
     if (getAccessToken()) {
@@ -68,6 +76,30 @@ export default function LoginPage() {
   function handleLogout() {
     authApi.logout();
     setProfile(null);
+  }
+
+  async function handleSignup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSignupLoading(true);
+    setSignupError("");
+    setSignupSuccess("");
+    try {
+      await authApi.register({
+        email: signupEmail.trim().toLowerCase(),
+        full_name: signupName.trim(),
+        password: signupPassword,
+      });
+      setEmail(signupEmail.trim().toLowerCase());
+      setPassword("");
+      setSignupSuccess("Account created. You can sign in now.");
+      setSignupPassword("");
+    } catch (signupErr: any) {
+      const detail = signupErr?.response?.data?.detail;
+      setSignupError(typeof detail === "string" ? detail : "Could not create your account right now.");
+      return;
+    } finally {
+      setSignupLoading(false);
+    }
   }
 
   return (
@@ -283,6 +315,22 @@ export default function LoginPage() {
                 <Fingerprint className="h-4 w-4 text-slate-400" />
                 Sign in with SSO
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSignupModalOpen(true);
+                  setSignupError("");
+                  setSignupSuccess("");
+                  setSignupName("");
+                  setSignupEmail(email.trim());
+                  setSignupPassword("");
+                }}
+                className="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors mt-3"
+              >
+                <UserPlus className="h-4 w-4 text-slate-400" />
+                Create account
+              </button>
             </div>
 
             {/* Existing token profile */}
@@ -364,6 +412,91 @@ export default function LoginPage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {signupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div
+            className="fixed inset-0"
+            onClick={() => setSignupModalOpen(false)}
+          />
+          <div className="relative bg-white rounded-3xl border border-slate-100 p-6 shadow-xl w-full max-w-[420px] mx-4 animate-scale-up z-10">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-500 mb-4">
+              <UserPlus className="h-6 w-6" />
+            </div>
+            <h3 className="text-base font-black text-slate-800 tracking-tight">Create your account</h3>
+            <p className="text-xs text-slate-500 font-semibold leading-relaxed mt-2.5">
+              Create the first platform account for your production workspace.
+            </p>
+
+            <form onSubmit={handleSignup} className="space-y-4 mt-5">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-2">Full name</label>
+                <input
+                  type="text"
+                  value={signupName}
+                  onChange={(e) => setSignupName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm font-semibold text-slate-850 outline-none focus:border-[#1b59f8] focus:ring-1 focus:ring-[#1b59f8]/10"
+                  placeholder="Surya"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-2">Email</label>
+                <input
+                  type="email"
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm font-semibold text-slate-850 outline-none focus:border-[#1b59f8] focus:ring-1 focus:ring-[#1b59f8]/10"
+                  placeholder="surya@gmail.com"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-2">Password</label>
+                <input
+                  type="password"
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm font-semibold text-slate-850 outline-none focus:border-[#1b59f8] focus:ring-1 focus:ring-[#1b59f8]/10"
+                  placeholder="At least 12 chars with upper, lower, number, special"
+                  required
+                />
+              </div>
+
+              {signupError && (
+                <div className="rounded-xl border border-rose-100 bg-rose-50/50 px-3.5 py-2.5 text-xs font-semibold text-rose-600">
+                  {signupError}
+                </div>
+              )}
+
+              {signupSuccess && (
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3.5 py-2.5 text-xs font-semibold text-emerald-700">
+                  {signupSuccess}
+                </div>
+              )}
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSignupModalOpen(false)}
+                  className="flex-1 border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl py-2.5 text-xs font-bold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={signupLoading}
+                  className="flex-1 bg-[#0a1835] hover:bg-[#12244a] text-white rounded-xl py-2.5 text-xs font-bold transition-colors disabled:opacity-70"
+                >
+                  {signupLoading ? "Creating..." : "Create account"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
