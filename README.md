@@ -1,4 +1,4 @@
-# e& AI Test Automation System
+#AI Test Automation System
 
 AI-assisted Software Test Life Cycle automation for requirements, planning, test cases, automation scripts, execution analysis, defect triage, reporting, approvals, and project-level RBAC.
 
@@ -130,6 +130,7 @@ REDIS_URL=redis://host:6379/0
 RUN_AGENTS_SYNCHRONOUSLY=false
 DEV_SEED_USER_ENABLED=false
 ```
+Production deployment: nxtqa.com
 
 ## GitHub Hygiene
 
