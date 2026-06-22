@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const enableDevAuth = process.env.NEXT_PUBLIC_ENABLE_DEV_AUTH;
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 if (process.env.NEXT_PUBLIC_DEV_AUTH_EMAIL || process.env.NEXT_PUBLIC_DEV_AUTH_PASSWORD || (enableDevAuth && enableDevAuth !== "false")) {
   throw new Error(
     "BUILD BLOCKED: Development backdoor variables (NEXT_PUBLIC_DEV_AUTH_EMAIL, NEXT_PUBLIC_DEV_AUTH_PASSWORD, NEXT_PUBLIC_ENABLE_DEV_AUTH) are set. " +
@@ -34,7 +35,7 @@ const nextConfig = {
           },
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' http://localhost:8000 https://api.openai.com;",
+            value: `default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${apiUrl} https://api.openai.com;`,
           },
         ],
       },
@@ -44,7 +45,7 @@ const nextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: `${process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/:path*`,
+        destination: `${process.env.INTERNAL_API_URL || apiUrl}/api/:path*`,
       },
     ];
   },
