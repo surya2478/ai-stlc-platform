@@ -94,8 +94,22 @@ export default function LoginPage() {
       setSignupSuccess("Account created. You can sign in now.");
       setSignupPassword("");
     } catch (signupErr: any) {
-      const detail = signupErr?.response?.data?.detail;
-      setSignupError(typeof detail === "string" ? detail : "Could not create your account right now.");
+      const payload = signupErr?.response?.data;
+      const detail = payload?.detail;
+      if (typeof payload === "string" && payload.trim()) {
+        setSignupError(payload);
+      } else if (typeof detail === "string") {
+        setSignupError(detail);
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        const messages = detail
+          .map((item) => (typeof item?.msg === "string" ? item.msg : null))
+          .filter(Boolean);
+        setSignupError(messages.length > 0 ? messages.join(" ") : "Could not create your account right now.");
+      } else if (signupErr?.response?.status === 429) {
+        setSignupError("Too many sign-up attempts from this network. Please wait about an hour and try again.");
+      } else {
+        setSignupError("Could not create your account right now.");
+      }
       return;
     } finally {
       setSignupLoading(false);
@@ -466,6 +480,9 @@ export default function LoginPage() {
                   placeholder="At least 12 chars with upper, lower, number, special"
                   required
                 />
+                <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                  Use 12+ characters with uppercase, lowercase, number, and special character.
+                </p>
               </div>
 
               {signupError && (
