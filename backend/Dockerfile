@@ -49,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 
 RUN mkdir -p /app/storage/uploads /app/storage/reports /app/storage/artifacts /app/storage/scripts
+RUN chmod +x /app/start.sh
 
 RUN groupadd -g 10001 appgroup && \
     useradd -r -u 10001 -g appgroup -d /app appuser && \
@@ -58,4 +59,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["./start.sh"]
