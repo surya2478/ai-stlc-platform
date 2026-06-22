@@ -1,4 +1,4 @@
-#AI Test Automation System
+#AI STLC Test Automation System
 
 AI-assisted Software Test Life Cycle automation for requirements, planning, test cases, automation scripts, execution analysis, defect triage, reporting, approvals, and project-level RBAC.
 
