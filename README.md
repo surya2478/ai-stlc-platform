@@ -96,7 +96,7 @@ Vercel project settings:
 Required Vercel environment variables:
 
 ```env
-NEXT_PUBLIC_API_URL=https://your-backend.example.com
+NEXT_PUBLIC_API_URL=https://api.nxtqa.com
 NEXT_PUBLIC_ENABLE_DEV_AUTH=false
 ```
 
