@@ -1,5 +1,6 @@
 import logging
 from sqlalchemy import select, func, distinct, or_
+from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.requirement import Requirement
@@ -713,57 +714,82 @@ class MetricsService:
 
         # 15. Recent Activity Feed (last 3 items)
         recent_activities = []
-        # Query recently updated Requirements
+
+        # Aliases so we can join User twice (updater + creator)
+        UpdaterUser = aliased(User)
+        CreatorUser = aliased(User)
+
+        # Requirements — resolve real user name from updated_by → created_by
         req_act_stmt = (
-            select(Requirement)
+            select(
+                Requirement,
+                func.coalesce(UpdaterUser.full_name, CreatorUser.full_name).label("user_name"),
+            )
+            .outerjoin(UpdaterUser, Requirement.updated_by == UpdaterUser.id)
+            .outerjoin(CreatorUser, Requirement.created_by == CreatorUser.id)
             .where(Requirement.project_id == project_id, Requirement.is_deleted == False)
             .order_by(Requirement.updated_at.desc())
             .limit(3)
         )
-        req_acts = (await self.db.execute(req_act_stmt)).scalars().all()
-        for r in req_acts:
+        req_acts = (await self.db.execute(req_act_stmt)).all()
+        for r, user_name in req_acts:
             recent_activities.append(
                 RecentActivityItem(
-                    user="Amit Sharma",
+                    user=user_name or "Unknown",
                     action=f"updated requirement {r.requirement_id}",
                     subject=r.title,
                     time=r.updated_at.isoformat() + "Z" if r.updated_at else "",
+                    is_agent=False,
                 )
             )
 
-        # Query recently updated Test Cases
+        # Test Cases — resolve real user name from updated_by → created_by
+        UpdaterUser2 = aliased(User)
+        CreatorUser2 = aliased(User)
         tc_act_stmt = (
-            select(TestCase)
+            select(
+                TestCase,
+                func.coalesce(UpdaterUser2.full_name, CreatorUser2.full_name).label("user_name"),
+            )
+            .outerjoin(UpdaterUser2, TestCase.updated_by == UpdaterUser2.id)
+            .outerjoin(CreatorUser2, TestCase.created_by == CreatorUser2.id)
             .where(TestCase.project_id == project_id)
             .order_by(TestCase.updated_at.desc())
             .limit(3)
         )
-        tc_acts = (await self.db.execute(tc_act_stmt)).scalars().all()
-        for tc in tc_acts:
+        tc_acts = (await self.db.execute(tc_act_stmt)).all()
+        for tc, user_name in tc_acts:
             recent_activities.append(
                 RecentActivityItem(
-                    user="Priya Patel",
-                    action=f"approved test case {tc.test_case_id}",
+                    user=user_name or "Unknown",
+                    action=f"updated test case {tc.test_case_id}",
                     subject=tc.title,
                     time=tc.updated_at.isoformat() + "Z" if tc.updated_at else "",
+                    is_agent=False,
                 )
             )
 
-        # Query recently updated Defects
+        # Defects — only has created_by
+        CreatorUser3 = aliased(User)
         def_act_stmt = (
-            select(DefectDraft)
+            select(
+                DefectDraft,
+                CreatorUser3.full_name.label("user_name"),
+            )
+            .outerjoin(CreatorUser3, DefectDraft.created_by == CreatorUser3.id)
             .where(DefectDraft.project_id == project_id)
             .order_by(DefectDraft.created_at.desc())
             .limit(3)
         )
-        def_acts = (await self.db.execute(def_act_stmt)).scalars().all()
-        for d in def_acts:
+        def_acts = (await self.db.execute(def_act_stmt)).all()
+        for d, user_name in def_acts:
             recent_activities.append(
                 RecentActivityItem(
-                    user="Rohit Verma",
+                    user=user_name or "Unknown",
                     action=f"logged defect {d.defect_id}",
                     subject=d.summary,
                     time=d.created_at.isoformat() + "Z" if d.created_at else "",
+                    is_agent=False,
                 )
             )
 
@@ -772,26 +798,15 @@ class MetricsService:
             recent_activities, key=lambda a: a.time, reverse=True
         )[:3]
 
-        # Fallback if no activities exist
+        # Fallback if no real data found (empty project)
         if not recent_activities:
             recent_activities = [
                 RecentActivityItem(
-                    user="Amit Sharma",
-                    action="synchronized requirement models",
-                    subject="REQ-1024 - eSIM Activation",
-                    time="2026-06-13T09:32:00Z",
-                ),
-                RecentActivityItem(
-                    user="Priya Patel",
-                    action="approved test case layout",
-                    subject="TC-1240 - eSIM Profile Download",
-                    time="2026-06-13T09:15:00Z",
-                ),
-                RecentActivityItem(
-                    user="Rohit Verma",
-                    action="logged execution defect log",
-                    subject="DEF-563 - Profile Download Failure",
-                    time="2026-06-13T09:02:00Z",
+                    user="System",
+                    action="project created",
+                    subject="No activity yet — start by uploading requirements",
+                    time="",
+                    is_agent=False,
                 ),
             ]
 

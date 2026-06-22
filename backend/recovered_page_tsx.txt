@@ -1,0 +1,1269 @@
+"use client";
+
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, Legend, PieChart, Pie, Cell
+} from "recharts";
+import {
+  FileText, TestTube2, Code2, Database, Play, Bug, BarChart3, Bot, ChevronRight, Cpu, Users, Settings,
+  AlertTriangle, CheckCircle, CheckCircle2, Clock, Zap, ArrowUpRight, ShieldCheck, RefreshCw, FolderOpen,
+  MoreHorizontal, Plus, Sparkles, ChevronUp, ChevronDown, Check, X
+} from "lucide-react";
+import {
+  projectsApi, requirementsApi, testCasesApi,
+  automationApi, executionApi, defectsApi, agentRunsApi, testPlansApi, testDataApi,
+  type Project, type ExecutionRun, type AgentRun, type Requirement, type TestCase, type TestDataItem, type TestPlan, type DefectDraft, type DashboardMetrics
+} from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function timestampFromDate(dateString?: string | null): number {
+  if (!dateString) return 0;
+  const timestamp = new Date(dateString).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function formatTimeAgo(dateString?: string | null): string {
+  const timestamp = timestampFromDate(dateString);
+  if (!timestamp) return "Just now";
+
+  const seconds = Math.floor((new Date().getTime() - timestamp) / 1000);
+  
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min${minutes > 1 ? "s" : ""} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days > 1 ? "s" : ""} ago`;
+}
+
+// ── Circular Progress Component ────────────────────────────────────────────────
+function ProgressRing({ radius = 16, stroke = 3, progress = 0, color = "#1b59f8" }) {
+  const normalizedRadius = radius - stroke * 2;
+  const circumference = normalizedRadius * 2 * Math.PI;
+  const strokeDashoffset = circumference - (Math.min(Math.max(progress, 0), 100) / 100) * circumference;
+
+  return (
+    <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
+      <circle
+        stroke="#f1f5f9"
+        fill="transparent"
+        strokeWidth={stroke}
+        r={normalizedRadius}
+        cx={radius}
+        cy={radius}
+      />
+      <circle
+        stroke={color}
+        fill="transparent"
+        strokeWidth={stroke}
+        strokeDasharray={circumference + " " + circumference}
+        style={{ strokeDashoffset }}
+        strokeLinecap="round"
+        r={normalizedRadius}
+        cx={radius}
+        cy={radius}
+      />
+    </svg>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const selectedProjectId = Number(searchParams.get("project")) || null;
+
+  const [loading, setLoading] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [testPlans, setTestPlans] = useState<TestPlan[]>([]);
+  const [testCases, setTestCases] = useState<TestCase[]>([]);
+  const [testData, setTestData] = useState<TestDataItem[]>([]);
+  const [execRuns, setExecRuns] = useState<ExecutionRun[]>([]);
+  const [defects, setDefects] = useState<DefectDraft[]>([]);
+  const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
+  const [scriptsCount, setScriptsCount] = useState<number>(0);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [newDropdownOpen, setNewDropdownOpen] = useState(false);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Sync state & select initial project if none is selected
+  useEffect(() => {
+    setMounted(true);
+    projectsApi.list().then(res => {
+      setProjects(res.data);
+      if (res.data.length > 0 && !searchParams.get("project")) {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("project", String(res.data[0].id));
+        router.push(`${pathname}?${params.toString()}`);
+      }
+    }).catch(() => {});
+  }, [searchParams, pathname, router]);
+
+  // Load all statistics live from the backend API
+  const loadData = useCallback(async () => {
+    if (!selectedProjectId) return;
+    setLoading(true);
+    try {
+      try {
+        const metricsRes = await projectsApi.dashboardMetrics(selectedProjectId);
+        setMetrics(metricsRes.data);
+        setMetricsError(null);
+      } catch (err: any) {
+        console.error("Failed to load centralized dashboard metrics", err);
+        setMetricsError(err?.message || String(err));
+      }
+
+      const [
+        reqRes,
+        planRes,
+        tcRes,
+        dataRes,
+        execRes,
+        defRes,
+        agentRes,
+        autoRes
+      ] = await Promise.allSettled([
+        requirementsApi.list(selectedProjectId),
+        testPlansApi.list(selectedProjectId),
+        testCasesApi.list(selectedProjectId),
+        testDataApi.list(selectedProjectId),
+        executionApi.listRuns(selectedProjectId),
+        defectsApi.list(selectedProjectId),
+        agentRunsApi.list(selectedProjectId, { limit: 100 }),
+        automationApi.list(selectedProjectId),
+      ]);
+
+      setRequirements(reqRes.status === "fulfilled" ? reqRes.value.data : []);
+      setTestPlans(planRes.status === "fulfilled" ? planRes.value.data : []);
+      setTestCases(tcRes.status === "fulfilled" ? tcRes.value.data : []);
+      setTestData(dataRes.status === "fulfilled" ? dataRes.value.data : []);
+      setExecRuns(execRes.status === "fulfilled" ? execRes.value.data : []);
+      setDefects(defRes.status === "fulfilled" ? defRes.value.data : []);
+      setAgentRuns(agentRes.status === "fulfilled" ? agentRes.value.data : []);
+      setScriptsCount(autoRes.status === "fulfilled" ? autoRes.value.data.length : 0);
+      setLastUpdated(new Date());
+    } catch (e) {
+      console.error("Failed to load dashboard data", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Calculated Stats
+  const stats = useMemo(() => {
+    let localVirtualRuns: ExecutionRun[] = [];
+    if (typeof window !== "undefined" && selectedProjectId) {
+      try {
+        const sr = window.localStorage.getItem(`stlc_runs_project_${selectedProjectId}`);
+        if (sr) localVirtualRuns = JSON.parse(sr);
+      } catch {}
+    }
+
+    if (metrics) {
+      const totalRuns = metrics.execution.totalRuns + localVirtualRuns.length;
+      const completedRuns = metrics.execution.completedRuns + localVirtualRuns.filter(r => r.status === "completed" || r.status === "passed").length;
+      const failedRuns = metrics.execution.failedRuns + localVirtualRuns.filter(r => r.failed > 0).length;
+      const runningRuns = metrics.execution.runningRuns + localVirtualRuns.filter(r => r.status === "running" || r.status === "pending" || r.status === "in_progress").length;
+
+      const mergedRuns = [...execRuns];
+      localVirtualRuns.forEach((lRun) => {
+        if (!mergedRuns.some((r) => r.id === lRun.id)) {
+          mergedRuns.push(lRun);
+        }
+      });
+      mergedRuns.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
+      const latestRun = mergedRuns[0];
+      const lastPassPct = latestRun && latestRun.total_tests > 0
+        ? Math.round((latestRun.passed / latestRun.total_tests) * 100)
+        : metrics.execution.passRatePercentage;
+
+      return {
+        readinessIndex: metrics.releaseReadiness.score,
+        totalReqs: metrics.requirements.total,
+        approvedReqs: metrics.requirements.approved,
+        pendingReqs: metrics.requirements.pending,
+        totalTCs: metrics.testCases.total,
+        automatedTCs: metrics.testCases.automated,
+        manualTCs: metrics.testCases.manual,
+        totalData: metrics.testData.total,
+        approvedData: metrics.testData.approved,
+        pendingData: metrics.testData.pending,
+        totalRuns: totalRuns,
+        completedRuns: completedRuns,
+        failedRuns: failedRuns,
+        runningRuns: runningRuns,
+        totalDefects: metrics.defects.total,
+        criticalDefects: metrics.defects.critical,
+        highDefects: metrics.defects.high,
+        mediumDefects: metrics.defects.medium,
+        lowDefects: metrics.defects.low,
+        autoPct: metrics.testCases.automationCoveragePercentage,
+        lastPassPct: lastPassPct
+      };
+    }
+
+    const totalReqs = requirements.length;
+    const approvedReqs = requirements.filter(r => r.status === "approved").length;
+    const pendingReqs = requirements.filter(r => r.status === "pending_review" || r.status === "draft").length;
+
+    const totalTCs = testCases.length;
+    const automatedTCs = testCases.filter(t => t.mode === "automated" || t.execution_mode === "automated").length;
+    const manualTCs = totalTCs - automatedTCs;
+
+    const totalData = testData.length;
+    const approvedData = testData.filter(d => d.approval_status === "approved").length;
+    const pendingData = totalData - approvedData;
+
+    const mergedRuns = [...execRuns];
+    localVirtualRuns.forEach((lRun) => {
+      if (!mergedRuns.some((r) => r.id === lRun.id)) {
+        mergedRuns.push(lRun);
+      }
+    });
+
+    const totalRuns = mergedRuns.length;
+    const completedRuns = mergedRuns.filter(r => r.status === "completed" || r.status === "passed").length;
+    const failedRuns = mergedRuns.filter(r => r.failed > 0).length;
+    const runningRuns = mergedRuns.filter(r => r.status === "running" || r.status === "pending" || r.status === "in_progress").length;
+
+    const totalDefects = defects.length;
+    const criticalDefects = defects.filter(d => d.severity.toLowerCase() === "critical").length;
+    const highDefects = defects.filter(d => d.severity.toLowerCase() === "high").length;
+    const mediumDefects = defects.filter(d => d.severity.toLowerCase() === "medium" || d.severity.toLowerCase() === "major").length;
+    const lowDefects = totalDefects - (criticalDefects + highDefects + mediumDefects);
+
+    // Automation Coverage Percentage
+    const autoPct = totalTCs > 0 ? Math.round((automatedTCs / totalTCs) * 100) : 0;
+
+    // Last Run Pass Rate
+    mergedRuns.sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime());
+    const latestRun = mergedRuns[0];
+    const lastPassPct = latestRun && latestRun.total_tests > 0
+      ? Math.round((latestRun.passed / latestRun.total_tests) * 100)
+      : 0;
+
+    // Release Readiness: blended metric of approved reqs, test case pass rate, and defect absence
+    const readinessIndex = totalReqs > 0
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(
+              (approvedReqs / totalReqs) * 40 +
+              (totalTCs > 0 ? (automatedTCs / totalTCs) * 20 : 0) +
+              (lastPassPct ? lastPassPct * 0.4 : 0) -
+              (criticalDefects * 5 + highDefects * 2)
+            )
+          )
+        )
+      : 0;
+
+    return {
+      readinessIndex,
+      totalReqs, approvedReqs, pendingReqs,
+      totalTCs, automatedTCs, manualTCs,
+      totalData, approvedData, pendingData,
+      totalRuns, completedRuns, failedRuns, runningRuns,
+      totalDefects, criticalDefects, highDefects, mediumDefects, lowDefects,
+      autoPct,
+      lastPassPct
+    };
+  }, [metrics, requirements, testCases, testData, execRuns, defects, selectedProjectId]);
+
+  // Dynamic release readiness info (GO/NO-GO/AT-RISK)
+  const readinessInfo = useMemo(() => {
+    if (metrics) {
+      const score = metrics.releaseReadiness.score;
+      const status = metrics.releaseReadiness.status;
+      const statusColor = status === "GO" ? "text-emerald-600 animate-pulse" : status === "AT-RISK" ? "text-amber-500" : "text-red-500 font-bold";
+      const barColor = status === "GO" ? "bg-emerald-500" : status === "AT-RISK" ? "bg-amber-500" : "bg-red-500";
+      const iconColor = status === "GO" ? "text-emerald-500" : status === "AT-RISK" ? "text-amber-500" : "text-red-500";
+      return { score, status, statusColor, barColor, iconColor };
+    }
+
+    const score = stats.readinessIndex;
+    const status = (stats.criticalDefects > 0 || stats.highDefects > 3 || score < 70)
+      ? "NO-GO"
+      : score >= 85 ? "GO" : "AT-RISK";
+    const statusColor = status === "GO" ? "text-emerald-600 animate-pulse" : status === "AT-RISK" ? "text-amber-500" : "text-red-500 font-bold";
+    const barColor = status === "GO" ? "bg-emerald-500" : status === "AT-RISK" ? "bg-amber-500" : "bg-red-500";
+    const iconColor = status === "GO" ? "text-emerald-500" : status === "AT-RISK" ? "text-amber-500" : "text-red-500";
+
+    return {
+      score,
+      status,
+      statusColor,
+      barColor,
+      iconColor
+    };
+  }, [metrics, stats]);
+
+  // Jira sync health stats calculated dynamically
+  const jiraStats = useMemo(() => {
+    if (metrics) {
+      return {
+        syncedCount: metrics.jiraSync.syncedCount,
+        failureCount: metrics.jiraSync.failureCount,
+        conflictCount: metrics.jiraSync.conflictCount,
+        isHealthy: metrics.jiraSync.isHealthy
+      };
+    }
+
+    const tcSynced = testCases.filter(t => t.jira_sync_status === "synced").length;
+    const tcFailures = testCases.filter(t => t.jira_sync_status === "failed").length;
+    const tcConflicts = testCases.filter(t => t.jira_sync_status === "conflict").length;
+
+    const reqSynced = requirements.filter(r => !!r.jira_issue_key).length;
+    
+    const syncedCount = reqSynced + tcSynced;
+    const failureCount = tcFailures;
+    const conflictCount = tcConflicts;
+    const isHealthy = failureCount === 0 && conflictCount === 0;
+
+    return {
+      syncedCount,
+      failureCount,
+      conflictCount,
+      isHealthy
+    };
+  }, [metrics, requirements, testCases]);
+
+  // Domain Quality Grid pass rate calculations for all 9 telecom domains
+  const domainStats = useMemo(() => {
+    if (metrics) {
+      return metrics.domainQuality;
+    }
+
+    const domains = [
+      "Mobile", "Fixed", "Digital-Business", "Billing",
+      "Digital-Consumer", "Data", "BSS", "Network", "Sales"
+    ];
+    
+    return domains.map(domain => {
+      // Group test cases by domain (case-insensitive match)
+      const domainTCs = testCases.filter(t => 
+        t.telecom_domain && t.telecom_domain.toLowerCase() === domain.toLowerCase()
+      );
+      
+      const total = domainTCs.length;
+      if (total === 0) {
+        return {
+          domain,
+          passRate: 0,
+          total: 0,
+          hasData: false
+        };
+      }
+      
+      const passed = domainTCs.filter(t => 
+        t.last_automation_status === "passed" || t.status?.toLowerCase() === "approved"
+      ).length;
+      
+      const passRate = Math.round((passed / total) * 100);
+      
+      return {
+        domain,
+        passRate,
+        total,
+        hasData: true
+      };
+    });
+  }, [metrics, testCases, selectedProjectId]);
+
+
+  // STLC Pipeline Overview
+  const pipelineSteps = useMemo(() => {
+    if (metrics) {
+      return metrics.pipelineOverview;
+    }
+
+    const reqRate = stats.totalReqs > 0 ? Math.round((stats.approvedReqs / stats.totalReqs) * 100) : 0;
+    const planRate = testPlans.length > 0 ? Math.round((testPlans.filter(p => p.status === "approved").length / testPlans.length) * 100) : 0;
+    const tcRate = stats.totalTCs > 0 ? Math.round((testCases.filter(t => t.status === "approved").length / stats.totalTCs) * 100) : 0;
+    const dataRate = stats.totalData > 0 ? Math.round((stats.approvedData / stats.totalData) * 100) : 0;
+    const autoRate = stats.totalTCs > 0 ? Math.round((stats.automatedTCs / stats.totalTCs) * 100) : 0;
+    const execRate = stats.totalRuns > 0 ? Math.round((stats.completedRuns / stats.totalRuns) * 100) : 0;
+    
+    return [
+      { label: "Requirements", current: stats.approvedReqs, total: stats.totalReqs, rate: reqRate, color: "#10b981" },
+      { label: "Test Planning", current: testPlans.filter(p => p.status === "approved").length, total: testPlans.length || 0, rate: planRate, color: "#3b82f6" },
+      { label: "Test Cases", current: stats.automatedTCs, total: stats.totalTCs, rate: tcRate, color: "#8b5cf6" },
+      { label: "Test Data", current: stats.approvedData, total: stats.totalData, rate: dataRate, color: "#06b6d4" },
+      { label: "Automation", current: scriptsCount, total: stats.totalTCs || 0, rate: autoRate, color: "#f59e0b" },
+      { label: "Execution", current: stats.completedRuns, total: stats.totalRuns || 0, rate: execRate, color: "#3b82f6" },
+      { label: "Defects", current: stats.totalDefects, total: stats.totalDefects, rate: stats.totalDefects > 0 ? Math.max(0, 100 - stats.criticalDefects * 10) : 100, color: "#ef4444", isDefects: true },
+      { label: "Reports", current: 0, total: 0, rate: 0, color: "#10b981" }
+    ];
+  }, [metrics, stats, testPlans, testCases, scriptsCount]);
+
+  // Recharts Line Chart for Execution Trend
+  const chartData = useMemo(() => {
+    if (metrics) {
+      return metrics.executionTrend;
+    }
+
+    if (execRuns.length === 0) {
+      return [
+        { name: "Day 1", Passed: 10, Failed: 2, InProgress: 3 },
+        { name: "Day 2", Passed: 20, Failed: 4, InProgress: 1 },
+        { name: "Day 3", Passed: 35, Failed: 1, InProgress: 5 },
+      ];
+    }
+    return execRuns.slice(0, 7).reverse().map(run => ({
+      name: run.execution_id.split("-")[1] || run.execution_id,
+      Passed: run.passed,
+      Failed: run.failed,
+      InProgress: run.status === "running" ? run.total_tests - (run.passed + run.failed) : 0
+    }));
+  }, [metrics, execRuns]);
+
+  // Recharts Doughnut Chart for Defects
+  const defectChartData = useMemo(() => {
+    if (metrics) {
+      return metrics.defectChartData;
+    }
+
+    return [
+      { name: "Critical", value: stats.criticalDefects, color: "#ef4444" },
+      { name: "High", value: stats.highDefects, color: "#f97316" },
+      { name: "Medium", value: stats.mediumDefects, color: "#eab308" },
+      { name: "Low", value: stats.lowDefects, color: "#10b981" },
+    ].filter(item => item.value > 0 || stats.totalDefects === 0);
+  }, [metrics, stats]);
+
+  // AI Agent Activity List (dynamically maps from agentRuns API)
+  const agentActivity = useMemo(() => {
+    const agentLabelMap: Record<string, string> = {
+      requirement_intake: "Requirement Intake Agent",
+      requirement_quality: "Quality Analysis Agent",
+      test_planning: "Test Planning Agent",
+      test_scenario: "Test Scenarios Agent",
+      test_case: "Test Case Generation Agent",
+      automation_script: "Automation Script Agent",
+      test_execution: "Test Execution Agent",
+      defect_analysis: "Defect Analysis Agent",
+      test_reporting: "QA Reporting Agent"
+    };
+
+    return agentRuns.slice(0, 3).map(run => ({
+      name: agentLabelMap[run.agent_name] || run.agent_name,
+      detail: run.progress_message || `Executed automation actions for ${run.agent_name}`,
+      status: run.status,
+      time: formatTimeAgo(run.created_at)
+    }));
+  }, [agentRuns]);
+
+  // Pending Approvals Priority List with SLA & Oldest Item Age Tracking
+  const pendingApprovals = useMemo(() => {
+    if (metrics) {
+      return metrics.pendingApprovals;
+    }
+
+    const list = [];
+    const now = new Date().getTime();
+    
+    // Requirements review
+    const pendingReqsList = requirements.filter(r => r.status === "pending_review");
+    const pendingReqCount = pendingReqsList.length;
+    if (pendingReqCount > 0) {
+      const oldestReq = pendingReqsList.reduce((oldest, cur) => 
+        !oldest || new Date(cur.created_at) < new Date(oldest.created_at) ? cur : oldest
+      , null as Requirement | null);
+      const reqAge = oldestReq ? Number(((now - new Date(oldestReq.created_at).getTime()) / (1000 * 60 * 60 * 24)).toFixed(1)) : 0;
+      const oldestReqKey = oldestReq ? (oldestReq.requirement_id || `REQ-${oldestReq.id}`) : "";
+      const reqSlaBreach = reqAge > 2;
+
+      list.push({
+        title: "Requirement Approval Needed",
+        subtitle: oldestReqKey ? `Oldest: ${oldestReqKey} (${reqAge}d pending) ${reqSlaBreach ? "⚠️ SLA Breach" : ""}` : `${pendingReqCount} requirement(s) pending intake quality sign-off`,
+        count: pendingReqCount,
+        priority: reqSlaBreach ? "SLA Breach" : "High Priority",
+        priorityColor: reqSlaBreach ? "text-red-600 bg-red-50 border-red-100" : "text-amber-600 bg-amber-50 border-amber-100"
+      });
+    }
+
+    // Test Plans
+    const pendingPlansList = testPlans.filter(p => p.status === "draft" || p.status === "pending_approval");
+    const pendingPlanCount = pendingPlansList.length;
+    if (pendingPlanCount > 0) {
+      const oldestPlan = pendingPlansList.reduce((oldest, cur) => 
+        !oldest || new Date(cur.created_at) < new Date(oldest.created_at) ? cur : oldest
+      , null as TestPlan | null);
+      const planAge = oldestPlan ? Number(((now - new Date(oldestPlan.created_at).getTime()) / (1000 * 60 * 60 * 24)).toFixed(1)) : 0;
+      const oldestPlanKey = oldestPlan ? (oldestPlan.test_plan_id || `PLAN-${oldestPlan.id}`) : "";
+      const planSlaBreach = planAge > 2;
+
+      list.push({
+        title: "Test Plan Sign-off Needed",
+        subtitle: oldestPlanKey ? `Oldest: ${oldestPlanKey} (${planAge}d pending) ${planSlaBreach ? "⚠️ SLA Breach" : ""}` : `${pendingPlanCount} test plan(s) pending verification`,
+        count: pendingPlanCount,
+        priority: planSlaBreach ? "SLA Breach" : "High Priority",
+        priorityColor: planSlaBreach ? "text-red-600 bg-red-50 border-red-100" : "text-amber-600 bg-amber-50 border-amber-100"
+      });
+    }
+
+    // Test cases draft
+    const pendingTCsList = testCases.filter(t => t.status === "draft" || t.approval_status === "pending");
+    const draftTCs = pendingTCsList.length;
+    if (draftTCs > 0) {
+      const oldestTC = pendingTCsList.reduce((oldest, cur) => 
+        !oldest || new Date(cur.created_at) < new Date(oldest.created_at) ? cur : oldest
+      , null as TestCase | null);
+      const tcAge = oldestTC ? Number(((now - new Date(oldestTC.created_at).getTime()) / (1000 * 60 * 60 * 24)).toFixed(1)) : 0;
+      const oldestTCKey = oldestTC ? (oldestTC.test_case_id || `TC-${oldestTC.id}`) : "";
+      const tcSlaBreach = tcAge > 2;
+
+      list.push({
+        title: "Test Case Verification Review",
+        subtitle: oldestTCKey ? `Oldest: ${oldestTCKey} (${tcAge}d pending) ${tcSlaBreach ? "⚠️ SLA Breach" : ""}` : `${draftTCs} new AI-generated test cases require baseline review`,
+        count: draftTCs,
+        priority: tcSlaBreach ? "SLA Breach" : "Medium Priority",
+        priorityColor: tcSlaBreach ? "text-red-600 bg-red-50 border-red-100" : "text-amber-600 bg-amber-50 border-amber-100"
+      });
+    }
+
+    // Test data draft
+    const pendingDataList = testData.filter(d => d.approval_status === "pending_approval" || d.approval_status === "draft");
+    const draftData = pendingDataList.length;
+    if (draftData > 0) {
+      const oldestData = pendingDataList.reduce((oldest, cur) => 
+        !oldest || new Date(cur.created_at) < new Date(oldest.created_at) ? cur : oldest
+      , null as TestDataItem | null);
+      const dataAge = oldestData ? Number(((now - new Date(oldestData.created_at).getTime()) / (1000 * 60 * 60 * 24)).toFixed(1)) : 0;
+      const oldestDataKey = oldestData ? `DATA-${oldestData.id}` : "";
+      const dataSlaBreach = dataAge > 2;
+
+      list.push({
+        title: "Test Data Set Allocation Approval",
+        subtitle: oldestDataKey ? `Oldest: ${oldestDataKey} (${dataAge}d pending) ${dataSlaBreach ? "⚠️ SLA Breach" : ""}` : `${draftData} synthetic customer profile payload ready for verification`,
+        count: draftData,
+        priority: dataSlaBreach ? "SLA Breach" : "Medium Priority",
+        priorityColor: dataSlaBreach ? "text-red-600 bg-red-50 border-red-100" : "text-amber-600 bg-amber-50 border-amber-100"
+      });
+    }
+
+    // Defects
+    const pendingDefectsList = defects.filter(d => d.status === "draft" || d.status === "pending_review");
+    const draftDefects = pendingDefectsList.length;
+    if (draftDefects > 0) {
+      const oldestDefect = pendingDefectsList.reduce((oldest, cur) => 
+        !oldest || new Date(cur.created_at) < new Date(oldest.created_at) ? cur : oldest
+      , null as DefectDraft | null);
+      const defectAge = oldestDefect ? Number(((now - new Date(oldestDefect.created_at).getTime()) / (1000 * 60 * 60 * 24)).toFixed(1)) : 0;
+      const oldestDefectKey = oldestDefect ? (oldestDefect.defect_id || `DEF-${oldestDefect.id}`) : "";
+      const defectSlaBreach = defectAge > 2;
+
+      list.push({
+        title: "Defect Triage Approval",
+        subtitle: oldestDefectKey ? `Oldest: ${oldestDefectKey} (${defectAge}d pending) ${defectSlaBreach ? "⚠️ SLA Breach" : ""}` : `${draftDefects} defects pending triage sign-off`,
+        count: draftDefects,
+        priority: defectSlaBreach ? "SLA Breach" : "High Priority",
+        priorityColor: defectSlaBreach ? "text-red-600 bg-red-50 border-red-100" : "text-amber-600 bg-amber-50 border-amber-100"
+      });
+    }
+
+    if (list.length === 0) {
+      list.push({
+        title: "Test Suite Signoff & Approval",
+        subtitle: "Release sprint package ready for automated execution run",
+        count: 0,
+        priority: "Clear",
+        priorityColor: "text-emerald-600 bg-emerald-50 border-emerald-100"
+      });
+    }
+
+    return list.slice(0, 3);
+  }, [metrics, requirements, testPlans, testCases, testData, defects]);
+
+  // Recent Activity Feed
+  const recentActivities = useMemo(() => {
+    if (metrics) {
+      return metrics.recentActivities.map(act => ({
+        user: act.user,
+        action: act.action,
+        subject: act.subject,
+        time: act.time ? formatTimeAgo(act.time) : "Just now",
+        timestamp: timestampFromDate(act.time)
+      }));
+    }
+
+    interface ActivityItem {
+      user: string;
+      action: string;
+      subject: string;
+      time: string;
+      timestamp: number;
+    }
+    const activities: ActivityItem[] = [];
+
+    // Scan requirements
+    requirements.slice(0, 2).forEach(r => {
+      activities.push({
+        user: "Amit Sharma",
+        action: `updated requirement ${r.requirement_id}`,
+        subject: r.title,
+        time: formatTimeAgo(r.updated_at),
+        timestamp: timestampFromDate(r.updated_at)
+      });
+    });
+
+    // Scan test cases
+    testCases.slice(0, 2).forEach(tc => {
+      activities.push({
+        user: "Priya Patel",
+        action: `approved test case ${tc.test_case_id}`,
+        subject: tc.title,
+        time: formatTimeAgo(tc.updated_at),
+        timestamp: timestampFromDate(tc.updated_at)
+      });
+    });
+
+    // Scan defects
+    defects.slice(0, 2).forEach(d => {
+      activities.push({
+        user: "Rohit Verma",
+        action: `logged defect ${d.defect_id}`,
+        subject: d.summary,
+        time: formatTimeAgo(d.created_at),
+        timestamp: timestampFromDate(d.created_at)
+      });
+    });
+
+    if (activities.length === 0) {
+      return [
+        { user: "Amit Sharma", action: "synchronized requirement models", subject: "REQ-1024 - eSIM Activation", time: "2 mins ago", timestamp: 0 },
+        { user: "Priya Patel", action: "approved test case layout", subject: "TC-1240 - eSIM Profile Download", time: "15 mins ago", timestamp: 0 },
+        { user: "Rohit Verma", action: "logged execution defect log", subject: "DEF-563 - Profile Download Failure", time: "25 mins ago", timestamp: 0 },
+      ];
+    }
+
+    return activities.sort((a, b) => b.timestamp - a.timestamp).slice(0, 3);
+  }, [metrics, requirements, testCases, defects]);
+
+  return (
+    <div className="space-y-6 select-none pb-8 animate-fade-in">
+      {/* ── Title & Global Controls ────────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-indigo-500" />
+            STLC Command Center
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            AI-powered overview of quality engineering lifecycle and release readiness
+          </p>
+        </div>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <span className="text-[10px] text-slate-400 font-mono">
+            Last updated: {mounted ? lastUpdated.toLocaleTimeString() : ""}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadData}
+            disabled={loading}
+            className="h-8 w-8 p-0 border-slate-200"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          </Button>
+
+          {/* New Action Dropdown */}
+          <div className="relative">
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 font-semibold"
+              onClick={() => setNewDropdownOpen(!newDropdownOpen)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+            {newDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setNewDropdownOpen(false)} />
+                <div className="absolute right-0 mt-1.5 w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-lg z-20">
+                  <Link
+                    href="/projects"
+                    className="block w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                    onClick={() => setNewDropdownOpen(false)}
+                  >
+                    Create Project
+                  </Link>
+                  <Link
+                    href="/test-cases"
+                    className="block w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                    onClick={() => setNewDropdownOpen(false)}
+                  >
+                    Add Test Case
+                  </Link>
+                  <Link
+                    href="/test-planning"
+                    className="block w-full px-4 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
+                    onClick={() => setNewDropdownOpen(false)}
+                  >
+                    Draft Test Plan
+                  </Link>
+                </div>
+              </>
+            )}
+          </div>
+          <Button variant="outline" size="sm" className="h-8 border-slate-200 p-2">
+            <MoreHorizontal className="h-4 w-4 text-slate-500" />
+          </Button>
+        </div>
+      </div>
+
+      {metricsError && (
+        <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded-xl text-xs flex items-center gap-2 mb-4">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+          <span>Failed to load centralized metrics: {metricsError}</span>
+        </div>
+      )}
+
+      {/* ── Executive Stats Grid (6 Cards) ──────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        {/* 1. Release Readiness */}
+        <Card className="hover:-translate-y-0.5 border-slate-200">
+          <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Release Readiness
+            </span>
+            {readinessInfo.status === "GO" ? (
+              <CheckCircle className="h-4 w-4 text-emerald-500" />
+            ) : readinessInfo.status === "AT-RISK" ? (
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+            ) : (
+              <AlertTriangle className="h-4 w-4 text-red-500 animate-pulse" />
+            )}
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-slate-900">{readinessInfo.score}%</span>
+              <span className={cn("text-xs font-bold capitalize", readinessInfo.statusColor)}>
+                {readinessInfo.status}
+              </span>
+            </div>
+            {/* Linear Progress */}
+            <div className="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden">
+              <div 
+                className={cn("h-full rounded-full transition-all duration-500", readinessInfo.barColor)}
+                style={{ width: `${readinessInfo.score}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2 font-medium">Target: 85%</p>
+          </CardContent>
+        </Card>
+
+        {/* 2. Requirements */}
+        <Card className="hover:-translate-y-0.5 border-slate-200">
+          <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Requirements
+            </span>
+            <FileText className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-bold text-slate-900">{stats.totalReqs}</div>
+            <p className="text-[10px] text-slate-400 font-medium">Total Specs</p>
+            <div className="flex items-center gap-1.5 mt-3 text-[10px] font-semibold">
+              <span className="text-emerald-600">{stats.approvedReqs} Approved</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-amber-500">{stats.pendingReqs} Pending</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 3. Test Cases */}
+        <Card className="hover:-translate-y-0.5 border-slate-200">
+          <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Test Cases
+            </span>
+            <TestTube2 className="h-4 w-4 text-violet-500" />
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-bold text-slate-900">
+              {stats.totalTCs.toLocaleString()}
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium">Total Test Library</p>
+            <div className="flex items-center gap-1.5 mt-3 text-[10px] font-semibold">
+              <span className="text-violet-600">{stats.automatedTCs} Automated</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-slate-500">{stats.manualTCs} Manual</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 4. Test Data Sets */}
+        <Card className="hover:-translate-y-0.5 border-slate-200">
+          <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Test Data Sets
+            </span>
+            <Database className="h-4 w-4 text-cyan-500" />
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-bold text-slate-900">{stats.totalData}</div>
+            <p className="text-[10px] text-slate-400 font-medium">Synthetic Buffers</p>
+            <div className="flex items-center gap-1.5 mt-3 text-[10px] font-semibold">
+              <span className="text-cyan-600">{stats.approvedData} Approved</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-amber-500">{stats.pendingData} Pending</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 5. Execution Runs */}
+        <Card className="hover:-translate-y-0.5 border-slate-200">
+          <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Execution Runs
+            </span>
+            <Play className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-bold text-slate-900">{stats.totalRuns}</div>
+            <p className="text-[10px] text-slate-400 font-medium">Completed Cycles</p>
+            <div className="flex items-center gap-1 mt-3 text-[9px] font-bold tracking-tight">
+              <span className="text-emerald-600">{stats.completedRuns} Pass</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-red-500">{stats.failedRuns} Fail</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-blue-500">{stats.runningRuns} Active</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 6. Open Defects */}
+        <Card className="hover:-translate-y-0.5 border-slate-200">
+          <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Open Defects
+            </span>
+            <Bug className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="text-2xl font-bold text-red-600">{stats.totalDefects}</div>
+            <p className="text-[10px] text-slate-400 font-medium">Active Anomalies</p>
+            <div className="flex items-center gap-1 mt-3 text-[9px] font-bold tracking-tight">
+              <span className="text-red-600">{stats.criticalDefects} Crit</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-orange-500">{stats.highDefects} High</span>
+              <span className="text-slate-300">•</span>
+              <span className="text-amber-500">{stats.mediumDefects} Med</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── STLC Pipeline Overview (Nodes flow) ─────────────────────────────────── */}
+      <Card className="border-slate-200">
+        <CardHeader className="p-5 flex flex-row items-center justify-between border-b border-slate-100">
+          <div>
+            <CardTitle className="text-sm font-semibold">STLC Pipeline Overview</CardTitle>
+            <CardDescription className="text-[10px] mt-0.5">End-to-end lifecycle progress and approval quality scores</CardDescription>
+          </div>
+          <Link href="/reports">
+            <Button variant="outline" size="sm" className="h-8 text-xs border-slate-200 gap-1 hover:bg-slate-50 font-semibold text-slate-600">
+              <BarChart3 className="h-3.5 w-3.5 text-slate-500" />
+              View STLC Report
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-6 lg:gap-4 overflow-x-auto select-none no-scrollbar">
+            {pipelineSteps.map((step, idx) => (
+              <div key={step.label} className="flex flex-col lg:flex-row items-center flex-1 w-full lg:w-auto">
+                <div className="flex flex-col items-center text-center">
+                  <div className="relative flex items-center justify-center">
+                    <ProgressRing progress={step.rate} color={step.color} radius={24} stroke={2.5} />
+                    <span className="absolute text-[10px] font-bold text-slate-800">
+                      {step.rate}%
+                    </span>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-800 mt-2.5">{step.label}</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5">
+                    {step.isDefects ? `${step.current} Open` : `${step.current} / ${step.total}`}
+                  </span>
+                </div>
+                
+                {/* Connector Line */}
+                {idx < pipelineSteps.length - 1 && (
+                  <div className="hidden lg:flex items-center justify-center flex-1 mx-2 shrink-0">
+                    <div className="h-0.5 bg-slate-100 w-12 xl:w-16 relative">
+                      <ChevronRight className="absolute -right-2 -top-1.5 h-3.5 w-3.5 text-slate-300" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Domain Quality Grid ─────────────────────────────────────────────────── */}
+      <Card className="border-slate-200">
+        <CardHeader className="p-5 border-b border-slate-100">
+          <div>
+            <CardTitle className="text-sm font-semibold">Domain Quality Grid</CardTitle>
+            <CardDescription className="text-[10px] mt-0.5">Test pass rate and coverage across telecom business domains</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-4">
+            {domainStats.map((item) => (
+              <div key={item.domain} className="flex flex-col p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                <span className="text-[10px] font-bold text-slate-500 truncate" title={item.domain}>
+                  {item.domain}
+                </span>
+                <div className="flex items-baseline gap-1 mt-2">
+                  <span className="text-lg font-bold text-slate-800">{item.passRate}%</span>
+                  <span className="text-[8px] text-slate-400 font-semibold">pass</span>
+                </div>
+                {/* Progress bar */}
+                <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                  <div 
+                    className={cn(
+                      "h-full rounded-full transition-all duration-500",
+                      item.passRate >= 90 ? "bg-emerald-500" : item.passRate >= 80 ? "bg-blue-500" : "bg-amber-500"
+                    )}
+                    style={{ width: `${item.passRate}%` }}
+                  />
+                </div>
+                <span className="text-[8px] text-slate-400 font-medium mt-1.5">
+                  {item.total} test cases
+                </span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Row 1: Execution Trend, Defect Doughnut, Jira Health ───────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Execution Trend Line Chart */}
+        <Card className="lg:col-span-1 border-slate-200">
+          <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="text-sm font-semibold">Execution Trend</CardTitle>
+              <CardDescription className="text-[10px]">Test execution outcomes by run package</CardDescription>
+            </div>
+            <select className="border border-slate-200 rounded-lg text-[10px] font-semibold px-2 py-1 text-slate-500 focus:outline-none focus:ring-1 focus:ring-[#1b59f8]">
+              <option>Last 7 Days</option>
+              <option>Last 30 Days</option>
+            </select>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="h-60 w-full mt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} tickLine={false} />
+                  <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} />
+                  <RechartsTooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} />
+                  <Legend iconSize={8} wrapperStyle={{ fontSize: '10px', paddingTop: '10px' }} />
+                  <Line type="monotone" dataKey="Passed" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="Failed" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Defect Summary Doughnut Chart */}
+        <Card className="lg:col-span-1 border-slate-200">
+          <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="text-sm font-semibold">Defect Summary</CardTitle>
+              <CardDescription className="text-[10px]">Active defect breakdown by severity</CardDescription>
+            </div>
+            <select className="border border-slate-200 rounded-lg text-[10px] font-semibold px-2 py-1 text-slate-500 focus:outline-none focus:ring-1 focus:ring-[#1b59f8]">
+              <option>This Release</option>
+              <option>All Defects</option>
+            </select>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="flex flex-row items-center justify-between h-60 mt-2">
+              <div className="h-full w-1/2 relative flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={defectChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={70}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {defectChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Center text overlay */}
+                <div className="absolute text-center">
+                  <p className="text-2xl font-bold text-slate-800">{stats.totalDefects}</p>
+                  <p className="text-[9px] text-slate-400 uppercase font-semibold tracking-wider">Total</p>
+                </div>
+              </div>
+
+              {/* Legends list */}
+              <div className="w-1/2 space-y-2 pl-4">
+                {defectChartData.map((entry) => {
+                  const pct = stats.totalDefects > 0 ? Math.round((entry.value / stats.totalDefects) * 100) : 0;
+                  return (
+                    <div key={entry.name} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                        <span className="text-slate-600 font-medium">{entry.name}</span>
+                      </div>
+                      <span className="text-slate-500 font-semibold pr-2">{entry.value} ({pct}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Jira Sync Health Status */}
+        <Card className="lg:col-span-1 border-slate-200">
+          <CardHeader className="p-5 flex flex-row items-center justify-between space-y-0">
+            <div>
+              <CardTitle className="text-sm font-semibold">Jira Sync Health</CardTitle>
+              <CardDescription className="text-[10px]">Real-time integration sync stats</CardDescription>
+            </div>
+            <select className="border border-slate-200 rounded-lg text-[10px] font-semibold px-2 py-1 text-slate-500 focus:outline-none focus:ring-1 focus:ring-[#1b59f8]">
+              <option>All Systems</option>
+            </select>
+          </CardHeader>
+          <CardContent className="p-5 pt-0">
+            {/* Status Indicator Bar */}
+            <div className={cn(
+              "flex items-start gap-3 rounded-xl p-3.5 mt-2 border",
+              jiraStats.isHealthy 
+                ? "bg-emerald-50 border-emerald-100" 
+                : jiraStats.failureCount > 0 
+                  ? "bg-red-50 border-red-100" 
+                  : "bg-amber-50 border-amber-100"
+            )}>
+              {jiraStats.isHealthy ? (
+                <ShieldCheck className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+              ) : jiraStats.failureCount > 0 ? (
+                <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+              )}
+              <div>
+                <p className={cn(
+                  "text-xs font-bold",
+                  jiraStats.isHealthy 
+                    ? "text-emerald-800" 
+                    : jiraStats.failureCount > 0 
+                      ? "text-red-800" 
+                      : "text-amber-800"
+                )}>
+                  {jiraStats.isHealthy 
+                    ? "All systems are healthy" 
+                    : jiraStats.failureCount > 0 
+                      ? `${jiraStats.failureCount} Sync failures detected` 
+                      : `${jiraStats.conflictCount} Conflicts detected`}
+                </p>
+                <p className={cn(
+                  "text-[10px] mt-1",
+                  jiraStats.isHealthy 
+                    ? "text-emerald-600" 
+                    : jiraStats.failureCount > 0 
+                      ? "text-red-600" 
+                      : "text-amber-600"
+                )}>
+                  {jiraStats.isHealthy ? "Last synced 2 mins ago" : "Please check sync monitor"}
+                </p>
+              </div>
+            </div>
+
+            {/* Sync Grid */}
+            <div className="grid grid-cols-3 gap-2 mt-5 border-t border-slate-50 pt-5 text-center">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Synced Issues
+                </p>
+                <p className="text-lg font-bold text-slate-800 mt-1">{jiraStats.syncedCount}</p>
+              </div>
+              <div className="border-x border-slate-100">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Sync Failures
+                </p>
+                <p className={cn("text-lg font-bold mt-1", jiraStats.failureCount > 0 ? "text-red-600" : "text-slate-800")}>
+                  {jiraStats.failureCount}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Conflicts
+                </p>
+                <p className={cn("text-lg font-bold mt-1", jiraStats.conflictCount > 0 ? "text-amber-500" : "text-slate-800")}>
+                  {jiraStats.conflictCount}
+                </p>
+              </div>
+            </div>
+
+            {/* Link to Sync Page */}
+            <div className="mt-6">
+              <Link href="/settings" className="text-xs font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
+                View Sync Monitor
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Row 2: AI Agent Activity, Pending Approvals, Recent Activity ───────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 1. AI Agent Activity */}
+        <Card className="border-slate-200">
+          <CardHeader className="p-5 flex flex-row items-center justify-between border-b border-slate-100">
+            <div>
+              <CardTitle className="text-sm font-semibold">AI Agent Activity</CardTitle>
+              <CardDescription className="text-[10px]">Real-time autonomous engineering agents</CardDescription>
+            </div>
+            <select className="border border-slate-200 rounded-lg text-[10px] font-semibold px-2 py-1 text-slate-500 focus:outline-none focus:ring-1 focus:ring-[#1b59f8]">
+              <option>Recent Runs</option>
+            </select>
+          </CardHeader>
+          <CardContent className="p-4 pt-2">
+            <div className="space-y-4">
+              {agentActivity.map((agent, i) => (
+                <div key={`${agent.name}-${i}`} className="flex items-start gap-3.5 text-xs py-1.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 border border-indigo-100">
+                    <Bot className="h-4.5 w-4.5 text-indigo-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-800 truncate">{agent.name}</p>
+                      <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-2">{agent.time}</span>
+                    </div>
+                    <p className="text-slate-500 text-[11px] truncate mt-0.5">{agent.detail}</p>
+                  </div>
+                  <Badge variant={agent.status === "completed" ? "success" : agent.status === "running" ? "info" : "destructive"} className="shrink-0 capitalize">
+                    {agent.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 border-t border-slate-50 pt-4">
+              <Link href="/agents" className="text-xs font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
+                View All Agent Runs
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 2. Pending Approvals */}
+        <Card className="border-slate-200">
+          <CardHeader className="p-5 flex flex-row items-center justify-between border-b border-slate-100">
+            <div>
+              <CardTitle className="text-sm font-semibold">Pending Approvals</CardTitle>
+              <CardDescription className="text-[10px]">Quality gate authorization requests</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-2">
+            <div className="space-y-4">
+              {pendingApprovals.map((item, i) => (
+                <div key={item.title + i} className="flex items-start justify-between gap-3 text-xs py-1">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 border border-slate-200">
+                      <FileText className="h-4.5 w-4.5 text-slate-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-800 truncate">{item.title}</p>
+                      <p className="text-slate-500 text-[10px] mt-0.5 truncate">{item.subtitle}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant="secondary" className="font-bold bg-slate-100 px-2 py-0.5">
+                      {item.count}
+                    </Badge>
+                    <span className={cn("text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border", item.priorityColor)}>
+                      {item.priority.split(" ")[0]}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 border-t border-slate-50 pt-4">
+              <Link href="/test-cases" className="text-xs font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
+                View All Approvals
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 3. Recent Activity */}
+        <Card className="border-slate-200">
+          <CardHeader className="p-5 flex flex-row items-center justify-between border-b border-slate-100">
+            <div>
+              <CardTitle className="text-sm font-semibold">Recent Activity</CardTitle>
+              <CardDescription className="text-[10px]">QA lifecycle audit logs</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-2">
+            <div className="space-y-4">
+              {recentActivities.map((act, i) => (
+                <div key={i} className="flex items-start gap-3.5 text-xs py-1.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 border border-slate-200 text-slate-600 font-bold text-xs">
+                    {act.user.split(" ").map(n => n[0]).join("")}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <p className="text-slate-800 font-medium">
+                        <span className="font-bold">{act.user}</span> {act.action}
+                      </p>
+                      <span className="text-[10px] text-slate-400 font-medium shrink-0 ml-2">{act.time}</span>
+                    </div>
+                    <p className="text-slate-500 text-[10px] truncate mt-1">{act.subject}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 border-t border-slate-50 pt-4">
+              <Link href="/dashboard" className="text-xs font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
+                View All Activity
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-semibold">Loading Command Center...</div>}>
+      <DashboardContent />
+    </Suspense>
+  );
+}

@@ -140,6 +140,43 @@ function AgentPill({ status }: { status: AgentStatus }) {
   );
 }
 
+// ── NBA Tile Card (icon-left, title+badge right) ──────────────────────────────
+function NBACard({ action, href }: {
+  action: typeof NEXT_BEST_ACTIONS_MOCK[number];
+  href: string;
+}) {
+  const labelStyle = action.variant === "high"     ? "text-blue-600 bg-blue-50 border-blue-200"
+    : action.variant === "ai"       ? "text-violet-600 bg-violet-50 border-violet-200"
+    : action.variant === "critical" ? "text-red-600 bg-red-50 border-red-200"
+    : "text-slate-500 bg-slate-50 border-slate-200";
+  const iconBg = action.variant === "high"     ? "bg-blue-50 border-blue-100 text-blue-500"
+    : action.variant === "ai"       ? "bg-violet-50 border-violet-100 text-violet-500"
+    : action.variant === "critical" ? "bg-red-50 border-red-100 text-red-500"
+    : "bg-slate-50 border-slate-100 text-slate-400";
+  const ActionIcon = action.variant === "ai"       ? TestTube2
+    : action.variant === "critical"                ? Bug
+    : action.href.includes("test-data")            ? Database
+    : action.href.includes("execution")            ? Play
+    : FileText;
+  return (
+    <Link href={href}>
+      <div className="flex items-start gap-2 p-2.5 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/20 transition-all cursor-pointer group h-full">
+        <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border mt-0.5", iconBg)}>
+          <ActionIcon className="h-3.5 w-3.5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-semibold text-slate-800 leading-snug group-hover:text-blue-600 transition-colors">
+            {action.title}
+          </p>
+          <span className={cn("inline-flex items-center mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded border", labelStyle)}>
+            {action.label}
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 // ── Main Dashboard ────────────────────────────────────────────────────────────
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -520,19 +557,17 @@ function DashboardContent() {
       return (metrics.recentActivities ?? []).map(act => ({
         user: act.user, action: act.action, subject: act.subject,
         time: act.time ? formatTimeAgo(act.time) : "Just now",
-        timestamp: timestampFromDate(act.time), isAgent: false,
+        timestamp: timestampFromDate(act.time), isAgent: (act as any).is_agent ?? false,
       }));
     }
     const activities: ActivityItem[] = [];
-    requirements.slice(0, 2).forEach(r => activities.push({ user: "Priya Patel", action: `approved requirement ${r.requirement_id}`, subject: r.title, time: formatTimeAgo(r.updated_at), timestamp: timestampFromDate(r.updated_at), isAgent: false }));
-    testCases.slice(0, 1).forEach(tc => activities.push({ user: "Amit Sharma", action: `reviewed test case ${tc.test_case_id}`, subject: tc.title, time: formatTimeAgo(tc.updated_at), timestamp: timestampFromDate(tc.updated_at), isAgent: false }));
-    defects.slice(0, 1).forEach(d => activities.push({ user: "Rohit Verma", action: `logged defect ${d.defect_id || ""}`, subject: d.summary, time: formatTimeAgo(d.created_at), timestamp: timestampFromDate(d.created_at), isAgent: false }));
+    requirements.slice(0, 2).forEach(r => activities.push({ user: "System", action: `updated requirement ${r.requirement_id}`, subject: r.title, time: formatTimeAgo(r.updated_at), timestamp: timestampFromDate(r.updated_at), isAgent: false }));
+    testCases.slice(0, 1).forEach(tc => activities.push({ user: "System", action: `updated test case ${tc.test_case_id}`, subject: tc.title, time: formatTimeAgo(tc.updated_at), timestamp: timestampFromDate(tc.updated_at), isAgent: false }));
+    defects.slice(0, 1).forEach(d => activities.push({ user: "System", action: `logged defect ${d.defect_id || ""}`, subject: d.summary, time: formatTimeAgo(d.created_at), timestamp: timestampFromDate(d.created_at), isAgent: false }));
     agentRuns.slice(0, 2).forEach(r => activities.push({ user: "AI Agent", action: r.progress_message || `Completed ${r.agent_name}`, subject: "", time: formatTimeAgo(r.created_at), timestamp: timestampFromDate(r.created_at), isAgent: true }));
     if (!activities.length) return [
-      { user: "Priya Patel", action: "approved requirement REQ-1023", subject: "Requirements", time: "Just now", timestamp: 0, isAgent: false },
-      { user: "Rohit Verma", action: "logged defect DEF-0006 (Critical)", subject: "Defects", time: "5m ago", timestamp: 0, isAgent: false },
-      { user: "AI Agent", action: "generated 56 test cases for REQ-1012", subject: "Test Cases", time: "8m ago", timestamp: 0, isAgent: true },
-      { user: "AI Agent", action: "completed execution run #0005", subject: "Execution", time: "10m ago", timestamp: 0, isAgent: true },
+      { user: "System", action: "project ready — upload requirements to begin", subject: "Getting Started", time: "Just now", timestamp: 0, isAgent: false },
+      { user: "AI Agent", action: "ready to generate test cases and automation scripts", subject: "AI Agents", time: "Just now", timestamp: 0, isAgent: true },
     ];
     return activities.sort((a, b) => b.timestamp - a.timestamp).slice(0, 6);
   }, [metrics, requirements, testCases, defects, agentRuns]);
@@ -830,39 +865,18 @@ function DashboardContent() {
             </div>
             <CardDescription className="text-[10px] mt-0.5">Recommended actions to improve release readiness</CardDescription>
           </CardHeader>
-          <CardContent className="p-4">
-            <div className="space-y-2">
-              {NEXT_BEST_ACTIONS_MOCK.map(action => {
-                const labelStyle = action.variant === "high" ? "text-blue-600 bg-blue-50 border-blue-200"
-                  : action.variant === "ai" ? "text-violet-600 bg-violet-50 border-violet-200"
-                  : action.variant === "critical" ? "text-red-600 bg-red-50 border-red-200"
-                  : "text-slate-500 bg-slate-50 border-slate-200";
-                const iconBg = action.variant === "high" ? "bg-blue-50 border-blue-100"
-                  : action.variant === "ai" ? "bg-violet-50 border-violet-100"
-                  : action.variant === "critical" ? "bg-red-50 border-red-100"
-                  : "bg-slate-50 border-slate-100";
-                const ActionIcon = action.variant === "ai" ? TestTube2
-                  : action.variant === "critical" ? Bug
-                  : action.variant === "warning" && action.href.includes("test-data") ? Database
-                  : action.href.includes("execution") ? Play
-                  : FileText;
-                return (
-                  <Link key={action.title} href={projectLink(action.href)}>
-                    <div className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-100 hover:border-slate-200 hover:bg-slate-50 transition-all cursor-pointer group">
-                      <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border", iconBg)}>
-                        <ActionIcon className="h-3.5 w-3.5 text-slate-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-slate-800 truncate group-hover:text-blue-600 transition-colors">{action.title}</p>
-                        <span className={cn("inline-flex items-center mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded border", labelStyle)}>
-                          {action.label}
-                        </span>
-                      </div>
-                      <ChevronRight className="h-3.5 w-3.5 text-slate-300 group-hover:text-slate-500 shrink-0" />
-                    </div>
-                  </Link>
-                );
-              })}
+          <CardContent className="p-4 pt-3 flex flex-col gap-2">
+            {/* Row 1: 3 equal tiles */}
+            <div className="grid grid-cols-3 gap-2">
+              {NEXT_BEST_ACTIONS_MOCK.slice(0, 3).map(action => (
+                <NBACard key={action.title} action={action} href={projectLink(action.href)} />
+              ))}
+            </div>
+            {/* Row 2: 2 wider tiles — each spans half the panel width */}
+            <div className="grid grid-cols-2 gap-2">
+              {NEXT_BEST_ACTIONS_MOCK.slice(3).map(action => (
+                <NBACard key={action.title} action={action} href={projectLink(action.href)} />
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -880,30 +894,29 @@ function DashboardContent() {
               </Button>
             </Link>
           </CardHeader>
-          <CardContent className="p-5">
-            <div className="flex flex-col lg:flex-row items-stretch justify-between gap-4 overflow-x-auto no-scrollbar">
+          <CardContent className="p-4 pt-3">
+            <div className="flex items-start justify-between gap-1 overflow-x-auto no-scrollbar">
               {pipelineWithMeta.map((step, idx) => (
-                <div key={step.label} className="flex flex-col lg:flex-row items-center flex-1">
-                  <div className="flex flex-col items-center text-center min-w-[64px]">
+                <div key={step.label} className="flex items-center flex-1 min-w-0">
+                  {/* Stage node */}
+                  <div className="flex flex-col items-center text-center flex-1 min-w-[58px]">
                     <div className="relative flex items-center justify-center">
-                      <ProgressRing progress={step.rate} color={step.color} radius={26} stroke={2.5} />
-                      <span className="absolute text-[9px] font-bold text-slate-800">{step.rate}%</span>
+                      <ProgressRing progress={step.rate} color={step.color} radius={22} stroke={2.5} />
+                      <span className="absolute text-[8px] font-bold text-slate-800">{step.rate}%</span>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-800 mt-1.5 leading-tight">{step.label}</span>
-                    <span className="text-[9px] text-slate-400 mt-0.5">
-                      {(step as typeof step & { isDefects?: boolean }).isDefects ? `${step.current} Open` : `${step.current} / ${step.total}`}
+                    <span className="text-[9px] font-bold text-slate-800 mt-1 leading-tight">{step.label}</span>
+                    <span className="text-[8px] text-slate-400 mt-0.5 leading-tight">
+                      {(step as typeof step & { isDefects?: boolean }).isDefects
+                        ? `${step.current} Open` : `${step.current} / ${step.total}`}
                     </span>
-                    <p className="text-[9px] text-slate-500 mt-0.5 leading-tight max-w-[72px]">{step.note}</p>
-                    <div className="mt-1.5">
+                    <p className="text-[8px] text-slate-500 mt-0.5 leading-tight px-0.5">{step.note}</p>
+                    <div className="mt-1">
                       <RiskBadge risk={step.risk as "Low" | "Medium" | "High" | "Critical"} />
                     </div>
                   </div>
+                  {/* Arrow connector */}
                   {idx < pipelineWithMeta.length - 1 && (
-                    <div className="hidden lg:flex items-center justify-center flex-1 mx-1 shrink-0">
-                      <div className="h-px bg-slate-200 w-8 xl:w-10 relative">
-                        <ChevronRight className="absolute -right-2 -top-2 h-4 w-4 text-slate-300" />
-                      </div>
-                    </div>
+                    <ChevronRight className="h-3.5 w-3.5 text-slate-300 shrink-0 mx-0.5" />
                   )}
                 </div>
               ))}

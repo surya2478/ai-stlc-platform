@@ -40,6 +40,10 @@ tls/
 Thumbs.db
 .vscode/
 .idea/
+.write_test
+layout-check/
+frontend/.npm/
+*.tsbuildinfo
 
 # Alembic generated (keep migrations, not local state)
 alembic/versions/__pycache__/

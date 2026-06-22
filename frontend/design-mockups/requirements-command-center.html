@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Requirements Command Center - e& AI STLC Platform</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Outfit', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #f8fafc;
+      font-family: 'Inter', sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex">
+
+  <!-- Left Navigation Sidebar -->
+  <aside class="w-64 bg-[#0b1329] text-slate-400 shrink-0 flex flex-col hidden lg:flex">
+    <!-- Brand / Logo -->
+    <div class="h-16 flex items-center px-6 border-b border-slate-800 gap-3">
+      <div class="h-8 w-8 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-bold text-lg font-display">e</div>
+      <div>
+        <h1 class="text-white font-bold font-display text-sm tracking-wide leading-none">e& STLC</h1>
+        <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">AI Platform</span>
+      </div>
+    </div>
+    
+    <!-- Sidebar Navigation -->
+    <nav class="flex-1 px-4 py-6 space-y-1 overflow-y-auto custom-scrollbar">
+      <div class="text-[10px] font-bold text-slate-600 uppercase px-3 mb-2 tracking-wider">Dashboard</div>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="layout-dashboard" class="h-4.5 w-4.5"></i> Command Center
+      </a>
+      
+      <div class="text-[10px] font-bold text-slate-600 uppercase px-3 mt-6 mb-2 tracking-wider">QA Lifecycle</div>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold bg-[#1b59f8]/10 text-white border-l-2 border-[#1b59f8] transition-all">
+        <i data-lucide="file-text" class="h-4.5 w-4.5 text-[#1b59f8]"></i> Requirements
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="map" class="h-4.5 w-4.5"></i> Test Plans
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="list-todo" class="h-4.5 w-4.5"></i> Test Scenarios
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="shield-check" class="h-4.5 w-4.5"></i> Test Cases
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="database" class="h-4.5 w-4.5"></i> Test Data
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="terminal" class="h-4.5 w-4.5"></i> Automation
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="play-circle" class="h-4.5 w-4.5"></i> Executions
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="alert-circle" class="h-4.5 w-4.5"></i> Defects
+      </a>
+      
+      <div class="text-[10px] font-bold text-slate-600 uppercase px-3 mt-6 mb-2 tracking-wider">Governance</div>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="link" class="h-4.5 w-4.5"></i> Traceability
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="bar-chart-3" class="h-4.5 w-4.5"></i> Release Reports
+      </a>
+      <a href="#" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold hover:bg-slate-800 hover:text-white transition-all">
+        <i data-lucide="settings" class="h-4.5 w-4.5"></i> Settings
+      </a>
+    </nav>
+    
+    <!-- User profile / role footer -->
+    <div class="p-4 border-t border-slate-800 flex items-center gap-3">
+      <div class="h-9 w-9 rounded-full bg-slate-800 flex items-center justify-center text-white font-bold text-sm">AS</div>
+      <div class="min-w-0">
+        <p class="text-xs font-bold text-white truncate leading-none">Amit Sharma</p>
+        <span class="text-[10px] text-slate-500 font-semibold mt-1 block">QA Lead (Admin)</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 flex flex-col min-w-0 overflow-x-hidden relative pb-12">
+    <!-- Top Bar / Navbar -->
+    <header class="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-8 shrink-0 z-10">
+      <div class="flex items-center gap-4">
+        <!-- Project Switcher -->
+        <div class="flex items-center gap-2">
+          <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Project:</label>
+          <select class="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1b59f8] cursor-pointer">
+            <option value="5" selected>e& SuperApp Billing Integration</option>
+            <option value="6">e& Mobile Wallet Upgrade</option>
+            <option value="7">OSS Provisioning Redesign</option>
+          </select>
+        </div>
+        
+        <!-- Release Switcher -->
+        <div class="flex items-center gap-2">
+          <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Release:</label>
+          <select class="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1b59f8] cursor-pointer">
+            <option value="r1" selected>Release 2026.Q2</option>
+            <option value="r2">Release 2026.Q3</option>
+            <option value="h1">Hotfix 5.14.2</option>
+          </select>
+        </div>
+
+        <!-- Env Switcher -->
+        <div class="flex items-center gap-2">
+          <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Env:</label>
+          <select class="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 px-3 py-1.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1b59f8] cursor-pointer">
+            <option value="sit" selected>SIT-Core-Billing</option>
+            <option value="uat">UAT-SuperApp</option>
+          </select>
+        </div>
+      </div>
+      
+      <!-- Sync Status & Quick Actions -->
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2 bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1 text-[10px] font-bold text-emerald-700">
+          <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          Jira Connection: Healthy
+        </div>
+        <div class="text-[11px] text-slate-400 font-semibold">Last synced: <span class="text-slate-600 font-bold">12 mins ago</span></div>
+      </div>
+    </header>
+
+    <!-- Page Body Container -->
+    <div class="px-8 py-6 space-y-6">
+      
+      <!-- Title Block -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-bold font-display text-slate-900 leading-none">Requirements Command Center</h2>
+          <p class="text-xs text-slate-500 mt-2">AI-powered requirement intelligence, Jira synchronization, automated quality gates, and downstream test generation readiness.</p>
+        </div>
+        
+        <!-- Global Command Actions -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="bg-[#1b59f8] hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm flex items-center gap-1.5 transition-all">
+            <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i> Sync Jira Issues
+          </button>
+          <button class="bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm flex items-center gap-1.5 transition-all">
+            <i data-lucide="upload" class="h-3.5 w-3.5"></i> Upload Document
+          </button>
+          <button class="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold px-4 py-2 rounded-lg shadow-sm flex items-center gap-1.5 transition-all">
+            <i data-lucide="plus" class="h-3.5 w-3.5"></i> Add Manual
+          </button>
+          <button onclick="simulateAIQualityRun()" id="evaluate-quality-btn" class="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-750 hover:to-indigo-750 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm flex items-center gap-1.5 transition-all">
+            <i data-lucide="sparkles" class="h-3.5 w-3.5"></i> Evaluate Quality
+          </button>
+        </div>
+      </div>
+
+      <!-- AI Evaluation Live Progress Banner (Hidden by default, shown during simulation) -->
+      <div id="ai-progress-banner" class="hidden flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-semibold animate-pulse text-blue-700">
+        <i data-lucide="loader-2" class="h-4 w-4 animate-spin text-[#1b59f8] shrink-0"></i>
+        <span class="flex-1">Agent 2 (Quality Review Agent) is evaluating requirement clarity, testability, and checking telecom-domain gaps...</span>
+        <span class="text-[10px] font-mono" id="ai-progress-pct">10%</span>
+      </div>
+
+      <!-- Summary Metric Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <!-- Card 1 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500">Total Ingested Requirements</span>
+            <div class="h-8 w-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+              <i data-lucide="file-text" class="h-4 w-4"></i>
+            </div>
+          </div>
+          <div class="mt-4">
+            <h3 class="text-2xl font-bold text-slate-800 font-display">148</h3>
+            <p class="text-[10px] text-slate-400 font-semibold mt-1">92 from Jira · 56 manual/doc uploads</p>
+          </div>
+        </div>
+        <!-- Card 2 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500">Approved (Ready for Test Gen)</span>
+            <div class="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+              <i data-lucide="check-circle" class="h-4 w-4"></i>
+            </div>
+          </div>
+          <div class="mt-4">
+            <h3 class="text-2xl font-bold text-emerald-700 font-display">112</h3>
+            <p class="text-[10px] text-slate-400 font-semibold mt-1">75.6% of entire project backlog</p>
+          </div>
+        </div>
+        <!-- Card 3 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500">Needs Clarification</span>
+            <div class="h-8 w-8 rounded-lg bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600">
+              <i data-lucide="help-circle" class="h-4 w-4"></i>
+            </div>
+          </div>
+          <div class="mt-4">
+            <h3 class="text-2xl font-bold text-amber-700 font-display">24</h3>
+            <p class="text-[10px] text-slate-450 font-bold mt-1 text-amber-600">18 flagged by AI quality rules</p>
+          </div>
+        </div>
+        <!-- Card 4 -->
+        <div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-500">Jira Sync Conflicts</span>
+            <div class="h-8 w-8 rounded-lg bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
+              <i data-lucide="alert-triangle" class="h-4 w-4"></i>
+            </div>
+          </div>
+          <div class="mt-4">
+            <h3 class="text-2xl font-bold text-rose-700 font-display">12</h3>
+            <p class="text-[10px] text-slate-400 font-semibold mt-1">Stale requirements requiring review</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lifecycle Readiness Pipeline Tracker -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Requirements Readiness Pipeline</h4>
+        <div class="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-8 gap-2">
+          
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-center relative overflow-hidden">
+            <div class="text-[11px] font-bold text-slate-500">Imported / Draft</div>
+            <div class="text-lg font-bold text-slate-800 mt-1">12 <span class="text-[9px] text-slate-400">(8.1%)</span></div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-300"></div>
+          </div>
+          
+          <div class="bg-violet-50/30 border border-violet-100 rounded-lg p-2.5 text-center relative overflow-hidden">
+            <div class="text-[11px] font-bold text-violet-750">AI Reviewed</div>
+            <div class="text-lg font-bold text-violet-850 mt-1">42 <span class="text-[9px] text-violet-400">(28.4%)</span></div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-violet-400"></div>
+          </div>
+
+          <div class="bg-amber-50/30 border border-amber-100 rounded-lg p-2.5 text-center relative overflow-hidden">
+            <div class="text-[11px] font-bold text-amber-750">Clarifications</div>
+            <div class="text-lg font-bold text-amber-850 mt-1">24 <span class="text-[9px] text-amber-400">(16.2%)</span></div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-amber-400"></div>
+          </div>
+
+          <div class="bg-blue-50/30 border border-blue-100 rounded-lg p-2.5 text-center relative overflow-hidden">
+            <div class="text-[11px] font-bold text-blue-750">Ready for Plan</div>
+            <div class="text-lg font-bold text-blue-850 mt-1">15 <span class="text-[9px] text-blue-400">(10.1%)</span></div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-blue-400"></div>
+          </div>
+
+          <div class="bg-emerald-50/30 border border-emerald-100 rounded-lg p-2.5 text-center relative overflow-hidden">
+            <div class="text-[11px] font-bold text-emerald-750">Approved</div>
+            <div class="text-lg font-bold text-emerald-850 mt-1">112 <span class="text-[9px] text-emerald-400">(75.6%)</span></div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500"></div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-150 rounded-lg p-2.5 text-center relative overflow-hidden">
+            <div class="text-[11px] font-bold text-slate-500">Test Plan Gen</div>
+            <div class="text-lg font-bold text-slate-800 mt-1">84 <span class="text-[9px] text-slate-400">(56.7%)</span></div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-400"></div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-150 rounded-lg p-2.5 text-center relative overflow-hidden">
+            <div class="text-[11px] font-bold text-slate-500">Scenarios Gen</div>
+            <div class="text-lg font-bold text-slate-800 mt-1">68 <span class="text-[9px] text-slate-400">(45.9%)</span></div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-400"></div>
+          </div>
+
+          <div class="bg-slate-50 border border-slate-150 rounded-lg p-2.5 text-center relative overflow-hidden">
+            <div class="text-[11px] font-bold text-slate-500">Jira Synced</div>
+            <div class="text-lg font-bold text-slate-800 mt-1">92 <span class="text-[9px] text-slate-400">(62.2%)</span></div>
+            <div class="absolute bottom-0 left-0 right-0 h-1 bg-slate-400"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Smart Filters / Tabs & Views -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-2 border border-slate-200 rounded-xl">
+        <div class="flex flex-wrap gap-1">
+          <button class="bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg">All Status</button>
+          <button class="hover:bg-slate-100 text-slate-650 text-xs font-semibold px-3 py-1.5 rounded-lg">Draft</button>
+          <button class="hover:bg-slate-100 text-slate-650 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+            AI Review Pending <span class="rounded-full bg-violet-100 text-violet-750 px-1.5 py-0.5 text-[9px] font-bold">12</span>
+          </button>
+          <button class="hover:bg-slate-100 text-slate-650 text-xs font-semibold px-3 py-1.5 rounded-lg">Needs Clarification</button>
+          <button class="hover:bg-slate-100 text-slate-650 text-xs font-semibold px-3 py-1.5 rounded-lg">Approved</button>
+          <button class="hover:bg-slate-100 text-slate-650 text-xs font-semibold px-3 py-1.5 rounded-lg text-rose-650 font-bold bg-rose-50 border border-rose-100">Jira Conflict (12)</button>
+          <div class="h-6 w-px bg-slate-200 mx-2 self-center"></div>
+          <button class="hover:bg-slate-100 text-slate-650 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            <span class="h-2 w-2 rounded-full bg-violet-500"></span> Billing
+          </button>
+          <button class="hover:bg-slate-100 text-slate-650 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            <span class="h-2 w-2 rounded-full bg-blue-500"></span> Mobile
+          </button>
+          <button class="hover:bg-slate-100 text-slate-650 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
+            <span class="h-2 w-2 rounded-full bg-purple-500"></span> OSS/BSS
+          </button>
+        </div>
+        
+        <!-- Search and Config -->
+        <div class="flex items-center gap-2 px-2">
+          <div class="relative">
+            <i data-lucide="search" class="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400"></i>
+            <input type="text" placeholder="Search requirements..." class="pl-8 pr-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48">
+          </div>
+          <button class="p-1.5 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-500">
+            <i data-lucide="sliders-horizontal" class="h-4 w-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Requirements Table Card -->
+      <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-left border-collapse text-xs select-none">
+            <thead class="bg-slate-50 border-b border-slate-200 text-[10px] font-extrabold uppercase tracking-wider text-slate-450">
+              <tr>
+                <th class="px-5 py-3">Req ID</th>
+                <th class="px-5 py-3">Jira Key</th>
+                <th class="px-5 py-3">Title</th>
+                <th class="px-5 py-3">Domain</th>
+                <th class="px-5 py-3">Downstream Risk</th>
+                <th class="px-5 py-3">AI Quality</th>
+                <th class="px-5 py-3">Readiness</th>
+                <th class="px-5 py-3">Jira Sync</th>
+                <th class="px-5 py-3">Traceability</th>
+                <th class="px-5 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-slate-600 font-medium" id="requirements-table-body">
+              
+              <!-- Row 1 -->
+              <tr onclick="openDrawer('REQ-204')" class="hover:bg-slate-50/50 cursor-pointer transition-colors group">
+                <td class="px-5 py-3 font-mono font-bold text-[#1b59f8]">REQ-204</td>
+                <td class="px-5 py-3 font-mono text-slate-500 group-hover:text-blue-600 transition-colors">STLC-512</td>
+                <td class="px-5 py-3 font-bold text-slate-800 max-w-xs truncate">SuperApp 5G Charging Event Notification Middleware</td>
+                <td class="px-5 py-3">
+                  <span class="bg-violet-50 text-violet-700 border border-violet-100 px-2 py-0.5 rounded-md text-[10px] font-bold">Billing</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="bg-red-50 text-red-700 border border-red-100 px-2 py-0.5 rounded-md text-[10px] font-bold">High</span>
+                </td>
+                <td class="px-5 py-3">
+                  <div class="flex items-center gap-1">
+                    <span class="font-bold text-emerald-600">4.8</span>
+                    <div class="flex text-amber-400"><i data-lucide="star" class="h-3 w-3 fill-amber-400 text-amber-500"></i></div>
+                  </div>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold capitalize">Approved</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="text-emerald-500 flex items-center gap-1 font-semibold"><i data-lucide="check-circle" class="h-3.5 w-3.5"></i> Synced</span>
+                </td>
+                <td class="px-5 py-3">
+                  <div class="flex items-center gap-1.5 text-slate-400">
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700" title="Test Plan">TP</span>
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-750" title="Scenarios Count">TS: 4</span>
+                    <span class="border border-emerald-200 rounded px-1 text-[9px] bg-emerald-50 font-bold text-emerald-750" title="Test Cases Count">TC: 14</span>
+                  </div>
+                </td>
+                <td class="px-5 py-3 text-right" onclick="event.stopPropagation()">
+                  <button class="p-1 hover:bg-slate-100 rounded text-slate-500"><i data-lucide="more-horizontal" class="h-4 w-4"></i></button>
+                </td>
+              </tr>
+
+              <!-- Row 2 -->
+              <tr onclick="openDrawer('REQ-205')" class="hover:bg-slate-50/50 cursor-pointer transition-colors group">
+                <td class="px-5 py-3 font-mono font-bold text-[#1b59f8]">REQ-205</td>
+                <td class="px-5 py-3 font-mono text-slate-500">STLC-514</td>
+                <td class="px-5 py-3 font-bold text-slate-800 max-w-xs truncate">Mobile E-Wallet Auto-Recharge Threshold Checkout</td>
+                <td class="px-5 py-3">
+                  <span class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-md text-[10px] font-bold">Mobile</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="bg-orange-50 text-orange-700 border border-orange-100 px-2 py-0.5 rounded-md text-[10px] font-bold">Medium</span>
+                </td>
+                <td class="px-5 py-3">
+                  <div class="flex items-center gap-1">
+                    <span class="font-bold text-amber-600">3.4</span>
+                    <div class="flex text-amber-400"><i data-lucide="star" class="h-3 w-3 fill-amber-400 text-amber-500"></i></div>
+                  </div>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="bg-amber-50 text-amber-700 border border-amber-100 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold capitalize">Clarification</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="text-rose-500 flex items-center gap-1 font-semibold"><i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i> Conflict</span>
+                </td>
+                <td class="px-5 py-3">
+                  <div class="flex items-center gap-1.5 text-slate-400">
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TP</span>
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TS: 2</span>
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TC: 0</span>
+                  </div>
+                </td>
+                <td class="px-5 py-3 text-right" onclick="event.stopPropagation()">
+                  <button class="p-1 hover:bg-slate-100 rounded text-slate-500"><i data-lucide="more-horizontal" class="h-4 w-4"></i></button>
+                </td>
+              </tr>
+
+              <!-- Row 3 -->
+              <tr onclick="openDrawer('REQ-206')" class="hover:bg-slate-50/50 cursor-pointer transition-colors group">
+                <td class="px-5 py-3 font-mono font-bold text-[#1b59f8]">REQ-206</td>
+                <td class="px-5 py-3 font-mono text-slate-500">STLC-519</td>
+                <td class="px-5 py-3 font-bold text-slate-800 max-w-xs truncate">Unified CRM Customer Information Query API</td>
+                <td class="px-5 py-3">
+                  <span class="bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded-md text-[10px] font-bold">OSS/BSS</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="bg-gray-100 text-gray-700 border border-gray-150 px-2 py-0.5 rounded-md text-[10px] font-bold">Low</span>
+                </td>
+                <td class="px-5 py-3">
+                  <div class="flex items-center gap-1">
+                    <span class="font-bold text-emerald-600">4.9</span>
+                    <div class="flex text-amber-400"><i data-lucide="star" class="h-3 w-3 fill-amber-400 text-amber-500"></i></div>
+                  </div>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold capitalize">Approved</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="text-emerald-500 flex items-center gap-1 font-semibold"><i data-lucide="check-circle" class="h-3.5 w-3.5"></i> Synced</span>
+                </td>
+                <td class="px-5 py-3">
+                  <div class="flex items-center gap-1.5 text-slate-400">
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TP</span>
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TS: 6</span>
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TC: 18</span>
+                  </div>
+                </td>
+                <td class="px-5 py-3 text-right" onclick="event.stopPropagation()">
+                  <button class="p-1 hover:bg-slate-100 rounded text-slate-500"><i data-lucide="more-horizontal" class="h-4 w-4"></i></button>
+                </td>
+              </tr>
+
+              <!-- Row 4 -->
+              <tr onclick="openDrawer('REQ-207')" class="hover:bg-slate-50/50 cursor-pointer transition-colors group">
+                <td class="px-5 py-3 font-mono font-bold text-[#1b59f8]">REQ-207</td>
+                <td class="px-5 py-3 font-mono text-slate-400">-</td>
+                <td class="px-5 py-3 font-bold text-slate-800 max-w-xs truncate">TRA Mobile Network Interoperability Standard compliance</td>
+                <td class="px-5 py-3">
+                  <span class="bg-pink-50 text-pink-700 border border-pink-100 px-2 py-0.5 rounded-md text-[10px] font-bold">Network</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="bg-red-50 text-red-700 border border-red-100 px-2 py-0.5 rounded-md text-[10px] font-bold">High</span>
+                </td>
+                <td class="px-5 py-3">
+                  <div class="flex items-center gap-1" id="quality-val-req207">
+                    <span class="text-slate-450 font-bold">-</span>
+                  </div>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold capitalize" id="status-val-req207">Draft</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span class="text-slate-400 flex items-center gap-1 font-semibold"><i data-lucide="clock" class="h-3.5 w-3.5"></i> Unlinked</span>
+                </td>
+                <td class="px-5 py-3">
+                  <div class="flex items-center gap-1.5 text-slate-400">
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TP</span>
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TS: 0</span>
+                    <span class="border border-slate-200 rounded px-1 text-[9px] bg-slate-50 font-bold text-slate-700">TC: 0</span>
+                  </div>
+                </td>
+                <td class="px-5 py-3 text-right" onclick="event.stopPropagation()">
+                  <button class="p-1 hover:bg-slate-100 rounded text-slate-500"><i data-lucide="more-horizontal" class="h-4 w-4"></i></button>
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+    </div>
+
+    <!-- Right Sliding Drawer for Requirement Detail -->
+    <div id="detail-drawer" class="fixed inset-y-0 right-0 w-[42%] bg-white shadow-2xl border-l border-slate-200 z-50 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+      <!-- Drawer Header -->
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
+        <div class="flex items-center gap-2">
+          <i data-lucide="file-text" class="h-5 w-5 text-[#1b59f8]"></i>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900" id="drawer-req-id">Requirement: REQ-204</h3>
+            <p class="text-[10px] text-slate-500 font-semibold truncate max-w-sm" id="drawer-req-title">SuperApp 5G Charging Event Notification Middleware</p>
+          </div>
+        </div>
+        <button onclick="closeDrawer()" class="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400 hover:text-slate-700 transition-colors">
+          <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+      </div>
+
+      <!-- Drawer Tabs Navigation -->
+      <div class="px-6 border-b border-slate-200 flex gap-4 shrink-0 bg-slate-50/50">
+        <button onclick="switchTab('overview')" id="tab-overview" class="py-2.5 text-xs font-bold border-b-2 border-[#1b59f8] text-[#1b59f8]">Overview</button>
+        <button onclick="switchTab('criteria')" id="tab-criteria" class="py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800">Criteria</button>
+        <button onclick="switchTab('ai')" id="tab-ai" class="py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-1">AI Quality <span class="bg-violet-100 text-violet-750 text-[9px] px-1 rounded-full font-bold">4.8</span></button>
+        <button onclick="switchTab('jira')" id="tab-jira" class="py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800">Jira Sync</button>
+        <button onclick="switchTab('governance')" id="tab-governance" class="py-2.5 text-xs font-semibold border-b-2 border-transparent text-slate-500 hover:text-slate-800">Approvals</button>
+      </div>
+
+      <!-- Drawer Content Body -->
+      <div class="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6">
+        
+        <!-- Overview Tab Content -->
+        <div id="content-overview" class="tab-content space-y-5">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">Status</label>
+              <span class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold capitalize">Approved</span>
+            </div>
+            <div>
+              <label class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">Domain Space</label>
+              <span class="bg-violet-50 text-violet-700 border border-violet-100 px-2 py-0.5 rounded-md text-[10px] font-bold">Billing / Charging</span>
+            </div>
+          </div>
+          
+          <div class="space-y-1.5">
+            <label class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">Description Summary</label>
+            <p class="text-xs text-slate-650 leading-relaxed bg-slate-50 border rounded-xl p-3.5 font-semibold">
+              The 5G network charging core must broadcast real-time event notifications for credit thresholds, top-up receipts, and session updates to the SuperApp Middleware. This enables immediate user interface notifications and real-time ledger syncing.
+            </p>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">Impacted Systems</label>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="bg-slate-100 border border-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-semibold">e& Online Charging System (OCS)</span>
+              <span class="bg-slate-100 border border-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-semibold">SuperApp API Gateway</span>
+              <span class="bg-slate-100 border border-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg font-semibold">Kafka Notification Broker</span>
+            </div>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">Linked Interfaces</label>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="bg-blue-50 border border-blue-100 text-blue-700 font-mono text-[10px] px-2 py-0.5 rounded">Diameter (Gy/Gx)</span>
+              <span class="bg-blue-50 border border-blue-100 text-blue-700 font-mono text-[10px] px-2 py-0.5 rounded">REST API (/v2/billing/notify)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Criteria Tab Content -->
+        <div id="content-criteria" class="tab-content hidden space-y-4">
+          <label class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">Structured Acceptance Criteria</label>
+          <ul class="space-y-3">
+            <li class="flex items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-150">
+              <input type="checkbox" checked class="mt-0.5 rounded border-slate-300 text-[#1b59f8] focus:ring-[#1b59f8] h-4 w-4">
+              <span class="text-xs text-slate-700 leading-relaxed font-semibold">OCS must broadcast notifications within 50ms of credit threshold breach events.</span>
+            </li>
+            <li class="flex items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-150">
+              <input type="checkbox" checked class="mt-0.5 rounded border-slate-300 text-[#1b59f8] focus:ring-[#1b59f8] h-4 w-4">
+              <span class="text-xs text-slate-700 leading-relaxed font-semibold">Event messages must adhere strictly to the JSON schema payload defined in API design doc v4.2.</span>
+            </li>
+            <li class="flex items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-150">
+              <input type="checkbox" checked class="mt-0.5 rounded border-slate-300 text-[#1b59f8] focus:ring-[#1b59f8] h-4 w-4">
+              <span class="text-xs text-slate-700 leading-relaxed font-semibold">Failure delivery attempts to the SuperApp API Gateway must trigger up to 3 retry attempts before logging error.</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- AI Quality Tab Content -->
+        <div id="content-ai" class="tab-content hidden space-y-6">
+          <!-- Score overview -->
+          <div class="border border-violet-100 rounded-2xl bg-violet-50/20 p-5 space-y-4 shadow-sm">
+            <div class="flex items-center justify-between border-b pb-3 border-violet-100/50">
+              <div class="flex items-center gap-2">
+                <i data-lucide="sparkles" class="h-4.5 w-4.5 text-violet-600 fill-violet-200"></i>
+                <h4 class="text-xs font-bold text-slate-800">AI Quality Review Summary</h4>
+              </div>
+              <span class="bg-emerald-100 text-emerald-800 px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase">PASS</span>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-3">
+              <div class="bg-white border rounded-xl p-3 text-center">
+                <div class="text-2xl font-bold text-slate-800">4.9</div>
+                <div class="text-[9px] text-slate-400 font-extrabold uppercase mt-1">Completeness</div>
+              </div>
+              <div class="bg-white border rounded-xl p-3 text-center">
+                <div class="text-2xl font-bold text-slate-800">4.8</div>
+                <div class="text-[9px] text-slate-400 font-extrabold uppercase mt-1">Clarity</div>
+              </div>
+              <div class="bg-white border rounded-xl p-3 text-center">
+                <div class="text-2xl font-bold text-slate-800">4.7</div>
+                <div class="text-[9px] text-slate-400 font-extrabold uppercase mt-1">Testability</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Specific suggestions -->
+          <div class="space-y-3">
+            <div class="space-y-1">
+              <label class="text-[9px] font-extrabold uppercase tracking-wider text-rose-500 block">Issues Detected (0)</label>
+              <p class="text-xs text-slate-500 font-semibold italic">No ambiguities or conflicts found. Excellent quality.</p>
+            </div>
+            
+            <div class="space-y-2">
+              <label class="text-[9px] font-extrabold uppercase tracking-wider text-indigo-500 block">Suggested Improvements</label>
+              <ul class="text-xs space-y-2 font-semibold text-slate-650 bg-white rounded-xl p-4 border border-slate-150">
+                <li class="flex items-start gap-2"><i data-lucide="check" class="h-4 w-4 text-emerald-500 shrink-0 mt-0.5"></i> Add load testing boundary scenario for 100,000 requests/sec.</li>
+                <li class="flex items-start gap-2"><i data-lucide="check" class="h-4 w-4 text-emerald-500 shrink-0 mt-0.5"></i> Define exact mediation retry backoff interval parameters.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Improve Assistant Call-to-action -->
+          <div class="bg-gradient-to-tr from-[#7c3aed]/10 to-[#1b59f8]/10 border border-violet-100 rounded-2xl p-5 space-y-3">
+            <div class="flex items-center gap-2">
+              <i data-lucide="sparkles" class="h-4.5 w-4.5 text-violet-600"></i>
+              <h5 class="text-xs font-bold text-slate-900">AI Requirement Improvement Assistant</h5>
+            </div>
+            <p class="text-[11px] text-slate-550 leading-relaxed font-semibold">Generate a high-fidelity version of this requirement with missing negative conditions, performance criteria, and telecom data specs.</p>
+            <button onclick="toggleImproveAssistant()" class="w-full bg-slate-900 text-white font-bold text-xs py-2 rounded-lg hover:bg-slate-850 transition-colors">Open Improvement Panel</button>
+          </div>
+        </div>
+
+        <!-- Jira Tab Content -->
+        <div id="content-jira" class="tab-content hidden space-y-5">
+          <div class="flex items-center gap-3 bg-slate-50 border p-4 rounded-xl">
+            <i data-lucide="plug" class="h-6 w-6 text-[#1b59f8]"></i>
+            <div>
+              <h4 class="text-xs font-bold text-slate-800">Connected to Jira Issue: STLC-512</h4>
+              <p class="text-[10px] text-slate-400 font-semibold mt-0.5">Project: STLC (Atlassian Cloud e& sandbox)</p>
+            </div>
+          </div>
+          
+          <div class="space-y-3">
+            <label class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">Jira Fields Synced</label>
+            <div class="grid grid-cols-2 gap-4 text-xs font-semibold">
+              <div class="border rounded-lg p-2.5">
+                <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Priority</span>
+                <span class="text-slate-800 font-bold block mt-0.5">Highest</span>
+              </div>
+              <div class="border rounded-lg p-2.5">
+                <span class="text-[10px] text-slate-400 uppercase tracking-wider block">Issue Type</span>
+                <span class="text-slate-800 font-bold block mt-0.5">User Story</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Governance Tab Content -->
+        <div id="content-governance" class="tab-content hidden space-y-5">
+          <label class="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block">Approval Log & Audit Trail</label>
+          <div class="relative border-l border-slate-200 ml-3 space-y-6 pb-4">
+            
+            <!-- Timeline Item 1 -->
+            <div class="relative pl-6">
+              <div class="absolute -left-1.5 top-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center"></div>
+              <div class="text-xs">
+                <p class="font-bold text-slate-800">Approved by Amit Sharma (QA Lead)</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">2 hours ago</p>
+                <div class="bg-slate-50 border rounded-lg p-2.5 text-[11px] text-slate-600 mt-2 font-semibold italic">"The requirement is highly testable and structured. Scenarios generated."</div>
+              </div>
+            </div>
+            
+            <!-- Timeline Item 2 -->
+            <div class="relative pl-6">
+              <div class="absolute -left-1.5 top-0.5 h-3.5 w-3.5 rounded-full bg-violet-500 border-2 border-white flex items-center justify-center"></div>
+              <div class="text-xs">
+                <p class="font-bold text-slate-800">AI Quality Review completed (Passed)</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">3 hours ago</p>
+                <p class="text-[11px] text-slate-500 mt-1 font-semibold">Evaluated overall score: 4.8/5.0</p>
+              </div>
+            </div>
+
+            <!-- Timeline Item 3 -->
+            <div class="relative pl-6">
+              <div class="absolute -left-1.5 top-0.5 h-3.5 w-3.5 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center"></div>
+              <div class="text-xs">
+                <p class="font-bold text-slate-800">Ingested from Jira import sync loop</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">1 day ago</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Drawer Footer Action Bar -->
+      <div class="p-6 border-t border-slate-200 bg-slate-50 flex gap-2 shrink-0">
+        <button class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-colors">
+          <i data-lucide="check-circle" class="h-4 w-4"></i> Approve Requirement
+        </button>
+        <button class="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-rose-600 font-bold text-xs py-2.5 rounded-lg flex items-center justify-center gap-1.5 shadow-sm transition-colors">
+          <i data-lucide="x-circle" class="h-4 w-4"></i> Reject Spec
+        </button>
+      </div>
+    </div>
+
+    <!-- AI Improvement Side-by-Side Panel (Overlay popup container) -->
+    <div id="improvement-panel" class="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center hidden p-6">
+      <div class="w-full max-w-5xl bg-white rounded-2xl shadow-2xl border flex flex-col h-[85vh] animate-in fade-in zoom-in-95 duration-150">
+        <!-- Panel Header -->
+        <div class="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-2">
+            <i data-lucide="sparkles" class="h-5 w-5 text-violet-600"></i>
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">AI Requirement Improvement Assistant</h3>
+              <p class="text-[10px] text-slate-450 font-semibold">Generates detailed testable specifications based on best practices and telecom compliance standards.</p>
+            </div>
+          </div>
+          <button onclick="toggleImproveAssistant()" class="p-1.5 hover:bg-slate-200 rounded-lg text-slate-400">
+            <i data-lucide="x" class="h-4.5 w-4.5"></i>
+          </button>
+        </div>
+        
+        <!-- Side-by-Side Area -->
+        <div class="flex-1 flex min-h-0 divide-x divide-slate-200">
+          <!-- Left Column (Original Draft) -->
+          <div class="w-1/2 p-6 overflow-y-auto custom-scrollbar flex flex-col gap-4">
+            <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">Original Requirement Text (Jira STLC-512)</span>
+            <div class="flex-1 border border-slate-200 rounded-xl p-4 bg-slate-50 text-xs font-semibold text-slate-600 leading-relaxed overflow-y-auto">
+              <strong>Title:</strong> SuperApp 5G Charging Event Notification Middleware<br><br>
+              <strong>Description:</strong><br>
+              The 5G network charging core must broadcast real-time event notifications for credit thresholds, top-up receipts, and session updates to the SuperApp Middleware. This enables immediate user interface notifications and real-time ledger syncing.<br><br>
+              <strong>Acceptance Criteria:</strong><br>
+              - OCS must broadcast notifications within 50ms.<br>
+              - Event messages must adhere strictly to JSON schemas.<br>
+              - Failure delivery attempts must trigger up to 3 retry attempts.
+            </div>
+          </div>
+          
+          <!-- Right Column (AI Improved Proposed draft) -->
+          <div class="w-1/2 p-6 overflow-y-auto custom-scrollbar flex flex-col gap-4 bg-violet-50/5">
+            <span class="text-[10px] font-extrabold uppercase tracking-wider text-violet-600 block flex items-center gap-1"><i data-lucide="sparkles" class="h-3 w-3"></i> AI Proposed Improvement Draft (V2)</span>
+            <div class="flex-1 border border-violet-100 rounded-xl p-4 bg-white text-xs font-semibold text-slate-750 leading-relaxed overflow-y-auto space-y-4">
+              <div>
+                <strong class="text-violet-750">Enhanced Title:</strong> e& SuperApp 5G OCS Mediation Real-Time Balance & Event Notification System
+              </div>
+              <div class="border-l-2 border-violet-400 pl-3">
+                <strong>Detailed Description:</strong><br>
+                The 5G core Online Charging System (OCS) mediation engine must establish a low-latency gRPC stream and fallback REST webhook pipeline to dispatch transaction state event notifications (pre-paid balance warning, post-paid charging alerts, session top-up events) to the e& SuperApp Middleware. This ensures zero ledger lag and triggers real-time subscriber screen messages.
+              </div>
+              <div>
+                <strong>Missing Negative/Boundary Acceptance Criteria Added:</strong><br>
+                <ul class="list-disc pl-4 space-y-1.5 text-slate-600 mt-1">
+                  <li><span class="bg-violet-100 text-violet-800 px-1 rounded font-bold text-[10px]">Boundary</span> System must handle concurrent load spikes of up to 120,000 TPS under peak weekend call volume without drops.</li>
+                  <li><span class="bg-violet-100 text-violet-800 px-1 rounded font-bold text-[10px]">Negative</span> If SuperApp endpoint returns 503 Service Unavailable, OCS must buffer the notifications queue inside Redis cache for up to 3 hours.</li>
+                  <li><span class="bg-violet-100 text-violet-800 px-1 rounded font-bold text-[10px]">Data Spec</span> Event payloads must contain fully qualified MSISDN (E.164 format) and ISO-4217 currency codes.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Panel Footer -->
+        <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-2 shrink-0">
+          <button onclick="toggleImproveAssistant()" class="bg-slate-200 hover:bg-slate-350 text-slate-700 font-bold text-xs px-4 py-2.5 rounded-lg transition-colors">Discard Suggestions</button>
+          <button onclick="applyImprovement()" class="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-bold text-xs px-6 py-2.5 rounded-lg shadow-sm flex items-center gap-1.5 transition-colors">
+            <i data-lucide="check-circle" class="h-4 w-4"></i> Approve & Apply V2 Spec
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // Initialize icons
+    lucide.createIcons();
+
+    // Simulated drawer open state
+    function openDrawer(reqId) {
+      const drawer = document.getElementById('detail-drawer');
+      document.getElementById('drawer-req-id').innerText = 'Requirement: ' + reqId;
+      if (reqId === 'REQ-204') {
+        document.getElementById('drawer-req-title').innerText = 'SuperApp 5G Charging Event Notification Middleware';
+      } else if (reqId === 'REQ-205') {
+        document.getElementById('drawer-req-title').innerText = 'Mobile E-Wallet Auto-Recharge Threshold Checkout';
+      } else if (reqId === 'REQ-206') {
+        document.getElementById('drawer-req-title').innerText = 'Unified CRM Customer Information Query API';
+      } else {
+        document.getElementById('drawer-req-title').innerText = 'TRA Mobile Network Interoperability Standard compliance';
+      }
+      drawer.classList.remove('translate-x-full');
+    }
+
+    function closeDrawer() {
+      const drawer = document.getElementById('detail-drawer');
+      drawer.classList.add('translate-x-full');
+    }
+
+    // Switch between tabs in drawer
+    function switchTab(tabName) {
+      // Hide all contents
+      const contents = document.querySelectorAll('.tab-content');
+      contents.forEach(content => content.classList.add('hidden'));
+      
+      // Show chosen content
+      document.getElementById('content-' + tabName).classList.remove('hidden');
+      
+      // Reset all tab styling
+      const tabs = document.querySelectorAll('[id^="tab-"]');
+      tabs.forEach(tab => {
+        tab.classList.remove('border-[#1b59f8]', 'text-[#1b59f8]', 'font-bold');
+        tab.classList.add('border-transparent', 'text-slate-500', 'font-semibold');
+      });
+      
+      // Add active styling
+      const activeTab = document.getElementById('tab-' + tabName);
+      activeTab.classList.remove('border-transparent', 'text-slate-500', 'font-semibold');
+      activeTab.classList.add('border-[#1b59f8]', 'text-[#1b59f8]', 'font-bold');
+    }
+
+    // Toggle the AI Improvement panel
+    function toggleImproveAssistant() {
+      const panel = document.getElementById('improvement-panel');
+      panel.classList.toggle('hidden');
+    }
+
+    // Apply simulated improvement
+    function applyImprovement() {
+      toggleImproveAssistant();
+      // Simulate updates on row REQ-207
+      const qualityCell = document.getElementById('quality-val-req207');
+      qualityCell.innerHTML = `<span class="font-bold text-emerald-600">4.9</span><div class="flex text-amber-400"><i data-lucide="star" class="h-3 w-3 fill-amber-400 text-amber-500"></i></div>`;
+      
+      const statusCell = document.getElementById('status-val-req207');
+      statusCell.className = "bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold capitalize";
+      statusCell.innerText = "Approved";
+
+      lucide.createIcons();
+      alert('AI Improvement applied successfully! REQ-207 status promoted to Approved and Quality Score updated to 4.9/5.');
+    }
+
+    // Simulate AI Quality Run
+    function simulateAIQualityRun() {
+      const progressBanner = document.getElementById('ai-progress-banner');
+      const progressPct = document.getElementById('ai-progress-pct');
+      const evaluateBtn = document.getElementById('evaluate-quality-btn');
+      
+      evaluateBtn.disabled = true;
+      progressBanner.classList.remove('hidden');
+      
+      let percent = 10;
+      const interval = setInterval(() => {
+        percent += 20;
+        progressPct.innerText = percent + '%';
+        if (percent >= 100) {
+          clearInterval(interval);
+          progressBanner.classList.add('hidden');
+          evaluateBtn.disabled = false;
+          // Set quality score for REQ-207
+          const qualityCell = document.getElementById('quality-val-req207');
+          qualityCell.innerHTML = `<span class="font-bold text-emerald-600">4.5</span><div class="flex text-amber-400"><i data-lucide="star" class="h-3 w-3 fill-amber-400 text-amber-500"></i></div>`;
+          
+          const statusCell = document.getElementById('status-val-req207');
+          statusCell.className = "bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold capitalize";
+          statusCell.innerText = "AI Reviewed";
+
+          lucide.createIcons();
+          alert('AI Quality Evaluation complete! 4 requirements reviewed.');
+        }
+      }, 800);
+    }
+  </script>
+</body>
+</html>

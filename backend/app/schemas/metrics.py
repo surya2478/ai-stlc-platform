@@ -116,6 +116,7 @@ class RecentActivityItem(BaseModel):
     action: str
     subject: str
     time: str
+    is_agent: bool = False
 
 
 class DashboardMetricsOut(BaseModel):
