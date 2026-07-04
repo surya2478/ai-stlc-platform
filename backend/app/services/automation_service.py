@@ -1,10 +1,17 @@
 """Automation Script service — CRUD operations."""
+from collections import Counter
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
+from app.integrations.automation.framework_adapters import (
+    assess_framework_fit,
+    framework_language,
+    suitability_assessment,
+    supported_framework_catalog,
+)
 from app.integrations.automation.connector_factory import get_automation_connector
 from app.integrations.automation.result_normalizer import normalize_status
 from app.models.automation_mapping import AutomationTestMapping
@@ -14,6 +21,7 @@ from app.models.test_case import TestCase
 from app.schemas.automation import AutomationScriptUpdate, AutomationTestMappingCreate, AutomationTestMappingUpdate
 from app.services import traceability_service
 from app.services.display_id_service import display_id, temporary_id
+from app.services.project_application_service import list_applications
 
 
 async def list_scripts(
@@ -64,6 +72,135 @@ async def approve_script(
     return script
 
 
+def _regen_str(val) -> str:
+    if val is None:
+        return ""
+    if isinstance(val, str):
+        return val
+    import json as _json
+    return _json.dumps(val)
+
+
+def _regen_str_list(val) -> list[str] | None:
+    if val is None:
+        return None
+    if isinstance(val, list):
+        return [_regen_str(item) for item in val]
+    return [_regen_str(val)]
+
+
+async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id: int) -> AutomationScript:
+    """Re-run script generation for an existing script's test case and
+    overwrite its content in place, using current application/URL context
+    (fixes scripts generated before an application was configured, e.g. ones
+    that hardcoded a placeholder domain like example.com).
+
+    Regeneration always resets status to "draft" regardless of prior status —
+    previously-approved code has now changed and must be re-reviewed before it
+    can run, matching the existing request_changes -> draft precedent.
+    """
+    from app.agents.automation.automation_agent import AutomationScriptAgent
+    from app.services.project_application_service import build_test_case_application_context
+
+    if not script.test_case_id:
+        raise HTTPException(status_code=422, detail="Script has no linked test case to regenerate from.")
+
+    result = await db.execute(select(TestCase).where(TestCase.id == script.test_case_id))
+    tc = result.scalar_one_or_none()
+    if not tc:
+        raise HTTPException(status_code=404, detail="Linked test case not found.")
+
+    app_context = await build_test_case_application_context(db, tc)
+    tc_dict = {
+        "id": tc.id,
+        "test_case_id": tc.test_case_id,
+        "title": tc.title,
+        "preconditions": tc.preconditions,
+        "steps": tc.steps,
+        "expected_result": tc.expected_result,
+        "bdd_scenario": tc.bdd_scenario,
+        "test_type": tc.test_type,
+        "priority": tc.priority,
+        **app_context,
+    }
+
+    agent = AutomationScriptAgent()
+    agent_result = await agent.run(test_cases=[tc_dict], framework=script.framework)
+    if not agent_result.success:
+        raise HTTPException(status_code=500, detail=agent_result.error or "Script regeneration failed")
+
+    scripts_data = agent_result.data.get("scripts", [])
+    if not scripts_data:
+        agent_errors = [log["message"] for log in (agent_result.logs or []) if log.get("level") == "warning"]
+        detail = "; ".join(agent_errors) if agent_errors else "LLM returned no parseable script"
+        raise HTTPException(status_code=500, detail=f"Script regeneration produced nothing: {detail}")
+
+    sc_data = scripts_data[0]
+    script.file_path = _regen_str(sc_data.get("file_path")) or script.file_path
+    script.code = _regen_str(sc_data.get("code")) or script.code
+    script.setup_required = _regen_str_list(sc_data.get("setup_required")) or script.setup_required
+    script.execution_command = _regen_str(sc_data.get("execution_command")) or script.execution_command
+
+    history = list((script.metadata_ or {}).get("transition_history", []))
+    history.append({"action": "regenerate", "by": user_id, "from_status": script.status})
+    script.metadata_ = {**(script.metadata_ or {}), "transition_history": history}
+    script.status = "draft"
+
+    await db.flush()
+    await db.refresh(script)
+    return script
+
+
+# Allowed lifecycle transitions: source statuses that may move to (target, action label).
+# Keep in sync with backend/app/models/automation_script.py status docs and
+# frontend/src/components/automation/AutomationWorkspace.tsx action bar.
+_TRANSITIONS: dict[str, dict[str, str]] = {
+    "submit_for_review": {
+        "ai_draft": "in_review",
+        "draft": "in_review",
+    },
+    "request_changes": {
+        "in_review": "draft",
+        "pending_approval": "draft",
+    },
+    "restore_draft": {
+        "rejected": "draft",
+        "deprecated": "draft",
+    },
+}
+
+
+async def transition_script(
+    db: AsyncSession,
+    script: AutomationScript,
+    action: str,
+    notes: str | None,
+) -> AutomationScript:
+    """Move an AutomationScript through its lifecycle state machine.
+
+    Approve/reject still go through ``approve_script``. This helper covers
+    submit-for-review, request-changes, and restore-from-rejected. Any other
+    transition is rejected so the state machine stays narrow.
+    """
+    allowed = _TRANSITIONS.get(action)
+    if allowed is None:
+        raise ValueError(f"Unknown transition action: {action}")
+    target = allowed.get(script.status)
+    if target is None:
+        raise ValueError(
+            f"Cannot {action} a script in status '{script.status}'. "
+            f"Allowed sources: {sorted(allowed)}"
+        )
+    script.status = target
+    if notes:
+        history = list((script.metadata_ or {}).get("transition_history", []))
+        history.append({"action": action, "notes": notes, "to": target})
+        script.metadata_ = {**(script.metadata_ or {}), "transition_history": history}
+    await db.flush()
+    await db.refresh(script)
+    return script
+
+
 async def count_scripts_by_project(db: AsyncSession, project_id: int) -> dict:
     result = await db.execute(
         select(AutomationScript.status, func.count())
@@ -71,6 +208,127 @@ async def count_scripts_by_project(db: AsyncSession, project_id: int) -> dict:
         .group_by(AutomationScript.status)
     )
     return {row[0]: row[1] for row in result.all()}
+
+
+async def planning_summary(db: AsyncSession, *, project_id: int) -> dict:
+    test_case_result = await db.execute(
+        select(TestCase)
+        .where(
+            TestCase.project_id == project_id,
+            TestCase.status == "approved",
+            TestCase.automation_eligible == "yes",
+            TestCase.execution_mode.in_(["automated", "hybrid"]),
+            TestCase.is_deleted.is_(False),
+        )
+        .order_by(TestCase.updated_at.desc(), TestCase.id.desc())
+    )
+    test_cases = list(test_case_result.scalars().all())
+
+    script_result = await db.execute(
+        select(AutomationScript)
+        .where(AutomationScript.project_id == project_id)
+        .order_by(AutomationScript.updated_at.desc(), AutomationScript.id.desc())
+    )
+    scripts = list(script_result.scalars().all())
+
+    mapping_result = await db.execute(
+        select(AutomationTestMapping)
+        .where(
+            AutomationTestMapping.project_id == project_id,
+            AutomationTestMapping.is_active.is_(True),
+        )
+        .order_by(AutomationTestMapping.updated_at.desc(), AutomationTestMapping.id.desc())
+    )
+    mappings = list(mapping_result.scalars().all())
+
+    scripts_by_test_case: dict[int, list[AutomationScript]] = {}
+    for script in scripts:
+        if script.test_case_id is None:
+            continue
+        scripts_by_test_case.setdefault(script.test_case_id, []).append(script)
+
+    mapping_by_test_case = {mapping.test_case_id: mapping for mapping in mappings}
+    framework_options = supported_framework_catalog()
+
+    candidates: list[dict] = []
+    for test_case in test_cases:
+        related_scripts = scripts_by_test_case.get(test_case.id, [])
+        latest_script = related_scripts[0] if related_scripts else None
+        mapping = mapping_by_test_case.get(test_case.id)
+
+        suitability = suitability_assessment(test_case)
+        framework_fit = assess_framework_fit(test_case)
+
+        metadata = latest_script.metadata_ if latest_script else {}
+        mapping_status = "mapped" if mapping else "mapping_required"
+
+        if latest_script is None:
+            handoff = "draft_generation"
+        elif latest_script.status in {"draft", "pending_approval", "rejected"}:
+            handoff = "human_review"
+        elif latest_script.status == "approved" and not test_case.last_automation_status:
+            handoff = "repository_ready"
+        else:
+            handoff = "ready_for_execution"
+
+        candidates.append(
+            {
+                "test_case_id": test_case.id,
+                "test_case_key": test_case.test_case_id,
+                "title": test_case.title,
+                "test_type": test_case.test_type,
+                "automation_status": test_case.automation_status,
+                "automation_ready": bool(test_case.automation_ready),
+                "mapping_status": mapping_status,
+                "execution_handoff": handoff,
+                "recommended_framework": framework_fit["recommended_framework"],
+                "secondary_framework": framework_fit["secondary_framework"],
+                "hybrid_ready": framework_fit["hybrid_ready"],
+                "recommended_language": framework_language(framework_fit["recommended_framework"]),
+                "assessment_score": suitability["score"],
+                "assessment_band": suitability["band"],
+                "assessment_reasons": suitability["reasons"],
+                "framework_reasons": framework_fit["reasons"],
+                "framework_scores": framework_fit["framework_scores"],
+                "script_id": latest_script.id if latest_script else None,
+                "linked_script_ids": [script.id for script in related_scripts],
+                "script_status": latest_script.status if latest_script else None,
+                "repository": metadata.get("repository") if isinstance(metadata, dict) else None,
+                "branch": metadata.get("branch") if isinstance(metadata, dict) else None,
+                "script_path": latest_script.file_path if latest_script else None,
+                "last_execution_status": test_case.last_automation_status,
+                "last_execution_at": test_case.last_automation_run_at,
+                "inferred_suite": metadata.get("suite") if isinstance(metadata, dict) else None,
+                "coverage_hint": metadata.get("coverage_hint") if isinstance(metadata, dict) else None,
+                "updated_at": latest_script.updated_at if latest_script else test_case.updated_at,
+                "framework_options": framework_options,
+            }
+        )
+
+    framework_counter = Counter(candidate["recommended_framework"] for candidate in candidates)
+    handoff_counter = Counter(candidate["execution_handoff"] for candidate in candidates)
+
+    applications = await list_applications(db, project_id)
+    available_environments = sorted(
+        {env for app in applications if app.is_active for env in (app.environment_urls or {})}
+    ) or ["development", "staging", "production", "ci"]
+
+    return {
+        "project_id": project_id,
+        "summary": {
+            "total_candidates": len(candidates),
+            "ready_for_generation": handoff_counter.get("draft_generation", 0),
+            "pending_review": handoff_counter.get("human_review", 0),
+            "repository_ready": handoff_counter.get("repository_ready", 0),
+            "ready_for_execution": handoff_counter.get("ready_for_execution", 0),
+            "by_framework": dict(framework_counter),
+            "by_handoff": dict(handoff_counter),
+            "supported_frameworks": framework_options,
+            "available_environments": available_environments,
+            "available_browsers": ["Chromium", "Firefox", "WebKit"],
+        },
+        "candidates": candidates,
+    }
 
 
 async def get_test_case_or_404(db: AsyncSession, test_case_id: int) -> TestCase:

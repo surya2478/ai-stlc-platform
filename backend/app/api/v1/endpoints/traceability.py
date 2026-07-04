@@ -9,6 +9,7 @@ from app.schemas.traceability import (
     ApprovalActionOut,
     ApprovalDecisionRequest,
     CoverageGapsOut,
+    LineageChainOut,
     TraceabilityMatrixOut,
 )
 from app.services import export_service, traceability_service
@@ -202,6 +203,33 @@ async def get_requirement_traceability_chain(
 
 
 # ── End GAP-5 export endpoints ─────────────────────────────────────────────
+
+@router.get("/lineage/{entity_type}/{entity_id}", response_model=LineageChainOut)
+async def get_artifact_lineage(
+    entity_type: str,
+    entity_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Entity-centric lineage chain over the artifact_lineage table.
+
+    Returns upstream ancestors (e.g. the requirement a script came from) and
+    downstream descendants (e.g. the runs a script produced), each hydrated
+    with display ref/title/status and ordered by STLC pipeline position.
+
+    Edge cases:
+    - Unsupported entity_type or missing entity → 404
+    - Entity exists but has no lineage rows (pre-lineage data) → empty lists, 200
+    """
+    entity = await traceability_service.get_project_entity(db, entity_type, entity_id)
+    await require_project_access(entity.project_id, current_user, db)
+    return await traceability_service.get_lineage_chain(
+        db,
+        project_id=entity.project_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+
 
 @router.get("/projects/{project_id}/approvals", response_model=list[ApprovalActionOut])
 async def list_project_approvals(

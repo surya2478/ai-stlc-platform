@@ -78,7 +78,7 @@ For each requirement output a JSON object with these keys:
 - telecom_domain: best-fit domain from [Mobile, Fixed, Digital, Billing, Charging, CRM, OSS, BSS, Middleware, Integration, Network, Data] or null
 - impacted_interfaces: list of interfaces/protocols
 - risk_level: "Critical" | "High" | "Medium" | "Low"
-- test_phase: "SIT" | "UAT" | "Regression" | "NFT" | null
+- test_phase: "SIT" | "QA" | "UAT" | "Regression" | "Production Smoke Test" | null
 - release_version: null
 - upstream_systems: []
 - downstream_systems: []

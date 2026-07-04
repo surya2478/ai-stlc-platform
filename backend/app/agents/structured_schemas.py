@@ -222,3 +222,40 @@ class ReportLLMOutput(LLMBaseModel):
     recommendations: list[str] = Field(default_factory=list)
 
     _normalize_lists = field_validator("risks", "recommendations", mode="before")(_string_list)
+
+
+class AiAssistSuggestion(LLMBaseModel):
+    """LLM output for "Ask AI" on a manual test step.
+
+    The model is asked to look at the step's action, the expected result, the
+    tester's actual_result text (and optionally a screenshot) and decide whether
+    the step looks like a pass / fail / blocked. Confidence is honest — if the
+    model cannot tell, it should return low confidence and explain why.
+    """
+    suggested_status: str = "blocked"          # pass | fail | blocked
+    confidence: int = 0                         # 0-100
+    reasoning: str = ""
+    observations: list[str] = Field(default_factory=list)
+
+    _normalize_lists = field_validator("observations", mode="before")(_string_list)
+
+    @field_validator("suggested_status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value: Any) -> str:
+        raw = str(value or "").strip().lower()
+        if raw in {"pass", "passed", "success"}:
+            return "pass"
+        if raw in {"fail", "failed", "failure", "error"}:
+            return "fail"
+        if raw in {"blocked", "block", "uncertain", "unknown", "skip", "skipped"}:
+            return "blocked"
+        return "blocked"
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _clamp_confidence(cls, value: Any) -> int:
+        try:
+            n = int(round(float(value)))
+        except (TypeError, ValueError):
+            return 0
+        return max(0, min(100, n))

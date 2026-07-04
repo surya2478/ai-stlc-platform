@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { reportsApi, projectsApi, type Project, type Report } from "@/lib/api";
+import { reportsApi, projectsApi, type Report } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -191,7 +191,6 @@ function ReportsContent() {
 
   const selectedProject = Number(searchParams.get("project")) || null;
 
-  const [projects, setProjects] = useState<Project[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<"idle" | "running" | "done" | "error">("idle");
@@ -202,7 +201,6 @@ function ReportsContent() {
   useEffect(() => {
     projectsApi.list()
       .then((res) => {
-        setProjects(res.data);
         if (res.data.length > 0 && !searchParams.get("project")) {
           const params = new URLSearchParams(searchParams.toString());
           params.set("project", String(res.data[0].id));
@@ -313,25 +311,6 @@ function ReportsContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={selectedProject ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              const params = new URLSearchParams(searchParams.toString());
-              params.set("project", val);
-              router.push(`${pathname}?${params.toString()}`);
-            }}
-            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-
           <select
             value={reportType}
             onChange={(e) => setReportType(e.target.value)}

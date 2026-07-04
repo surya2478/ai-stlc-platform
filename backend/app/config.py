@@ -128,6 +128,36 @@ class Settings(BaseSettings):
     prompt_guard_enabled: bool = True
     allowed_code_analysis_paths: str = "c:\\Test_AI_Agents\\Test_AI_Agents\\stlc-platform"
 
+    # ── Assistant Settings ───────────────────────────────────────────────────
+    assistant_enabled: bool = True
+    assistant_project_data_enabled: bool = True
+    assistant_rag_enabled: bool = True
+    assistant_history_enabled: bool = True
+    assistant_max_tokens: int = 2048
+    assistant_rate_limit_per_minute: int = 20
+    assistant_allowed_roles: str = "admin,qa_engineer,qa_lead,viewer"
+    assistant_retention_days: int = 30
+    assistant_model_profile: str = ""
+
+
+    # ── AI Execution Governance ──────────────────────────────────────────────
+    # Confidence floor (0-100). AI runs above this auto-publish; below → review.
+    ai_confidence_threshold: int = 90
+    # Comma-separated list of environments where AI runs may publish results
+    # autonomously without a human reviewer. Outside these envs the run is
+    # always marked review_required regardless of confidence.
+    ai_autonomous_environments: str = "DEV,SIT,LOCAL,STAGING"
+    # If True, an AI step claiming "passed" with no evidence captured is
+    # downgraded to review_required.
+    ai_require_evidence_for_pass: bool = True
+    # Maximum AI run duration in seconds before it is force-failed by the
+    # supervisor (Celery soft-time-limit equivalent for AI runs).
+    ai_run_max_seconds: int = 1800
+
+    @property
+    def ai_autonomous_environments_list(self) -> list[str]:
+        return [e.strip().upper() for e in (self.ai_autonomous_environments or "").split(",") if e.strip()]
+
     # ── File Storage ──────────────────────────────────────────────────────────
     file_storage_path: str = "/app/storage"
     max_upload_size_mb: int = 25

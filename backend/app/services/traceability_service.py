@@ -22,6 +22,8 @@ from app.models.user import User
 from app.schemas.traceability import (
     ApprovalDecisionRequest,
     CoverageGapsOut,
+    LineageChainOut,
+    LineageNode,
     TraceabilityChainItem,
     TraceabilityMatrixOut,
     TraceabilityMatrixRow,
@@ -114,6 +116,111 @@ async def create_lineage_many(
             )
         )
     return entries
+
+
+# Preferred order of the STLC pipeline, used to sort lineage chains for display.
+_LINEAGE_ORDER = [
+    "requirement", "test_plan", "test_scenario", "test_case", "test_data",
+    "automation_script", "execution_run", "execution_result", "defect_draft", "report",
+]
+
+_REF_ATTR_CANDIDATES = (
+    "requirement_id", "test_case_id", "scenario_id", "plan_id", "script_id",
+    "execution_id", "defect_id", "data_id", "report_id",
+)
+_TITLE_ATTR_CANDIDATES = ("title", "summary", "name", "suite_name", "test_name", "file_path")
+
+_MAX_LINEAGE_DEPTH = 6
+
+
+async def _hydrate_lineage_node(
+    db: AsyncSession, entity_type: str, entity_id: int, relationship_type: str | None, depth: int
+) -> LineageNode:
+    """Resolve the display ref/title/status for a lineage node; tolerate deleted rows."""
+    node = LineageNode(entity_type=entity_type, entity_id=entity_id, relationship_type=relationship_type, depth=depth)
+    model = ARTIFACT_MODELS.get(entity_type)
+    if model is None:
+        return node
+    result = await db.execute(select(model).where(model.id == entity_id))
+    entity = result.scalar_one_or_none()
+    if entity is None:
+        node.title = "(deleted)"
+        return node
+    for attr in _REF_ATTR_CANDIDATES:
+        value = getattr(entity, attr, None)
+        if isinstance(value, str) and value:
+            node.ref = value
+            break
+    for attr in _TITLE_ATTR_CANDIDATES:
+        value = getattr(entity, attr, None)
+        if isinstance(value, str) and value:
+            node.title = value
+            break
+    node.status = getattr(entity, "status", None)
+    return node
+
+
+async def get_lineage_chain(
+    db: AsyncSession, *, project_id: int, entity_type: str, entity_id: int
+) -> LineageChainOut:
+    """Walk artifact_lineage in both directions from one entity.
+
+    Bounded breadth-first walk (depth ≤ _MAX_LINEAGE_DEPTH) with a visited-set
+    cycle guard. Missing lineage rows are normal for artifacts created before
+    lineage writes existed — the result is simply empty lists, never an error.
+    """
+
+    async def walk(direction: str) -> list[LineageNode]:
+        nodes: list[LineageNode] = []
+        visited: set[tuple[str, int]] = {(entity_type, entity_id)}
+        frontier = [(entity_type, entity_id)]
+        for depth in range(1, _MAX_LINEAGE_DEPTH + 1):
+            if not frontier:
+                break
+            next_frontier: list[tuple[str, int]] = []
+            for node_type, node_id in frontier:
+                if direction == "upstream":
+                    stmt = select(ArtifactLineage).where(
+                        ArtifactLineage.project_id == project_id,
+                        ArtifactLineage.child_type == node_type,
+                        ArtifactLineage.child_id == node_id,
+                    )
+                else:
+                    stmt = select(ArtifactLineage).where(
+                        ArtifactLineage.project_id == project_id,
+                        ArtifactLineage.parent_type == node_type,
+                        ArtifactLineage.parent_id == node_id,
+                    )
+                for edge in (await db.execute(stmt)).scalars().all():
+                    if direction == "upstream":
+                        key = (edge.parent_type, edge.parent_id)
+                    else:
+                        key = (edge.child_type, edge.child_id)
+                    if key in visited:
+                        continue
+                    visited.add(key)
+                    next_frontier.append(key)
+                    nodes.append(
+                        await _hydrate_lineage_node(db, key[0], key[1], edge.relationship_type, depth)
+                    )
+            frontier = next_frontier
+
+        def order_key(n: LineageNode) -> tuple[int, int]:
+            try:
+                pipeline_pos = _LINEAGE_ORDER.index(n.entity_type)
+            except ValueError:
+                pipeline_pos = len(_LINEAGE_ORDER)
+            return (pipeline_pos, n.entity_id)
+
+        return sorted(nodes, key=order_key)
+
+    return LineageChainOut(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        project_id=project_id,
+        upstream=await walk("upstream"),
+        downstream=await walk("downstream"),
+    )
 
 
 async def get_project_entity(db: AsyncSession, entity_type: str, entity_id: int):

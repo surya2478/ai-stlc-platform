@@ -207,3 +207,139 @@ def prompt_injection_detected(
 
 def retention_purge(entity_type: str, count: int, cutoff: str) -> None:
     _emit("retention.purge", entity_type=entity_type, count=count, cutoff=cutoff)
+
+
+# ── Resource Intelligence & Utilization Hub events ───────────────────────────
+
+def ldap_sync(by_user_id: int, synced_count: int) -> None:
+    _emit("ldap.sync", by_user_id=by_user_id, synced_count=synced_count)
+
+
+def resource_mapping_updated(by_user_id: int, mapping_id: int, status: str) -> None:
+    _emit("resource.mapping_updated", by_user_id=by_user_id, mapping_id=mapping_id, status=status)
+
+
+def estimate_override(by_user_id: int, estimate_id: int, approved_hours: float) -> None:
+    _emit("estimate.override", by_user_id=by_user_id, estimate_id=estimate_id, approved_hours=approved_hours)
+
+
+def privacy_consent_changed(ldap_username: str, consent_status: str) -> None:
+    _emit("privacy.consent_changed", ldap_username=ldap_username, consent_status=consent_status)
+
+
+def report_exported(by_user_id: int, report_name: str, format_type: str) -> None:
+    _emit("report.exported", by_user_id=by_user_id, report_name=report_name, format_type=format_type)
+
+
+# ── Test Execution events ─────────────────────────────────────────────────────
+
+def execution_run_started(
+    by_user_id: int,
+    run_id: int,
+    project_id: int,
+    execution_type: str,
+    environment: str | None = None,
+    test_case_count: int = 0,
+) -> None:
+    _emit(
+        "execution.run_started",
+        by_user_id=by_user_id,
+        run_id=run_id,
+        project_id=project_id,
+        execution_type=execution_type,
+        environment=environment,
+        test_case_count=test_case_count,
+    )
+
+
+def execution_run_state_changed(
+    by_user_id: int | None,
+    run_id: int,
+    previous_status: str,
+    new_status: str,
+    reason: str | None = None,
+) -> None:
+    _emit(
+        "execution.run_state_changed",
+        by_user_id=by_user_id,
+        run_id=run_id,
+        previous_status=previous_status,
+        new_status=new_status,
+        reason=reason,
+    )
+
+
+def execution_run_auto_completed(
+    run_id: int,
+    project_id: int,
+    confidence_score: float | None,
+    rule: str,
+) -> None:
+    _emit(
+        "execution.ai_run_auto_completed",
+        run_id=run_id,
+        project_id=project_id,
+        confidence_score=confidence_score,
+        rule=rule,
+    )
+
+
+def execution_run_review_required(
+    run_id: int,
+    project_id: int,
+    confidence_score: float | None,
+    reason: str,
+) -> None:
+    _emit(
+        "execution.ai_run_review_required",
+        run_id=run_id,
+        project_id=project_id,
+        confidence_score=confidence_score,
+        reason=reason,
+    )
+
+
+def test_case_bulk_updated(
+    by_user_id: int,
+    project_id: int,
+    requested: int,
+    updated: int,
+    skipped: int,
+    conflicts: int,
+    reason: str,
+    patch_fields: list[str],
+) -> None:
+    """Summary event for a bulk-update call. One per call.
+
+    Per-row field changes are still written to the `test_case_history` table by
+    the existing per-row update path, so the row-level diff is preserved there.
+    """
+    _emit(
+        "test_case.bulk_updated",
+        by_user_id=by_user_id,
+        project_id=project_id,
+        requested=requested,
+        updated=updated,
+        skipped=skipped,
+        conflicts=conflicts,
+        reason=reason,
+        patch_fields=patch_fields,
+    )
+
+
+def execution_run_reviewed(
+    by_user_id: int,
+    run_id: int,
+    decision: str,
+    override_status: str | None = None,
+    reason: str | None = None,
+) -> None:
+    _emit(
+        "execution.ai_run_reviewed",
+        by_user_id=by_user_id,
+        run_id=run_id,
+        decision=decision,
+        override_status=override_status,
+        reason=reason,
+    )
+

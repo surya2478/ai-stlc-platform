@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 AutomationStatus = Literal["not_required", "mapping_required", "ready_for_automation", "automated", "automation_failed", "maintenance_required"]
@@ -29,19 +29,33 @@ class AutomationScriptOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+AutomationScriptStatus = Literal[
+    "ai_draft",
+    "draft",
+    "in_review",
+    "pending_approval",
+    "approved",
+    "rejected",
+    "executed",
+    "deprecated",
+    "blocked",
+]
+
+
 class AutomationScriptUpdate(BaseModel):
     framework: Literal["playwright", "pytest"] | None = None
     file_path: str | None = None
     code: str | None = None
     setup_required: list[str] | None = None
     execution_command: str | None = None
-    status: Literal["draft", "approved", "rejected"] | None = None
+    status: AutomationScriptStatus | None = None
 
 
 class AgentAutomationTrigger(BaseModel):
     project_id: int
     test_case_ids: list[int]
     framework: Literal["playwright", "pytest"] = "playwright"
+    source: Literal["approved_test_case", "manual_conversion"] = "approved_test_case"
 
     @field_validator("test_case_ids")
     @classmethod
@@ -49,6 +63,19 @@ class AgentAutomationTrigger(BaseModel):
         if not v:
             raise ValueError("test_case_ids must contain at least one ID")
         return v
+
+
+ScriptTransitionAction = Literal["submit_for_review", "request_changes", "restore_draft"]
+
+
+class ScriptTransitionRequest(BaseModel):
+    action: ScriptTransitionAction
+    notes: str | None = None
+
+
+class RecommendationDecisionRequest(BaseModel):
+    action: Literal["apply", "dismiss"]
+    notes: str | None = None
 
 
 class AutomationTestMappingBase(BaseModel):
@@ -129,3 +156,88 @@ class JiraExecutionStatusOut(BaseModel):
     jira_execution_status: str | None = None
     final_qa_status: str
     source: str = "jira"
+
+
+class AutomationFrameworkOption(BaseModel):
+    key: Literal["playwright", "pytest"]
+    label: str
+    language: str
+    runner_family: str
+    primary_use_cases: list[str]
+
+
+class AutomationPlanningCandidateOut(BaseModel):
+    test_case_id: int
+    test_case_key: str
+    title: str
+    test_type: str | None = None
+    automation_status: str
+    automation_ready: bool
+    mapping_status: str
+    execution_handoff: Literal["draft_generation", "human_review", "repository_ready", "ready_for_execution"]
+    recommended_framework: Literal["playwright", "pytest"]
+    secondary_framework: Literal["playwright", "pytest"]
+    hybrid_ready: bool = False
+    recommended_language: str
+    assessment_score: int
+    assessment_band: Literal["high", "medium", "low"]
+    assessment_reasons: list[str] = Field(default_factory=list)
+    framework_reasons: list[str] = Field(default_factory=list)
+    framework_scores: dict[str, int] = Field(default_factory=dict)
+    script_id: int | None = None
+    linked_script_ids: list[int] = Field(default_factory=list)
+    script_status: str | None = None
+    repository: str | None = None
+    branch: str | None = None
+    script_path: str | None = None
+    last_execution_status: str | None = None
+    last_execution_at: datetime | None = None
+    inferred_suite: str | None = None
+    coverage_hint: str | None = None
+    updated_at: datetime | None = None
+    framework_options: list[AutomationFrameworkOption] = Field(default_factory=list)
+
+
+class AutomationPlanningSummaryOut(BaseModel):
+    total_candidates: int
+    ready_for_generation: int
+    pending_review: int
+    repository_ready: int
+    ready_for_execution: int
+    by_framework: dict[str, int]
+    by_handoff: dict[str, int]
+    supported_frameworks: list[AutomationFrameworkOption]
+    available_environments: list[str]
+    available_browsers: list[str]
+
+
+class AutomationPlanningOut(BaseModel):
+    project_id: int
+    summary: AutomationPlanningSummaryOut
+    candidates: list[AutomationPlanningCandidateOut]
+
+
+# ── Local runner ─────────────────────────────────────────────────────────────
+
+
+class AutomationScriptExecuteRequest(BaseModel):
+    """Request to run an approved script via the local subprocess runner."""
+    environment: str | None = Field(default="staging", max_length=100)
+    timeout_seconds: int = Field(default=600, ge=30, le=3600)
+
+
+class AutomationScriptExecuteResponse(BaseModel):
+    execution_run_id: int
+    task_id: str | None = None
+    status: str  # "queued"
+    message: str
+
+
+class RunnerFrameworkStatus(BaseModel):
+    framework: str
+    available: bool
+    detail: str
+
+
+class RunnerStatusOut(BaseModel):
+    frameworks: list[RunnerFrameworkStatus]

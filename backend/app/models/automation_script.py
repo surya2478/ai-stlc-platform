@@ -24,7 +24,16 @@ class AutomationScript(TimestampMixin, Base):
     execution_command: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(String(50), default="draft")
-    # status: draft | pending_approval | approved | rejected | executed
+    # status: ai_draft | draft | in_review | pending_approval | approved | rejected
+    #       | executed | deprecated | blocked
+    # ai_draft   = first output of AI generation, must be reviewed before promotion
+    # draft      = author is iterating on the script
+    # in_review  = submitted for peer review (also referred to as pending_approval)
+    # approved   = ready for execution
+    # rejected   = explicitly rejected during review
+    # executed   = legacy marker; superseded by ExecutionRun + ExecutionResult
+    # deprecated = script kept for history but not executable
+    # blocked    = generation/review blocked on an upstream issue
     agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 

@@ -1,16 +1,22 @@
 """
 Automation Scripts endpoints — Phase 4.
 """
+import os
+
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession, require_entity_permission, require_entity_project_access, require_permission, require_project_access
 from app.config import get_settings
 from app.models.automation_script import AutomationScript
+from app.models.execution import ExecutionResult, ExecutionRun
 from app.models.test_case import TestCase
 from app.schemas.automation import (
     AgentAutomationTrigger,
+    AutomationPlanningOut,
+    AutomationScriptExecuteRequest,
+    AutomationScriptExecuteResponse,
     AutomationScriptOut,
     AutomationScriptUpdate,
     AutomationTestMappingCreate,
@@ -21,14 +27,22 @@ from app.schemas.automation import (
     ExternalAutomationSyncRequest,
     JiraExecutionStatusOut,
     JiraExecutionStatusSyncRequest,
+    RecommendationDecisionRequest,
+    RunnerFrameworkStatus,
+    RunnerStatusOut,
+    ScriptTransitionRequest,
 )
+from app.services import automation_intelligence
 from app.schemas.execution import ExecutionResultOut
 from app.schemas.requirement import ApprovalRequest
 from app.services import agent_run_service, approval_service, automation_service, traceability_service
 from app.services.agent_dispatch_service import enqueue_agent_run
+from app.services.automation_runner import runtime_status
+from app.services.project_application_service import build_test_case_application_context
 from app.services.display_id_service import display_id, temporary_id
-from app.services.rbac_service import GENERATE_AUTOMATION
+from app.services.rbac_service import EXECUTE_TESTS, GENERATE_AUTOMATION
 from app.agents.automation.automation_agent import AutomationScriptAgent
+from app.integrations.automation.framework_adapters import framework_language
 
 router = APIRouter()
 settings = get_settings()
@@ -201,6 +215,16 @@ async def list_automation_scripts(
     return await automation_service.list_scripts(db, project_id, test_case_id, status)
 
 
+@router.get("/planning/project/{project_id}", response_model=AutomationPlanningOut)
+async def get_automation_planning(
+    project_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    await require_project_access(project_id, current_user, db)
+    return await automation_service.planning_summary(db, project_id=project_id)
+
+
 @router.get("/{script_id}", response_model=AutomationScriptOut)
 async def get_automation_script(
     script_id: int,
@@ -257,6 +281,107 @@ async def approve_automation_script(
     return script
 
 
+@router.post("/{script_id}/transition", response_model=AutomationScriptOut)
+async def transition_automation_script(
+    script_id: int,
+    body: ScriptTransitionRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Move a script through its lifecycle (submit_for_review / request_changes / restore_draft).
+
+    Approve / reject continue to use the dedicated /approve endpoint so the
+    approval ledger stays unambiguous.
+    """
+    script = await automation_service.get_script(db, script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Automation script not found")
+    await require_entity_permission(script, GENERATE_AUTOMATION, current_user, db)
+    try:
+        script = await automation_service.transition_script(db, script, body.action, body.notes)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    return script
+
+
+@router.post("/{script_id}/regenerate", response_model=AutomationScriptOut)
+async def regenerate_automation_script(
+    script_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Re-run generation for this script using current application/URL
+    context, overwriting its code in place and resetting it to draft for
+    re-review. Fixes scripts generated before a real application URL was
+    configured (e.g. ones that hardcoded a placeholder domain).
+    """
+    script = await automation_service.get_script(db, script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Automation script not found")
+    await require_entity_permission(script, GENERATE_AUTOMATION, current_user, db)
+    script = await automation_service.regenerate_script(db, script, current_user.id)
+    await db.commit()
+    return script
+
+
+# ── AI Intelligence Assistant (Phase 2D) ──────────────────────────────────────
+
+
+@router.get("/{script_id}/intelligence")
+async def get_script_intelligence(
+    script_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Run rule-based analyzers against the script and return findings.
+
+    Pure-Python heuristics today (regex over the source). Findings shape is
+    designed to be backwards-compatible when LLM-backed analyzers replace or
+    augment the rules in a later phase.
+    """
+    script = await automation_service.get_script(db, script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Automation script not found")
+    await require_entity_project_access(script, current_user, db)
+    report = automation_intelligence.analyze_script(script)
+    decisions = (script.metadata_ or {}).get("recommendation_decisions", [])
+    return {**report.as_dict(), "decisions": decisions}
+
+
+@router.post(
+    "/{script_id}/recommendations/{recommendation_id}/decision",
+    response_model=AutomationScriptOut,
+)
+async def record_recommendation_decision(
+    script_id: int,
+    recommendation_id: str,
+    body: RecommendationDecisionRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Record an apply/dismiss decision against a recommendation.
+
+    Phase 2D logs the decision into ``metadata_.recommendation_decisions`` for
+    audit. It does NOT modify the script's code — that lands in Phase 2E when
+    the inline editor materializes draft changes.
+    """
+    script = await automation_service.get_script(db, script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Automation script not found")
+    await require_entity_permission(script, GENERATE_AUTOMATION, current_user, db)
+    automation_intelligence.record_decision(
+        script,
+        recommendation_id=recommendation_id,
+        action=body.action,
+        user_id=current_user.id,
+        notes=body.notes,
+    )
+    await db.commit()
+    await db.refresh(script)
+    return script
+
+
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 @router.post("/agent/generate-scripts")
@@ -285,6 +410,7 @@ async def trigger_automation_agent(
         if tc.status != "approved":
             skipped_not_approved.append(tc_id)
             continue
+        app_context = await build_test_case_application_context(db, tc)
         test_cases.append({
             "id": tc.id,
             "test_case_id": tc.test_case_id,
@@ -295,6 +421,7 @@ async def trigger_automation_agent(
             "bdd_scenario": tc.bdd_scenario,
             "test_type": tc.test_type,
             "priority": tc.priority,
+            **app_context,
         })
 
     if skipped_wrong_project:
@@ -396,8 +523,17 @@ async def trigger_automation_agent(
             code=_to_str(sc_data.get("code")),
             setup_required=_to_str_list(sc_data.get("setup_required")),
             execution_command=_to_str(sc_data.get("execution_command")) or None,
-            status="draft",
+            status="ai_draft",
             agent_run_id=agent_run.id,
+            metadata_={
+                "language": framework_language(body.framework),
+                "repository": "Connected repository pending",
+                "branch": "codex/automation-drafts",
+                "coverage_hint": "Generated from approved test case",
+                "suite": "Generated Drafts",
+                "review_state": "pending_human_review",
+                "source": "ai_generation",
+            },
         )
         db.add(script)
         await db.flush()
@@ -428,3 +564,174 @@ async def trigger_automation_agent(
         "agent_logs": agent_result.logs,
         "agent_run_id": agent_run.id,
     }
+
+
+# ── Local subprocess runner ───────────────────────────────────────────────────
+
+
+@router.get("/runner/status", response_model=RunnerStatusOut)
+async def get_runner_status(current_user: CurrentUser):
+    """Tell the UI which frameworks can actually execute on this host.
+
+    Caller authenticated; no project scope — runner availability is host-wide.
+    """
+    status = runtime_status()
+    return RunnerStatusOut(
+        frameworks=[
+            RunnerFrameworkStatus(framework=key, available=val.available, detail=val.detail)
+            for key, val in status.items()
+        ]
+    )
+
+
+@router.post(
+    "/scripts/{script_id}/execute",
+    response_model=AutomationScriptExecuteResponse,
+    status_code=202,
+)
+async def execute_automation_script(
+    script_id: int,
+    body: AutomationScriptExecuteRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Run an approved AutomationScript through the local subprocess runner.
+
+    Synchronously creates an ExecutionRun + a placeholder ExecutionResult so the
+    artifacts endpoint has stable IDs, then enqueues a Celery task that does the
+    actual subprocess work.
+    """
+    script = await automation_service.get_script(db, script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Automation script not found")
+    await require_permission(EXECUTE_TESTS, script.project_id, current_user, db)
+
+    if script.status not in {"approved", "executed"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Script must be approved before it can be executed.",
+        )
+
+    framework = (script.framework or "").lower()
+    if framework not in {"playwright", "pytest"}:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Framework '{script.framework}' is not supported by the local runner.",
+        )
+
+    # Create the ExecutionRun. Status starts as 'queued' so the UI can render
+    # it before the worker even picks the task up.
+    run = ExecutionRun(
+        project_id=script.project_id,
+        created_by=current_user.id,
+        execution_id=temporary_id("ER"),
+        suite_name=f"Automation: {script.script_id}",
+        environment=body.environment,
+        status="queued",
+        execution_type="automation",
+        source_type="automation_local",
+        total_tests=1,
+        passed=0,
+        failed=0,
+        skipped=0,
+        execution_logs=[],
+        metadata_={
+            "source_type": "automation_local",
+            "automation_script_id": script.id,
+            "framework": framework,
+            "timeout_seconds": body.timeout_seconds,
+        },
+    )
+    db.add(run)
+    await db.flush()
+    run.execution_id = display_id("ER", run.id)
+    await db.flush()
+
+    # One placeholder ExecutionResult so the UI has something to show before
+    # the worker fills in the per-test outcomes.
+    placeholder = ExecutionResult(
+        execution_run_id=run.id,
+        test_case_id=script.test_case_id,
+        project_id=script.project_id,
+        test_name=script.script_id,
+        status="pending",
+    )
+    db.add(placeholder)
+    await db.flush()
+
+    await db.commit()
+
+    # Enqueue the actual run
+    from app.worker.tasks.automation_tasks import run_automation_script
+
+    async_result = run_automation_script.delay(run.id, body.timeout_seconds)
+    return AutomationScriptExecuteResponse(
+        execution_run_id=run.id,
+        task_id=str(async_result.id) if async_result else None,
+        status="queued",
+        message=(
+            f"Automation script {script.script_id} queued on the local "
+            f"{framework} runner."
+        ),
+    )
+
+
+# Artifact kinds the runner can produce. We keep this list explicit so the
+# endpoint can't be tricked into serving arbitrary files.
+_ARTIFACT_KIND_TO_FIELD = {
+    "log": "logs",
+    "screenshot": "screenshot_path",
+    "video": "video_path",
+    "trace": "trace_path",
+}
+
+
+@router.get("/runner/results/{result_id}/artifact/{kind}")
+async def download_runner_artifact(
+    result_id: int,
+    kind: str,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Stream a runner-produced artifact for an ExecutionResult.
+
+    kind ∈ { log | screenshot | video | trace }.
+    """
+    if kind not in _ARTIFACT_KIND_TO_FIELD:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported artifact kind '{kind}'. Allowed: {list(_ARTIFACT_KIND_TO_FIELD)}",
+        )
+    result = await db.get(ExecutionResult, result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Execution result not found")
+    await require_permission(EXECUTE_TESTS, result.project_id, current_user, db)
+
+    field = _ARTIFACT_KIND_TO_FIELD[kind]
+    if kind == "log":
+        logs = result.logs or []
+        # We stored the log path as a single-element list in the runner.
+        path = next((p for p in logs if isinstance(p, str)), None)
+    else:
+        path = getattr(result, field, None)
+
+    if not path or not os.path.exists(path):
+        raise HTTPException(status_code=410, detail=f"{kind} artifact is no longer available")
+
+    # Defence in depth: only serve files under the configured storage path.
+    storage_root = os.path.realpath(settings.file_storage_path)
+    real_path = os.path.realpath(path)
+    if not real_path.startswith(storage_root + os.sep) and real_path != storage_root:
+        raise HTTPException(status_code=403, detail="Artifact path is outside the storage root")
+
+    media_type_map = {
+        "log": "text/plain",
+        "screenshot": "image/png",
+        "video": "video/webm",
+        "trace": "application/zip",
+    }
+    return FileResponse(
+        real_path,
+        media_type=media_type_map.get(kind, "application/octet-stream"),
+        filename=os.path.basename(real_path),
+    )

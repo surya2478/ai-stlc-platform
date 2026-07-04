@@ -6,6 +6,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libmupdf-dev \
     mupdf-tools \
     curl \
+    # Common network-test binaries used by LLM-generated automation specs
+    # (ping, traceroute, dig, openssl) — without these, scripts that shell out
+    # via child_process / subprocess fail with "command not found".
+    iputils-ping \
+    traceroute \
+    dnsutils \
+    openssl \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -45,6 +53,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrandr2 \
     && rm -rf /var/lib/apt/lists/* \
     && playwright install chromium
+
+# Node.js + @playwright/test for the LocalPlaywrightRunner that executes
+# AI-generated TypeScript automation scripts. The Python Playwright install
+# above ships its own Chromium; the @playwright/test CLI reuses it.
+# See backend/AUTOMATION_RUNNER.md for the equivalent install on bare metal.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @playwright/test@1.44.0 \
+    && npx --yes playwright install chromium
 
 COPY . .
 

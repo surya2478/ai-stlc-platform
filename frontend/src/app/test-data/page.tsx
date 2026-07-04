@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import {
   getAuthProfile, projectsApi, requirementsApi, testCasesApi, testDataApi,
-  type Project, type Requirement, type TestCase, type TestDataImportPreviewResponse, type TestDataItem, type TestDataSummary
+  type Requirement, type TestCase, type TestDataImportPreviewResponse, type TestDataItem, type TestDataSummary
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -27,7 +27,20 @@ const PHASE_OPTIONS = ["SIT", "UAT", "Regression", "NFT", "Production Validation
 const DOMAIN_OPTIONS = ["Mobile", "Fixed", "Digital", "Billing", "Data", "CRM", "OSS", "BSS", "Middleware", "Integration", "Network"];
 const PRIVACY_LEVELS = ["public", "internal", "confidential", "restricted"];
 const GENERATION_MODES = ["positive", "negative", "boundary", "invalid", "mixed"] as const;
-const EXTERNAL_TOOLS = ["Mock", "Katalon", "Playwright", "Pytest", "GenRocket", "Delphix", "Broadcom TDM", "Informatica TDM", "Other"];
+const EXTERNAL_TOOLS = ["Mock", "Faker", "Katalon", "Playwright", "Pytest", "GenRocket", "Delphix", "Broadcom TDM", "Informatica TDM", "Other"];
+
+// A starter schema for the Faker engine. Editable in the Generate panel — the
+// backend rejects unknown providers with a clear error message.
+const FAKER_DEFAULT_SCHEMA = `{
+  "locale": "en_US",
+  "fields": [
+    { "name": "customer_id", "provider": "uuid4" },
+    { "name": "first_name",  "provider": "first_name" },
+    { "name": "last_name",   "provider": "last_name" },
+    { "name": "email",       "provider": "email" },
+    { "name": "msisdn",      "provider": "msisdn", "params": { "country": "IN" } }
+  ]
+}`;
 const IMPORT_MODES = ["create_new_dataset", "append_to_existing_dataset"] as const;
 const PRIORITIES = ["Low", "Medium", "High", "Critical"];
 
@@ -110,6 +123,7 @@ type GenerateForm = {
   request_notes: string;
   priority: string;
   expected_by_date: string;
+  schema_text: string; // raw JSON text for the Faker engine schema editor
 };
 
 type ImportForm = {
@@ -171,13 +185,14 @@ const INITIAL_GENERATE_FORM: GenerateForm = {
   linked_requirement_id: "",
   number_of_records: "10",
   generation_mode: "positive",
-  external_tool: "Mock",
+  external_tool: "Faker",
   external_suite_id: "",
   external_dataset_id: "",
   external_url: "",
   request_notes: "",
   priority: "Medium",
   expected_by_date: "",
+  schema_text: FAKER_DEFAULT_SCHEMA,
 };
 
 const INITIAL_IMPORT_FORM: ImportForm = {
@@ -240,7 +255,6 @@ function TestDataContent() {
 
   const selectedProject = Number(searchParams.get("project")) || null;
 
-  const [projects, setProjects] = useState<Project[]>([]);
   const [items, setItems] = useState<TestDataItem[]>([]);
   const [summary, setSummary] = useState<TestDataSummary | null>(null);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
@@ -276,7 +290,6 @@ function TestDataContent() {
   // Load Initial Projects
   useEffect(() => {
     projectsApi.list().then((res) => {
-      setProjects(res.data);
       if (res.data.length > 0 && !searchParams.get("project")) {
         const params = new URLSearchParams(searchParams.toString());
         params.set("project", String(res.data[0].id));
@@ -433,6 +446,24 @@ function TestDataContent() {
         setError("Number of Records must be between 1 and 10000.");
         return;
       }
+
+      // For the Faker engine, parse the schema text up front so the user sees a
+      // clear JSON error before we hit the backend.
+      let schemaJson: Record<string, unknown> | undefined;
+      if (generateForm.external_tool === "Faker") {
+        const trimmed = generateForm.schema_text.trim();
+        if (!trimmed) {
+          setError("Faker schema is required. Define at least one field.");
+          return;
+        }
+        try {
+          schemaJson = JSON.parse(trimmed) as Record<string, unknown>;
+        } catch (parseError) {
+          setError(`Faker schema is not valid JSON: ${(parseError as Error).message}`);
+          return;
+        }
+      }
+
       await testDataApi.generate(selectedProject, {
         name: generateForm.name.trim(),
         data_type: generateForm.data_type,
@@ -453,8 +484,13 @@ function TestDataContent() {
         request_notes: generateForm.request_notes.trim() || undefined,
         priority: generateForm.priority,
         expected_by_date: generateForm.expected_by_date || undefined,
+        schema_json: schemaJson,
       });
-      setNotice("External generation request created successfully.");
+      setNotice(
+        generateForm.external_tool === "Faker"
+          ? `Generated ${recordCount} record(s) with the Faker engine.`
+          : "External generation request created successfully.",
+      );
       setGenerateForm(INITIAL_GENERATE_FORM);
       setGenerateOpen(false);
       await loadData();
@@ -677,24 +713,6 @@ function TestDataContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={selectedProject ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              const params = new URLSearchParams(searchParams.toString());
-              params.set("project", val);
-              router.push(`${pathname}?${params.toString()}`);
-            }}
-            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
           <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
             <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
           </Button>
@@ -1072,8 +1090,13 @@ function TestDataContent() {
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External Generation Tool</label>
               <select value={generateForm.external_tool} onChange={e => setGenerateForm(f => ({ ...f, external_tool: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
-                {EXTERNAL_TOOLS.map(v => <option key={v} value={v}>{v}</option>)}
+                {EXTERNAL_TOOLS.map(v => <option key={v} value={v}>{v}{v === "Faker" ? " (local — synthetic)" : ""}</option>)}
               </select>
+              {generateForm.external_tool === "Faker" && (
+                <p className="text-[10px] font-medium text-slate-500 mt-1">
+                  Real synthetic records via Faker + telco providers (msisdn, imsi, imei, iccid).
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Number of Records</label>
@@ -1107,6 +1130,27 @@ function TestDataContent() {
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Generation Notes</label>
               <textarea value={generateForm.request_notes} onChange={e => setGenerateForm(f => ({ ...f, request_notes: e.target.value }))} rows={3} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" />
             </div>
+
+            {generateForm.external_tool === "Faker" && (
+              <div className="flex flex-col gap-1 col-span-2">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Faker Schema (JSON)
+                </label>
+                <textarea
+                  value={generateForm.schema_text}
+                  onChange={e => setGenerateForm(f => ({ ...f, schema_text: e.target.value }))}
+                  rows={12}
+                  spellCheck={false}
+                  className="rounded-lg border border-slate-200 p-2 text-[11px] font-mono bg-slate-50 leading-relaxed"
+                  placeholder='{"locale":"en_US","fields":[{"name":"...","provider":"..."}]}'
+                />
+                <p className="text-[10px] font-medium text-slate-500 mt-1 leading-relaxed">
+                  Built-in providers: <span className="font-mono">first_name, last_name, email, address, uuid4, pydecimal, date_of_birth</span>.<br />
+                  Telco providers: <span className="font-mono">msisdn, imsi, imei, iccid, lac, cell_id, tac</span> (msisdn / imsi accept <span className="font-mono">params: {`{country: "IN"}`}</span>).<br />
+                  <a className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer" href="https://faker.readthedocs.io/en/master/providers.html">Full Faker provider list →</a>
+                </p>
+              </div>
+            )}
           </DrawerBody>
           <DrawerFooter>
             <Button variant="outline" size="sm" onClick={() => setGenerateOpen(false)} className="h-9 border-slate-200">Cancel</Button>

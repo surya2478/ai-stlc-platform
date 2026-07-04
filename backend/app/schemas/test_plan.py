@@ -1,8 +1,19 @@
 """Pydantic schemas for test plans, scenarios, and test cases."""
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
+
+
+# Phase 5: per-TC AI assistance state. Mirrors the model default of "disabled"
+# so existing consumers that don't pass the field get the safe value.
+AiAssistanceStatus = Literal[
+    "disabled",
+    "enabled",
+    "recommendation_pending",
+    "approved",
+    "rejected",
+]
 
 
 # ── Test Plan ─────────────────────────────────────────────────────────────────
@@ -92,13 +103,17 @@ class TestCaseOut(BaseModel):
     automation_eligible: str
     automation_status: str
     automation_ready: bool = False
+    ai_assistance_status: AiAssistanceStatus = "disabled"
     test_phase: str | None = None
     telecom_domain: str | None = None
     product_group: str | None = None
     product: str | None = None
     sub_request_type: str | None = None
+    application_id: int | None = None
     external_tool: str | None = None
     suite_id: str | None = None
+    test_suite_id: int | None = None
+    test_suite_name: str | None = None
     external_tc_id: str | None = None
     external_tc_url: str | None = None
     automation_script_id: int | None = None
@@ -119,6 +134,7 @@ class TestCaseOut(BaseModel):
     linked_requirement_id: int | None = None
     linked_requirement_key: str | None = None
     linked_scenario_id: int | None = None
+    linked_application_id: int | None = None
     linked_project_id: int | None = None
     linked_release_version: str | None = None
     linked_test_plan_id: int | None = None
@@ -151,13 +167,16 @@ class TestCaseUpdate(BaseModel):
     automation_eligible: str | None = None
     automation_status: str | None = None
     automation_ready: bool | None = None
+    ai_assistance_status: AiAssistanceStatus | None = None
     test_phase: str | None = None
     telecom_domain: str | None = None
     product_group: str | None = None
     product: str | None = None
     sub_request_type: str | None = None
+    application_id: int | None = None
     external_tool: str | None = None
     suite_id: str | None = None
+    test_suite_id: int | None = None
     external_tc_id: str | None = None
     external_tc_url: HttpUrl | None = None
     automation_script_id: int | None = None
@@ -172,6 +191,65 @@ class TestCaseUpdate(BaseModel):
     status: str | None = None
     approval_status: str | None = None
     comment: str | None = None
+
+
+# ── Bulk update ───────────────────────────────────────────────────────────────
+
+
+class TestCaseBulkPatch(BaseModel):
+    """Per-bulk-call patch — every field is optional. Only non-None fields
+    are applied to each selected test case. Empty string means "clear" for the
+    free-text fields (external_tool, suite_id, external_tc_id)."""
+    execution_mode: str | None = None
+    automation_status: str | None = None
+    automation_ready: bool | None = None
+    external_tool: str | None = None
+    suite_id: str | None = None
+    test_suite_id: int | None = None
+    external_tc_id: str | None = None
+
+
+class TestCaseBulkUpdateRequest(BaseModel):
+    test_case_ids: list[int] = Field(..., min_length=1, max_length=500)
+    patch: TestCaseBulkPatch
+    reason: str = Field(..., min_length=1, max_length=500,
+                        description="Required audit comment shown to reviewers")
+    dry_run: bool = Field(default=False,
+                          description="When true, returns the per-row analysis without persisting anything")
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_must_have_content(cls, v: str) -> str:
+        # Pydantic's min_length=1 only checks raw length, so "   " (whitespace) slips
+        # through. Strip first so the audit trail can't be filled with blank reasons.
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("reason cannot be empty or whitespace-only")
+        return stripped
+
+
+class TestCaseBulkRowOutcome(BaseModel):
+    test_case_id: int
+    test_case_key: str | None = None
+    title: str | None = None
+    # "updated" (changes applied) | "skipped" (nothing to change for this row) |
+    # "conflict" (would silently corrupt state — see `conflict_reason`) |
+    # "not_found" | "forbidden" (different project)
+    outcome: str
+    changes: dict[str, dict[str, Any]] = Field(default_factory=dict,
+        description="Per-field {old, new} diff applied (or that would be applied in dry-run)")
+    conflict_reason: str | None = None
+
+
+class TestCaseBulkUpdateResult(BaseModel):
+    requested: int
+    updated: int
+    skipped: int
+    conflicts: int
+    not_found: int
+    forbidden: int
+    dry_run: bool
+    rows: list[TestCaseBulkRowOutcome]
 
 
 class TestCaseHistoryOut(BaseModel):

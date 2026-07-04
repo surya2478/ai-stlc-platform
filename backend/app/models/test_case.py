@@ -14,6 +14,12 @@ class TestCase(TimestampMixin, Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     scenario_id: Mapped[int | None] = mapped_column(ForeignKey("test_scenarios.id"), nullable=True, index=True)
     requirement_id: Mapped[int | None] = mapped_column(ForeignKey("requirements.id"), nullable=True, index=True)
+    # Which application/channel under test this test case targets. Nullable —
+    # unset test cases resolve to the project's default ProjectApplication at
+    # script-generation/execution time rather than requiring a backfill.
+    application_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_applications.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     test_case_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
@@ -40,7 +46,13 @@ class TestCase(TimestampMixin, Base):
     product: Mapped[str | None] = mapped_column(String(200), nullable=True)
     sub_request_type: Mapped[str | None] = mapped_column(String(200), nullable=True)
     external_tool: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Free-text suite/test-set ID from an *external* tool (Xray/Zephyr) — set
+    # automatically when an automation mapping syncs. Distinct from
+    # `test_suite_id` below, which is this platform's own internal Test Suite.
     suite_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    test_suite_id: Mapped[int | None] = mapped_column(
+        ForeignKey("test_suites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     external_tc_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_tc_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     automation_script_id: Mapped[int | None] = mapped_column(ForeignKey("automation_scripts.id"), nullable=True)
@@ -66,7 +78,19 @@ class TestCase(TimestampMixin, Base):
     last_status_updated_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     status: Mapped[str] = mapped_column(String(50), default="draft")
-    # status: draft | pending_approval | approved | rejected | automated
+    # status: draft | pending_approval | approved | rejected
+    # Post-migration 026, 'automated' is no longer a lifecycle status — that
+    # concept moved to `automation_status`. Any row that previously carried
+    # status='automated' was backfilled to status='approved' with
+    # automation_status='automated'.
+
+    # ai_assistance_status: disabled | enabled | recommendation_pending | approved | rejected
+    # Phase 5 addition. Tracks whether the AI Automation Studio is providing
+    # recommendations for this TC and where any outstanding recs sit in the
+    # review flow. See the intelligence assistant panel for the surface.
+    ai_assistance_status: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="disabled", server_default="disabled"
+    )
 
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     deleted_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -79,6 +103,8 @@ class TestCase(TimestampMixin, Base):
     project: Mapped["Project"] = relationship("Project", back_populates="test_cases")
     scenario: Mapped["TestScenario | None"] = relationship("TestScenario", back_populates="test_cases")
     requirement: Mapped["Requirement | None"] = relationship("Requirement", back_populates="test_cases")
+    application: Mapped["ProjectApplication | None"] = relationship("ProjectApplication")
+    test_suite: Mapped["TestSuite | None"] = relationship("TestSuite")
     test_data_sets: Mapped[list["TestData"]] = relationship("TestData", back_populates="test_case")
     automation_scripts: Mapped[list["AutomationScript"]] = relationship(
         "AutomationScript",
@@ -112,6 +138,14 @@ class TestCase(TimestampMixin, Base):
     @property
     def linked_scenario_id(self) -> int | None:
         return self.scenario_id
+
+    @property
+    def test_suite_name(self) -> str | None:
+        return self.test_suite.name if self.test_suite else None
+
+    @property
+    def linked_application_id(self) -> int | None:
+        return self.application_id
 
     @property
     def linked_project_id(self) -> int:

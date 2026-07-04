@@ -5,6 +5,7 @@ import asyncio
 import logging
 import socket
 from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -134,6 +135,7 @@ async def _test_execution(input_data: dict[str, Any]) -> Any:
         test_cases=input_data["test_cases"],
         environment=input_data.get("environment", "local"),
         suite_name=input_data.get("suite_name", "Agent Test Suite"),
+        source_type=input_data.get("source_type", "manual"),
     )
 
 
@@ -630,6 +632,10 @@ async def _persist_agent_artifacts(
         scenarios = input_data.get("scenarios", [])
         scenario_id_map = {s.get("scenario_id"): s.get("id") for s in scenarios}
         req_id_map = {s.get("id"): s.get("_source_requirement_id") for s in scenarios}
+        # The endpoint stamps each scenario dict with the parent requirement's
+        # Environment tag before enqueueing (see trigger_test_case_agent in
+        # test_plans.py) — carry it through onto the created test case.
+        env_map = {s.get("id"): s.get("test_environment") for s in scenarios}
         created = []
         for tc_data in data.get("test_cases", []):
             db_sc_id = scenario_id_map.get(tc_data.get("_source_scenario_id"))
@@ -650,6 +656,7 @@ async def _persist_agent_artifacts(
                 severity=tc_data.get("severity", "Medium"),
                 test_type=tc_data.get("test_type"),
                 automation_candidate=bool(tc_data.get("automation_candidate", False)),
+                test_phase=env_map.get(db_sc_id),
                 status="draft",
                 agent_run_id=run.id,
             )
@@ -689,8 +696,9 @@ async def _persist_agent_artifacts(
                 code=_to_text(script_data.get("code")) or "",
                 setup_required=_to_list(script_data.get("setup_required")),
                 execution_command=_to_text(script_data.get("execution_command")),
-                status="draft",
+                status="ai_draft",
                 agent_run_id=run.id,
+                metadata_={"source": "ai_generation"},
             )
             db.add(script)
             await db.flush()
@@ -713,6 +721,20 @@ async def _persist_agent_artifacts(
         summary = data.get("summary", {})
         results = data.get("results", [])
         test_cases = input_data.get("test_cases", [])
+        source_type = input_data.get("source_type", "manual")
+        # Map source_type → execution_type. Post-migration 025, AI runs are a
+        # mode of automation, not their own type — carried via metadata.ai_assisted.
+        if source_type in ("ai", "automation", "automation_local", "external_automation_tool"):
+            execution_type = "automation"
+        else:
+            execution_type = "manual"
+        run_metadata: dict[str, Any] = {"source_type": source_type}
+        if source_type == "ai":
+            run_metadata["ai_assisted"] = True
+        # The agent may surface an aggregate confidence score for AI runs.
+        confidence_score = data.get("overall_confidence")
+        if confidence_score is None and isinstance(data.get("summary"), dict):
+            confidence_score = data["summary"].get("overall_confidence")
         run_record = ExecutionRun(
             project_id=run.project_id,
             created_by=run.triggered_by,
@@ -720,7 +742,10 @@ async def _persist_agent_artifacts(
             suite_name=input_data.get("suite_name", "Agent Test Suite"),
             environment=input_data.get("environment", "local"),
             status="completed",
-            source_type=input_data.get("source_type", "manual"),
+            execution_type=execution_type,
+            source_type=source_type,
+            confidence_score=confidence_score,
+            metadata_=run_metadata,
             total_tests=summary.get("total", len(results)),
             passed=summary.get("passed", 0),
             failed=summary.get("failed", 0),
@@ -742,6 +767,7 @@ async def _persist_agent_artifacts(
         )
         tc_map = {tc.get("test_case_id"): tc.get("id") for tc in test_cases}
         result_ids = []
+        now = datetime.now(timezone.utc)
         for result_data in results:
             db_tc_id = tc_map.get(result_data.get("test_case_id"))
             exec_result = ExecutionResult(
@@ -754,9 +780,19 @@ async def _persist_agent_artifacts(
                 error_message=_to_text(result_data.get("error_message")),
                 stack_trace=_to_text(result_data.get("stack_trace")),
                 logs=_to_list(result_data.get("logs")),
+                metadata_=result_data.get("metadata") if isinstance(result_data.get("metadata"), dict) else None,
             )
             db.add(exec_result)
             await db.flush()
+            if db_tc_id:
+                tc = await db.get(TestCase, db_tc_id)
+                if tc:
+                    tc.last_execution_run_id = run_record.id
+                    tc.last_automation_status = exec_result.status
+                    tc.last_automation_run_at = now
+                    tc.latest_evidence_available = bool(exec_result.logs or exec_result.error_message or exec_result.stack_trace)
+                    tc.last_status_updated_by = run.triggered_by
+                    tc.last_status_updated_at = now
             parents = [("execution_run", run_record.id)]
             if db_tc_id:
                 parents.append(("test_case", db_tc_id))
@@ -769,6 +805,21 @@ async def _persist_agent_artifacts(
                 agent_run_id=run.id,
             )
             result_ids.append(exec_result.id)
+        # AI-assisted runs still go through the autonomous/review completion rule.
+        # Post-migration 025 execution_type is 'automation' for these; source_type
+        # remains the source of truth for "this run is AI-assisted".
+        if source_type == "ai":
+            from app.services import ai_execution_service
+            results_for_eval = list(
+                (await db.execute(
+                    select(ExecutionResult).where(ExecutionResult.execution_run_id == run_record.id)
+                )).scalars().all()
+            )
+            evaluation = await ai_execution_service.finalize_ai_run(
+                db, run=run_record, results=results_for_eval,
+            )
+            summary["ai_completion_decision"] = evaluation.decision
+            summary["ai_completion_reason"] = evaluation.reason
         return {"run_id": run_record.id, "result_ids": result_ids, "summary": summary}
 
     if agent_name == "defect_analysis":

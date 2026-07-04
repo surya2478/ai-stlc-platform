@@ -34,6 +34,46 @@ PUSH_DEFECTS_TO_JIRA = "push_defects_to_jira"
 APPROVE_RELEASE_REPORT = "approve_release_report"
 VIEW_AUDIT_LOGS = "view_audit_logs"
 
+# ─── Phase 5: granular AI Automation Studio / Execution permissions ──────────
+# Aspirational — endpoints still guard on the coarse GENERATE_AUTOMATION /
+# EXECUTE_TESTS keys today. These finer-grained keys are mapped into existing
+# roles so nobody loses access; a future phase can move endpoint guards over
+# key by key without a role migration.
+AUTOMATION_VIEW = "automation.view"
+AUTOMATION_GENERATE_SCRIPT = "automation.generate_script"
+AUTOMATION_EDIT_DRAFT = "automation.edit_draft"
+AUTOMATION_REVIEW_SCRIPT = "automation.review_script"
+AUTOMATION_APPROVE_SCRIPT = "automation.approve_script"
+AUTOMATION_CONFIGURE_EXTERNAL_CONNECTOR = "automation.configure_external_connector"
+AUTOMATION_RUN_SANDBOX = "automation.run_sandbox"
+EXECUTION_RUN_AUTOMATION = "execution.run_automation"
+EXECUTION_RUN_AI_ASSISTED = "execution.run_ai_assisted"
+EXECUTION_VIEW_LIVE_RUNS = "execution.view_live_runs"
+EXECUTION_CREATE_DEFECT_DRAFT = "execution.create_defect_draft"
+
+_GRANULAR_AUTOMATION_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        AUTOMATION_VIEW,
+        AUTOMATION_GENERATE_SCRIPT,
+        AUTOMATION_EDIT_DRAFT,
+        AUTOMATION_REVIEW_SCRIPT,
+        AUTOMATION_APPROVE_SCRIPT,
+        AUTOMATION_CONFIGURE_EXTERNAL_CONNECTOR,
+        AUTOMATION_RUN_SANDBOX,
+    }
+)
+_GRANULAR_EXECUTION_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        EXECUTION_RUN_AUTOMATION,
+        EXECUTION_RUN_AI_ASSISTED,
+        EXECUTION_VIEW_LIVE_RUNS,
+        EXECUTION_CREATE_DEFECT_DRAFT,
+    }
+)
+GRANULAR_PERMISSIONS: frozenset[str] = (
+    _GRANULAR_AUTOMATION_PERMISSIONS | _GRANULAR_EXECUTION_PERMISSIONS
+)
+
 ALL_PERMISSIONS: frozenset[Permission] = frozenset(
     {
         VIEW_PROJECT,
@@ -61,9 +101,36 @@ ALL_PERMISSIONS: frozenset[Permission] = frozenset(
         APPROVE_RELEASE_REPORT,
         VIEW_AUDIT_LOGS,
     }
-)
+) | GRANULAR_PERMISSIONS
 
-ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
+def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permission]:
+    """Derive the Phase-5 granular permissions from a role's coarse grants.
+
+    Rule: anyone who has a coarse permission today keeps the equivalent
+    granular ability. This preserves existing user access when endpoint
+    guards eventually migrate to the granular keys. Applied uniformly to
+    every role via the ROLE_PERMISSIONS comprehension below.
+    """
+    extra: set[Permission] = set()
+    if VIEW_PROJECT in base:
+        extra.update({AUTOMATION_VIEW, EXECUTION_VIEW_LIVE_RUNS})
+    if GENERATE_AUTOMATION in base:
+        extra.update({
+            AUTOMATION_GENERATE_SCRIPT,
+            AUTOMATION_EDIT_DRAFT,
+            AUTOMATION_CONFIGURE_EXTERNAL_CONNECTOR,
+            AUTOMATION_RUN_SANDBOX,
+        })
+    if APPROVE_TEST_CASES in base:
+        extra.update({AUTOMATION_REVIEW_SCRIPT, AUTOMATION_APPROVE_SCRIPT})
+    if EXECUTE_TESTS in base:
+        extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})
+    if RAISE_DEFECTS in base:
+        extra.add(EXECUTION_CREATE_DEFECT_DRAFT)
+    return base | frozenset(extra)
+
+
+_BASE_ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
     "Project Admin": ALL_PERMISSIONS,
     "QA Manager": frozenset(
         {
@@ -120,6 +187,14 @@ ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
     "Defect Manager": frozenset({VIEW_PROJECT, VIEW_TEST_DATA, RAISE_DEFECTS, PUSH_DEFECTS_TO_JIRA, VIEW_AUDIT_LOGS}),
     "Business Analyst": frozenset({VIEW_PROJECT, VIEW_TEST_DATA, APPROVE_REQUIREMENTS}),
     "Viewer/Auditor": frozenset({VIEW_PROJECT, VIEW_AUDIT_LOGS}),
+}
+
+# Phase 5: expand every role with derived granular permissions in one place.
+# Downstream reads (user_permissions_for_project, permissions_for_role) see
+# both coarse and granular keys transparently.
+ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
+    role: _expand_role_permissions(perms)
+    for role, perms in _BASE_ROLE_PERMISSIONS.items()
 }
 
 GLOBAL_ADMIN_ROLES = {"admin", "platform_admin", "Platform Admin"}

@@ -11,6 +11,7 @@ if (process.env.NEXT_PUBLIC_DEV_AUTH_EMAIL || process.env.NEXT_PUBLIC_DEV_AUTH_P
 
 const nextConfig = {
   output: "standalone",
+  optimizeFonts: false,
   skipTrailingSlashRedirect: true,
   async headers() {
     return [

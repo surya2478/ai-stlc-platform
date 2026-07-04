@@ -9,7 +9,9 @@ TELECOM_DOMAINS = [
     "Mobile", "Fixed", "Digital", "Billing", "Charging", "CRM",
     "OSS", "BSS", "Middleware", "Integration", "Network", "Data",
 ]
-TEST_PHASES = ["SIT", "UAT", "Regression", "NFT", "Production_Validation"]
+# "Test Environment" — governs both filtering and the style/depth of AI-generated
+# scenarios & test cases (see scenario_agent.py / test_case_agent.py ENVIRONMENT_GUIDANCE).
+TEST_PHASES = ["SIT", "QA", "UAT", "Regression", "Production Smoke Test"]
 RISK_LEVELS = ["Critical", "High", "Medium", "Low"]
 
 
@@ -81,6 +83,7 @@ class RequirementUpdate(BaseModel):
     environment_needs: str | None = None
     test_data_needs: str | None = None
     nfr_requirements: str | None = None
+    generation_notes: str | None = None
     # Status
     status: Literal["draft", "pending_review", "approved", "rejected"] | None = None
     readiness_status: str | None = None
@@ -137,6 +140,7 @@ class RequirementOut(BaseModel):
     environment_needs: str | None = None
     test_data_needs: str | None = None
     nfr_requirements: str | None = None
+    generation_notes: str | None = None
     # Quality (denormalised)
     quality_score: float | None = None
     quality_feedback: str | None = None

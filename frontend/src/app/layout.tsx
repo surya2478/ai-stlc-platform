@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
-
-const inter = Inter({ subsets: ["latin"] });
+import { AssistantWidget } from "@/components/assistant/AssistantWidget";
+import { Suspense } from "react";
 
 export const metadata: Metadata = {
-  title: "e& AI Test Automation System",
+  title: "AI Quality Assurance Command Center",
   description: "AI Agent–based End-to-End Software Test Life Cycle Automation",
 };
 
@@ -17,9 +16,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <Providers>{children}</Providers>
+      <body className="font-sans antialiased">
+        <Providers>
+          {children}
+          <Suspense fallback={null}>
+            <AssistantWidget />
+          </Suspense>
+        </Providers>
       </body>
     </html>
   );
 }
+

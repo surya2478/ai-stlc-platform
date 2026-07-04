@@ -156,11 +156,37 @@ class ExecutionAgentResult:
 class TestExecutionAgent(BaseAgent):
     """Executes test cases and returns structured pass/fail results."""
 
+    def _controlled_ai_gateway_unavailable(self, test_cases: list[dict]) -> list[dict]:
+        results = []
+        for tc in test_cases:
+            test_case_id = tc.get("test_case_id") or str(tc.get("id") or "unknown")
+            test_name = tc.get("title") or test_case_id
+            results.append({
+                "test_case_id": test_case_id,
+                "test_name": test_name,
+                "status": "failed",
+                "duration_ms": 0,
+                "error_message": "Controlled AI execution gateway is not configured. No browser, API, or validation tool run was performed.",
+                "stack_trace": None,
+                "logs": [
+                    "AI execution request accepted by backend orchestration.",
+                    "Execution stopped before tool invocation because no controlled AI tool gateway is configured.",
+                    "Result requires review; no mock pass/fail decision was generated.",
+                ],
+                "metadata": {
+                    "review_required": True,
+                    "failure_category": "AI_CONFIDENCE_ISSUE",
+                    "actual_tool_run": False,
+                },
+            })
+        return results
+
     async def run(
         self,
         test_cases: list[dict],
         environment: str = "staging",
         suite_name: str = "Test Suite",
+        source_type: str = "manual",
     ) -> ExecutionAgentResult:
         self._logs.clear()
         self.log("info", "start", f"Executing {len(test_cases)} tests on '{environment}'")
@@ -170,6 +196,23 @@ class TestExecutionAgent(BaseAgent):
                 success=False,
                 error="No test cases provided",
                 data={},
+                logs=self._logs,
+            )
+
+        if source_type == "ai":
+            results = self._controlled_ai_gateway_unavailable(test_cases)
+            self.log("warning", "ai_gateway", "Controlled AI execution gateway is not configured; AI run stopped without mock execution.")
+            return ExecutionAgentResult(
+                success=True,
+                data={
+                    "results": results,
+                    "summary": {
+                        "total": len(results),
+                        "passed": 0,
+                        "failed": len(results),
+                        "skipped": 0,
+                    },
+                },
                 logs=self._logs,
             )
 
@@ -213,5 +256,6 @@ class TestExecutionAgent(BaseAgent):
             test_cases=input_data.get("test_cases", []),
             environment=input_data.get("environment", "staging"),
             suite_name=input_data.get("suite_name", "Test Suite"),
+            source_type=input_data.get("source_type", "manual"),
         )
         return result.data

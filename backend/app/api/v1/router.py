@@ -5,9 +5,10 @@ from fastapi import APIRouter
 
 from app.api.v1.endpoints import (
     health, projects, users, documents,
-    requirements, test_plans, test_cases,
+    requirements, test_plans, test_cases, test_suites,
     test_data, automation, execution, defects,
-    reports, agents, settings, jira, traceability, llm, rag,
+    reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
+    applications,
 )
 
 api_router = APIRouter()
@@ -19,6 +20,7 @@ api_router.include_router(documents.router, prefix="/documents", tags=["Document
 api_router.include_router(requirements.router, prefix="/requirements", tags=["Requirements"])
 api_router.include_router(test_plans.router, prefix="/test-plans", tags=["Test Plans"])
 api_router.include_router(test_cases.router, prefix="/test-cases", tags=["Test Cases"])
+api_router.include_router(test_suites.router, prefix="/test-suites", tags=["Test Suites"])
 api_router.include_router(test_data.router, prefix="/test-data", tags=["Test Data"])
 api_router.include_router(automation.router, prefix="/automation", tags=["Automation"])
 api_router.include_router(execution.router, prefix="/execution", tags=["Execution"])
@@ -30,4 +32,8 @@ api_router.include_router(agents.router, prefix="/agent-runs", tags=["Agent Runs
 api_router.include_router(agents.router, prefix="/agents", tags=["Agent Runs"])
 api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
 api_router.include_router(llm.router, tags=["LLM Settings"])
+api_router.include_router(applications.router, tags=["Applications"])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
+api_router.include_router(assistant.router, prefix="/assistant", tags=["Assistant"])
+api_router.include_router(resource_ops.router, prefix="/resource-operations", tags=["Resource Operations"])
+

@@ -27,6 +27,8 @@ import {
   Loader2,
   Download,
   FileText,
+  Trash2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AuditStamp } from "@/components/ui/AuditStamp";
@@ -105,18 +107,131 @@ function getErrorMessage(err: unknown, fallback: string) {
 
 // ── PlanCard ──────────────────────────────────────────────────────────────────
 
+function textList(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((item) => String(item)).filter(Boolean);
+  return [String(value)].filter(Boolean);
+}
+
+function linkedRequirements(plan: TestPlan, requirementById?: Map<number, Requirement>) {
+  const ids = textList(plan.metadata_?.source_requirement_ids).map((id) => Number(id)).filter(Number.isFinite);
+  return ids.map((id) => requirementById?.get(id)).filter((req): req is Requirement => Boolean(req));
+}
+
+function planItems(plan: TestPlan, key: keyof TestPlan, linked: Requirement[]): string[] {
+  const existing = textList(plan[key]);
+  if (existing.length > 0) return existing;
+  if (key === "scope") {
+    return linked.map((req) => `${req.requirement_id || `REQ-${req.id}`}: ${req.title}${req.summary ? ` - ${req.summary}` : ""}`);
+  }
+  if (key === "entry_criteria") {
+    return [
+      "Approved requirements are baselined and available for test design.",
+      ...linked.flatMap((req) =>
+        textList(req.acceptance_criteria).map((item) => `${req.requirement_id || `REQ-${req.id}`}: Acceptance criterion available - ${item}`),
+      ),
+    ];
+  }
+  if (key === "exit_criteria" && linked.length > 0) {
+    return [
+      "All planned functional, regression, and risk-based tests are executed.",
+      "Critical and high severity defects are resolved or formally accepted.",
+      "Traceability from requirements to test scenarios and test cases is complete.",
+    ];
+  }
+  if (key === "test_types" && linked.length > 0) return ["Functional", "Regression", "Integration", "Security", "User Acceptance"];
+  if (key === "risks") {
+    return linked.flatMap((req) => textList(req.risks).map((risk) => `${req.requirement_id || `REQ-${req.id}`}: ${risk}`));
+  }
+  if (key === "mitigations" && linked.length > 0) {
+    return ["Prioritize high-risk requirements and validate acceptance criteria before execution."];
+  }
+  if (key === "automation_candidates") {
+    return linked.map((req) => `${req.requirement_id || `REQ-${req.id}`}: Regression coverage for ${req.title}`);
+  }
+  if (key === "out_of_scope" && linked.length > 0) return ["Items not covered by the selected approved requirements."];
+  return [];
+}
+
+function markdownList(items: string[]) {
+  return items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "N/A";
+}
+
+function ConfirmDeleteModal({
+  title,
+  description,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  description: string;
+  onConfirm: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setError(getErrorMessage(err, "Delete failed. Please try again."));
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onCancel}>
+      <div className="w-full max-w-sm rounded-2xl border bg-white shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start gap-3">
+          <div className="rounded-full bg-red-50 border border-red-100 p-2 shrink-0">
+            <AlertTriangle className="h-5 w-5 text-red-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-bold text-sm text-slate-800">{title}</h2>
+            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed font-semibold">{description}</p>
+          </div>
+          <button onClick={onCancel} className="rounded-md p-1 hover:bg-slate-50 text-slate-400 shrink-0" title="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {error && (
+          <div className="rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700 font-semibold">
+            {error}
+          </div>
+        )}
+        <div className="flex gap-2 pt-1">
+          <Button onClick={onCancel} disabled={deleting} variant="outline" size="sm" className="flex-1 h-9 border-slate-200 text-slate-650 bg-white">
+            Cancel
+          </Button>
+          <Button onClick={handleConfirm} disabled={deleting} variant="default" size="sm" className="flex-1 h-9 bg-rose-600 hover:bg-rose-700 font-semibold text-white">
+            {deleting ? <RefreshCw className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PlanCard({
   plan,
   onApprove,
   onReject,
+  onDelete,
   resolveUser,
   requirementLabelById,
+  requirementById,
 }: {
   plan: TestPlan;
   onApprove: (id: number) => void;
   onReject: (id: number, notes: string) => void;
+  onDelete: (plan: TestPlan) => void;
   resolveUser: (id?: number) => string;
   requirementLabelById?: Map<number, string>;
+  requirementById?: Map<number, Requirement>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [approving, setApproving] = useState(false);
@@ -136,6 +251,21 @@ function PlanCard({
   };
 
   const exportPlanAsMarkdown = (p: TestPlan) => {
+    const linked = linkedRequirements(p, requirementById);
+    const coveredRequirements = linked.length > 0
+      ? linked.map((req) => {
+          const ref = req.requirement_id || `REQ-${req.id}`;
+          const lines = [`### ${ref}: ${req.title}`];
+          if (req.summary) lines.push(req.summary);
+          const acceptance = textList(req.acceptance_criteria);
+          if (acceptance.length) lines.push("", "**Acceptance Criteria**", markdownList(acceptance));
+          const rules = textList(req.business_rules);
+          if (rules.length) lines.push("", "**Business Rules**", markdownList(rules));
+          const risks = textList(req.risks);
+          if (risks.length) lines.push("", "**Requirement Risks**", markdownList(risks));
+          return lines.join("\n");
+        }).join("\n\n")
+      : "N/A";
     const content = `# Test Plan: ${p.title} (${p.test_plan_id})
 
 **Status:** ${p.status.toUpperCase()}
@@ -143,35 +273,52 @@ function PlanCard({
 **Resource Recommendation:** ${p.resource_recommendation || "N/A"}
 **Created At:** ${new Date(p.created_at).toLocaleString()}
 
+## Covered Requirements
+${coveredRequirements}
+
 ## Scope
-${p.scope?.map((item) => `- ${item}`).join("\n") || "N/A"}
+${markdownList(planItems(p, "scope", linked))}
 
 ## Out of Scope
-${p.out_of_scope?.map((item) => `- ${item}`).join("\n") || "N/A"}
+${markdownList(planItems(p, "out_of_scope", linked))}
 
 ## Test Types
-${p.test_types?.map((item) => `- ${item}`).join("\n") || "N/A"}
+${markdownList(planItems(p, "test_types", linked))}
 
 ## Entry Criteria
-${p.entry_criteria?.map((item) => `- ${item}`).join("\n") || "N/A"}
+${markdownList(planItems(p, "entry_criteria", linked))}
 
 ## Exit Criteria
-${p.exit_criteria?.map((item) => `- ${item}`).join("\n") || "N/A"}
+${markdownList(planItems(p, "exit_criteria", linked))}
 
 ## Risks
-${p.risks?.map((item) => `- ${item}`).join("\n") || "N/A"}
+${markdownList(planItems(p, "risks", linked))}
 
 ## Mitigations
-${p.mitigations?.map((item) => `- ${item}`).join("\n") || "N/A"}
+${markdownList(planItems(p, "mitigations", linked))}
 
 ## Automation Candidates
-${p.automation_candidates?.map((item) => `- ${item}`).join("\n") || "N/A"}
+${markdownList(planItems(p, "automation_candidates", linked))}
 `;
     downloadBlob(new Blob([content], { type: "text/markdown" }), `test_plan_${p.test_plan_id}.md`);
   };
 
   const exportPlanAsJson = (p: TestPlan) => {
-    const content = JSON.stringify(p, null, 2);
+    const linked = linkedRequirements(p, requirementById);
+    const content = JSON.stringify({
+      ...p,
+      covered_requirements: linked,
+      export_sections: {
+        scope: planItems(p, "scope", linked),
+        out_of_scope: planItems(p, "out_of_scope", linked),
+        test_types: planItems(p, "test_types", linked),
+        entry_criteria: planItems(p, "entry_criteria", linked),
+        exit_criteria: planItems(p, "exit_criteria", linked),
+        risks: planItems(p, "risks", linked),
+        mitigations: planItems(p, "mitigations", linked),
+        automation_candidates: planItems(p, "automation_candidates", linked),
+      },
+    }, null, 2);
     downloadBlob(new Blob([content], { type: "application/json" }), `test_plan_${p.test_plan_id}.json`);
   };
 
@@ -263,6 +410,17 @@ ${p.automation_candidates?.map((item) => `- ${item}`).join("\n") || "N/A"}
               </Button>
             </div>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onDelete(plan)}
+            className="h-8 w-8 p-0 border-rose-200 text-rose-600 hover:bg-rose-50 bg-white"
+            title="Delete test plan"
+            aria-label="Delete test plan"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
 
           {/* Export Dropdown */}
           <div className="relative">
@@ -618,6 +776,8 @@ function TestPlanningContent() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [selectedReqIds, setSelectedReqIds] = useState<number[]>([]);
   const [showAgentPanel, setShowAgentPanel] = useState(false);
+  const [showScenariosExportMenu, setShowScenariosExportMenu] = useState(false);
+  const [deletingPlan, setDeletingPlan] = useState<TestPlan | null>(null);
 
   // Load projects on mount
   useEffect(() => {
@@ -778,6 +938,13 @@ function TestPlanningContent() {
     await loadData();
   };
 
+  const handleDeletePlan = async () => {
+    if (!deletingPlan) return;
+    await testPlansApi.delete(deletingPlan.id);
+    setDeletingPlan(null);
+    await loadData();
+  };
+
   const handleApproveScenario = async (scenarioId: number) => {
     try {
       await scenariosApi.approve(scenarioId, "approve");
@@ -793,6 +960,176 @@ function TestPlanningContent() {
       await loadData();
     } catch (err) {
       setAgentError(getErrorMessage(err, "Failed to reject scenario"));
+    }
+  };
+
+  const downloadBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportScenariosAsMarkdown = () => {
+    const projectName = projects.find((p) => p.id === selectedProject)?.name ?? `Project ${selectedProject}`;
+    const lines: string[] = [];
+    lines.push(`# Test Scenarios Catalog — ${projectName}`);
+    lines.push("");
+    lines.push(`**Total Scenarios:** ${scenarios.length}`);
+    lines.push(`**Exported At:** ${new Date().toLocaleString()}`);
+    lines.push("");
+
+    scenarios.forEach((s) => {
+      const reqLabel = s.requirement_id
+        ? requirementLabelById.get(s.requirement_id) ?? `REQ-${s.requirement_id}`
+        : "Unlinked";
+      lines.push(`## ${s.scenario_id} — ${s.title}`);
+      lines.push("");
+      lines.push(`- **Requirement:** ${reqLabel}`);
+      lines.push(`- **Status:** ${s.status.replace(/_/g, " ").toUpperCase()}`);
+      if (s.scenario_type) lines.push(`- **Type:** ${s.scenario_type}`);
+      if (s.priority) lines.push(`- **Priority:** ${s.priority}`);
+      lines.push(`- **Created At:** ${new Date(s.created_at).toLocaleString()}`);
+      lines.push(`- **Created By:** ${resolveUser(s.created_by ?? undefined)}`);
+      if (s.description) {
+        lines.push("");
+        lines.push("### Description");
+        lines.push(s.description);
+      }
+      if (s.coverage_mapping && s.coverage_mapping.length > 0) {
+        lines.push("");
+        lines.push("### Coverage Mapping");
+        s.coverage_mapping.forEach((c) => lines.push(`- ${c}`));
+      }
+      lines.push("");
+      lines.push("---");
+      lines.push("");
+    });
+
+    const filename = `test_scenarios_${projectName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.md`;
+    downloadBlob(new Blob([lines.join("\n")], { type: "text/markdown" }), filename);
+  };
+
+  const exportScenariosAsJson = () => {
+    const projectName = projects.find((p) => p.id === selectedProject)?.name ?? `Project ${selectedProject}`;
+    const payload = {
+      project: projectName,
+      project_id: selectedProject,
+      exported_at: new Date().toISOString(),
+      total: scenarios.length,
+      scenarios,
+    };
+    const filename = `test_scenarios_${projectName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.json`;
+    downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), filename);
+  };
+
+  const scenarioExportRows = () =>
+    scenarios.map((s) => {
+      const reqLabel = s.requirement_id
+        ? requirementLabelById.get(s.requirement_id) ?? `REQ-${s.requirement_id}`
+        : "Unlinked";
+      return {
+        scenario_id: s.scenario_id,
+        title: s.title,
+        requirement: reqLabel,
+        status: s.status.replace(/_/g, " "),
+        type: s.scenario_type ?? "",
+        priority: s.priority ?? "",
+        description: s.description ?? "",
+        coverage_mapping: (s.coverage_mapping ?? []).join("; "),
+        created_at: new Date(s.created_at).toLocaleString(),
+        created_by: resolveUser(s.created_by ?? undefined),
+      };
+    });
+
+  const exportScenariosAsCsv = () => {
+    const projectName = projects.find((p) => p.id === selectedProject)?.name ?? `Project ${selectedProject}`;
+    const headers = [
+      "Scenario ID",
+      "Title",
+      "Requirement",
+      "Status",
+      "Type",
+      "Priority",
+      "Description",
+      "Coverage Mapping",
+      "Created At",
+      "Created By",
+    ];
+    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const rows = scenarioExportRows().map((r) =>
+      [
+        r.scenario_id,
+        r.title,
+        r.requirement,
+        r.status,
+        r.type,
+        r.priority,
+        r.description,
+        r.coverage_mapping,
+        r.created_at,
+        r.created_by,
+      ]
+        .map(escape)
+        .join(","),
+    );
+    const csv = "﻿" + [headers.map(escape).join(","), ...rows].join("\r\n");
+    const filename = `test_scenarios_${projectName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), filename);
+  };
+
+  const exportScenariosAsXlsx = async () => {
+    const projectName = projects.find((p) => p.id === selectedProject)?.name ?? `Project ${selectedProject}`;
+    try {
+      const ExcelJS = (await import("exceljs")).default;
+      const wb = new ExcelJS.Workbook();
+      wb.creator = "AI Quality Assurance Command Center";
+      wb.created = new Date();
+      const ws = wb.addWorksheet("Test Scenarios");
+
+      ws.columns = [
+        { header: "Scenario ID", key: "scenario_id", width: 14 },
+        { header: "Title", key: "title", width: 48 },
+        { header: "Requirement", key: "requirement", width: 14 },
+        { header: "Status", key: "status", width: 16 },
+        { header: "Type", key: "type", width: 14 },
+        { header: "Priority", key: "priority", width: 12 },
+        { header: "Description", key: "description", width: 60 },
+        { header: "Coverage Mapping", key: "coverage_mapping", width: 40 },
+        { header: "Created At", key: "created_at", width: 22 },
+        { header: "Created By", key: "created_by", width: 22 },
+      ];
+
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      headerRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF1B59F8" },
+      };
+      headerRow.alignment = { vertical: "middle", horizontal: "left" };
+
+      scenarioExportRows().forEach((row) => ws.addRow(row));
+      ws.eachRow({ includeEmpty: false }, (row) => {
+        row.alignment = { vertical: "top", wrapText: true };
+      });
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columns.length } };
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const filename = `test_scenarios_${projectName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      downloadBlob(
+        new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+        filename,
+      );
+    } catch (err) {
+      console.error("Failed to export XLSX:", err);
+      setAgentError(getErrorMessage(err, "Failed to export scenarios to Excel."));
     }
   };
 
@@ -850,6 +1187,27 @@ function TestPlanningContent() {
     requirements.map((req) => [req.id, req.requirement_id || req.title])
   ), [requirements]);
 
+  const requirementById = useMemo(() => new Map(
+    requirements.map((req) => [req.id, req])
+  ), [requirements]);
+
+  const planCoveredReqIds = useMemo(() => {
+    const set = new Set<number>();
+    plans.forEach((plan) => {
+      const ids = (plan.metadata_?.source_requirement_ids ?? []) as number[];
+      ids.forEach((id) => set.add(id));
+    });
+    return set;
+  }, [plans]);
+
+  const scenarioCoveredReqIds = useMemo(() => {
+    const set = new Set<number>();
+    scenarios.forEach((s) => {
+      if (s.requirement_id != null) set.add(s.requirement_id);
+    });
+    return set;
+  }, [scenarios]);
+
   return (
     <div className="space-y-6 select-none pb-8 animate-fade-in">
       {/* ── Title & Global Controls ────────────────────────────────────────────── */}
@@ -864,25 +1222,6 @@ function TestPlanningContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={selectedProject ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              const params = new URLSearchParams(searchParams.toString());
-              params.set("project", val);
-              router.push(`${pathname}?${params.toString()}`);
-            }}
-            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-
           <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
             <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
           </Button>
@@ -1000,25 +1339,69 @@ function TestPlanningContent() {
                     <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 font-semibold text-xs text-slate-655">
                       {requirements.map((req) => {
                         const isSelected = selectedReqIds.includes(req.id);
+                        const hasPlan = planCoveredReqIds.has(req.id);
+                        const hasScenarios = scenarioCoveredReqIds.has(req.id);
                         return (
                           <div
                             key={req.id}
                             onClick={() => toggleReq(req.id)}
                             className={cn(
-                              "flex items-center gap-3 px-3 py-2 rounded-xl border bg-white cursor-pointer transition-all hover:bg-slate-50",
+                              "flex flex-col gap-1.5 px-3 py-2 rounded-xl border bg-white cursor-pointer transition-all hover:bg-slate-50",
                               isSelected ? "border-[#1b59f8] bg-[#1b59f8]/5 shadow-sm" : "border-slate-200"
                             )}
                           >
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {}} // handled by parent onClick
-                              className="rounded border-slate-350 text-[#1b59f8] focus:ring-[#1b59f8]"
-                            />
-                            <span className="font-mono text-[10px] font-bold text-[#1b59f8] bg-[#1b59f8]/10 px-1.5 py-0.5 rounded shrink-0">
-                              {req.requirement_id || `REQ-${req.id}`}
-                            </span>
-                            <span className="truncate flex-1 text-slate-800">{req.title}</span>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {}} // handled by parent onClick
+                                className="rounded border-slate-350 text-[#1b59f8] focus:ring-[#1b59f8]"
+                              />
+                              <span className="font-mono text-[10px] font-bold text-[#1b59f8] bg-[#1b59f8]/10 px-1.5 py-0.5 rounded shrink-0">
+                                {req.requirement_id || `REQ-${req.id}`}
+                              </span>
+                              <span className="truncate flex-1 text-slate-800">{req.title}</span>
+                            </div>
+                            <div className="flex items-center flex-wrap gap-2 pl-7">
+                              <AuditStamp
+                                createdAt={req.created_at}
+                                createdByName={resolveUser(req.created_by ?? undefined)}
+                                compact
+                              />
+                              <span className="text-slate-300">·</span>
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold",
+                                  hasPlan
+                                    ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                                    : "bg-slate-50 border-slate-200 text-slate-500"
+                                )}
+                                title={hasPlan ? "Test plan has been generated for this requirement" : "No test plan generated yet"}
+                              >
+                                {hasPlan ? (
+                                  <CheckCircle className="h-3 w-3" />
+                                ) : (
+                                  <XCircle className="h-3 w-3" />
+                                )}
+                                Plan: {hasPlan ? "Y" : "N"}
+                              </span>
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold",
+                                  hasScenarios
+                                    ? "bg-violet-50 border-violet-200 text-violet-700"
+                                    : "bg-slate-50 border-slate-200 text-slate-500"
+                                )}
+                                title={hasScenarios ? "Test scenarios have been generated for this requirement" : "No test scenarios generated yet"}
+                              >
+                                {hasScenarios ? (
+                                  <CheckCircle className="h-3 w-3" />
+                                ) : (
+                                  <XCircle className="h-3 w-3" />
+                                )}
+                                Scenarios: {hasScenarios ? "Y" : "N"}
+                              </span>
+                            </div>
                           </div>
                         );
                       })}
@@ -1073,8 +1456,10 @@ function TestPlanningContent() {
                     plan={plan}
                     onApprove={handleApprove}
                     onReject={handleReject}
+                    onDelete={setDeletingPlan}
                     resolveUser={resolveUser}
                     requirementLabelById={requirementLabelById}
+                    requirementById={requirementById}
                   />
                 ))}
               </div>
@@ -1083,11 +1468,74 @@ function TestPlanningContent() {
 
           {/* ── Test Scenarios Catalog ─────────────────────────────────────────────── */}
           <div className="space-y-3.5">
-            <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-              <Layers className="h-4.5 w-4.5 text-slate-400" />
-              Test Scenarios Catalog
-              {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
-            </h2>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                <Layers className="h-4.5 w-4.5 text-slate-400" />
+                Test Scenarios Catalog
+                {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+              </h2>
+
+              {scenarios.length > 0 && (
+                <div className="relative">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowScenariosExportMenu((v) => !v)}
+                    className="h-8 border-slate-200 text-slate-700 hover:bg-slate-50 bg-white text-xs font-semibold"
+                  >
+                    <Download className="h-3.5 w-3.5 mr-1" />
+                    Export All
+                  </Button>
+                  {showScenariosExportMenu && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setShowScenariosExportMenu(false)} />
+                      <div className="absolute right-0 mt-1.5 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-40 animate-in fade-in slide-in-from-top-2 duration-100">
+                        <button
+                          onClick={() => {
+                            exportScenariosAsMarkdown();
+                            setShowScenariosExportMenu(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                        >
+                          <FileText className="h-3.5 w-3.5 text-blue-500" />
+                          As Markdown
+                        </button>
+                        <button
+                          onClick={() => {
+                            exportScenariosAsJson();
+                            setShowScenariosExportMenu(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                        >
+                          <FileText className="h-3.5 w-3.5 text-amber-500" />
+                          As JSON
+                        </button>
+                        <button
+                          onClick={() => {
+                            exportScenariosAsCsv();
+                            setShowScenariosExportMenu(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                        >
+                          <FileText className="h-3.5 w-3.5 text-slate-500" />
+                          As CSV
+                        </button>
+                        <button
+                          onClick={() => {
+                            exportScenariosAsXlsx();
+                            setShowScenariosExportMenu(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                        >
+                          <FileText className="h-3.5 w-3.5 text-emerald-500" />
+                          As Excel (.xlsx)
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
 
             {!loading && scenarios.length === 0 ? (
               <div className="bg-white border border-dashed border-slate-200 rounded-xl p-8 text-center shadow-sm">
@@ -1114,6 +1562,14 @@ function TestPlanningContent() {
             )}
           </div>
         </>
+      )}
+      {deletingPlan && (
+        <ConfirmDeleteModal
+          title="Delete Test Plan"
+          description={`Delete ${deletingPlan.test_plan_id} - ${deletingPlan.title}? Linked requirements, scenarios, and test cases will be kept.`}
+          onConfirm={handleDeletePlan}
+          onCancel={() => setDeletingPlan(null)}
+        />
       )}
     </div>
   );

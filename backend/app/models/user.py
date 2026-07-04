@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, String
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,8 +16,11 @@ class User(TimestampMixin, Base):
     # roles: admin | qa_engineer | qa_lead | viewer
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
 
     # Relationships
+    organization: Mapped["Organization"] = relationship("Organization", back_populates="users")
+
     projects: Mapped[list["Project"]] = relationship("Project", back_populates="owner", lazy="select", foreign_keys="[Project.owner_id]")
     approval_actions: Mapped[list["ApprovalAction"]] = relationship("ApprovalAction", back_populates="user", lazy="select")
     project_memberships: Mapped[list["ProjectMembership"]] = relationship(

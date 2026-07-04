@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { agentRunsApi, projectsApi, type AgentRun, type AgentLog, type Project } from "@/lib/api";
+import { agentRunsApi, projectsApi, type AgentRun, type AgentLog } from "@/lib/api";
 import { Cpu, ChevronDown, ChevronUp, RefreshCw, AlertTriangle, Info, Bug, CheckCircle, Loader2, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
@@ -145,7 +145,6 @@ function AgentLogsContent() {
 
   const selectedProject = Number(searchParams.get("project")) || null;
 
-  const [projects, setProjects] = useState<Project[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [logs, setLogs] = useState<AgentLog[]>([]);
@@ -154,9 +153,15 @@ function AgentLogsContent() {
   const [filterAgent, setFilterAgent] = useState<string>("all");
   const [filterLevel, setFilterLevel] = useState<string>("all");
 
+  // Project is now switched from the global header selector rather than a
+  // page-local dropdown — clear the stale run/logs selection when it changes.
+  useEffect(() => {
+    setSelectedRunId(null);
+    setLogs([]);
+  }, [selectedProject]);
+
   useEffect(() => {
     projectsApi.list().then((r) => {
-      setProjects(r.data);
       if (r.data.length > 0 && !searchParams.get("project")) {
         const params = new URLSearchParams(searchParams.toString());
         params.set("project", String(r.data[0].id));
@@ -224,27 +229,6 @@ function AgentLogsContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={selectedProject ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              const params = new URLSearchParams(searchParams.toString());
-              params.set("project", val);
-              router.push(`${pathname}?${params.toString()}`);
-              setSelectedRunId(null);
-              setLogs([]);
-            }}
-            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-
           <Button variant="outline" size="sm" onClick={loadRuns} className="h-8 w-8 p-0 border-slate-200">
             <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
           </Button>

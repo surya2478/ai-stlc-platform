@@ -5,14 +5,27 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
 import {
   LayoutDashboard, FileText, ClipboardList,
-  TestTube2, Code2, Play, Bug, BarChart3, Settings,
-  Bot, ChevronRight, Cpu, Users, Database,
-  ChevronLeft, Menu, Activity, ShieldAlert, Sliders, Bell,
-  Brain, BookOpen, ShieldCheck, ClipboardCheck
+  TestTube2, Play, Bug, BarChart3, Settings,
+  Bot, ChevronRight, ChevronDown, Users, Database,
+  ChevronLeft, Brain, BookOpen,
+  Hand, Cpu, Sparkles, Gauge,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
+type NavItem = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  children?: NavItem[];
+};
+
+type NavGroup = {
+  group: string;
+  items: NavItem[];
+};
+
+const NAV_ITEMS: NavGroup[] = [
   {
     group: "Overview",
     items: [
@@ -26,8 +39,17 @@ const NAV_ITEMS = [
       { label: "Test Planning", href: "/test-planning", icon: ClipboardList },
       { label: "Test Cases", href: "/test-cases", icon: TestTube2 },
       { label: "Test Data", href: "/test-data", icon: Database },
-      { label: "Automation", href: "/automation", icon: Code2 },
-      { label: "Execution", href: "/execution", icon: Play },
+      { label: "AI Automation Studio", href: "/automation", icon: Sparkles },
+      {
+        label: "Execution",
+        href: "/execution",
+        icon: Play,
+        children: [
+          { label: "Manual Execution", href: "/execution/manual", icon: Hand },
+          { label: "Automation Execution", href: "/execution/automation", icon: Cpu },
+          { label: "Execution Dashboard", href: "/execution/dashboard", icon: Gauge },
+        ],
+      },
       { label: "Defects", href: "/defects", icon: Bug },
       { label: "Reports", href: "/reports", icon: BarChart3 },
     ],
@@ -43,7 +65,7 @@ const NAV_ITEMS = [
     group: "Operations",
     items: [
       { label: "AI Agents", href: "/agents", icon: Bot },
-      { label: "Approvals", href: "/requirements", icon: ClipboardCheck },
+      { label: "Resource Intelligence", href: "/resource-intelligence", icon: Users },
     ],
   },
   {
@@ -55,21 +77,64 @@ const NAV_ITEMS = [
   },
 ];
 
+const EXPANDED_STORAGE_KEY = "sidebar-expanded-items";
+
+function withProject(href: string, projectId: string | null): string {
+  return projectId ? `${href}?project=${projectId}` : href;
+}
+
+function isActiveHref(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(href + "/");
+}
+
+function isParentActive(pathname: string, item: NavItem): boolean {
+  if (isActiveHref(pathname, item.href)) return true;
+  return Boolean(item.children?.some((c) => isActiveHref(pathname, c.href)));
+}
+
 function SidebarContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("project");
-  
+
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setMounted(true);
-    const saved = localStorage.getItem("sidebar-collapsed");
-    if (saved) {
-      setCollapsed(saved === "true");
+    const savedCollapsed = localStorage.getItem("sidebar-collapsed");
+    if (savedCollapsed) setCollapsed(savedCollapsed === "true");
+    const savedExpanded = localStorage.getItem(EXPANDED_STORAGE_KEY);
+    if (savedExpanded) {
+      try {
+        setExpanded(JSON.parse(savedExpanded));
+      } catch {
+        /* ignore */
+      }
     }
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    // Auto-expand any parent whose child matches the current route
+    setExpanded((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const group of NAV_ITEMS) {
+        for (const item of group.items) {
+          if (item.children && isParentActive(pathname, item) && !next[item.href]) {
+            next[item.href] = true;
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify(next));
+      }
+      return changed ? next : prev;
+    });
+  }, [pathname, mounted]);
 
   const toggleCollapse = () => {
     const nextState = !collapsed;
@@ -77,12 +142,20 @@ function SidebarContent() {
     localStorage.setItem("sidebar-collapsed", String(nextState));
   };
 
+  const toggleExpanded = (href: string) => {
+    setExpanded((prev) => {
+      const next = { ...prev, [href]: !prev[href] };
+      localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
   if (!mounted) {
     return <aside className="flex w-60 flex-col bg-[#091225] border-r border-[#13223f] text-slate-400" />;
   }
 
   return (
-    <aside 
+    <aside
       className={cn(
         "flex flex-col border-r border-[#13223f] bg-[#091225] text-slate-400 transition-all duration-300 ease-in-out select-none",
         collapsed ? "w-16" : "w-60"
@@ -96,10 +169,10 @@ function SidebarContent() {
         {!collapsed && (
           <div className="flex flex-col min-w-0 transition-opacity duration-300">
             <span className="font-bold text-sm text-white leading-tight tracking-wide truncate">
-              AI STLC Platform
+              nxtQA
             </span>
             <span className="text-[10px] font-medium text-cyan-400 tracking-wider uppercase leading-none mt-0.5">
-              Command Center
+              AI Command Center for Quality
             </span>
           </div>
         )}
@@ -118,26 +191,27 @@ function SidebarContent() {
             )}
             <div className="space-y-0.5">
               {group.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(item.href + "/");
-                const hrefWithProject = projectId ? `${item.href}?project=${projectId}` : item.href;
+                if (item.children && item.children.length > 0) {
+                  return (
+                    <ParentItem
+                      key={item.href}
+                      item={item}
+                      pathname={pathname}
+                      projectId={projectId}
+                      collapsed={collapsed}
+                      expanded={Boolean(expanded[item.href])}
+                      onToggle={() => toggleExpanded(item.href)}
+                    />
+                  );
+                }
                 return (
-                  <Link
+                  <LeafItem
                     key={item.href}
-                    href={hrefWithProject}
-                    title={collapsed ? item.label : undefined}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150",
-                      active
-                        ? "bg-[#1b59f8] text-white shadow-sm"
-                        : "text-slate-400 hover:bg-[#13223f] hover:text-white"
-                    )}
-                  >
-                    <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-white" : "text-slate-400")} />
-                    {!collapsed && (
-                      <span className="truncate flex-1">{item.label}</span>
-                    )}
-                    {!collapsed && active && <ChevronRight className="ml-auto h-3 w-3 opacity-60" />}
-                  </Link>
+                    item={item}
+                    pathname={pathname}
+                    projectId={projectId}
+                    collapsed={collapsed}
+                  />
                 );
               })}
             </div>
@@ -159,6 +233,113 @@ function SidebarContent() {
         </button>
       </div>
     </aside>
+  );
+}
+
+type LeafProps = {
+  item: NavItem;
+  pathname: string;
+  projectId: string | null;
+  collapsed: boolean;
+  nested?: boolean;
+};
+
+function LeafItem({ item, pathname, projectId, collapsed, nested }: LeafProps) {
+  const active = isActiveHref(pathname, item.href);
+  const href = withProject(item.href, projectId);
+  return (
+    <Link
+      href={href}
+      title={collapsed ? item.label : undefined}
+      className={cn(
+        "flex items-center gap-3 rounded-lg text-xs font-medium transition-all duration-150",
+        nested ? "pl-8 pr-3 py-1.5" : "px-3 py-2",
+        active
+          ? "bg-[#1b59f8] text-white shadow-sm"
+          : "text-slate-400 hover:bg-[#13223f] hover:text-white"
+      )}
+    >
+      <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-white" : "text-slate-400")} />
+      {!collapsed && <span className="truncate flex-1">{item.label}</span>}
+      {!collapsed && active && <ChevronRight className="ml-auto h-3 w-3 opacity-60" />}
+    </Link>
+  );
+}
+
+type ParentProps = {
+  item: NavItem;
+  pathname: string;
+  projectId: string | null;
+  collapsed: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+};
+
+function ParentItem({ item, pathname, projectId, collapsed, expanded, onToggle }: ParentProps) {
+  const parentActive = isParentActive(pathname, item);
+  const directHrefActive = isActiveHref(pathname, item.href);
+
+  if (collapsed) {
+    // In collapsed mode, render parent icon only — tapping it navigates to its default child
+    const firstChild = item.children?.[0];
+    const targetHref = withProject(firstChild?.href ?? item.href, projectId);
+    return (
+      <Link
+        href={targetHref}
+        title={item.label}
+        className={cn(
+          "flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150",
+          parentActive
+            ? "bg-[#1b59f8] text-white shadow-sm"
+            : "text-slate-400 hover:bg-[#13223f] hover:text-white"
+        )}
+      >
+        <item.icon className="h-4 w-4 shrink-0" />
+      </Link>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={`subnav-${item.href}`}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150",
+          directHrefActive
+            ? "bg-[#1b59f8] text-white shadow-sm"
+            : parentActive
+            ? "bg-[#13223f] text-white"
+            : "text-slate-400 hover:bg-[#13223f] hover:text-white"
+        )}
+      >
+        <item.icon className={cn("h-4 w-4 shrink-0", parentActive ? "text-white" : "text-slate-400")} />
+        <span className="truncate flex-1 text-left">{item.label}</span>
+        <ChevronDown
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+            expanded ? "rotate-0" : "-rotate-90",
+            parentActive ? "text-white/70" : "text-slate-500"
+          )}
+        />
+      </button>
+      {expanded && (
+        <div id={`subnav-${item.href}`} className="mt-1 space-y-0.5">
+          {item.children!.map((child) => (
+            <LeafItem
+              key={child.href}
+              item={child}
+              pathname={pathname}
+              projectId={projectId}
+              collapsed={false}
+              nested
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

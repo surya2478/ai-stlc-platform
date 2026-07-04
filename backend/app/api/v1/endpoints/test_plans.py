@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.api.deps import CurrentUser, DBSession, require_entity_permission, require_entity_project_access, require_permission, require_project_access
 from app.config import get_settings
 from app.models.requirement import Requirement
+from app.models.artifact_lineage import ArtifactLineage
 from app.models.test_plan import TestPlan
 from app.models.test_scenario import TestScenario
 from app.models.test_case import TestCase
@@ -21,8 +22,10 @@ from app.schemas.test_plan import (
     TestCaseOut, TestCaseUpdate, TestCaseHistoryOut, TestCaseJiraSyncOut, TestCaseSummaryOut,
     AgentPlanTrigger, AgentCaseTrigger,
 )
+from app.schemas.common import MessageResponse
 from app.schemas.requirement import ApprovalRequest
 from app.services import agent_run_service, approval_service, test_plan_service, traceability_service
+from app.services import project_application_service
 from app.services.agent_dispatch_service import enqueue_agent_run
 from app.services.display_id_service import display_id, temporary_id
 from app.services.rbac_service import APPROVE_TEST_CASES, APPROVE_TEST_PLANS, SYNC_JIRA
@@ -32,6 +35,77 @@ from app.agents.test_planning.test_case_agent import TestCaseDevelopmentAgent
 
 router = APIRouter()
 settings = get_settings()
+
+
+def _as_text_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _plan_section_items(plan: TestPlan, key: str, requirements: list[Requirement]) -> list[str]:
+    existing = _as_text_list(getattr(plan, key, None))
+    if existing:
+        return existing
+    if key == "scope":
+        return [
+            f"{req.requirement_id}: {req.title}" + (f" - {req.summary}" if req.summary else "")
+            for req in requirements
+        ]
+    if key == "entry_criteria":
+        items = ["Approved requirements are baselined and available for test design."]
+        for req in requirements:
+            for criterion in _as_text_list(req.acceptance_criteria):
+                items.append(f"{req.requirement_id}: Acceptance criterion available - {criterion}")
+        return items
+    if key == "exit_criteria":
+        return [
+            "All planned functional, regression, and risk-based tests are executed.",
+            "Critical and high severity defects are resolved or formally accepted.",
+            "Traceability from requirements to test scenarios and test cases is complete.",
+        ] if requirements else []
+    if key == "test_types":
+        return ["Functional", "Regression", "Integration", "Security", "User Acceptance"] if requirements else []
+    if key == "risks":
+        return [
+            f"{req.requirement_id}: {risk}"
+            for req in requirements
+            for risk in _as_text_list(req.risks)
+        ]
+    if key == "mitigations":
+        return ["Prioritize high-risk requirements and validate acceptance criteria before execution."] if requirements else []
+    if key == "automation_candidates":
+        return [f"{req.requirement_id}: Regression coverage for {req.title}" for req in requirements]
+    if key == "out_of_scope":
+        return ["Items not covered by the selected approved requirements."] if requirements else []
+    return []
+
+
+async def _linked_requirements_for_plan(db: DBSession, plan: TestPlan) -> list[Requirement]:
+    ids = list((plan.metadata_ or {}).get("source_requirement_ids") or [])
+    if not ids:
+        result = await db.execute(
+            select(ArtifactLineage.parent_id)
+            .where(
+                ArtifactLineage.child_type == "test_plan",
+                ArtifactLineage.child_id == plan.id,
+                ArtifactLineage.parent_type == "requirement",
+            )
+        )
+        ids = list(result.scalars().all())
+    if not ids:
+        return []
+    result = await db.execute(
+        select(Requirement).where(
+            Requirement.project_id == plan.project_id,
+            Requirement.id.in_(ids),
+        )
+    )
+    by_id = {req.id: req for req in result.scalars().all()}
+    return [by_id[req_id] for req_id in ids if req_id in by_id]
 
 
 def _run_agents_synchronously() -> bool:
@@ -122,6 +196,21 @@ async def update_test_plan(
     plan = await test_plan_service.update_test_plan(db, plan, updates)
     await db.commit()
     return plan
+
+
+@router.delete("/{plan_id}", response_model=MessageResponse)
+async def delete_test_plan(
+    plan_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    plan = await test_plan_service.get_test_plan(db, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Test plan not found")
+    await require_entity_permission(plan, APPROVE_TEST_PLANS, current_user, db)
+    await test_plan_service.delete_test_plan(db, plan)
+    await db.commit()
+    return MessageResponse(message="Test plan deleted")
 
 
 @router.post("/{plan_id}/approve", response_model=TestPlanOut)
@@ -500,6 +589,8 @@ async def trigger_scenario_agent(
                 "acceptance_criteria": r.acceptance_criteria,
                 "business_rules": r.business_rules,
                 "user_roles": r.user_roles,
+                "test_environment": r.test_phase,
+                "generation_notes": r.generation_notes,
             })
 
     if not reqs:
@@ -507,6 +598,15 @@ async def trigger_scenario_agent(
 
     # GAP-4c: block generation from failed/low-quality requirements unless overridden
     _enforce_quality_gate(req_rows, body.override_quality_gate)
+
+    # Ground each requirement in a real application URL/page analysis instead of
+    # letting the agent invent a placeholder domain — see project_application_service.
+    for req_dict, req_row in zip(reqs, req_rows):
+        app_ctx = await project_application_service.resolve_application_context(
+            db, project_id=body.project_id, requirement=req_row
+        )
+        req_dict["application_url"] = app_ctx["url"]
+        req_dict["ui_analysis"] = app_ctx["ui_analysis"]
 
     if not _run_agents_synchronously():
         agent_run, task_id = await enqueue_agent_run(
@@ -704,6 +804,7 @@ async def trigger_test_case_agent(
     gate_req_ids = {s.get("_source_requirement_id") for s in scenarios if s.get("_source_requirement_id")}
     if body.requirement_ids:
         gate_req_ids.update(body.requirement_ids)
+    requirements_by_id: dict[int, Requirement] = {}
     if gate_req_ids:
         gate_rows_result = await db.execute(
             select(Requirement).where(
@@ -711,7 +812,29 @@ async def trigger_test_case_agent(
                 Requirement.project_id == body.project_id,
             )
         )
-        _enforce_quality_gate(list(gate_rows_result.scalars().all()), body.override_quality_gate)
+        gate_rows = list(gate_rows_result.scalars().all())
+        requirements_by_id = {r.id: r for r in gate_rows}
+        _enforce_quality_gate(gate_rows, body.override_quality_gate)
+
+    # Ground each scenario in its parent requirement's real application URL/page
+    # analysis instead of letting the agent invent a placeholder domain — see
+    # project_application_service.resolve_application_context.
+    application_context_cache: dict[int | None, dict] = {}
+    for sc in scenarios:
+        req_id = sc.get("_source_requirement_id")
+        if req_id not in application_context_cache:
+            application_context_cache[req_id] = await project_application_service.resolve_application_context(
+                db, project_id=body.project_id, requirement=requirements_by_id.get(req_id)
+            )
+        app_ctx = application_context_cache[req_id]
+        sc["application_url"] = app_ctx["url"]
+        sc["ui_analysis"] = app_ctx["ui_analysis"]
+        # Carry the parent requirement's Environment tag + generation notes
+        # into the test-case prompt (same fields injected on the scenario
+        # side in trigger_scenario_agent above).
+        parent_req = requirements_by_id.get(req_id)
+        sc["test_environment"] = parent_req.test_phase if parent_req else None
+        sc["generation_notes"] = parent_req.generation_notes if parent_req else None
 
     if not _run_agents_synchronously():
         agent_run, task_id = await enqueue_agent_run(
@@ -761,6 +884,7 @@ async def trigger_test_case_agent(
         db_sc_id = scenario_id_map.get(src_sc_id) if src_sc_id else None
         db_req_id = req_id_map.get(db_sc_id) if db_sc_id else None
 
+        parent_req = requirements_by_id.get(db_req_id)
         tc = TestCase(
             project_id=body.project_id,
             scenario_id=db_sc_id,
@@ -777,6 +901,10 @@ async def trigger_test_case_agent(
             severity=tc_data.get("severity", "Medium"),
             test_type=tc_data.get("test_type"),
             automation_candidate=bool(tc_data.get("automation_candidate", False)),
+            # Inherit the Environment tag from the parent requirement so
+            # generated test cases can be grouped/filtered (e.g. bulk-added
+            # into a Test Suite) by SIT/QA/UAT/Regression/Production Smoke Test.
+            test_phase=parent_req.test_phase if parent_req else None,
             metadata_={"tags": tc_data.get("tags")} if tc_data.get("tags") else None,
             status="draft",
             agent_run_id=agent_run.id,
@@ -825,6 +953,7 @@ async def export_test_plan_docx(
     if not plan:
         raise HTTPException(status_code=404, detail="Test plan not found")
     await require_entity_permission(plan, APPROVE_TEST_PLANS, current_user, db)
+    linked_requirements = await _linked_requirements_for_plan(db, plan)
 
     # Generate DOCX
     doc = Document()
@@ -836,15 +965,33 @@ async def export_test_plan_docx(
     doc.add_paragraph(f"Estimated Effort: {plan.estimated_effort or 'N/A'}")
     doc.add_paragraph(f"Resource Recommendation: {plan.resource_recommendation or 'N/A'}")
 
+    if linked_requirements:
+        doc.add_heading("Covered Requirements", level=1)
+        for req in linked_requirements:
+            doc.add_heading(f"{req.requirement_id}: {req.title}", level=2)
+            if req.summary:
+                doc.add_paragraph(req.summary)
+            detail_sections = [
+                ("Acceptance Criteria", req.acceptance_criteria),
+                ("Business Rules", req.business_rules),
+                ("Risks", req.risks),
+            ]
+            for title, items in detail_sections:
+                normalized = _as_text_list(items)
+                if normalized:
+                    doc.add_paragraph(title)
+                    for item in normalized:
+                        doc.add_paragraph(item, style="List Bullet")
+
     sections = [
-        ("Scope", plan.scope),
-        ("Out of Scope", plan.out_of_scope),
-        ("Test Types", plan.test_types),
-        ("Entry Criteria", plan.entry_criteria),
-        ("Exit Criteria", plan.exit_criteria),
-        ("Risks", plan.risks),
-        ("Mitigations", plan.mitigations),
-        ("Automation Candidates", plan.automation_candidates),
+        ("Scope", _plan_section_items(plan, "scope", linked_requirements)),
+        ("Out of Scope", _plan_section_items(plan, "out_of_scope", linked_requirements)),
+        ("Test Types", _plan_section_items(plan, "test_types", linked_requirements)),
+        ("Entry Criteria", _plan_section_items(plan, "entry_criteria", linked_requirements)),
+        ("Exit Criteria", _plan_section_items(plan, "exit_criteria", linked_requirements)),
+        ("Risks", _plan_section_items(plan, "risks", linked_requirements)),
+        ("Mitigations", _plan_section_items(plan, "mitigations", linked_requirements)),
+        ("Automation Candidates", _plan_section_items(plan, "automation_candidates", linked_requirements)),
     ]
 
     for title, items in sections:
@@ -864,4 +1011,3 @@ async def export_test_plan_docx(
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f"attachment; filename=test_plan_{plan.test_plan_id}.docx"}
     )
-

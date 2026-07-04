@@ -3,12 +3,29 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import AgentRun
+from app.models.test_plan import TestPlan
 from app.services import agent_run_service
 from app.worker.tasks.agent_tasks import run_agent
+
+
+async def _completed_run_is_reusable(db: AsyncSession, run: AgentRun, agent_name: str) -> bool:
+    if agent_name == "test_planning":
+        plan_id = (run.output_data or {}).get("plan_id")
+        if not plan_id:
+            return False
+        result = await db.execute(
+            select(TestPlan.id).where(
+                TestPlan.id == plan_id,
+                TestPlan.project_id == run.project_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+    return True
 
 
 async def enqueue_agent_run(
@@ -40,8 +57,22 @@ async def enqueue_agent_run(
         project_id=project_id,
         idempotency_key=key,
     )
-    if existing is not None and existing.status in {"pending", "running", "completed"}:
+    if existing is not None and existing.status in {"pending", "running"}:
         return existing, existing.celery_task_id or ""
+    if existing is not None and existing.status == "completed":
+        if await _completed_run_is_reusable(db, existing, agent_name):
+            return existing, existing.celery_task_id or ""
+        existing.status = "cancelled"
+        existing.output_data = None
+        existing.error_message = "Completed run output artifact is no longer available."
+        existing.progress_message = "Output artifact missing; requeued"
+        await agent_run_service.add_log(
+            db,
+            existing,
+            level="warning",
+            step="idempotency_stale",
+            message=f"Completed agent '{agent_name}' run output was missing; requeueing",
+        )
     if existing is not None and existing.status in {"failed", "cancelled"}:
         previous_status = existing.status
         existing.status = "pending"

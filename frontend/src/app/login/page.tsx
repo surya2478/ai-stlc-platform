@@ -41,6 +41,8 @@ export default function LoginPage() {
   const [signupLoading, setSignupLoading] = useState(false);
   const [signupError, setSignupError] = useState("");
   const [signupSuccess, setSignupSuccess] = useState("");
+  const [loginMode, setLoginMode] = useState<"standard" | "ldap">("standard");
+  const [domain, setDomain] = useState("CORP.NET");
 
   useEffect(() => {
     if (getAccessToken()) {
@@ -58,7 +60,9 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await authApi.login(email.trim(), password);
+      const response = loginMode === "ldap"
+        ? await authApi.ldapLogin(email.trim(), password, domain)
+        : await authApi.login(email.trim(), password);
       setProfile(response.data);
       if (rememberMe) {
         localStorage.setItem("remember_email", email.trim());
@@ -237,22 +241,67 @@ export default function LoginPage() {
                 Use your corporate account to access <br /> the AI STLC Command Center.
               </p>
 
+              {/* Login Mode Tabs */}
+              <div className="flex rounded-xl bg-slate-100 p-1 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setLoginMode("standard")}
+                  className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-colors ${
+                    loginMode === "standard"
+                      ? "bg-white text-slate-800 shadow-sm"
+                      : "text-slate-500 hover:text-slate-850"
+                  }`}
+                >
+                  Standard Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLoginMode("ldap")}
+                  className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-colors ${
+                    loginMode === "ldap"
+                      ? "bg-white text-slate-800 shadow-sm"
+                      : "text-slate-500 hover:text-slate-850"
+                  }`}
+                >
+                  LDAP / NT Login
+                </button>
+              </div>
+
               {/* Form */}
-              <form onSubmit={handleSubmit} className="space-y-6 mt-8">
+              <form onSubmit={handleSubmit} className="space-y-6 mt-6">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-2">Email</label>
+                  <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-2">
+                    {loginMode === "ldap" ? "NT Username" : "Email"}
+                  </label>
                   <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 px-3.5 py-3 bg-white focus-within:border-[#1b59f8] focus-within:ring-1 focus-within:ring-[#1b59f8]/10 transition-all">
                     <Mail className="h-4.5 w-4.5 text-slate-400 shrink-0" />
                     <input
-                      type="email"
+                      type={loginMode === "ldap" ? "text" : "email"}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full bg-transparent text-sm text-slate-850 font-semibold outline-none placeholder:text-slate-300"
-                      placeholder="name@company.com"
+                      placeholder={loginMode === "ldap" ? "first.last" : "name@company.com"}
                       required
                     />
                   </div>
                 </div>
+
+                {loginMode === "ldap" && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-2">Corporate Domain</label>
+                    <div className="flex items-center gap-2.5 rounded-xl border border-slate-200 px-3.5 py-3 bg-white focus-within:border-[#1b59f8] focus-within:ring-1 focus-within:ring-[#1b59f8]/10 transition-all">
+                      <Globe className="h-4.5 w-4.5 text-slate-400 shrink-0" />
+                      <input
+                        type="text"
+                        value={domain}
+                        onChange={(e) => setDomain(e.target.value)}
+                        className="w-full bg-transparent text-sm text-slate-850 font-semibold outline-none placeholder:text-slate-300"
+                        placeholder="CORP.NET"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-2">Password</label>

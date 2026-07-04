@@ -89,9 +89,13 @@ def _validate_plan(state: PlanningState) -> PlanningState:
     """Ensure all required keys are present in the plan."""
     errors = list(state["errors"])
     plan = state["test_plan"]
-    required_keys = ["title", "scope", "test_types", "entry_criteria", "exit_criteria"]
+    if not _has_meaningful_plan_content(plan):
+        plan = _fallback_plan_from_requirements(state["requirements"], state["project_name"])
+        errors.append("Planning agent returned an empty plan; generated fallback content from approved requirements.")
+
+    required_keys = ["scope", "out_of_scope", "test_types", "entry_criteria", "exit_criteria", "risks", "mitigations", "automation_candidates"]
     for key in required_keys:
-        if key not in plan:
+        if key not in plan or plan[key] is None:
             plan[key] = []
     if "title" not in plan or not plan["title"]:
         plan["title"] = f"Test Plan — {state['project_name']}"
@@ -99,6 +103,57 @@ def _validate_plan(state: PlanningState) -> PlanningState:
 
 
 # ── Graph ──────────────────────────────────────────────────────────────────────
+
+def _has_meaningful_plan_content(plan: dict) -> bool:
+    section_keys = ("scope", "test_types", "entry_criteria", "exit_criteria", "risks", "mitigations", "automation_candidates")
+    return any(bool(plan.get(key)) for key in section_keys)
+
+
+def _as_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _fallback_plan_from_requirements(requirements: list[dict], project_name: str) -> dict:
+    scope = []
+    entry_criteria = ["Approved requirements are baselined and available for test design."]
+    exit_criteria = [
+        "All planned functional, regression, and risk-based tests are executed.",
+        "Critical and high severity defects are resolved or formally accepted.",
+        "Traceability from requirements to test scenarios and test cases is complete.",
+    ]
+    risks = []
+    automation_candidates = []
+
+    for req in requirements:
+        req_ref = req.get("requirement_id") or req.get("id") or "REQ"
+        title = req.get("title") or "Untitled requirement"
+        summary = req.get("summary")
+        scope.append(f"{req_ref}: {title}" + (f" - {summary}" if summary else ""))
+        for criterion in _as_list(req.get("acceptance_criteria")):
+            entry_criteria.append(f"{req_ref}: Acceptance criterion available - {criterion}")
+        for risk in _as_list(req.get("risks")):
+            risks.append(f"{req_ref}: {risk}")
+        automation_candidates.append(f"{req_ref}: Regression coverage for {title}")
+
+    return {
+        "title": f"Test Plan - {project_name}",
+        "scope": scope,
+        "out_of_scope": ["Items not covered by the selected approved requirements."],
+        "test_types": ["Functional", "Regression", "Integration", "Security", "User Acceptance"],
+        "entry_criteria": entry_criteria,
+        "exit_criteria": exit_criteria,
+        "risks": risks,
+        "mitigations": ["Prioritize high-risk requirements and validate acceptance criteria before execution."],
+        "automation_candidates": automation_candidates,
+        "estimated_effort": f"Depends on execution depth for {len(requirements)} approved requirement(s).",
+        "resource_recommendation": "QA lead, functional QA engineer, automation engineer, and domain/business reviewer.",
+    }
+
 
 def _build_graph() -> Any:
     graph = StateGraph(PlanningState)

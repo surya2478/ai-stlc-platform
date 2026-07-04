@@ -17,7 +17,6 @@ import {
   type RequirementCoverage,
   type RequirementTraceabilityChain,
   type Document,
-  type Project,
   type JiraConnection,
   type JiraIssue,
   type JiraIssueFilters,
@@ -133,6 +132,42 @@ function splitCsv(value: string) {
   return items.length ? items : undefined;
 }
 
+// UI Analysis Agent insight lists (validation_rules, negative_scenarios, edge_cases)
+// can come back as plain strings OR as structured objects depending on which
+// agent path produced them. Coerce each entry to a readable display string so
+// React doesn't blow up trying to render an object as a child.
+function renderInsightItem(item: unknown): string {
+  if (item === null || item === undefined) return "";
+  if (typeof item === "string") return item;
+  if (typeof item === "number" || typeof item === "boolean") return String(item);
+  if (typeof item === "object") {
+    const obj = item as Record<string, unknown>;
+    // Common shape from the UI Analysis Agent — a field validation rule
+    if ("field_name" in obj) {
+      const field = obj.field_name;
+      const constraints: string[] = [];
+      if (obj.type) constraints.push(`type=${String(obj.type)}`);
+      if (obj.required) constraints.push("required");
+      if (obj.pattern) constraints.push(`pattern=${String(obj.pattern)}`);
+      if (obj.min !== undefined && obj.min !== null) constraints.push(`min=${String(obj.min)}`);
+      if (obj.max !== undefined && obj.max !== null) constraints.push(`max=${String(obj.max)}`);
+      if (obj.minlength !== undefined && obj.minlength !== null) constraints.push(`minLength=${String(obj.minlength)}`);
+      if (obj.maxlength !== undefined && obj.maxlength !== null) constraints.push(`maxLength=${String(obj.maxlength)}`);
+      const tail = constraints.length ? ` (${constraints.join(", ")})` : "";
+      return `${String(field)}${tail}`;
+    }
+    // Generic fallback — pick a sensible label field, else stringify briefly
+    const label = obj.title ?? obj.name ?? obj.description ?? obj.summary ?? obj.text;
+    if (label !== undefined && label !== null) return String(label);
+    try {
+      return JSON.stringify(item);
+    } catch {
+      return "[unrenderable]";
+    }
+  }
+  return String(item);
+}
+
 const emptyJiraConnectionForm = {
   jira_base_url: "",
   jira_email: "",
@@ -171,7 +206,6 @@ function RequirementsContent() {
 
   const selectedProject = Number(searchParams.get("project")) || null;
 
-  const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
@@ -226,12 +260,17 @@ function RequirementsContent() {
   const [urlCrawlDepth, setUrlCrawlDepth] = useState(0);
   const [notes, setNotes] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
+  // Test Environment + Generation Notes — tester-set context for AI test-case
+  // generation, editable per requirement in the Details tab.
+  const [genEnvDraft, setGenEnvDraft] = useState("");
+  const [genNotesDraft, setGenNotesDraft] = useState("");
+  const [savingGenContext, setSavingGenContext] = useState(false);
+  const [genContextSaved, setGenContextSaved] = useState(false);
 
   // Load Projects on mount
   useEffect(() => {
     projectsApi.list()
       .then((res) => {
-        setProjects(res.data);
         if (res.data.length > 0 && !searchParams.get("project")) {
           const params = new URLSearchParams(searchParams.toString());
           params.set("project", String(res.data[0].id));
@@ -536,6 +575,23 @@ function RequirementsContent() {
     }
   };
 
+  const handleSaveGenerationContext = async () => {
+    if (!selectedReq) return;
+    setSavingGenContext(true);
+    setGenContextSaved(false);
+    try {
+      const res = await requirementsApi.update(selectedReq.id, {
+        test_phase: genEnvDraft,
+        generation_notes: genNotesDraft,
+      });
+      setSelectedReq(res.data);
+      setRequirements((prev) => prev.map((r) => (r.id === res.data.id ? res.data : r)));
+      setGenContextSaved(true);
+    } finally {
+      setSavingGenContext(false);
+    }
+  };
+
   const handleDeleteReq = async () => {
     if (!deletingReq) return;
     await requirementsApi.delete(deletingReq.id);
@@ -708,6 +764,9 @@ function RequirementsContent() {
   function handleOpenReqDetail(req: Requirement) {
     setSelectedReq(req);
     setNotes("");
+    setGenEnvDraft(req.test_phase || "SIT");
+    setGenNotesDraft(req.generation_notes ?? "");
+    setGenContextSaved(false);
     setDrawerTab("details");
     // GAP-4d: load coverage insights for the drawer (best-effort)
     setCoverage(null);
@@ -837,25 +896,6 @@ function RequirementsContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={selectedProject ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              const params = new URLSearchParams(searchParams.toString());
-              params.set("project", val);
-              router.push(`${pathname}?${params.toString()}`);
-            }}
-            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-
           <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
             <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
           </Button>
@@ -1833,6 +1873,62 @@ function RequirementsContent() {
                   </div>
                 )}
 
+                {/* Test Environment + Generation Notes — drives AI scenario/test-case
+                    generation style (see scenario_agent.py / test_case_agent.py). Styled to
+                    stand out so testers notice it before generating test cases. */}
+                <div className="relative overflow-hidden rounded-xl border-2 border-[#1b59f8]/25 bg-gradient-to-br from-blue-50 via-indigo-50/50 to-white p-4 pt-5 space-y-3 shadow-sm ring-1 ring-[#1b59f8]/10">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#1b59f8] via-indigo-500 to-violet-500" />
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-[#1b59f8]/10 border border-[#1b59f8]/20 shrink-0">
+                      <Bot className="h-4 w-4 text-[#1b59f8]" />
+                    </div>
+                    <h4 className="text-xs font-bold text-slate-800">AI Test Case Generation Context</h4>
+                    <Badge variant="info" className="ml-auto text-[9px] font-bold tracking-wide shrink-0">AI-POWERED</Badge>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Test Environment</label>
+                    <select
+                      value={genEnvDraft}
+                      onChange={(e) => { setGenEnvDraft(e.target.value); setGenContextSaved(false); }}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
+                    >
+                      {["SIT", "QA", "UAT", "Regression", "Production Smoke Test"].map((env) => (
+                        <option key={env} value={env}>{env}</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400 font-medium">Tailors the depth/style of AI-generated scenarios &amp; test cases for this requirement.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Generation Notes</label>
+                    <textarea
+                      value={genNotesDraft}
+                      onChange={(e) => { setGenNotesDraft(e.target.value); setGenContextSaved(false); }}
+                      placeholder="Optional instructions or emphasis for the AI to consider when generating test cases for this requirement (e.g. focus areas, known edge cases, data constraints)…"
+                      rows={3}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] resize-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleSaveGenerationContext}
+                      disabled={savingGenContext}
+                      className="h-7 text-[11px] font-semibold"
+                    >
+                      {savingGenContext ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                      Save
+                    </Button>
+                    {genContextSaved && (
+                      <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                        <CheckCircle className="h-3 w-3" /> Saved
+                      </span>
+                    )}
+                  </div>
+                </div>
+
                 {/* AI quality review nested sub-panel */}
                 {(() => {
                   // GAP-4a: prefer metadata summary, fall back to persisted quality columns
@@ -1945,13 +2041,13 @@ function RequirementsContent() {
                         ["Detected Validation Rules", ui.validation_rules],
                         ["Negative Scenarios To Test", ui.negative_scenarios],
                         ["Edge Cases", ui.edge_cases],
-                      ] as Array<[string, string[] | undefined]>).map(([label, items]) =>
+                      ] as Array<[string, Array<string | Record<string, unknown>> | undefined]>).map(([label, items]) =>
                         items && items.length > 0 ? (
                           <div key={label} className="space-y-1">
                             <label className="text-[9px] font-extrabold uppercase tracking-wider text-emerald-600 block">{label}</label>
                             <ul className="text-xs space-y-1 font-semibold text-slate-650 bg-white rounded-lg p-3 border">
                               {items.slice(0, 8).map((item, i) => (
-                                <li key={i} className="flex items-start gap-1.5"><span className="text-emerald-500 font-bold select-none">•</span>{item}</li>
+                                <li key={i} className="flex items-start gap-1.5"><span className="text-emerald-500 font-bold select-none">•</span>{renderInsightItem(item)}</li>
                               ))}
                             </ul>
                           </div>

@@ -5,7 +5,6 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   AlertTriangle,
   Bot,
-  CheckCircle,
   Clock,
   ExternalLink,
   FileText,
@@ -14,15 +13,20 @@ import {
   Loader2,
   PlayCircle,
   RefreshCw,
-  Search,
   ShieldCheck,
+  Sparkles,
   Wrench,
-  ChevronRight,
   X,
-  Info,
   Terminal,
-  Settings
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+} from "recharts";
 import {
   automationApi,
   projectsApi,
@@ -30,9 +34,12 @@ import {
   type AutomationScript,
   type AutomationTestMapping,
   type ExecutionResult,
-  type Project,
+  type ExecutionRun,
   type TestCase,
 } from "@/lib/api";
+import { useAutomationMappings, usePlanning, useScripts } from "@/lib/queries/automation";
+import { useRuns } from "@/lib/queries/execution";
+import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +53,16 @@ import {
   DrawerBody,
   DrawerFooter
 } from "@/components/ui/drawer";
+import { GenerateWithAIDialog } from "@/components/automation/GenerateWithAIDialog";
+import { IntelligenceAssistantPanel } from "@/components/automation/IntelligenceAssistantPanel";
+import { AutomationInventoryPanel, type InventoryItem } from "@/components/automation/AutomationInventoryPanel";
+import { AutomationWorkspace } from "@/components/automation/AutomationWorkspace";
+import { ConvertManualToAutomationDialog } from "@/components/automation/ConvertManualToAutomationDialog";
+import { RunnerStatusChip } from "@/app/execution/_components/RunnerStatusChip";
+import { RunTriggerDialog, type RunTarget } from "@/app/execution/_components/AutomationBuilderTab";
+import { RunDetailDrawer } from "@/app/execution/_components/RunDetailDrawer";
+import { TraceabilityDrawer, type TraceTarget } from "@/app/execution/_components/TraceabilityDrawer";
+import { RunVerdictBadge, formatDate, formatDuration } from "@/app/execution/_components/run-utils";
 
 // Status Chip Variant Mapping
 function getStatusVariant(status: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
@@ -91,21 +108,31 @@ function AutomationContent() {
   const pathname = usePathname();
 
   const selectedProject = Number(searchParams.get("project")) || null;
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const [projects, setProjects] = useState<Project[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [mappings, setMappings] = useState<AutomationTestMapping[]>([]);
-  const [scripts, setScripts] = useState<AutomationScript[]>([]);
   const [latestResults, setLatestResults] = useState<Record<number, ExecutionResult | undefined>>({});
-  
+
+  // Scripts / planning / mappings / runs come from the shared React Query
+  // hooks; runs poll automatically while any run is active.
+  const scriptsQuery = useScripts(selectedProject);
+  const planningQuery = usePlanning(selectedProject);
+  const mappingsQuery = useAutomationMappings(selectedProject);
+  const runsQuery = useRuns(selectedProject);
+  const scripts = useMemo(() => scriptsQuery.data ?? [], [scriptsQuery.data]);
+  const mappings = useMemo(() => mappingsQuery.data ?? [], [mappingsQuery.data]);
+  const planning = planningQuery.data ?? null;
+  const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data]);
+
   // States
-  const [loading, setLoading] = useState(true);
+  const [tcLoading, setTcLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
   const [environment, setEnvironment] = useState("staging");
   const [showAiScripts, setShowAiScripts] = useState(false);
+  const [reviewBusyId, setReviewBusyId] = useState<number | null>(null);
+  const loading = tcLoading || scriptsQuery.isLoading || planningQuery.isLoading || mappingsQuery.isLoading;
 
   // Drawer States
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -115,37 +142,52 @@ function AutomationContent() {
   const [historyRows, setHistoryRows] = useState<ExecutionResult[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
+  // AI Automation Studio — Phase 2A additions
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiDialogPreselect, setAiDialogPreselect] = useState<number[]>([]);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const [assistantScript, setAssistantScript] = useState<AutomationScript | null>(null);
+
+  // AI Automation Studio — Phase 2B additions
+  const [selectedInventoryId, setSelectedInventoryId] = useState<number | null>(null);
+
+  // AI Automation Studio — Phase 2C additions
+  const [transitionBusyId, setTransitionBusyId] = useState<number | null>(null);
+  const [convertManualOpen, setConvertManualOpen] = useState(false);
+
+  // AI Automation Studio — Phase 2D additions
+  const [saveBusyId, setSaveBusyId] = useState<number | null>(null);
+
+  // Sandbox runs — local runner trigger + per-script run history strip.
+  const [sandboxTarget, setSandboxTarget] = useState<RunTarget | null>(null);
+  const [openRun, setOpenRun] = useState<ExecutionRun | null>(null);
+  const [traceTarget, setTraceTarget] = useState<TraceTarget | null>(null);
+
   // Load Projects on mount
   useEffect(() => {
     projectsApi.list().then((res) => {
-      setProjects(res.data);
       if (res.data.length > 0 && !searchParams.get("project")) {
         const params = new URLSearchParams(searchParams.toString());
         params.set("project", String(res.data[0].id));
         router.push(`${pathname}?${params.toString()}`);
       }
     }).catch(() => setError("Could not load projects."));
-  }, [searchParams]);
+  }, [pathname, router, searchParams]);
 
-  // Load Data
-  const loadData = useCallback(async () => {
+  // Load approved test cases + their latest execution results. Scripts,
+  // planning, mappings, and runs are handled by the React Query hooks above.
+  const loadTestCases = useCallback(async () => {
     if (!selectedProject) return;
-    setLoading(true);
+    setTcLoading(true);
     setError("");
     try {
-      const [casesRes, mappingsRes, scriptsRes] = await Promise.all([
-        testCasesApi.list(selectedProject, { status: "approved", automation_only: true }),
-        automationApi.getAutomationMappings(selectedProject),
-        automationApi.list(selectedProject),
-      ]);
+      const casesRes = await testCasesApi.list(selectedProject, { status: "approved", automation_only: true });
       setTestCases(casesRes.data);
-      setMappings(mappingsRes.data);
-      setScripts(scriptsRes.data);
 
       const candidateIds = casesRes.data
         .filter(isAutomationVisible)
         .map((tc) => tc.id);
-      
+
       const historyPairs = await Promise.all(
         candidateIds.map(async (id) => {
           try {
@@ -160,20 +202,25 @@ function AutomationContent() {
     } catch (loadError) {
       setError(messageFromError(loadError, "Could not load automation control data."));
     } finally {
-      setLoading(false);
+      setTcLoading(false);
     }
   }, [selectedProject]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    loadTestCases();
+  }, [loadTestCases]);
+
+  const loadData = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["automation"] });
+    queryClient.invalidateQueries({ queryKey: ["execution"] });
+    loadTestCases();
+  }, [queryClient, loadTestCases]);
 
   // Reset states on project change
   useEffect(() => {
     setDrawerOpen(false);
     setSelectedTestCase(null);
     setHistoryRows([]);
-    setNotice("");
     setError("");
   }, [selectedProject]);
 
@@ -199,15 +246,15 @@ function AutomationContent() {
   }, [mappings]);
 
   const rows = useMemo(
-    () =>
-      testCases
-        .filter(isAutomationVisible)
-        .filter((tc) => {
-          const q = search.trim().toLowerCase();
-          return !q || tc.test_case_id.toLowerCase().includes(q) || tc.title.toLowerCase().includes(q);
-        }),
-    [testCases, search]
+    () => testCases.filter(isAutomationVisible),
+    [testCases]
   );
+
+  const planningCandidates = useMemo(() => planning?.candidates ?? [], [planning]);
+
+  const scriptsById = useMemo(() => {
+    return new Map(scripts.map((script) => [script.id, script]));
+  }, [scripts]);
 
   function handleRowClick(tc: TestCase) {
     const mapping = mappingByTestCase.get(tc.id);
@@ -241,7 +288,6 @@ function AutomationContent() {
     }
     setBusyId(selectedTestCase.id);
     setError("");
-    setNotice("");
     try {
       const existing = mappingByTestCase.get(selectedTestCase.id);
       const payload = {
@@ -260,11 +306,11 @@ function AutomationContent() {
       } else {
         await automationApi.createAutomationMapping(payload);
       }
-      setNotice("Automation mapping saved.");
+      toast({ title: "Automation mapping saved", variant: "success" });
       setDrawerOpen(false);
-      await loadData();
+      loadData();
     } catch (saveError) {
-      setError(messageFromError(saveError, "Could not save automation mapping."));
+      toast({ title: "Could not save automation mapping", description: messageFromError(saveError, ""), variant: "error" });
     } finally {
       setBusyId(null);
     }
@@ -274,11 +320,10 @@ function AutomationContent() {
     if (!selectedProject) return;
     setBusyId(tc.id);
     setError("");
-    setNotice("");
     try {
       const response = await automationApi.runExternalAutomation(selectedProject, [tc.id], environment);
-      setNotice(`${response.data.message} Run ${response.data.external_run_id}`);
-      await loadData();
+      toast({ title: "External run triggered", description: `${response.data.message} Run ${response.data.external_run_id}`, variant: "success" });
+      loadData();
       // If drawer is open, switch to history tab to see new runs
       if (drawerOpen && selectedTestCase?.id === tc.id) {
         setDrawerTab("history");
@@ -290,7 +335,7 @@ function AutomationContent() {
           .finally(() => setHistoryLoading(false));
       }
     } catch (runError) {
-      setError(messageFromError(runError, "Could not run external automation."));
+      toast({ title: "Could not run external automation", description: messageFromError(runError, ""), variant: "error" });
     } finally {
       setBusyId(null);
     }
@@ -299,11 +344,10 @@ function AutomationContent() {
   async function handleSyncAutomation(mapping: AutomationTestMapping) {
     setBusyId(mapping.test_case_id);
     setError("");
-    setNotice("");
     try {
       const response = await automationApi.syncExternalAutomationResult(mapping.id, environment);
-      setNotice(`${response.data.message} Run ${response.data.external_run_id}`);
-      await loadData();
+      toast({ title: "External result synced", description: `${response.data.message} Run ${response.data.external_run_id}`, variant: "success" });
+      loadData();
       if (drawerOpen && selectedTestCase?.id === mapping.test_case_id) {
         setDrawerTab("history");
         setHistoryLoading(true);
@@ -313,7 +357,7 @@ function AutomationContent() {
           .finally(() => setHistoryLoading(false));
       }
     } catch (syncError) {
-      setError(messageFromError(syncError, "Could not sync automation result."));
+      toast({ title: "Could not sync automation result", description: messageFromError(syncError, ""), variant: "error" });
     } finally {
       setBusyId(null);
     }
@@ -324,7 +368,6 @@ function AutomationContent() {
     if (!status) return;
     setBusyId(tc.id);
     setError("");
-    setNotice("");
     try {
       await automationApi.syncJiraExecutionStatus({
         test_case_id: tc.id,
@@ -332,8 +375,8 @@ function AutomationContent() {
         jira_issue_key: tc.jira_issue_key,
         jira_test_key: tc.jira_test_key,
       });
-      setNotice("Jira final execution status synced.");
-      await loadData();
+      toast({ title: "Jira final execution status synced", variant: "success" });
+      loadData();
       if (drawerOpen && selectedTestCase?.id === tc.id) {
         setDrawerTab("history");
         setHistoryLoading(true);
@@ -343,56 +386,176 @@ function AutomationContent() {
           .finally(() => setHistoryLoading(false));
       }
     } catch (jiraError) {
-      setError(messageFromError(jiraError, "Could not sync Jira execution status."));
+      toast({ title: "Could not sync Jira execution status", description: messageFromError(jiraError, ""), variant: "error" });
     } finally {
       setBusyId(null);
     }
   }
 
-  const total = rows.length;
-  const mapped = rows.filter((tc) => mappingByTestCase.has(tc.id)).length;
-  const pendingJira = rows.filter((tc) => !latestResults[tc.id]?.jira_execution_status).length;
-  const aiScripts = scripts.length;
+  async function handleReviewScript(scriptId: number, action: "approve" | "reject") {
+    // Rejections carry a reason into the script's review notes for the audit trail.
+    let notes: string | undefined;
+    if (action === "reject") {
+      const reason = window.prompt("Reason for rejection (recorded in review history):");
+      if (reason === null) return; // cancelled
+      notes = reason.trim() || undefined;
+    }
+    setReviewBusyId(scriptId);
+    setError("");
+    try {
+      await automationApi.approve(scriptId, action, notes);
+      toast({ title: `Script ${action === "approve" ? "approved" : "rejected"}`, variant: "success" });
+      loadData();
+    } catch (reviewError) {
+      toast({ title: "Could not update script review state", description: messageFromError(reviewError, ""), variant: "error" });
+    } finally {
+      setReviewBusyId(null);
+    }
+  }
 
-  const mappedPct = total > 0 ? ((mapped / total) * 100).toFixed(1) : "0.0";
-  const pendingJiraPct = total > 0 ? ((pendingJira / total) * 100).toFixed(1) : "0.0";
+  async function handleSaveDraft(scriptId: number, nextCode: string) {
+    setSaveBusyId(scriptId);
+    setError("");
+    try {
+      // Saving an in_review script back to draft via update is intentionally
+      // blocked by the backend transition rules — author must Request Changes
+      // first. Here we only update the code body.
+      await automationApi.update(scriptId, { code: nextCode });
+      toast({ title: "Draft saved", variant: "success" });
+      loadData();
+    } catch (saveError) {
+      toast({ title: "Could not save draft", description: messageFromError(saveError, ""), variant: "error" });
+    } finally {
+      setSaveBusyId(null);
+    }
+  }
+
+  async function handleTransitionScript(
+    scriptId: number,
+    action: "submit_for_review" | "request_changes" | "restore_draft",
+  ) {
+    setTransitionBusyId(scriptId);
+    setError("");
+    try {
+      await automationApi.transition(scriptId, action);
+      const label =
+        action === "submit_for_review" ? "submitted for review"
+        : action === "request_changes" ? "sent back for changes"
+        : "restored to draft";
+      toast({ title: `Script ${label}`, variant: "success" });
+      loadData();
+    } catch (transitionError) {
+      toast({ title: "Could not transition script state", description: messageFromError(transitionError, ""), variant: "error" });
+    } finally {
+      setTransitionBusyId(null);
+    }
+  }
+
+  const total = rows.length;
+
+  // Phase 2B: build inventory items from TCs + planning + mappings + scripts.
+  const inventoryItems = useMemo<InventoryItem[]>(() => {
+    return rows.map((tc) => {
+      const candidate = planningCandidates.find((c) => c.test_case_id === tc.id);
+      const mapping = mappingByTestCase.get(tc.id);
+      const scriptId = candidate?.script_id ?? null;
+      const script = scriptId != null ? scriptsById.get(scriptId) ?? null : null;
+      const isExternal = Boolean(mapping);
+      return {
+        id: tc.id,
+        testCaseKey: tc.test_case_id,
+        title: tc.title,
+        module: tc.product ?? tc.product_group ?? null,
+        priority: tc.priority,
+        framework: candidate?.recommended_framework ?? script?.framework ?? null,
+        automationKind: isExternal ? "external" : "internal",
+        externalTool: mapping?.external_tool_name ?? null,
+        scriptStatus: script?.status ?? candidate?.script_status ?? null,
+        externalStatus: mapping?.automation_status ?? null,
+        automationReady: candidate?.automation_ready ?? false,
+        lastUpdated: script?.updated_at ?? null,
+      };
+    });
+  }, [rows, planningCandidates, mappingByTestCase, scriptsById]);
+
+  // Auto-select the first item once data lands.
+  useEffect(() => {
+    if (selectedInventoryId == null && inventoryItems.length > 0) {
+      setSelectedInventoryId(inventoryItems[0].id);
+    }
+  }, [inventoryItems, selectedInventoryId]);
+
+  const selectedItem = useMemo(
+    () => inventoryItems.find((i) => i.id === selectedInventoryId) ?? null,
+    [inventoryItems, selectedInventoryId],
+  );
+
+  const selectedScript = useMemo(() => {
+    if (selectedInventoryId == null) return null;
+    const candidate = planningCandidates.find((c) => c.test_case_id === selectedInventoryId);
+    if (candidate?.script_id != null) {
+      const direct = scriptsById.get(candidate.script_id);
+      if (direct) return direct;
+    }
+    // Fallback: most recent script for this TC.
+    return scripts
+      .filter((s) => s.test_case_id === selectedInventoryId)
+      .sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? ""))[0] ?? null;
+  }, [selectedInventoryId, planningCandidates, scriptsById, scripts]);
+
+  const selectedMapping = useMemo(
+    () => (selectedInventoryId != null ? mappingByTestCase.get(selectedInventoryId) ?? null : null),
+    [selectedInventoryId, mappingByTestCase],
+  );
+
+  // Phase 2B metric counts.
+  const scriptsUnderReview = scripts.filter((s) => {
+    const st = s.status.toLowerCase();
+    return st === "in_review" || st === "pending_approval" || st === "under_review";
+  }).length;
+  const scriptsApproved = scripts.filter((s) => s.status.toLowerCase() === "approved").length;
+  const externalsVerified = inventoryItems.filter(
+    (i) => i.automationKind === "external" && i.automationReady,
+  ).length;
+  const readyForExecution = scriptsApproved + externalsVerified;
+  const coveragePct = total > 0 ? ((readyForExecution / total) * 100).toFixed(0) : "0";
 
   const metrics = [
     {
-      title: "Automation Rows",
+      title: "Eligible for automation",
       icon: Wrench,
       iconBg: "bg-blue-50 border-blue-100",
       iconColor: "text-blue-500",
       value: total.toLocaleString(),
-      sublabel: "Eligible",
-      footer: "100% of automated eligible cases",
+      sublabel: "Test cases",
+      footer: "Approved & automation-eligible",
     },
     {
-      title: "Mapped Tests",
-      icon: Link2,
-      iconBg: "bg-emerald-50 border-emerald-100",
-      iconColor: "text-emerald-500",
-      value: mapped.toLocaleString(),
-      sublabel: "Mapped",
-      footer: `${mappedPct}% of eligible mapped to tool`,
+      title: "Scripts generated",
+      icon: Sparkles,
+      iconBg: "bg-violet-50 border-violet-100",
+      iconColor: "text-violet-500",
+      value: scripts.length.toLocaleString(),
+      sublabel: "Drafts",
+      footer: "AI Draft + Draft + In Review",
     },
     {
-      title: "Pending Jira Sync",
+      title: "Under review",
       icon: Clock,
       iconBg: "bg-amber-50 border-amber-100",
       iconColor: "text-amber-500",
-      value: pendingJira.toLocaleString(),
-      sublabel: "Unsynced",
-      footer: `${pendingJiraPct}% sync remaining`,
+      value: scriptsUnderReview.toLocaleString(),
+      sublabel: "Pending",
+      footer: "Awaiting reviewer signoff",
     },
     {
-      title: "AI Scripts Kept",
-      icon: Bot,
-      iconBg: "bg-purple-50 border-purple-100",
-      iconColor: "text-purple-500",
-      value: aiScripts.toLocaleString(),
-      sublabel: "Scripts",
-      footer: "AI generated helper scripts",
+      title: "Ready for execution",
+      icon: ShieldCheck,
+      iconBg: "bg-emerald-50 border-emerald-100",
+      iconColor: "text-emerald-500",
+      value: readyForExecution.toLocaleString(),
+      sublabel: `${coveragePct}%`,
+      footer: "Approved internal + verified external",
     },
   ];
 
@@ -405,30 +568,12 @@ function AutomationContent() {
             <Wrench className="h-6 w-6 text-[#1b59f8]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Automation Control Center</h1>
-            <p className="text-xs text-slate-500 mt-1">Map internal test cases to external automation tools and view live runs and Jira QA compliance status</p>
+            <h1 className="text-xl font-bold text-slate-900">AI Automation Studio</h1>
+            <p className="text-xs text-slate-500 mt-1">Design. Generate. Review. Approve automation assets.</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            value={selectedProject ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              const params = new URLSearchParams(searchParams.toString());
-              params.set("project", val);
-              router.push(`${pathname}?${params.toString()}`);
-            }}
-            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-
+          <RunnerStatusChip />
           <select
             value={environment}
             onChange={(e) => setEnvironment(e.target.value)}
@@ -446,6 +591,42 @@ function AutomationContent() {
               </option>
             ))}
           </select>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConvertManualOpen(true)}
+            disabled={!selectedProject}
+            className="gap-1.5 border-slate-200 text-slate-700 hover:bg-slate-50"
+          >
+            Convert manual flow
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setAssistantScript(null);
+              setAssistantOpen(true);
+            }}
+            className="gap-1.5 border-violet-200 text-violet-700 hover:bg-violet-50"
+          >
+            <Bot className="h-3.5 w-3.5" />
+            AI Assistant
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => {
+              setAiDialogPreselect([]);
+              setAiDialogOpen(true);
+            }}
+            disabled={!selectedProject || testCases.length === 0}
+            className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Generate with AI
+          </Button>
 
           <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
             <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
@@ -488,122 +669,76 @@ function AutomationContent() {
           <button onClick={() => setError("")}><X className="h-4 w-4 text-red-400 hover:text-red-700" /></button>
         </div>
       )}
-      {notice && (
-        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
-          <CheckCircle className="h-4 w-4 shrink-0" />
-          <span className="flex-1 font-semibold">{notice}</span>
-          <button onClick={() => setNotice("")}><X className="h-4 w-4 text-emerald-400 hover:text-emerald-700" /></button>
+      {/* ── AI Automation Studio workspace (Phase 2B) ─────────────────────────── */}
+      <section className="grid gap-4 lg:grid-cols-[300px_1fr]">
+        <div className="min-h-[480px]">
+          <AutomationInventoryPanel
+            items={inventoryItems}
+            selectedId={selectedInventoryId}
+            onSelect={(item) => setSelectedInventoryId(item.id)}
+          />
         </div>
-      )}
+        <div className="space-y-4">
+          <AutomationWorkspace
+            item={selectedItem}
+            script={selectedScript}
+            mapping={selectedMapping}
+            busyApprove={reviewBusyId != null}
+            busyTransition={transitionBusyId != null}
+            busySave={saveBusyId != null}
+            onApprove={async (action) => {
+              if (!selectedScript) return;
+              await handleReviewScript(selectedScript.id, action);
+            }}
+            onTransition={async (action) => {
+              if (!selectedScript) return;
+              await handleTransitionScript(selectedScript.id, action);
+            }}
+            onSaveDraft={async (code) => {
+              if (!selectedScript) return;
+              await handleSaveDraft(selectedScript.id, code);
+            }}
+            onConfigureExternal={() => {
+              if (!selectedItem) return;
+              const tc = testCases.find((t) => t.id === selectedItem.id);
+              if (tc) handleRowClick(tc);
+            }}
+            onRunSandbox={() => {
+              if (!selectedScript) return;
+              setSandboxTarget({
+                scriptId: selectedScript.id,
+                framework: selectedScript.framework,
+                label: `${selectedScript.script_id}${selectedItem ? ` — ${selectedItem.title}` : ""}`,
+              });
+            }}
+            onOpenAssistant={() => {
+              setAssistantScript(selectedScript);
+              setAssistantOpen(true);
+            }}
+            onGenerate={() => {
+              if (!selectedItem) return;
+              setAiDialogPreselect([selectedItem.id]);
+              setAiDialogOpen(true);
+            }}
+            onTrace={() => {
+              if (!selectedScript) return;
+              setTraceTarget({
+                entityType: "automation_script",
+                entityId: selectedScript.id,
+                label: selectedScript.script_id,
+              });
+            }}
+          />
+          <ScriptRunsStrip
+            script={selectedScript}
+            runs={runs}
+            projectId={selectedProject}
+            onOpenRun={setOpenRun}
+          />
+        </div>
+      </section>
 
-      {/* ── Search Input ───────────────────────────────────────────────────────── */}
-      <div className="relative">
-        <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-white hover:bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-semibold pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors"
-          placeholder="Search test cases by ID or title..."
-        />
-      </div>
-
-      {/* ── Automation Table ───────────────────────────────────────────────────── */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full text-left border-collapse text-xs select-none">
-          <thead className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            <tr>
-              <th className="px-4 py-2.5">TC ID</th>
-              <th className="px-4 py-2.5">Name</th>
-              <th className="px-4 py-2.5">Mode</th>
-              <th className="px-4 py-2.5">Eligible</th>
-              <th className="px-4 py-2.5">Mapping Status</th>
-              <th className="px-4 py-2.5">Tool</th>
-              <th className="px-4 py-2.5">Suite ID</th>
-              <th className="px-4 py-2.5">Ext ID</th>
-              <th className="px-4 py-2.5">Last Run</th>
-              <th className="px-4 py-2.5">Jira Final</th>
-              <th className="px-4 py-2.5 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
-            {loading ? (
-              <tr>
-                <td colSpan={11} className="px-4 py-16 text-center text-slate-400 font-semibold">
-                  <Loader2 className="inline mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
-                  Loading automated test case registry...
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={11} className="px-4 py-16 text-center text-slate-400 font-semibold">
-                  No automation-eligible test cases found.
-                </td>
-              </tr>
-            ) : (
-              rows.map((tc) => {
-                const mapping = mappingByTestCase.get(tc.id);
-                const latest = latestResults[tc.id];
-                const isSelected = selectedTestCase?.id === tc.id;
-                return (
-                  <tr
-                    key={tc.id}
-                    onClick={() => handleRowClick(tc)}
-                    className={cn(
-                      "hover:bg-slate-50/50 cursor-pointer transition-colors",
-                      isSelected && "bg-[#1b59f8]/5"
-                    )}
-                  >
-                    <td className="px-4 py-2.5 font-mono text-[11px] font-bold text-[#1b59f8]">{tc.test_case_id}</td>
-                    <td className="px-4 py-2.5 max-w-[200px] truncate">
-                      <p className="font-bold text-slate-800 text-xs">{tc.title}</p>
-                      <p className="text-[10px] text-slate-400 truncate mt-0.5">{tc.jira_issue_key || "No Jira key"}</p>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant={getStatusVariant(tc.execution_mode)}>
-                        {tc.execution_mode}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant={getStatusVariant(tc.automation_eligible)}>
-                        {tc.automation_eligible}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant={mapping ? "purple" : "warning"}>
-                        {mapping ? "Mapped" : "Required"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-700">{mapping?.external_tool_name ?? "-"}</td>
-                    <td className="px-4 py-2.5 text-slate-700">{mapping?.external_suite_id ?? "-"}</td>
-                    <td className="px-4 py-2.5 font-mono text-[10px] text-slate-500">{mapping?.external_test_case_id ?? "-"}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant={getStatusVariant(latest?.automation_execution_status)}>
-                        {latest?.automation_execution_status ?? "Pending"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant={getStatusVariant(latest?.jira_execution_status)}>
-                        {latest?.jira_execution_status ?? "Unsynced"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleRowClick(tc)}
-                        className="h-7 px-3 text-xs border-slate-200"
-                      >
-                        Actions
-                        <ChevronRight className="h-3 w-3 text-slate-400" />
-                      </Button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Phase 2D: legacy detail table removed — workspace action bar now owns per-row actions. */}
 
       {/* ── Details & Control Drawer ───────────────────────────────────────────── */}
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
@@ -834,16 +969,44 @@ function AutomationContent() {
         {showAiScripts && (
           <div className="border-t border-slate-200 p-5 bg-slate-50/30">
             <p className="mb-4 text-xs text-slate-500 leading-relaxed font-semibold">
-              Existing AI script generation capability is preserved. In this environment, run triggers route to mapped automation files.
+              Draft generation stays here in Automation. Human review, repository metadata, and approval happen before the Execution module orchestrates a run.
             </p>
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {scripts.map((script) => (
-                <div key={script.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs">
-                  <span className="font-mono text-[10px] font-bold text-[#1b59f8]">{script.script_id}</span>
-                  <span className="truncate px-3 font-semibold text-slate-700">{script.file_path || "Generated Script"}</span>
-                  <Badge variant={getStatusVariant(script.status)}>
-                    {script.status}
-                  </Badge>
+                <div key={script.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[10px] font-bold text-[#1b59f8]">{script.script_id}</span>
+                        <Badge variant={script.framework === "playwright" ? "purple" : "info"}>{frameworkLabel(script.framework)}</Badge>
+                        <Badge variant={getStatusVariant(script.status)}>{script.status}</Badge>
+                      </div>
+                      <p className="mt-2 truncate font-semibold text-slate-700">{script.file_path || "Generated Script"}</p>
+                      <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                        {scriptRepository(script).repository || "Repository pending"} • {scriptRepository(script).branch || "codex/automation-drafts"}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 border-emerald-200 text-xs text-emerald-700"
+                        disabled={reviewBusyId === script.id || script.status === "approved"}
+                        onClick={() => handleReviewScript(script.id, "approve")}
+                      >
+                        {reviewBusyId === script.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Approve"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 border-rose-200 text-xs text-rose-600"
+                        disabled={reviewBusyId === script.id || script.status === "rejected"}
+                        onClick={() => handleReviewScript(script.id, "reject")}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               ))}
               {scripts.length === 0 && (
@@ -853,20 +1016,293 @@ function AutomationContent() {
           </div>
         )}
       </section>
+
+      {/* ── Studio insights: script status mix + run confidence ─────────────── */}
+      <StudioInsightsRow scripts={scripts} runs={runs} projectId={selectedProject} />
+
+      {/* ── AI Automation Studio — Phase 2A ──────────────────────────────────── */}
+      <GenerateWithAIDialog
+        open={aiDialogOpen}
+        onClose={() => setAiDialogOpen(false)}
+        projectId={selectedProject}
+        approvedTestCases={testCases}
+        preselectedIds={aiDialogPreselect}
+        onGenerated={(count) => {
+          toast({
+            title: `AI generation queued for ${count} test case${count === 1 ? "" : "s"}`,
+            description: "Drafts will appear once the agent completes.",
+            variant: "success",
+          });
+          loadData();
+        }}
+      />
+
+      <IntelligenceAssistantPanel
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        script={assistantScript}
+      />
+
+      <ConvertManualToAutomationDialog
+        open={convertManualOpen}
+        onClose={() => setConvertManualOpen(false)}
+        projectId={selectedProject}
+        onConverted={(count) => {
+          toast({
+            title: `Manual-to-automation conversion queued for ${count} test case${count === 1 ? "" : "s"}`,
+            description: "AI Drafts will appear once the agent completes.",
+            variant: "success",
+          });
+          loadData();
+        }}
+      />
+
+      {/* ── Sandbox run trigger + run detail ─────────────────────────────────── */}
+      {selectedProject && (
+        <RunTriggerDialog
+          target={sandboxTarget}
+          onClose={() => setSandboxTarget(null)}
+          projectId={selectedProject}
+          defaultEnvironment={environment}
+          environments={planning?.summary.available_environments ?? []}
+        />
+      )}
+      <RunDetailDrawer
+        runId={openRun?.id ?? null}
+        open={openRun !== null}
+        onOpenChange={(o) => { if (!o) setOpenRun(null); }}
+        initialRun={openRun}
+      />
+      <TraceabilityDrawer target={traceTarget} onClose={() => setTraceTarget(null)} />
     </div>
   );
 }
 
-function isAutomationVisible(tc: TestCase) {
-  return (tc.execution_mode || "").toLowerCase() === "automated" && (tc.automation_eligible || "").toLowerCase() === "yes";
+const SCRIPT_STATUS_COLORS: Record<string, string> = {
+  ai_draft: "#8b5cf6",
+  draft: "#94a3b8",
+  in_review: "#0ea5e9",
+  pending_approval: "#0ea5e9",
+  approved: "#10b981",
+  rejected: "#ef4444",
+  executed: "#059669",
+  deprecated: "#cbd5e1",
+  blocked: "#f97316",
+};
+
+/** Script status distribution donut + average sandbox-run confidence. */
+function StudioInsightsRow({
+  scripts,
+  runs,
+  projectId,
+}: {
+  scripts: AutomationScript[];
+  runs: ExecutionRun[];
+  projectId: number | null;
+}) {
+  const distribution = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const s of scripts) {
+      const key = (s.status ?? "unknown").toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return Array.from(counts.entries()).map(([status, count]) => ({
+      status,
+      label: status.replace(/_/g, " "),
+      count,
+      color: SCRIPT_STATUS_COLORS[status] ?? "#64748b",
+    }));
+  }, [scripts]);
+
+  const runStats = useMemo(() => {
+    const automationRuns = runs.filter((r) => r.execution_type === "automation");
+    const confidences = automationRuns
+      .map((r) => r.confidence_score)
+      .filter((c): c is number => c !== null && c !== undefined);
+    const avgConfidence = confidences.length > 0
+      ? Math.round(confidences.reduce((a, b) => a + b, 0) / confidences.length)
+      : null;
+    const terminal = automationRuns.filter((r) => (r.passed ?? 0) + (r.failed ?? 0) > 0);
+    const passed = terminal.reduce((a, r) => a + (r.passed ?? 0), 0);
+    const failed = terminal.reduce((a, r) => a + (r.failed ?? 0), 0);
+    const passRate = passed + failed > 0 ? Math.round((passed / (passed + failed)) * 100) : null;
+    return { total: automationRuns.length, avgConfidence, passRate };
+  }, [runs]);
+
+  if (scripts.length === 0) return null;
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <Card className="border-slate-200">
+        <CardContent className="p-4">
+          <p className="mb-3 text-xs font-bold text-slate-800">Scripts by status</p>
+          <div className="flex items-center gap-4">
+            <ResponsiveContainer width={110} height={110}>
+              <PieChart>
+                <Pie
+                  data={distribution}
+                  dataKey="count"
+                  nameKey="label"
+                  innerRadius={32}
+                  outerRadius={52}
+                  paddingAngle={2}
+                >
+                  {distribution.map((d) => (
+                    <Cell key={d.status} fill={d.color} />
+                  ))}
+                </Pie>
+                <RechartsTooltip
+                  formatter={(value: number, name: string) => [value, name]}
+                  contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            <ul className="min-w-0 flex-1 space-y-1">
+              {distribution.map((d) => (
+                <li key={d.status} className="flex items-center gap-2 text-[11px]">
+                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                  <span className="capitalize text-slate-600">{d.label}</span>
+                  <span className="ml-auto font-semibold tabular-nums text-slate-800">{d.count}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200">
+        <CardContent className="p-4">
+          <p className="mb-3 text-xs font-bold text-slate-800">Sandbox run health</p>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Runs</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{runStats.total}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Pass rate</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600">
+                {runStats.passRate !== null ? `${runStats.passRate}%` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Avg confidence</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-violet-600">
+                {runStats.avgConfidence !== null ? `${runStats.avgConfidence}%` : "—"}
+              </p>
+            </div>
+          </div>
+          {projectId && (
+            <div className="mt-3 border-t border-slate-50 pt-2 text-right">
+              <a
+                href={`/execution/dashboard?project=${projectId}`}
+                className="text-[11px] text-[#1b59f8] hover:underline"
+              >
+                Full analytics →
+              </a>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
+
+/** Recent local-runner runs for the selected script, newest first. */
+function ScriptRunsStrip({
+  script,
+  runs,
+  projectId,
+  onOpenRun,
+}: {
+  script: AutomationScript | null;
+  runs: ExecutionRun[];
+  projectId: number | null;
+  onOpenRun: (run: ExecutionRun) => void;
+}) {
+  const scriptRuns = useMemo(() => {
+    if (!script) return [];
+    return runs
+      .filter((r) => {
+        const meta = (r.metadata_ ?? {}) as { automation_script_id?: number };
+        return meta.automation_script_id === script.id;
+      })
+      .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+      .slice(0, 5);
+  }, [script, runs]);
+
+  if (!script) return null;
+
+  return (
+    <Card className="border-slate-200">
+      <CardContent className="p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800">
+            <History className="h-3.5 w-3.5 text-slate-400" />
+            Recent runs — {script.script_id}
+          </span>
+          {projectId && (
+            <a
+              href={`/execution/automation?project=${projectId}&tab=history`}
+              className="text-[11px] text-[#1b59f8] hover:underline"
+            >
+              All runs →
+            </a>
+          )}
+        </div>
+        {scriptRuns.length === 0 ? (
+          <p className="rounded border border-dashed border-slate-200 px-3 py-3 text-center text-[11px] text-slate-400">
+            No sandbox runs yet. Approve the script, then use “Run in sandbox”.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-50">
+            {scriptRuns.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onOpenRun(r)}
+                className="flex w-full items-center gap-3 py-2 text-left text-xs hover:bg-slate-50/60"
+              >
+                <span className="w-24 shrink-0 font-mono text-[#1b59f8]">{r.execution_id}</span>
+                <RunVerdictBadge run={r} />
+                <span className="text-slate-500">{r.environment ?? "—"}</span>
+                <span className="ml-auto tabular-nums text-slate-400">
+                  {formatDate(r.started_at ?? r.created_at)}
+                </span>
+                <span className="w-16 text-right font-mono tabular-nums text-slate-400">
+                  {formatDuration(r.duration_seconds)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function isAutomationVisible(tc: TestCase) {
+  return ["automation", "automated", "hybrid"].includes((tc.execution_mode || "").toLowerCase()) && (tc.automation_eligible || "").toLowerCase() === "yes";
+}
+
+function frameworkLabel(framework: string) {
+  return framework === "pytest" ? "pytest" : "Playwright";
+}
+
+function scriptRepository(script: AutomationScript) {
+  const metadata = script.metadata_ && typeof script.metadata_ === "object" ? script.metadata_ : {};
+  return {
+    repository: typeof metadata.repository === "string" ? metadata.repository : null,
+    branch: typeof metadata.branch === "string" ? metadata.branch : null,
+  };
+}
+
 
 export default function AutomationPage() {
   return (
     <Suspense fallback={
       <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
         <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
-        Loading Automation Center...
+        Loading AI Automation Studio...
       </div>
     }>
       <AutomationContent />

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -59,6 +60,23 @@ async def create_external_generation_request(
     client = get_external_test_data_tool_client(request.external_tool)
     result = await client.create_generation_request(request.model_dump(mode="json"))
 
+    # If the Faker engine rejected the schema, surface its message as a
+    # validation_summary so the UI can show it on the data set row instead
+    # of leaving the user wondering why generation produced 0 records.
+    faker_error: str | None = None
+    if (
+        result.generation_status == "failed"
+        and result.generated_records
+        and isinstance(result.generated_records[0], dict)
+        and "_faker_error" in result.generated_records[0]
+    ):
+        faker_error = str(result.generated_records[0].get("_faker_error"))
+        result.generated_records.clear()
+
+    validation_summary: dict[str, Any] = {"integration_status": result.integration_status}
+    if faker_error:
+        validation_summary["faker_error"] = faker_error
+
     item = TestData(
         project_id=project_id,
         created_by=current_user.id,
@@ -68,7 +86,7 @@ async def create_external_generation_request(
         data_id=temporary_id("TD"),
         name=request.name,
         data_type=request.data_type,
-        source_type="external_tool",
+        source_type="synthetic" if request.external_tool == "Faker" else "external_tool",
         status="draft" if result.generation_status == "generated" else "pending_generation",
         approval_status="draft",
         telecom_domain=request.telecom_domain,
@@ -80,7 +98,7 @@ async def create_external_generation_request(
         contains_pii=False,
         privacy_level="internal",
         masking_status="not_required",
-        synthetic_generation_status="not_required",
+        synthetic_generation_status="generated" if (request.external_tool == "Faker" and result.generation_status == "generated") else "not_required",
         generation_status=result.generation_status,
         generation_mode=request.generation_mode,
         requested_record_count=request.number_of_records,
@@ -92,8 +110,9 @@ async def create_external_generation_request(
         request_notes=request.request_notes,
         priority=request.priority,
         expected_by_date=_utc_datetime_for_date(request.expected_by_date),
-        validation_status="not_validated",
-        validation_summary_json={"integration_status": result.integration_status},
+        validation_status="invalid" if faker_error else "not_validated",
+        validation_summary_json=validation_summary,
+        schema_json=request.schema_json,
         sample_preview_json=result.generated_records[0] if result.generated_records else None,
         data_payload_json=result.generated_records[0] if result.generated_records else {},
         reservation_status="available",

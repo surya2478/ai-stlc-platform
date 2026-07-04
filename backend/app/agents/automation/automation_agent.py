@@ -48,6 +48,17 @@ The code must:
 4. Add meaningful assertions after each action
 5. Handle async/await properly
 6. Include page object pattern where appropriate
+7. NEVER invent a placeholder domain (e.g. example.com, yoursite.com). If the
+   test case context has has_configured_base_url=true, navigate using ONLY
+   relative paths — page.goto('/relative/path') — Playwright's configured
+   baseURL will resolve them against the real application URL at run time. If
+   has_configured_base_url is false, use page.goto('/') and add a comment
+   noting that a real base URL must be configured for this application before
+   the test can pass.
+8. If external_dependencies are listed in the context, do NOT navigate to or
+   call those services live. Use page.route('**/*pattern*', handler) to
+   intercept and mock them, or add a clear TODO comment stubbing that portion
+   of the flow if a pattern can't be inferred confidently.
 
 Output ONLY a valid JSON array of script objects. No extra text.
 """
@@ -68,6 +79,14 @@ The code must:
 3. Include proper assertions using assert statements
 4. Use httpx or requests for API tests, selenium/playwright for UI tests
 5. Include docstrings explaining the test
+6. NEVER invent a placeholder domain (e.g. example.com, yoursite.com). Build
+   all URLs from a `BASE_URL` value read from an environment variable /
+   fixture (e.g. `os.environ["BASE_URL"]`) rather than hardcoding a host. If
+   has_configured_base_url is false in the test case context, add a comment
+   noting a real BASE_URL must be configured before the test can pass.
+7. If external_dependencies are listed in the context, do NOT call those
+   services live. Mock them (e.g. via `responses`/`httpx` mocking/monkeypatch)
+   rather than making real network calls to third parties.
 
 Output ONLY a valid JSON array of script objects. No extra text.
 """
@@ -207,6 +226,9 @@ async def _generate_scripts(state: AutomationState) -> AutomationState:
             "expected_result": tc.get("expected_result"),
             "bdd_scenario": tc.get("bdd_scenario"),
             "test_type": tc.get("test_type"),
+            "application_name": tc.get("application_name"),
+            "has_configured_base_url": tc.get("has_configured_base_url", False),
+            "external_dependencies": tc.get("external_dependencies", []),
         }
         prompt = f"""Generate a single {framework} automation script for this test case:
 

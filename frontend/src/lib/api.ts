@@ -54,6 +54,14 @@ api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   return config;
 });
 
+// The backend rotates the refresh token on every use and rejects reuse of an
+// already-rotated token. Several requests can 401 at once (e.g. multiple
+// components fetching on mount after the access token expires), so all of
+// them must share a single in-flight refresh call — otherwise the 2nd+
+// caller presents an already-rotated refresh token and gets treated as a
+// replay attack, wiping both cookies and forcing a spurious logout.
+let refreshPromise: Promise<unknown> | null = null;
+
 // Global response interceptor — automatically attempts cookie refresh on 401
 api.interceptors.response.use(
   (response) => response,
@@ -63,7 +71,14 @@ api.interceptors.response.use(
     if (error?.response?.status === 401 && originalConfig && !originalConfig._retry && !originalConfig.url?.includes("/users/token")) {
       originalConfig._retry = true;
       try {
-        await axios.post("/api/v1/users/refresh", {}, { withCredentials: true });
+        if (!refreshPromise) {
+          refreshPromise = axios
+            .post("/api/v1/users/refresh", {}, { withCredentials: true })
+            .finally(() => {
+              refreshPromise = null;
+            });
+        }
+        await refreshPromise;
         return api(originalConfig);
       } catch (refreshError) {
         console.warn("[API] Session refresh failed, logging out:", refreshError);
@@ -130,6 +145,16 @@ export const authApi = {
       `${BROWSER_BASE_URL}/api/v1/users/token`,
       form,
       { headers: { "Content-Type": "application/x-www-form-urlencoded" }, withCredentials: true }
+    );
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("stlc_auth_profile", JSON.stringify(response.data));
+    }
+    return response;
+  },
+  ldapLogin: async (username: string, password: string, domain: string) => {
+    const response = await api.post<TokenResponse>(
+      "/resource-operations/ldap-login",
+      { username, password, domain }
     );
     if (typeof window !== "undefined") {
       window.localStorage.setItem("stlc_auth_profile", JSON.stringify(response.data));
@@ -241,6 +266,7 @@ export interface Requirement {
   environment_needs?: string;
   test_data_needs?: string;
   nfr_requirements?: string;
+  generation_notes?: string;
   quality_score?: number;
   quality_feedback?: string;
   quality_verdict?: string;
@@ -425,17 +451,45 @@ export interface TestCase {
   test_type?: string;
   automation_candidate: boolean;
   mode: "manual" | "automated" | "hybrid" | "ai";
-  execution_mode: "manual" | "automated" | "hybrid" | "ai";
+  // Current canonical values are: "manual" | "automation" | "ai". Legacy values
+  // ("automated", "hybrid") are kept in the union so existing records read from
+  // the backend continue to typecheck while the UI migrates.
+  execution_mode: "manual" | "automation" | "ai" | "automated" | "hybrid";
   automation_eligible: "yes" | "no";
-  automation_status: "not_required" | "mapping_required" | "ready_for_automation" | "automated" | "automation_failed" | "maintenance_required";
+  // Current canonical values: planned_for_automation | ready_for_automation |
+  // automated | awaiting_qa_approval. Legacy values retained for existing rows.
+  automation_status:
+    | "planned_for_automation"
+    | "ready_for_automation"
+    | "automated"
+    | "awaiting_qa_approval"
+    | "not_required"
+    | "mapping_required"
+    | "automation_failed"
+    | "maintenance_required";
   automation_ready: boolean;
+  // Phase 5: per-TC AI assistance state.
+  ai_assistance_status?:
+    | "disabled"
+    | "enabled"
+    | "recommendation_pending"
+    | "approved"
+    | "rejected";
   test_phase?: string | null;
   telecom_domain?: string | null;
   product_group?: string | null;
   product?: string | null;
   sub_request_type?: string | null;
+  // Which application/channel under test this test case targets. Null falls
+  // back to the project's default ProjectApplication at script-generation/
+  // execution time — see /projects/{id}/applications.
+  application_id?: number | null;
   external_tool?: string | null;
+  // Free-text suite/test-set ID from an *external* tool (Xray/Zephyr) synced
+  // via automation mappings — distinct from the internal Test Suite below.
   suite_id?: string | null;
+  test_suite_id?: number | null;
+  test_suite_name?: string | null;
   external_tc_id?: string | null;
   external_tc_url?: string | null;
   automation_script_id?: number | null;
@@ -940,6 +994,7 @@ export const testPlansApi = {
   get: (id: number) => api.get<TestPlan>(`/test-plans/${id}`),
   update: (id: number, data: Partial<TestPlan>) =>
     api.patch<TestPlan>(`/test-plans/${id}`, data),
+  delete: (id: number) => api.delete(`/test-plans/${id}`),
   approve: (id: number, action: "approve" | "reject", notes?: string) =>
     api.post<TestPlan>(`/test-plans/${id}/approve`, { action, notes }),
   generatePlan: (projectId: number, requirementIds: number[]) =>
@@ -989,7 +1044,76 @@ export const testCasesApi = {
       requirement_ids: requirementIds,
       override_quality_gate: overrideQualityGate,
     }),
+  /**
+   * Apply the same field patch to many test cases in one transaction.
+   * Always call once with `dry_run: true` to preview diffs + conflicts, then
+   * call again with `dry_run: false` (and the same `reason`) to commit.
+   */
+  bulkUpdate: (
+    projectId: number,
+    payload: {
+      test_case_ids: number[];
+      patch: {
+        execution_mode?: string;
+        automation_status?: string;
+        automation_ready?: boolean;
+        external_tool?: string;
+        suite_id?: string;
+        external_tc_id?: string;
+      };
+      reason: string;
+      dry_run: boolean;
+    },
+  ) => api.post<TestCaseBulkUpdateResult>(`/test-cases/projects/${projectId}/bulk-update`, payload),
 };
+
+// ── Test Suites ─────────────────────────────────────────────────────────────────
+// A named tag test cases are assigned to via `TestCase.test_suite_id` — one
+// suite per test case, edited the same way as Test Environment/Telecom Domain.
+
+export interface TestSuite {
+  id: number;
+  project_id: number;
+  name: string;
+  description?: string;
+  environment?: string;
+  status: string;
+  case_count: number;
+  created_by?: number;
+  updated_by?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const testSuitesApi = {
+  list: (projectId: number) => api.get<TestSuite[]>(`/test-suites/project/${projectId}`),
+  get: (id: number) => api.get<TestSuite>(`/test-suites/${id}`),
+  create: (data: { project_id: number; name: string; description?: string; environment?: string }) =>
+    api.post<TestSuite>("/test-suites", data),
+  update: (id: number, data: { name?: string; description?: string; environment?: string; status?: "active" | "archived" }) =>
+    api.patch<TestSuite>(`/test-suites/${id}`, data),
+  delete: (id: number) => api.delete(`/test-suites/${id}`),
+};
+
+export interface TestCaseBulkRowOutcome {
+  test_case_id: number;
+  test_case_key?: string | null;
+  title?: string | null;
+  outcome: "updated" | "skipped" | "conflict" | "not_found" | "forbidden" | string;
+  changes: Record<string, { old: unknown; new: unknown }>;
+  conflict_reason?: string | null;
+}
+
+export interface TestCaseBulkUpdateResult {
+  requested: number;
+  updated: number;
+  skipped: number;
+  conflicts: number;
+  not_found: number;
+  forbidden: number;
+  dry_run: boolean;
+  rows: TestCaseBulkRowOutcome[];
+}
 
 export const testDataApi = {
   list: (projectId: number, params?: { status?: string; source_type?: string; reservation_status?: string }) =>
@@ -1041,7 +1165,21 @@ export const testDataApi = {
     request_notes?: string;
     priority?: string;
     expected_by_date?: string;
+    // Only consumed when external_tool === "Faker". Shape:
+    //   { locale: "en_US", fields: [{ name, provider, params? }, ...] }
+    schema_json?: Record<string, unknown>;
   }) => api.post<TestDataGenerateResponse>(`/test-data/projects/${projectId}/generate`, data),
+  listBindableRecords: (projectId: number, params?: { test_case_id?: number; limit?: number }) =>
+    api.get<Array<{
+      record_id: number;
+      record_key: string;
+      data_set_id: number;
+      data_set_name: string;
+      data_set_data_id: string;
+      test_case_id: number | null;
+      preview_keys: string[];
+      approval_status: string;
+    }>>(`/test-data/projects/${projectId}/records`, { params }),
   importPreview: (projectId: number, data: {
     file: File;
     name?: string;
@@ -1132,6 +1270,8 @@ export interface AutomationScript {
   setup_required?: string[];
   execution_command?: string;
   status: string;
+  agent_run_id?: number | null;
+  metadata_?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -1150,6 +1290,65 @@ export interface AutomationTestMapping {
   last_synced_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AutomationFrameworkOption {
+  key: "playwright" | "pytest";
+  label: string;
+  language: string;
+  runner_family: string;
+  primary_use_cases: string[];
+}
+
+export interface AutomationPlanningCandidate {
+  test_case_id: number;
+  test_case_key: string;
+  title: string;
+  test_type?: string | null;
+  automation_status: string;
+  automation_ready: boolean;
+  mapping_status: string;
+  execution_handoff: "draft_generation" | "human_review" | "repository_ready" | "ready_for_execution";
+  recommended_framework: "playwright" | "pytest";
+  secondary_framework: "playwright" | "pytest";
+  hybrid_ready: boolean;
+  recommended_language: string;
+  assessment_score: number;
+  assessment_band: "high" | "medium" | "low";
+  assessment_reasons: string[];
+  framework_reasons: string[];
+  framework_scores: Record<string, number>;
+  script_id?: number | null;
+  linked_script_ids: number[];
+  script_status?: string | null;
+  repository?: string | null;
+  branch?: string | null;
+  script_path?: string | null;
+  last_execution_status?: string | null;
+  last_execution_at?: string | null;
+  inferred_suite?: string | null;
+  coverage_hint?: string | null;
+  updated_at?: string | null;
+  framework_options: AutomationFrameworkOption[];
+}
+
+export interface AutomationPlanningSummary {
+  total_candidates: number;
+  ready_for_generation: number;
+  pending_review: number;
+  repository_ready: number;
+  ready_for_execution: number;
+  by_framework: Record<string, number>;
+  by_handoff: Record<string, number>;
+  supported_frameworks: AutomationFrameworkOption[];
+  available_environments: string[];
+  available_browsers: string[];
+}
+
+export interface AutomationPlanning {
+  project_id: number;
+  summary: AutomationPlanningSummary;
+  candidates: AutomationPlanningCandidate[];
 }
 
 export interface ExternalAutomationRunResult {
@@ -1172,19 +1371,114 @@ export interface JiraExecutionStatus {
   source: string;
 }
 
+// ── AI Intelligence Assistant (Phase 2D) ──────────────────────────────────────
+
+export type RecommendationSeverity = "low" | "medium" | "high";
+
+export interface IntelligenceRecommendation {
+  id: string;
+  kind: string;
+  title: string;
+  severity: RecommendationSeverity;
+  confidence: number;
+  description: string;
+  proposal: string;
+  related: string;
+}
+
+export interface IntelligenceLocator {
+  id: string;
+  current: string;
+  current_confidence: number;
+  suggested: string;
+  suggested_confidence: number;
+  rationale: string;
+}
+
+export interface IntelligenceAssertion {
+  id: string;
+  scenario: string;
+  missing: string;
+  suggestion: string;
+}
+
+export interface IntelligenceDataIssue {
+  id: string;
+  kind: "hardcoded" | "unmasked" | "expired" | "env_leak";
+  description: string;
+  proposal: string;
+}
+
+export interface IntelligenceCheck {
+  id: string;
+  layer: "API" | "DB" | "Event";
+  title: string;
+  details: string;
+}
+
+export interface IntelligenceHealth {
+  overall: number;
+  parts: { label: string; value: number; note: string }[];
+}
+
+export interface IntelligenceDecision {
+  recommendation_id: string;
+  action: "apply" | "dismiss";
+  user_id: number;
+  ts: string;
+  notes?: string;
+}
+
+export interface IntelligenceReport {
+  script_id: number;
+  framework: string;
+  recommendations: IntelligenceRecommendation[];
+  locators: IntelligenceLocator[];
+  assertions: IntelligenceAssertion[];
+  data_issues: IntelligenceDataIssue[];
+  checks: IntelligenceCheck[];
+  health: IntelligenceHealth;
+  decisions: IntelligenceDecision[];
+}
+
 export const automationApi = {
   list: (projectId: number, params?: { test_case_id?: number; status?: string }) =>
     api.get<AutomationScript[]>(`/automation/project/${projectId}`, { params }),
+  getPlanning: (projectId: number) =>
+    api.get<AutomationPlanning>(`/automation/planning/project/${projectId}`),
   get: (id: number) => api.get<AutomationScript>(`/automation/${id}`),
   update: (id: number, data: Partial<AutomationScript>) =>
     api.patch<AutomationScript>(`/automation/${id}`, data),
   approve: (id: number, action: "approve" | "reject", notes?: string) =>
     api.post<AutomationScript>(`/automation/${id}/approve`, { action, notes }),
-  generateScripts: (projectId: number, testCaseIds: number[], framework: string = "playwright") =>
+  transition: (
+    id: number,
+    action: "submit_for_review" | "request_changes" | "restore_draft",
+    notes?: string,
+  ) => api.post<AutomationScript>(`/automation/${id}/transition`, { action, notes }),
+  getIntelligence: (scriptId: number) =>
+    api.get<IntelligenceReport>(`/automation/${scriptId}/intelligence`),
+  recommendationDecision: (
+    scriptId: number,
+    recommendationId: string,
+    action: "apply" | "dismiss",
+    notes?: string,
+  ) =>
+    api.post<AutomationScript>(
+      `/automation/${scriptId}/recommendations/${recommendationId}/decision`,
+      { action, notes },
+    ),
+  generateScripts: (
+    projectId: number,
+    testCaseIds: number[],
+    framework: string = "playwright",
+    source: "approved_test_case" | "manual_conversion" = "approved_test_case",
+  ) =>
     api.post("/automation/agent/generate-scripts", {
       project_id: projectId,
       test_case_ids: testCaseIds,
       framework,
+      source,
     }),
   createAutomationMapping: (data: {
     project_id: number;
@@ -1224,6 +1518,25 @@ export const automationApi = {
   }) => api.post<JiraExecutionStatus>("/automation/jira/sync-execution-status", data),
   getJiraExecutionStatus: (testCaseId: number) =>
     api.get<JiraExecutionStatus>(`/automation/jira/test-cases/${testCaseId}/execution-status`),
+
+  // Local subprocess runner — executes generated scripts on the backend host.
+  // See backend/AUTOMATION_RUNNER.md for runtime requirements.
+  getRunnerStatus: () =>
+    api.get<{ frameworks: Array<{ framework: string; available: boolean; detail: string }> }>(
+      "/automation/runner/status",
+    ),
+  executeScript: (scriptId: number, payload?: { environment?: string; timeout_seconds?: number }) =>
+    api.post<{ execution_run_id: number; task_id?: string; status: string; message: string }>(
+      `/automation/scripts/${scriptId}/execute`,
+      { environment: payload?.environment ?? "staging", timeout_seconds: payload?.timeout_seconds ?? 600 },
+    ),
+  // Re-runs generation for this script using current application/URL context
+  // and resets it to draft for re-review. Fixes scripts generated before a
+  // real application URL was configured (e.g. ones hardcoding example.com).
+  regenerateScript: (scriptId: number) =>
+    api.post<AutomationScript>(`/automation/scripts/${scriptId}/regenerate`),
+  runnerArtifactUrl: (resultId: number, kind: "log" | "screenshot" | "video" | "trace") =>
+    `/api/v1/automation/runner/results/${resultId}/artifact/${kind}`,
 };
 
 // ── Execution ─────────────────────────────────────────────────────────────────
@@ -1248,6 +1561,11 @@ export interface ExecutionResult {
   screenshot_url?: string;
   video_url?: string;
   log_url?: string;
+  // Local-runner artifact paths (served via automationApi.runnerArtifactUrl);
+  // presence signals which artifact kinds exist for this result.
+  screenshot_path?: string | null;
+  video_path?: string | null;
+  trace_path?: string | null;
   external_result_url?: string;
   jira_issue_key?: string;
   jira_test_key?: string;
@@ -1261,6 +1579,7 @@ export interface ExecutionRun {
   id: number;
   project_id: number;
   execution_id: string;
+  execution_type?: "manual" | "automation" | "ai" | "hybrid" | string;
   test_cycle_id?: string | null;
   source_type?: string | null;
   external_tool_name?: string | null;
@@ -1276,6 +1595,7 @@ export interface ExecutionRun {
   passed: number;
   failed: number;
   skipped: number;
+  confidence_score?: number | null;
   execution_logs?: unknown[];
   allure_report_path?: string | null;
   agent_run_id?: number | null;
@@ -1284,19 +1604,246 @@ export interface ExecutionRun {
   updated_at: string;
 }
 
+export interface ExecutionDashboardPayload {
+  kpis: {
+    total_executions: number;
+    total_test_cases: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    blocked: number;
+    in_progress: number;
+    review_required: number;
+    avg_execution_seconds: number;
+    total_execution_seconds: number;
+    overall_pass_rate: number;
+  };
+  by_type: Array<{
+    execution_type: string;
+    run_count: number;
+    total_tests: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    blocked: number;
+    in_progress: number;
+    pass_rate: number;
+  }>;
+  by_environment: Array<{ environment: string; run_count: number }>;
+  by_module: Array<{ module: string; executions: number; failures: number }>;
+  trend: Array<{ date: string; manual: number; automation: number; ai: number; hybrid: number }>;
+  recent_runs: Array<{
+    id: number;
+    execution_id: string;
+    execution_type: string;
+    status: string;
+    environment: string | null;
+    suite_name: string | null;
+    total_tests: number;
+    passed: number;
+    failed: number;
+    started_at: string | null;
+    duration_seconds: number | null;
+    triggered_by_name: string | null;
+    confidence_score: number | null;
+  }>;
+  defects: { total: number; by_type: Record<string, number> };
+  insights: Array<{ kind: string; title: string; body: string }>;
+  filters_applied: {
+    project_id: number;
+    environment: string | null;
+    execution_type: string | null;
+    date_from: string | null;
+    date_to: string | null;
+  };
+}
+
+export interface ExecutionTriggerResponse {
+  message: string;
+  agent_run_id?: number;
+  task_id?: string;
+  run_id?: number;
+  result_ids?: number[];
+}
+
+export type ManualStepStatus = "not_run" | "in_progress" | "passed" | "failed" | "blocked" | "skipped";
+
+export interface ManualEvidence {
+  id: string;
+  filename: string;
+  size: number;
+  content_type?: string | null;
+  uploaded_at: string;
+  download_url: string;
+}
+
+export interface ManualStepResult {
+  id: number;
+  execution_result_id: number;
+  step_number: number;
+  action_text?: string | null;
+  expected_text?: string | null;
+  status: ManualStepStatus;
+  actual_result?: string | null;
+  comments?: string | null;
+  evidence: ManualEvidence[];
+  started_at?: string | null;
+  completed_at?: string | null;
+  updated_by?: number | null;
+  updated_at: string;
+}
+
+export interface ManualResultDetail {
+  result: ExecutionResult;
+  steps: ManualStepResult[];
+}
+
+export interface ManualRunDetail {
+  run: ExecutionRun;
+  results: ManualResultDetail[];
+}
+
 export const executionApi = {
   listRuns: (projectId: number, params?: { status?: string }) =>
     api.get<ExecutionRun[]>(`/execution/project/${projectId}`, { params }),
   getRun: (id: number) => api.get<ExecutionRun>(`/execution/${id}`),
   getResults: (runId: number) => api.get<ExecutionResult[]>(`/execution/${runId}/results`),
+
+  // Unified Execution Dashboard — Manual + Automation + AI in a single payload.
+  // Backed by GET /execution/dashboard (see execution_dashboard_service.py).
+  getDashboard: (params: {
+    project_id: number;
+    environment?: string | null;
+    execution_type?: "manual" | "automation" | "ai" | null;
+    date_from?: string | null;
+    date_to?: string | null;
+  }) =>
+    api.get<ExecutionDashboardPayload>("/execution/dashboard", {
+      params: {
+        project_id: params.project_id,
+        environment: params.environment || undefined,
+        execution_type: params.execution_type || undefined,
+        date_from: params.date_from || undefined,
+        date_to: params.date_to || undefined,
+      },
+    }),
   runTests: (projectId: number, testCaseIds: number[], environment: string = "staging", suiteName?: string, sourceType?: string) =>
-    api.post("/execution/agent/run-tests", {
+    api.post<ExecutionTriggerResponse>("/execution/agent/run-tests", {
       project_id: projectId,
       test_case_ids: testCaseIds,
       environment,
       suite_name: suiteName,
       source_type: sourceType,
     }),
+
+  // Manual Execution — server-persisted per-step results + evidence
+  startManualRun: (
+    projectId: number,
+    testCaseIds: number[],
+    environment: string = "staging",
+    suiteName?: string,
+    // Optional: map test_case_id -> TestDataRecord.id. When provided, the
+    // server substitutes ${field} placeholders in step text against the bound
+    // record at run-start, then snapshots the resolved text onto the step row.
+    boundDataRecords?: Record<number, number>,
+  ) =>
+    api.post<ManualRunDetail>("/execution/manual/runs", {
+      project_id: projectId,
+      test_case_ids: testCaseIds,
+      environment,
+      suite_name: suiteName,
+      bound_data_records: boundDataRecords ?? {},
+    }),
+  getManualRun: (runId: number) =>
+    api.get<ManualRunDetail>(`/execution/manual/runs/${runId}/details`),
+  updateManualStep: (stepId: number, patch: { status?: ManualStepStatus; actual_result?: string; comments?: string }) =>
+    api.patch<ManualStepResult>(`/execution/manual/steps/${stepId}`, patch),
+  uploadManualEvidence: (stepId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<ManualStepResult>(`/execution/manual/steps/${stepId}/evidence`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  deleteManualEvidence: (evidenceId: string) =>
+    api.delete<ManualStepResult>(`/execution/manual/evidence/${evidenceId}`),
+  completeManualRun: (runId: number) =>
+    api.post<ManualRunDetail>(`/execution/manual/runs/${runId}/complete`),
+
+  // Ask the configured LLM for a pass/fail/blocked suggestion on a step.
+  // Tester drives invocation (no auto-suggest) so cost is predictable.
+  aiAssistStep: (stepId: number, payload?: { actualResult?: string; comments?: string; screenshot?: File }) => {
+    const form = new FormData();
+    if (payload?.actualResult !== undefined) form.append("actual_result", payload.actualResult);
+    if (payload?.comments !== undefined) form.append("comments", payload.comments);
+    if (payload?.screenshot) form.append("file", payload.screenshot);
+    return api.post<{
+      suggested_status: "pass" | "fail" | "blocked";
+      confidence: number;
+      reasoning: string;
+      observations: string[];
+      inputs_used: { mode: "vision" | "text_only"; vision_blocker: string | null };
+      raw_response: string | null;
+    }>(`/execution/manual/steps/${stepId}/ai-assist`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+};
+
+// ── AI Execution ──────────────────────────────────────────────────────────────
+
+export interface AiRunGovernance {
+  ai_confidence_threshold: number;
+  ai_autonomous_environments: string[];
+  ai_require_evidence_for_pass: boolean;
+  ai_run_max_seconds: number;
+}
+
+export interface AiRunReviewLogEntry {
+  ts: string;
+  by_user_id: number;
+  decision: "approve" | "override" | "request_rerun" | "reject";
+  reason: string;
+  previous_status: string;
+  override_status?: string | null;
+}
+
+export interface AiRunDetail {
+  run: ExecutionRun;
+  results: ExecutionResult[];
+  governance: AiRunGovernance;
+  review_log: AiRunReviewLogEntry[];
+}
+
+export const aiExecutionApi = {
+  governance: () => api.get<AiRunGovernance>("/execution/ai/governance"),
+  startRun: (payload: {
+    project_id: number;
+    test_case_ids: number[];
+    environment?: string;
+    agent_name?: string;
+    model?: string;
+    suite_name?: string;
+    confidence_threshold?: number;
+    mode?: "autonomous" | "supervised";
+  }) =>
+    api.post<ExecutionRun>("/execution/ai/runs", {
+      project_id: payload.project_id,
+      test_case_ids: payload.test_case_ids,
+      environment: payload.environment ?? "staging",
+      agent_name: payload.agent_name ?? "nxtQA AI Agent v2.1",
+      model: payload.model ?? null,
+      suite_name: payload.suite_name ?? null,
+      confidence_threshold: payload.confidence_threshold ?? null,
+      mode: payload.mode ?? "autonomous",
+    }),
+  getRun: (runId: number) => api.get<AiRunDetail>(`/execution/ai/runs/${runId}`),
+  submitReview: (runId: number, payload: {
+    decision: "approve" | "override" | "request_rerun" | "reject";
+    reason: string;
+    override_status?: "completed" | "failed" | "auto_completed" | "cancelled";
+  }) => api.post<ExecutionRun>(`/execution/ai/runs/${runId}/review`, payload),
+  finalize: (runId: number) => api.post<ExecutionRun>(`/execution/ai/runs/${runId}/finalize`),
 };
 
 // ── Defects ───────────────────────────────────────────────────────────────────
@@ -1334,6 +1881,30 @@ export interface JiraDefect {
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+// ── Traceability ─────────────────────────────────────────────────────────────
+
+export type LineageEntityType =
+  | "requirement" | "test_plan" | "test_scenario" | "test_case" | "test_data"
+  | "automation_script" | "execution_run" | "execution_result" | "defect_draft" | "report";
+
+export interface LineageNode {
+  entity_type: LineageEntityType | string;
+  entity_id: number;
+  ref?: string | null;
+  title?: string | null;
+  status?: string | null;
+  relationship_type?: string | null;
+  depth: number;
+}
+
+export interface LineageChain {
+  entity_type: string;
+  entity_id: number;
+  project_id: number;
+  upstream: LineageNode[];
+  downstream: LineageNode[];
 }
 
 export const defectsApi = {
@@ -1530,6 +2101,10 @@ export const traceabilityApi = {
   /** Approval actions list for a project. */
   approvals: (projectId: number, params?: { entity_type?: string; entity_id?: number; page?: number; page_size?: number }) =>
     api.get<ApprovalAction[]>(`/traceability/projects/${projectId}/approvals`, { params }),
+
+  /** Entity-centric lineage walk over artifact_lineage (both directions). */
+  getLineage: (entityType: LineageEntityType | string, entityId: number) =>
+    api.get<LineageChain>(`/traceability/lineage/${entityType}/${entityId}`),
 };
 
 /** Trigger a file download from a Blob URL. */

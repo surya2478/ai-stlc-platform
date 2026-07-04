@@ -13,7 +13,16 @@ from app.api.deps import (
     require_permission,
     require_project_access,
 )
-from app.schemas.test_plan import TestCaseHistoryOut, TestCaseJiraSyncOut, TestCaseOut, TestCaseSummaryOut, TestCaseUpdate
+from app.core import audit_logger
+from app.schemas.test_plan import (
+    TestCaseBulkUpdateRequest,
+    TestCaseBulkUpdateResult,
+    TestCaseHistoryOut,
+    TestCaseJiraSyncOut,
+    TestCaseOut,
+    TestCaseSummaryOut,
+    TestCaseUpdate,
+)
 from app.services import test_plan_service
 from app.services.rbac_service import APPROVE_TEST_CASES, SYNC_JIRA
 
@@ -69,6 +78,55 @@ async def get_test_case_history(tc_id: int, db: DBSession, current_user: Current
         raise HTTPException(status_code=404, detail="Test case not found")
     await require_entity_project_access(tc, current_user, db)
     return await test_plan_service.list_test_case_history(db, tc)
+
+
+@router.post("/projects/{project_id}/bulk-update", response_model=TestCaseBulkUpdateResult)
+async def bulk_update_test_cases(
+    project_id: int,
+    body: TestCaseBulkUpdateRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Apply the same field patch to many test cases atomically.
+
+    Always pass `dry_run: true` first to render the diff/conflict preview to
+    the user. Once they confirm, call again with `dry_run: false` (and the
+    same `reason`) to commit. The endpoint returns the per-row analysis in
+    both modes; only the mutation step is skipped when dry_run is true.
+
+    Requires APPROVE_TEST_CASES permission on the project. Every mutated row
+    writes a `test_case_history` entry per changed field (source="bulk_update",
+    comment=reason). A single `test_case.bulk_updated` summary event is also
+    written to the audit log.
+    """
+    await require_permission(APPROVE_TEST_CASES, project_id, current_user, db)
+
+    patch_dict = body.patch.model_dump(exclude_unset=True)
+
+    result = await test_plan_service.bulk_update_test_cases(
+        db,
+        test_case_ids=body.test_case_ids,
+        project_id=project_id,
+        patch=patch_dict,
+        reason=body.reason,
+        user_id=current_user.id,
+        dry_run=body.dry_run,
+    )
+
+    if not body.dry_run:
+        await db.commit()
+        audit_logger.test_case_bulk_updated(
+            by_user_id=current_user.id,
+            project_id=project_id,
+            requested=result["requested"],
+            updated=result["updated"],
+            skipped=result["skipped"],
+            conflicts=result["conflicts"],
+            reason=body.reason,
+            patch_fields=list(patch_dict.keys()),
+        )
+
+    return result
 
 
 @router.post("/{tc_id}/sync-jira", response_model=TestCaseJiraSyncOut, status_code=202)

@@ -12,7 +12,6 @@ import {
   automationApi,
   testPlansApi,
   traceabilityApi,
-  type Project,
   type TestCase,
   type AgentRun,
   type TestCaseSummary,
@@ -129,7 +128,6 @@ function CommandCenterContent() {
 
   const selectedProjectId = Number(searchParams.get("project")) || null;
 
-  const [projects, setProjects] = useState<Project[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [summary, setSummary] = useState<TestCaseSummary | null>(null);
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
@@ -139,7 +137,6 @@ function CommandCenterContent() {
 
   useEffect(() => {
     projectsApi.list().then((res) => {
-      setProjects(res.data);
       if (res.data.length > 0 && !searchParams.get("project")) {
         const params = new URLSearchParams(searchParams.toString());
         params.set("project", String(res.data[0].id));
@@ -196,11 +193,20 @@ function CommandCenterContent() {
   const approvedTCs = hasData ? (summary?.by_status?.approved ?? testCases.filter(t => t.status === "approved").length) : 920;
   const draftTCs = hasData ? (summary?.by_status?.draft ?? testCases.filter(t => t.status === "draft").length) : 328;
   const pendingTCs = hasData ? (summary?.by_status?.pending_approval ?? testCases.filter(t => t.status === "pending_approval" || t.status === "pending_review").length) : 100;
-  const automatedTCs = hasData ? (summary?.by_mode?.automated ?? testCases.filter(t => t.mode === "automated" || t.execution_mode === "automated").length) : 920;
+  // Count both new ("automation") and legacy ("automated"/"hybrid") buckets so the
+  // KPI doesn't undercount as data migrates to the new vocabulary.
+  const isAutoFlavour = (m: string | null | undefined) => m === "automation" || m === "automated" || m === "hybrid";
+  const automatedTCs = hasData
+    ? ((summary?.by_mode?.automation ?? 0) + (summary?.by_mode?.automated ?? 0) + (summary?.by_mode?.hybrid ?? 0))
+      || testCases.filter(t => isAutoFlavour(t.mode) || isAutoFlavour(t.execution_mode)).length
+    : 920;
   const manualTCs = hasData ? (summary?.by_mode?.manual ?? (total - automatedTCs)) : 328;
   const rejectedTCs = hasData ? (summary?.by_status?.rejected ?? testCases.filter(t => t.status === "rejected").length) : 42;
   const blockedTCs = hasData ? (summary?.by_status?.blocked ?? testCases.filter(t => t.status === "blocked").length) : 18;
-  const readyTCs = hasData ? (summary?.by_automation_status?.ready_for_automation ?? testCases.filter(t => t.automation_ready || t.automation_status === "ready_for_automation").length) : 845;
+  const readyTCs = hasData
+    ? ((summary?.by_automation_status?.ready_for_automation ?? 0) + (summary?.by_automation_status?.planned_for_automation ?? 0))
+      || testCases.filter(t => t.automation_ready || t.automation_status === "ready_for_automation" || t.automation_status === "planned_for_automation").length
+    : 845;
 
   // Jira Sync counts
   const jiraSyncedCount = hasData ? (summary?.by_jira_sync_status?.synced ?? testCases.filter(t => t.jira_sync_status === "synced" || t.jira_issue_key != null).length) : 1024;
@@ -324,7 +330,9 @@ function CommandCenterContent() {
       
       const automated = testCases.filter(t => {
         const tcDate = new Date(t.created_at || new Date());
-        return (t.mode === "automated" || t.execution_mode === "automated") && tcDate.toDateString() === d.toDateString();
+        return isAutoFlavour(t.mode) || isAutoFlavour(t.execution_mode)
+          ? tcDate.toDateString() === d.toDateString()
+          : false;
       }).length;
 
       const mockCreated = [700, 850, 920, 880, 1050, 1150, 1248][6 - i];
@@ -452,25 +460,6 @@ function CommandCenterContent() {
         </div>
         
         <div className="flex items-center gap-2.5 shrink-0 self-end md:self-auto">
-          <select
-            value={selectedProjectId ?? ""}
-            onChange={(e) => {
-              const val = e.target.value;
-              const params = new URLSearchParams(searchParams.toString());
-              params.set("project", val);
-              router.push(`${pathname}?${params.toString()}`);
-            }}
-            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-
           <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200 bg-white">
             <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
           </Button>

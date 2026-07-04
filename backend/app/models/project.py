@@ -20,10 +20,12 @@ class Project(TimestampMixin, Base):
     domain: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
 
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
     # Relationships
     owner: Mapped["User"] = relationship("User", back_populates="projects", foreign_keys=[owner_id])
+    organization: Mapped["Organization"] = relationship("Organization", back_populates="projects")
     jira_connections: Mapped[list["JiraConnection"]] = relationship("JiraConnection", back_populates="project")
     documents: Mapped[list["UploadedDocument"]] = relationship("UploadedDocument", back_populates="project")
     requirements: Mapped[list["Requirement"]] = relationship("Requirement", back_populates="project")
@@ -41,3 +43,4 @@ class Project(TimestampMixin, Base):
         "ProjectSettingAuditLog",
         back_populates="project",
     )
+    applications: Mapped[list["ProjectApplication"]] = relationship("ProjectApplication", back_populates="project")

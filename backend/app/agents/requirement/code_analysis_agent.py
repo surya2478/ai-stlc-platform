@@ -91,7 +91,7 @@ Guidelines:
 - Merge trivial getters/setters into a single CRUD requirement.
 - Do NOT invent requirements not evidenced by the code.
 - risk_level must be one of: Critical, High, Medium, Low.
-- test_phase must be one of: SIT, UAT, Regression, NFT, Production_Validation.
+- test_phase must be one of: SIT, QA, UAT, Regression, "Production Smoke Test".
 - telecom_domain may be null or one of: Mobile, Fixed, Digital, Billing, Charging,
   CRM, OSS, BSS, Middleware, Integration, Network, Data.
 - Output ONLY the JSON. No markdown fences, no explanation.

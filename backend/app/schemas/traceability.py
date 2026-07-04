@@ -62,6 +62,24 @@ class TraceabilityChainItem(BaseModel):
     status: str | None = None
 
 
+class LineageNode(BaseModel):
+    entity_type: str
+    entity_id: int
+    ref: str | None = None
+    title: str | None = None
+    status: str | None = None
+    relationship_type: str | None = None
+    depth: int = 1
+
+
+class LineageChainOut(BaseModel):
+    entity_type: str
+    entity_id: int
+    project_id: int
+    upstream: list[LineageNode]
+    downstream: list[LineageNode]
+
+
 class TraceabilityMatrixRow(BaseModel):
     requirement: TraceabilityChainItem
     test_cases: list[TraceabilityChainItem]

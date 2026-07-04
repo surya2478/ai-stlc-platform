@@ -14,7 +14,6 @@ function HeaderContent() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
-  const [selectedEnv, setSelectedEnv] = useState<string>("SIT");
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ full_name: string; email: string; role: string } | null>(null);
 
@@ -65,10 +64,6 @@ function HeaderContent() {
     const urlProject = Number(searchParams.get("project"));
     if (urlProject && urlProject !== selectedProjectId) {
       setSelectedProjectId(urlProject);
-    }
-    const urlEnv = searchParams.get("env");
-    if (urlEnv && urlEnv !== selectedEnv) {
-      setSelectedEnv(urlEnv);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -132,33 +127,6 @@ function HeaderContent() {
             </select>
           </div>
         )}
-
-        {/* Environment Selector */}
-        <div className="hidden md:flex shrink-0 items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Environment
-          </span>
-          <select
-            value={selectedEnv}
-            onChange={(e) => {
-              const val = e.target.value;
-              setSelectedEnv(val);
-              updateQueryParam("env", val);
-            }}
-            className="appearance-none bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 rounded-lg text-xs font-medium px-3 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer select-none"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            <option value="SIT">SIT</option>
-            <option value="UAT">UAT</option>
-            <option value="DEV">DEV</option>
-            <option value="PROD">PROD</option>
-          </select>
-        </div>
 
         {/* Jira Sync Badge */}
         <div className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap bg-emerald-50 border border-emerald-100 rounded-full px-2.5 py-1 text-[10px] font-semibold text-emerald-700 xl:flex">

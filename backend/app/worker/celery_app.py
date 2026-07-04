@@ -13,6 +13,7 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=[
         "app.worker.tasks.agent_tasks",
+        "app.worker.tasks.automation_tasks",
         "app.worker.tasks.document_tasks",
         "app.worker.tasks.jira_tasks",
         "app.worker.tasks.rag_tasks",

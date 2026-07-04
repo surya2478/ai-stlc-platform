@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import selectinload
 
 from app.models.automation_mapping import AutomationTestMapping
@@ -17,22 +17,31 @@ from app.models.jira_sync import JiraSyncHistory
 from app.models.test_plan import TestPlan
 from app.models.test_scenario import TestScenario
 from app.models.test_case import TestCase, TestCaseHistory
+from app.models.test_suite import TestSuite
+from app.models.artifact_lineage import ArtifactLineage
+from app.models.agent import AgentRun
 from app.schemas.test_plan import TestPlanUpdate, TestCaseUpdate
 from app.worker.tasks import jira_tasks
 
 
 STATUS_VALUES = {"draft", "pending_approval", "approved", "rejected", "automated"}
-MODE_VALUES = {"manual", "automated", "hybrid", "ai"}
+# Both the new canonical values ("automation") and the legacy ones ("automated",
+# "hybrid") are accepted — see notes in the test-cases form for the vocabulary.
+MODE_VALUES = {"manual", "automation", "ai", "automated", "hybrid"}
 AUTOMATION_ELIGIBLE_VALUES = {"yes", "no"}
 AUTOMATION_STATUS_VALUES = {
-    "not_required",
-    "mapping_required",
+    # Current canonical values
+    "planned_for_automation",
     "ready_for_automation",
     "automated",
+    "awaiting_qa_approval",
+    # Legacy values still found on older rows
+    "not_required",
+    "mapping_required",
     "automation_failed",
     "maintenance_required",
 }
-TEST_PHASE_VALUES = {"SIT", "UAT", "Regression", "NFT", "Production_Validation"}
+TEST_PHASE_VALUES = {"SIT", "QA", "UAT", "Regression", "Production Smoke Test"}
 TELECOM_DOMAIN_VALUES = {"Mobile", "Fixed", "Digital", "Billing", "Charging", "CRM", "OSS", "BSS", "Middleware", "Integration", "Network", "Data"}
 EXTERNAL_TOOL_VALUES = {"Mock", "Playwright", "Pytest", "Katalon", "Selenium", "Other"}
 AUTOMATION_RESULT_VALUES = {"pending", "passed", "failed", "skipped", "blocked", "not_run"}
@@ -53,6 +62,10 @@ AUDITED_FIELDS = {
     "jira_sync_status",
     "telecom_domain",
     "test_phase",
+    "test_suite_id",
+    "preconditions",
+    "steps",
+    "expected_result",
 }
 
 
@@ -91,6 +104,36 @@ async def approve_test_plan(db: AsyncSession, plan: TestPlan, action: str, notes
 
 
 # ── Test Scenario ─────────────────────────────────────────────────────────────
+
+async def delete_test_plan(db: AsyncSession, plan: TestPlan) -> None:
+    if plan.agent_run_id is not None:
+        await db.execute(
+            update(AgentRun)
+            .where(AgentRun.id == plan.agent_run_id, AgentRun.status == "completed")
+            .values(
+                status="cancelled",
+                output_data=None,
+                error_message="Output test plan was deleted.",
+                progress_message="Output artifact deleted",
+            )
+        )
+    await db.execute(
+        update(TestCase)
+        .where(TestCase.linked_test_plan_id == plan.id)
+        .values(linked_test_plan_id=None)
+    )
+    await db.execute(
+        delete(ArtifactLineage).where(
+            ArtifactLineage.project_id == plan.project_id,
+            or_(
+                and_(ArtifactLineage.child_type == "test_plan", ArtifactLineage.child_id == plan.id),
+                and_(ArtifactLineage.parent_type == "test_plan", ArtifactLineage.parent_id == plan.id),
+            ),
+        )
+    )
+    await db.delete(plan)
+    await db.flush()
+
 
 async def list_scenarios(
     db: AsyncSession,
@@ -136,7 +179,7 @@ async def list_test_cases(
 ) -> list[TestCase]:
     stmt = (
         select(TestCase)
-        .options(selectinload(TestCase.requirement))
+        .options(selectinload(TestCase.requirement), selectinload(TestCase.test_suite))
         .where(TestCase.project_id == project_id)
         .order_by(TestCase.created_at.desc())
     )
@@ -148,7 +191,7 @@ async def list_test_cases(
         stmt = stmt.where(TestCase.status == status)
     if automation_only:
         stmt = stmt.where(
-            func.lower(TestCase.execution_mode) == "automated",
+            func.lower(TestCase.execution_mode).in_(["automation", "automated", "hybrid"]),
             func.lower(TestCase.automation_eligible) == "yes",
         )
     stmt = stmt.offset(skip).limit(limit)
@@ -159,7 +202,7 @@ async def list_test_cases(
 async def get_test_case(db: AsyncSession, tc_id: int) -> TestCase | None:
     result = await db.execute(
         select(TestCase)
-        .options(selectinload(TestCase.requirement))
+        .options(selectinload(TestCase.requirement), selectinload(TestCase.test_suite))
         .where(TestCase.id == tc_id)
     )
     return result.scalar_one_or_none()
@@ -251,18 +294,39 @@ async def _validate_test_case_update(db: AsyncSession, tc: TestCase, data: dict[
     _validate_url("external_tc_url", _value_to_string(data.get("external_tc_url")))
     _validate_url("jira_url", _value_to_string(data.get("jira_url")))
 
+    if "test_suite_id" in data and data["test_suite_id"] is not None:
+        suite_result = await db.execute(select(TestSuite).where(TestSuite.id == data["test_suite_id"]))
+        suite = suite_result.scalar_one_or_none()
+        if suite is None or suite.project_id != tc.project_id:
+            raise HTTPException(status_code=422, detail="Test suite not found in this project")
+
     mode = data.get("execution_mode", tc.execution_mode)
     eligible = data.get("automation_eligible", tc.automation_eligible)
     automation_status = data.get("automation_status", tc.automation_status)
     external_tc_id = data.get("external_tc_id", tc.external_tc_id)
     automation_script_id = data.get("automation_script_id", tc.automation_script_id)
 
-    if automation_status == "automated" and mode != "automated":
-        raise HTTPException(status_code=422, detail="Automated status requires mode automated")
+    # "Automated" status is valid for any non-manual mode (automation / automated /
+    # ai / hybrid). The historical check only allowed "automated", which broke
+    # rows saved with the new "automation" vocabulary.
+    if automation_status == "automated" and mode == "manual":
+        raise HTTPException(status_code=422, detail="Automated status requires a non-manual execution mode")
     if automation_status == "automated" and eligible != "yes":
         raise HTTPException(status_code=422, detail="Automated status requires automation_eligible yes")
-    if automation_status == "automated" and not external_tc_id and not automation_script_id:
-        raise HTTPException(status_code=422, detail="Automated status requires external_tc_id or automation_script_id")
+    # Internal tools (Playwright / Pytest) generate and link the script through
+    # the platform's automation pipeline, so requiring an external_tc_id up-front
+    # would block legitimate automated rows. External tools (Katalon, Selenium,
+    # etc.) still need either an external ID or an attached script — that's the
+    # only way the platform can correlate runs back to this row.
+    external_tool = (data.get("external_tool", tc.external_tool) or "")
+    is_internal_tool = external_tool in {"Playwright", "Pytest"}
+    if automation_status == "automated" and not is_internal_tool \
+            and not external_tc_id and not automation_script_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Automated status needs an external_tc_id, a linked automation_script_id, "
+                   "or an internal tool (Playwright / Pytest) selected as External Tool",
+        )
     if data.get("status") == "approved" and not (data.get("title") or tc.title):
         raise HTTPException(status_code=422, detail="Approved test cases require a title")
     if data.get("status") == "rejected" and not (data.get("comment") or (tc.metadata_ or {}).get("review_notes")):
@@ -332,7 +396,10 @@ async def update_test_case(
 
 
 async def deactivate_active_mappings_if_not_automation_applicable(db: AsyncSession, tc: TestCase) -> None:
-    if (tc.execution_mode or "").lower() == "automated" and (tc.automation_eligible or "").lower() == "yes":
+    mode = (tc.execution_mode or "").lower()
+    eligible = (tc.automation_eligible or "").lower()
+    # Accept new ("automation") and legacy ("automated") mode values + AI flow.
+    if mode in {"automation", "automated", "ai"} and eligible == "yes":
         return
     result = await db.execute(
         select(AutomationTestMapping).where(
@@ -344,6 +411,191 @@ async def deactivate_active_mappings_if_not_automation_applicable(db: AsyncSessi
     for mapping in result.scalars().all():
         mapping.is_active = False
         mapping.automation_status = "not_required"
+
+
+async def bulk_update_test_cases(
+    db: AsyncSession,
+    *,
+    test_case_ids: list[int],
+    project_id: int,
+    patch: dict[str, Any],
+    reason: str,
+    user_id: int,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Apply the same field patch to many test cases in a single transaction.
+
+    Per-row outcomes:
+        - updated: at least one field changed; new state persisted (if dry_run=false)
+        - skipped: row's current state already matches the patch (no diff)
+        - conflict: applying the patch would silently corrupt state — see reason
+                    (e.g. flipping mode→manual on a row with a linked automation script)
+        - not_found: id wasn't in the DB
+        - forbidden: row belongs to a different project than the caller's claim
+
+    Conflict rows are NEVER mutated, even when dry_run is false. The caller decides
+    whether to retry per-row after manual cleanup.
+
+    The function returns the analysis structure regardless of dry_run; only the
+    mutation step is skipped when dry_run is true.
+    """
+    # Strip None values so we only operate on fields the caller intends to set.
+    effective_patch: dict[str, Any] = {k: v for k, v in patch.items() if v is not None}
+
+    # Belt-and-braces enum validation. The frontend dropdowns only offer valid
+    # values, but a direct API caller could otherwise persist garbage that the
+    # single-row update flow would have rejected.
+    _ENUM_CHECKS: list[tuple[str, set[str]]] = [
+        ("execution_mode", MODE_VALUES),
+        ("automation_status", AUTOMATION_STATUS_VALUES),
+        # External tool accepts an explicit empty-string "clear" value in addition to the enum.
+        ("external_tool", EXTERNAL_TOOL_VALUES | {""}),
+    ]
+    for field, allowed in _ENUM_CHECKS:
+        if field in effective_patch and effective_patch[field] not in allowed:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid value '{effective_patch[field]}' for {field}. Allowed: {sorted(allowed)}",
+            )
+
+    if "test_suite_id" in effective_patch:
+        suite_result = await db.execute(select(TestSuite).where(TestSuite.id == effective_patch["test_suite_id"]))
+        suite = suite_result.scalar_one_or_none()
+        if suite is None or suite.project_id != project_id:
+            raise HTTPException(status_code=422, detail="Test suite not found in this project")
+
+    # Dedupe the id list while preserving order. A naive call with `[1, 1, 1]`
+    # would otherwise iterate the same row three times — once "updated" and
+    # twice "skipped" — and inflate every counter in the summary.
+    deduped_ids: list[int] = list(dict.fromkeys(test_case_ids))
+
+    if not effective_patch:
+        return {
+            "requested": len(deduped_ids),
+            "updated": 0,
+            "skipped": len(deduped_ids),
+            "conflicts": 0,
+            "not_found": 0,
+            "forbidden": 0,
+            "dry_run": dry_run,
+            "rows": [
+                {"test_case_id": tc_id, "outcome": "skipped", "changes": {},
+                 "conflict_reason": "patch was empty"}
+                for tc_id in deduped_ids
+            ],
+        }
+
+    # Fetch all requested rows in one round-trip.
+    fetched = await db.execute(select(TestCase).where(TestCase.id.in_(deduped_ids)))
+    by_id: dict[int, TestCase] = {tc.id: tc for tc in fetched.scalars().all()}
+
+    rows: list[dict[str, Any]] = []
+    counts = {"updated": 0, "skipped": 0, "conflicts": 0, "not_found": 0, "forbidden": 0}
+
+    for tc_id in deduped_ids:
+        tc = by_id.get(tc_id)
+        if tc is None:
+            counts["not_found"] += 1
+            rows.append({
+                "test_case_id": tc_id, "outcome": "not_found",
+                "changes": {}, "conflict_reason": "Test case does not exist",
+            })
+            continue
+        if tc.project_id != project_id:
+            counts["forbidden"] += 1
+            rows.append({
+                "test_case_id": tc_id, "test_case_key": tc.test_case_id, "title": tc.title,
+                "outcome": "forbidden", "changes": {},
+                "conflict_reason": f"Test case belongs to project {tc.project_id}, not {project_id}",
+            })
+            continue
+
+        # Conflict detection: switching mode → manual on a TC with an
+        # attached automation script silently orphans the script. Block it
+        # so the caller can detach explicitly.
+        new_mode = effective_patch.get("execution_mode")
+        if new_mode == "manual" and tc.automation_script_id is not None:
+            counts["conflicts"] += 1
+            rows.append({
+                "test_case_id": tc.id, "test_case_key": tc.test_case_id, "title": tc.title,
+                "outcome": "conflict", "changes": {},
+                "conflict_reason": f"Has linked automation script #{tc.automation_script_id} — detach it before switching to Manual",
+            })
+            continue
+        # Manual + Automated status doesn't make sense.
+        if effective_patch.get("automation_status") == "automated" and \
+                (new_mode == "manual" or (new_mode is None and (tc.execution_mode or "").lower() == "manual")):
+            counts["conflicts"] += 1
+            rows.append({
+                "test_case_id": tc.id, "test_case_key": tc.test_case_id, "title": tc.title,
+                "outcome": "conflict", "changes": {},
+                "conflict_reason": "Cannot mark a Manual test case as Automated",
+            })
+            continue
+
+        # Build per-row diff (only fields whose value would actually change).
+        diff: dict[str, dict[str, Any]] = {}
+        for field, new_value in effective_patch.items():
+            old_value = getattr(tc, field, None)
+            if old_value == new_value:
+                continue
+            diff[field] = {"old": old_value, "new": new_value}
+
+        if not diff:
+            counts["skipped"] += 1
+            rows.append({
+                "test_case_id": tc.id, "test_case_key": tc.test_case_id, "title": tc.title,
+                "outcome": "skipped", "changes": {},
+            })
+            continue
+
+        # Auto-derive automation_eligible from mode when mode is in the patch,
+        # mirroring the single-row form's cross-field behaviour.
+        if new_mode is not None:
+            derived_eligible = "no" if new_mode == "manual" else "yes"
+            if tc.automation_eligible != derived_eligible:
+                diff["automation_eligible"] = {"old": tc.automation_eligible, "new": derived_eligible}
+
+        counts["updated"] += 1
+
+        if not dry_run:
+            now = datetime.now(timezone.utc)
+            for field, change in diff.items():
+                setattr(tc, field, change["new"])
+                if field in AUDITED_FIELDS:
+                    db.add(TestCaseHistory(
+                        project_id=tc.project_id,
+                        test_case_id=tc.id,
+                        changed_by=user_id,
+                        field_name=field,
+                        old_value=_value_to_string(change["old"]),
+                        new_value=_value_to_string(change["new"]),
+                        source="bulk_update",
+                        comment=reason,
+                    ))
+            tc.updated_by = user_id
+            if "status" in diff:
+                tc.last_status_updated_by = user_id
+                tc.last_status_updated_at = now
+            if "execution_mode" in diff or "automation_eligible" in diff:
+                await deactivate_active_mappings_if_not_automation_applicable(db, tc)
+
+        rows.append({
+            "test_case_id": tc.id, "test_case_key": tc.test_case_id, "title": tc.title,
+            "outcome": "updated", "changes": diff,
+        })
+
+    if not dry_run:
+        await db.flush()
+
+    return {
+        # `requested` reflects unique IDs analysed — duplicates are folded in
+        # so callers can rely on `requested == sum(per-outcome-counters)`.
+        "requested": len(deduped_ids),
+        **counts,
+        "dry_run": dry_run,
+        "rows": rows,
+    }
 
 
 async def approve_test_case(db: AsyncSession, tc: TestCase, action: str, notes: str | None, user_id: int | None = None) -> TestCase:

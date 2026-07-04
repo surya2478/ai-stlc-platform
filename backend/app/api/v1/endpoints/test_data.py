@@ -1,10 +1,12 @@
 """Test Data Management endpoints."""
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from app.api.deps import CurrentUser, DBSession, require_entity_project_access, require_permission, require_project_access
-from app.models.test_data import TestData
+from app.models.test_data import TestData, TestDataRecord
 from app.schemas.common import MessageResponse
 from app.schemas.test_data import (
     TestDataApprovalRequest,
@@ -420,3 +422,51 @@ async def delete_test_data_template(template_id: int, db: DBSession, current_use
     await test_data_service.delete_template(db, template)
     await db.commit()
     return MessageResponse(message="Test data template deleted")
+
+
+# ── Records (for parameter binding pickers) ───────────────────────────────────
+
+
+@router.get("/projects/{project_id}/records")
+async def list_bindable_records(
+    project_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+    test_case_id: int | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """List approved/active TestDataRecord rows that can be bound to a manual run.
+
+    Filters:
+      - records whose parent TestData is approved (or active without rejection)
+      - optionally scoped to records whose parent links a given test_case_id
+    """
+    await require_project_access(project_id, current_user, db)
+    sql = (
+        select(TestDataRecord, TestData)
+        .join(TestData, TestData.id == TestDataRecord.data_set_id)
+        .where(
+            TestDataRecord.project_id == project_id,
+            TestData.approval_status.in_(("approved", "draft")),
+            TestData.status != "rejected",
+        )
+        .order_by(TestDataRecord.id.desc())
+        .limit(limit)
+    )
+    if test_case_id is not None:
+        sql = sql.where(TestData.test_case_id == test_case_id)
+    rows = (await db.execute(sql)).all()
+    return [
+        {
+            "record_id": rec.id,
+            "record_key": rec.record_key,
+            "data_set_id": rec.data_set_id,
+            "data_set_name": td.name,
+            "data_set_data_id": td.data_id,
+            "test_case_id": td.test_case_id,
+            "preview_keys": sorted(list((rec.payload_json or {}).keys()))[:8]
+            if isinstance(rec.payload_json, dict) else [],
+            "approval_status": td.approval_status,
+        }
+        for rec, td in rows
+    ]

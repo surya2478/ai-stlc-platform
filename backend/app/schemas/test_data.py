@@ -37,7 +37,7 @@ QualityStatus = Literal["valid", "warning", "invalid", "not_checked"]
 GenerationStatus = Literal["not_requested", "requested", "pending_external_generation", "generated", "failed", "cancelled"]
 ValidationStatus = Literal["not_validated", "valid", "warning", "invalid"]
 ImportMode = Literal["create_new_dataset", "append_to_existing_dataset"]
-ExternalTool = Literal["Mock", "Katalon", "Playwright", "Pytest", "GenRocket", "Delphix", "Broadcom TDM", "Informatica TDM", "Other"]
+ExternalTool = Literal["Mock", "Faker", "Katalon", "Playwright", "Pytest", "GenRocket", "Delphix", "Broadcom TDM", "Informatica TDM", "Other"]
 
 
 class TestDataTemplateBase(BaseModel):
@@ -177,6 +177,11 @@ class TestDataGenerateRequest(BaseModel):
     request_notes: str | None = None
     priority: str | None = None
     expected_by_date: date | None = None
+    # Schema consumed by the LocalFakerToolClient. Shape (see
+    # app/services/test_data_generation/faker_engine.py docstring):
+    #   { "locale": "en_US", "fields": [{ "name": "...", "provider": "...", "params": {...} }, ...] }
+    # Ignored for other tools.
+    schema_json: dict[str, Any] | None = None
 
     @field_validator("name", "data_type", "telecom_domain", "test_phase", "environment")
     @classmethod

@@ -60,6 +60,13 @@ class Requirement(TimestampMixin, Base):
     test_data_needs: Mapped[str | None] = mapped_column(Text, nullable=True)
     nfr_requirements: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Tester-provided context for AI test-case generation. `test_phase` above
+    # doubles as the "Test Environment" selector (SIT/QA/UAT/Regression/
+    # Production Smoke Test) that tailors generated scenario/test-case depth
+    # and style; `generation_notes` is free-text instructions/emphasis passed
+    # alongside it into the scenario/test-case generation prompts.
+    generation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     readiness_status: Mapped[str | None] = mapped_column(String(50), nullable=True, default="draft", index=True)
 
     # Optional Jira fields and sync state.

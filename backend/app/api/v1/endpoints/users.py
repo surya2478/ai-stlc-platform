@@ -198,12 +198,15 @@ async def login(request: Request, response: Response, form_data: OAuth2PasswordR
         }
         for membership in memberships
     ]
+    # NOTE: project_memberships (with per-project permission lists) is deliberately
+    # kept out of the JWT and only returned in the response body below. Embedding it
+    # in the cookie pushed the encoded token past the browser's ~4096-byte per-cookie
+    # limit for users with several memberships, so the browser silently dropped the
+    # access_token cookie on every login/refresh -- nothing in the backend reads
+    # global_role/project_memberships back out of the token, so this is safe.
     token = create_access_token(
         user.id,
-        extra_claims={
-            "global_role": user.role,
-            "project_memberships": membership_claims,
-        },
+        extra_claims={"global_role": user.role},
     )
     refresh_token = create_refresh_token(user.id)
 
@@ -319,12 +322,10 @@ async def refresh_session(request: Request, response: Response, db: DBSession):
         }
         for membership in memberships
     ]
+    # See NOTE in login() -- project_memberships stays out of the JWT/cookie.
     new_access_token = create_access_token(
         user.id,
-        extra_claims={
-            "global_role": user.role,
-            "project_memberships": membership_claims,
-        },
+        extra_claims={"global_role": user.role},
     )
     new_refresh_token = create_refresh_token(user.id)
     
