@@ -224,6 +224,25 @@ async def _execute_run(execution_run_id: int, timeout_seconds: int) -> dict:
             else:
                 skipped += 1
 
+        # Roll the outcome up onto the linked TestCase so "last run" status is
+        # visible in the planning/inventory views without opening the run.
+        # Mirrors the equivalent update in execution.py's agent/run-tests path.
+        now = datetime.now(timezone.utc)
+        touched_test_case_ids: set[int] = set()
+        for result_row in placeholders:
+            if result_row.test_case_id is None or result_row.test_case_id in touched_test_case_ids:
+                continue
+            touched_test_case_ids.add(result_row.test_case_id)
+            tc = await db.get(TestCase, result_row.test_case_id)
+            if tc:
+                tc.last_execution_run_id = run.id
+                tc.last_automation_status = result_row.status
+                tc.last_automation_run_at = now
+                tc.latest_evidence_available = bool(
+                    result_row.logs or result_row.error_message or result_row.stack_trace
+                    or result_row.screenshot_path or result_row.video_path or result_row.trace_path
+                )
+
         # Run-level roll-up
         run.passed = passed
         run.failed = failed

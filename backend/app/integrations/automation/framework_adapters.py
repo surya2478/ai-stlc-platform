@@ -141,7 +141,7 @@ def assess_framework_fit(test_case: Any) -> dict[str, Any]:
     if execution_mode == "hybrid":
         playwright_score += 8
         pytest_score += 8
-    elif execution_mode == "automated":
+    elif execution_mode in {"automation", "automated", "ai"}:
         playwright_score += 4
         pytest_score += 4
 

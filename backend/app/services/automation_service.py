@@ -217,7 +217,12 @@ async def planning_summary(db: AsyncSession, *, project_id: int) -> dict:
             TestCase.project_id == project_id,
             TestCase.status == "approved",
             TestCase.automation_eligible == "yes",
-            TestCase.execution_mode.in_(["automated", "hybrid"]),
+            # "automation" is the current canonical mode value; "automated" is
+            # legacy and "ai" is the AI-assisted flow — all three (plus
+            # "hybrid") are automation-applicable. Keep in sync with
+            # MODE_VALUES in test_plan_service.py and the automation_only
+            # filter in list_test_cases().
+            TestCase.execution_mode.in_(["automation", "automated", "hybrid", "ai"]),
             TestCase.is_deleted.is_(False),
         )
         .order_by(TestCase.updated_at.desc(), TestCase.id.desc())
