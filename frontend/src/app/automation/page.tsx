@@ -59,7 +59,7 @@ import { AutomationInventoryPanel, type InventoryItem } from "@/components/autom
 import { AutomationWorkspace } from "@/components/automation/AutomationWorkspace";
 import { ConvertManualToAutomationDialog } from "@/components/automation/ConvertManualToAutomationDialog";
 import { RunnerStatusChip } from "@/app/execution/_components/RunnerStatusChip";
-import { RunTriggerDialog, type RunTarget } from "@/app/execution/_components/AutomationBuilderTab";
+import { RunTriggerDialog, RunAllEligibleDialog, type RunTarget, type BatchRunCandidate } from "@/app/execution/_components/AutomationBuilderTab";
 import { RunDetailDrawer } from "@/app/execution/_components/RunDetailDrawer";
 import { TraceabilityDrawer, type TraceTarget } from "@/app/execution/_components/TraceabilityDrawer";
 import { RunVerdictBadge, formatDate, formatDuration } from "@/app/execution/_components/run-utils";
@@ -162,6 +162,7 @@ function AutomationContent() {
   const [sandboxTarget, setSandboxTarget] = useState<RunTarget | null>(null);
   const [openRun, setOpenRun] = useState<ExecutionRun | null>(null);
   const [traceTarget, setTraceTarget] = useState<TraceTarget | null>(null);
+  const [runAllOpen, setRunAllOpen] = useState(false);
 
   // Load Projects on mount
   useEffect(() => {
@@ -255,6 +256,23 @@ function AutomationContent() {
   const scriptsById = useMemo(() => {
     return new Map(scripts.map((script) => [script.id, script]));
   }, [scripts]);
+
+  // Every candidate with an approved (or previously executed) script — feeds
+  // the "Run All Eligible" batch dialog.
+  const runAllCandidates = useMemo<BatchRunCandidate[]>(
+    () =>
+      planningCandidates
+        .filter((c) => Boolean(c.script_id) && ["approved", "executed"].includes((c.script_status ?? "").toLowerCase()))
+        .map((c) => ({
+          scriptId: c.script_id as number,
+          framework: c.recommended_framework,
+          key: c.test_case_key,
+          label: `${c.test_case_key} — ${c.title}`,
+          testSuiteId: c.test_suite_id,
+          testSuiteName: c.test_suite_name,
+        })),
+    [planningCandidates],
+  );
 
   function handleRowClick(tc: TestCase) {
     const mapping = mappingByTestCase.get(tc.id);
@@ -626,6 +644,17 @@ function AutomationContent() {
           >
             <Sparkles className="h-3.5 w-3.5" />
             Generate with AI
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => setRunAllOpen(true)}
+            disabled={!selectedProject || runAllCandidates.length === 0}
+            className="gap-1.5"
+            title={runAllCandidates.length === 0 ? "No approved scripts ready to run" : undefined}
+          >
+            <PlayCircle className="h-3.5 w-3.5" />
+            Run All Eligible ({runAllCandidates.length})
           </Button>
 
           <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
@@ -1065,6 +1094,17 @@ function AutomationContent() {
           projectId={selectedProject}
           defaultEnvironment={environment}
           environments={planning?.summary.available_environments ?? []}
+        />
+      )}
+      {selectedProject && (
+        <RunAllEligibleDialog
+          open={runAllOpen}
+          onClose={() => setRunAllOpen(false)}
+          projectId={selectedProject}
+          candidates={runAllCandidates}
+          defaultEnvironment={environment}
+          environments={planning?.summary.available_environments ?? []}
+          onStarted={(executionRunId) => router.push(`/execution/automation?project=${selectedProject}&run=${executionRunId}`)}
         />
       )}
       <RunDetailDrawer
