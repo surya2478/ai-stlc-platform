@@ -54,6 +54,11 @@ class ExecutionRunOut(BaseModel):
     status: str
     triggered_by: int | None = None
     triggered_by_name: str | None = None
+    # Resolved live from the Test Cases module (TestCase.test_suite_id ->
+    # TestSuite.name/.environment) — distinct from `suite_name` above, which
+    # is just the free-text title given to this run at creation time.
+    test_suite_name: str | None = None
+    test_environment: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     duration_seconds: float | None = None
