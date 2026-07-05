@@ -3,6 +3,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.models.execution import ExecutionRun, ExecutionResult
+from app.models.user import User
+
+
+async def _attach_triggered_by_names(db: AsyncSession, runs: list[ExecutionRun]) -> None:
+    """Populate the dynamic `triggered_by_name` attribute so ExecutionRunOut
+    (from_attributes=True) can surface who ran it without a schema/column
+    change — same batch-lookup pattern as execution_dashboard_service."""
+    user_ids = {r.triggered_by for r in runs if r.triggered_by is not None}
+    if not user_ids:
+        return
+    result = await db.execute(select(User.id, User.full_name).where(User.id.in_(user_ids)))
+    name_by_id = {row[0]: row[1] for row in result.all()}
+    for run in runs:
+        run.triggered_by_name = name_by_id.get(run.triggered_by)  # type: ignore[attr-defined]
 
 
 async def list_runs(
@@ -18,14 +32,19 @@ async def list_runs(
     if status:
         stmt = stmt.where(ExecutionRun.status == status)
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    runs = list(result.scalars().all())
+    await _attach_triggered_by_names(db, runs)
+    return runs
 
 
 async def get_run(db: AsyncSession, run_id: int) -> ExecutionRun | None:
     result = await db.execute(
         select(ExecutionRun).where(ExecutionRun.id == run_id)
     )
-    return result.scalar_one_or_none()
+    run = result.scalar_one_or_none()
+    if run:
+        await _attach_triggered_by_names(db, [run])
+    return run
 
 
 async def list_results(

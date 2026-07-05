@@ -18,6 +18,7 @@ from app.models.automation_mapping import AutomationTestMapping
 from app.models.automation_script import AutomationScript
 from app.models.execution import ExecutionResult, ExecutionRun
 from app.models.test_case import TestCase
+from app.models.test_suite import TestSuite
 from app.schemas.automation import AutomationScriptUpdate, AutomationTestMappingCreate, AutomationTestMappingUpdate
 from app.services import traceability_service
 from app.services.display_id_service import display_id, temporary_id
@@ -255,6 +256,9 @@ async def planning_summary(db: AsyncSession, *, project_id: int) -> dict:
     mapping_by_test_case = {mapping.test_case_id: mapping for mapping in mappings}
     framework_options = supported_framework_catalog()
 
+    suite_result = await db.execute(select(TestSuite.id, TestSuite.name).where(TestSuite.project_id == project_id))
+    suite_name_by_id = {row[0]: row[1] for row in suite_result.all()}
+
     candidates: list[dict] = []
     for test_case in test_cases:
         related_scripts = scripts_by_test_case.get(test_case.id, [])
@@ -307,6 +311,8 @@ async def planning_summary(db: AsyncSession, *, project_id: int) -> dict:
                 "coverage_hint": metadata.get("coverage_hint") if isinstance(metadata, dict) else None,
                 "updated_at": latest_script.updated_at if latest_script else test_case.updated_at,
                 "framework_options": framework_options,
+                "test_suite_id": test_case.test_suite_id,
+                "test_suite_name": suite_name_by_id.get(test_case.test_suite_id),
             }
         )
 

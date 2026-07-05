@@ -53,6 +53,7 @@ class ExecutionRunOut(BaseModel):
     environment: str | None = None
     status: str
     triggered_by: int | None = None
+    triggered_by_name: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     duration_seconds: float | None = None
