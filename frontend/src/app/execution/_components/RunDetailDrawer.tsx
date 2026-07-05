@@ -1,19 +1,17 @@
 "use client";
 
 import { ReactNode, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Bug,
-  Camera,
   ChevronDown,
   ChevronRight,
   Clock,
   Download,
-  FileText,
-  Film,
   Loader2,
   Network,
-  Route,
-  ScrollText,
+  RotateCcw,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -22,6 +20,8 @@ import {
   type ExecutionRun,
 } from "@/lib/api";
 import { useRun, useRunResults } from "@/lib/queries/execution";
+import { useRunLifecycleActions } from "@/lib/queries/runActions";
+import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerBody,
@@ -38,6 +38,7 @@ import {
   ExecutionTypeBadge,
   LoadingSkeleton,
 } from "./execution-shared";
+import { buildArtifactLinks } from "./run-utils";
 import { TraceabilityDrawer, type TraceTarget } from "./TraceabilityDrawer";
 
 function formatDuration(seconds?: number | null): string {
@@ -78,28 +79,7 @@ function ResultRow({
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  // Local-runner artifacts (`*_path`) are served through the runner artifact
-  // endpoint; external-tool results only carry absolute `*_url` links — use
-  // those directly so the download doesn't 404 against the local runner.
-  const artifacts: Array<{ kind: string; label: string; icon: typeof FileText; href: string }> = [];
-  if (result.logs?.length) {
-    artifacts.push({ kind: "log", label: "Log", icon: ScrollText, href: automationApi.runnerArtifactUrl(result.id, "log") });
-  } else if (result.log_url) {
-    artifacts.push({ kind: "log", label: "Log", icon: ScrollText, href: result.log_url });
-  }
-  if (result.screenshot_path) {
-    artifacts.push({ kind: "screenshot", label: "Screenshot", icon: Camera, href: automationApi.runnerArtifactUrl(result.id, "screenshot") });
-  } else if (result.screenshot_url) {
-    artifacts.push({ kind: "screenshot", label: "Screenshot", icon: Camera, href: result.screenshot_url });
-  }
-  if (result.video_path) {
-    artifacts.push({ kind: "video", label: "Video", icon: Film, href: automationApi.runnerArtifactUrl(result.id, "video") });
-  } else if (result.video_url) {
-    artifacts.push({ kind: "video", label: "Video", icon: Film, href: result.video_url });
-  }
-  if (result.trace_path) {
-    artifacts.push({ kind: "trace", label: "Trace", icon: Route, href: automationApi.runnerArtifactUrl(result.id, "trace") });
-  }
+  const artifacts = buildArtifactLinks(result);
 
   const hasDetails =
     Boolean(result.error_message || result.stack_trace) || artifacts.length > 0 || Boolean(result.logs?.length);
@@ -233,11 +213,17 @@ export function RunDetailDrawer({
   /** When set, failed/blocked results show a "Draft defect" action. */
   onCreateDefect?: (result: ExecutionResult) => void;
 }) {
+  const router = useRouter();
   const runQuery = useRun(open ? runId : null);
   const run = runQuery.data ?? initialRun ?? null;
   const resultsQuery = useRunResults(open ? runId : null);
   const results = resultsQuery.data ?? [];
   const [traceTarget, setTraceTarget] = useState<TraceTarget | null>(null);
+
+  const {
+    localRunnerRun, runActive, runCancellable, failedScriptIds, progressPct,
+    cancelPending, retryPending, handleCancel, handleRetryFailed,
+  } = useRunLifecycleActions(run, resultsQuery.data ?? []);
 
   const executionLogs = useMemo(() => {
     const logs = run?.execution_logs;
@@ -245,6 +231,12 @@ export function RunDetailDrawer({
   }, [run?.execution_logs]);
 
   const aiAssisted = Boolean(run?.metadata_?.ai_assisted);
+
+  const onRetryFailed = () =>
+    handleRetryFailed((executionRunId) => {
+      onOpenChange(false);
+      router.push(`/execution/automation?project=${run?.project_id}&run=${executionRunId}`);
+    });
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -272,6 +264,31 @@ export function RunDetailDrawer({
                   <Network className="h-3 w-3" /> Trace
                 </button>
               )}
+              {localRunnerRun && runCancellable && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancel}
+                  disabled={cancelPending}
+                  className="h-6 gap-1 border-red-200 px-2 text-[10px] text-red-700 hover:bg-red-50"
+                >
+                  {cancelPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <XCircle className="h-3 w-3" />}
+                  Cancel Run
+                </Button>
+              )}
+              {localRunnerRun && !runActive && failedScriptIds.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onRetryFailed}
+                  disabled={retryPending}
+                  className="h-6 gap-1 border-orange-200 px-2 text-[10px] text-orange-700 hover:bg-orange-50"
+                  title={`Re-run the ${failedScriptIds.length} failed script(s) as a new batch run`}
+                >
+                  {retryPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  Retry Failed ({failedScriptIds.length})
+                </Button>
+              )}
               {headerActions}
             </div>
             <DrawerDescription>
@@ -288,6 +305,22 @@ export function RunDetailDrawer({
 
           {run && (
             <>
+              {/* Live progress — only meaningful while the run is still in flight */}
+              {progressPct !== null && (
+                <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-4 py-3">
+                  <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold text-blue-700">
+                    <span>Run in progress</span>
+                    <span className="tabular-nums">{progressPct}%</span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-blue-100">
+                    <div
+                      className="h-full rounded-full bg-[#1b59f8] transition-all"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Summary grid */}
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <SummaryItem label="Environment" value={run.environment ?? "—"} />

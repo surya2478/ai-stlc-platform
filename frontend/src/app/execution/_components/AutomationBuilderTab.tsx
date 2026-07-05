@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowRight, BarChart3, Code2, FileText, ListChecks, Loader2, Play,
-  RefreshCw, ShieldCheck, UserCheck, Workflow, ChevronRight as ChevronRightIcon,
+  ArrowRight, BarChart3, CheckSquare, Code2, ListChecks, Loader2, Play, PlayCircle,
+  RefreshCw, ShieldCheck, Square, UserCheck, Workflow, ChevronRight as ChevronRightIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -15,7 +15,7 @@ import {
   type AutomationTestMapping,
 } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { useApproveScript, useExecuteScript, useRegenerateScript } from "@/lib/queries/automation";
+import { useExecuteBatch, useExecuteScript } from "@/lib/queries/automation";
 import { executionKeys } from "@/lib/queries/execution";
 import { useToast } from "@/components/ui/toast";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,15 +24,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Drawer, DrawerBody, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle,
 } from "@/components/ui/drawer";
-import { buildHref, ExecutionStatusBadge, ScriptStatusBadge } from "./execution-shared";
+import { buildHref, ExecutionStatusBadge } from "./execution-shared";
 import { RunnerStatusChip, useFrameworkAvailable } from "./RunnerStatusChip";
 import { formatDate } from "./run-utils";
-
-type Framework = "playwright" | "pytest";
-const FRAMEWORK_TABS: { key: Framework; label: string }[] = [
-  { key: "playwright", label: "Playwright" },
-  { key: "pytest", label: "Pytest" },
-];
 
 const EXTERNAL_TOOLS = ["Katalon", "Selenium", "Zapier", "Others"] as const;
 type ExternalTool = (typeof EXTERNAL_TOOLS)[number];
@@ -215,6 +209,287 @@ export function RunTriggerDialog({
 }
 
 /* ------------------------------------------------------------------ */
+/* Run All Eligible — batch run dialog                                 */
+/* ------------------------------------------------------------------ */
+
+export interface BatchRunCandidate {
+  scriptId: number;
+  framework: string;
+  /** Stable key for the checkbox list — usually the test case key. */
+  key: string;
+  label: string;
+  /** Real Test Suite tag (TestCase.test_suite_id) — assigned from the Test
+   * Cases module. Powers the "By Suite" run scope below. */
+  testSuiteId?: number | null;
+  testSuiteName?: string | null;
+}
+
+const ALL_ELIGIBLE_SCOPE = "__all__";
+
+export function RunAllEligibleDialog({
+  open,
+  onClose,
+  projectId,
+  candidates,
+  defaultEnvironment,
+  environments,
+  onStarted,
+  title = "Run all eligible automation",
+}: {
+  open: boolean;
+  onClose: () => void;
+  projectId: number;
+  candidates: BatchRunCandidate[];
+  defaultEnvironment: string;
+  environments: string[];
+  onStarted?: (executionRunId: number) => void;
+  title?: string;
+}) {
+  const { toast } = useToast();
+  const executeBatch = useExecuteBatch(projectId);
+  const [environment, setEnvironment] = useState(defaultEnvironment);
+  const [timeoutSeconds, setTimeoutSeconds] = useState(600);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // "__all__" or a stringified test_suite_id.
+  const [scope, setScope] = useState<string>(ALL_ELIGIBLE_SCOPE);
+  const [runName, setRunName] = useState("");
+  const [runNameTouched, setRunNameTouched] = useState(false);
+
+  const suites = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const c of candidates) {
+      if (c.testSuiteId != null) map.set(c.testSuiteId, c.testSuiteName || `Suite #${c.testSuiteId}`);
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [candidates]);
+
+  const scopedCandidates = useMemo(() => {
+    if (scope === ALL_ELIGIBLE_SCOPE) return candidates;
+    const suiteId = Number(scope);
+    return candidates.filter((c) => c.testSuiteId === suiteId);
+  }, [candidates, scope]);
+
+  // Re-seed each time the dialog opens for a fresh candidate set.
+  useEffect(() => {
+    if (open) {
+      setEnvironment(defaultEnvironment);
+      setTimeoutSeconds(600);
+      setScope(ALL_ELIGIBLE_SCOPE);
+      setRunNameTouched(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultEnvironment]);
+
+  // Selection follows the scope until the user hand-edits the checkboxes.
+  useEffect(() => {
+    if (open) setSelected(new Set(scopedCandidates.map((c) => c.scriptId)));
+  }, [open, scope, scopedCandidates]);
+
+  // Auto-derive a run name from the scope unless the user has typed their own.
+  useEffect(() => {
+    if (runNameTouched) return;
+    if (scope === ALL_ELIGIBLE_SCOPE) {
+      setRunName(`All Eligible Automation (${scopedCandidates.length})`);
+    } else {
+      const suite = suites.find((s) => String(s.id) === scope);
+      setRunName(suite ? suite.name : "Suite run");
+    }
+  }, [scope, scopedCandidates.length, suites, runNameTouched]);
+
+  const envOptions = useMemo(() => {
+    const opts = new Set([defaultEnvironment, ...environments, ...FALLBACK_ENVIRONMENTS]);
+    return Array.from(opts).filter(Boolean);
+  }, [defaultEnvironment, environments]);
+
+  const toggle = (scriptId: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(scriptId)) next.delete(scriptId);
+      else next.add(scriptId);
+      return next;
+    });
+  };
+
+  const allSelected = scopedCandidates.length > 0 && selected.size === scopedCandidates.length;
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(scopedCandidates.map((c) => c.scriptId)));
+  };
+
+  const start = async () => {
+    const scriptIds = Array.from(selected);
+    if (scriptIds.length === 0) return;
+    try {
+      const res = await executeBatch.mutateAsync({
+        scriptIds,
+        environment,
+        timeoutSeconds: Math.min(3600, Math.max(30, timeoutSeconds)),
+        runName: runName.trim() || undefined,
+      });
+      toast({ title: "Batch run queued", description: res.message, variant: "success" });
+      onStarted?.(res.execution_run_id);
+      onClose();
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      toast({
+        title: "Failed to start batch run",
+        description: err?.response?.data?.detail ?? err?.message,
+        variant: "error",
+      });
+    }
+  };
+
+  return (
+    <Drawer open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DrawerContent size="lg">
+        <DrawerHeader>
+          <div>
+            <DrawerTitle className="flex items-center gap-2">
+              <PlayCircle className="h-4 w-4 text-[#1b59f8]" /> {title}
+            </DrawerTitle>
+            <DrawerDescription>
+              Runs the selected scripts sequentially as one automation run. Progress updates live under Active Runs.
+            </DrawerDescription>
+          </div>
+        </DrawerHeader>
+        <DrawerBody>
+          {candidates.length === 0 ? (
+            <p className="rounded-md border border-dashed border-slate-200 px-3 py-6 text-center text-[11px] text-slate-400">
+              No eligible scripts to run — a test case needs an approved script (or a verified
+              external mapping) before it can be included in a batch run.
+            </p>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Run scope
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={scope}
+                    onChange={(e) => setScope(e.target.value)}
+                    className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value={ALL_ELIGIBLE_SCOPE}>All eligible ({candidates.length})</option>
+                    {suites.map((s) => {
+                      const count = candidates.filter((c) => c.testSuiteId === s.id).length;
+                      return (
+                        <option key={s.id} value={String(s.id)}>
+                          Suite: {s.name} ({count})
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {suites.length === 0 && (
+                    <span className="text-[11px] text-slate-400">
+                      No suites tagged yet — assign a Test Suite to test cases from the Test Cases module.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Environment
+                  </label>
+                  <select
+                    value={environment}
+                    onChange={(e) => setEnvironment(e.target.value)}
+                    className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  >
+                    {envOptions.map((env) => (
+                      <option key={env} value={env}>{env}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Timeout per script (seconds)
+                  </label>
+                  <input
+                    type="number"
+                    min={30}
+                    max={3600}
+                    value={timeoutSeconds}
+                    onChange={(e) => setTimeoutSeconds(Number(e.target.value) || 600)}
+                    className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Run name
+                </label>
+                <input
+                  type="text"
+                  value={runName}
+                  onChange={(e) => { setRunName(e.target.value); setRunNameTouched(true); }}
+                  placeholder="e.g. Smoke_Regression_QA"
+                  className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+
+              <div className="mt-1 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1b59f8] hover:underline"
+                >
+                  {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                  {allSelected ? "Deselect all" : "Select all"}
+                </button>
+                <span className="text-[11px] text-slate-500">
+                  {selected.size} of {scopedCandidates.length} selected
+                </span>
+              </div>
+
+              <div className="mt-2 max-h-[280px] space-y-1 overflow-y-auto rounded-md border border-slate-200 p-1.5">
+                {scopedCandidates.length === 0 ? (
+                  <p className="px-2 py-3 text-center text-[11px] text-slate-400">
+                    No eligible scripts in this suite.
+                  </p>
+                ) : (
+                  scopedCandidates.map((c) => (
+                    <label
+                      key={c.key}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-slate-50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selected.has(c.scriptId)}
+                        onChange={() => toggle(c.scriptId)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-[#1b59f8] focus:ring-blue-100"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-slate-700">{c.label}</span>
+                      <Badge variant="info" className="shrink-0 text-[9px] capitalize">{c.framework}</Badge>
+                    </label>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </DrawerBody>
+        <DrawerFooter>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={executeBatch.isPending}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={start}
+            disabled={executeBatch.isPending || selected.size === 0}
+            className="gap-1.5"
+          >
+            {executeBatch.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            Run {selected.size > 0 ? selected.size : ""} script{selected.size === 1 ? "" : "s"}
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Builder tab                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -243,14 +518,11 @@ export function AutomationBuilderTab({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const approveScript = useApproveScript();
-  const regenerate = useRegenerateScript();
 
-  const [activeFramework, setActiveFramework] = useState<Framework>("playwright");
   const [activeTool, setActiveTool] = useState<ExternalTool>("Katalon");
-  const [activeScriptId, setActiveScriptId] = useState<number | null>(null);
   const [runTarget, setRunTarget] = useState<RunTarget | null>(null);
   const [externalRunning, setExternalRunning] = useState(false);
+  const [runAllOpen, setRunAllOpen] = useState(false);
 
   const eligibleCandidates = useMemo(
     () => (planning?.candidates ?? []).slice(0, 8),
@@ -258,13 +530,21 @@ export function AutomationBuilderTab({
   );
   const totalCandidates = planning?.summary.total_candidates ?? planning?.candidates.length ?? 0;
 
-  const filteredScripts = useMemo(
-    () => scripts.filter((s) => (s.framework ?? "").toLowerCase() === activeFramework),
-    [scripts, activeFramework],
-  );
-  const activeScript = useMemo(
-    () => filteredScripts.find((s) => s.id === activeScriptId) ?? filteredScripts[0] ?? null,
-    [filteredScripts, activeScriptId],
+  // Every candidate with an approved (or previously executed) script — the
+  // full "Run All Eligible" batch, not just the top-8 preview row above.
+  const runAllCandidates = useMemo<BatchRunCandidate[]>(
+    () =>
+      (planning?.candidates ?? [])
+        .filter((c) => Boolean(c.script_id) && ["approved", "executed"].includes((c.script_status ?? "").toLowerCase()))
+        .map((c) => ({
+          scriptId: c.script_id as number,
+          framework: c.recommended_framework,
+          key: c.test_case_key,
+          label: `${c.test_case_key} — ${c.title}`,
+          testSuiteId: c.test_suite_id,
+          testSuiteName: c.test_suite_name,
+        })),
+    [planning],
   );
 
   const externalMappingsForTool = useMemo(
@@ -273,39 +553,25 @@ export function AutomationBuilderTab({
   );
   const toolConnected = externalMappingsForTool.length > 0;
 
-  const approvedCount = scripts.filter((s) => (s.status ?? "").toLowerCase() === "approved").length;
-
   const runnable = (status: string | null | undefined) =>
     ["approved", "executed"].includes((status ?? "").toLowerCase());
 
-  const approve = async (action: "approve" | "reject") => {
-    if (!activeScript) return;
-    try {
-      await approveScript.mutateAsync({
-        id: activeScript.id,
-        action,
-        notes: `${action === "approve" ? "Approved" : "Rejected"} via Automation Execution UI`,
-      });
-      toast({ title: `Script ${action === "approve" ? "approved" : "rejected"}`, variant: "success" });
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } }; message?: string };
-      toast({ title: `Failed to ${action}`, description: err?.response?.data?.detail ?? err?.message, variant: "error" });
-    }
-  };
-
-  const regenerateActive = async () => {
-    if (!activeScript) return;
-    if (!window.confirm("Regenerate this script? The current code will be overwritten and the script reset to Draft for re-review.")) {
-      return;
-    }
-    try {
-      await regenerate.mutateAsync(activeScript.id);
-      toast({ title: "Regeneration queued", description: "The script resets to Draft for re-review.", variant: "success" });
-    } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } }; message?: string };
-      toast({ title: "Failed to regenerate", description: err?.response?.data?.detail ?? err?.message, variant: "error" });
-    }
-  };
+  // Script readiness counts — authoring/review/approval happen in the AI
+  // Automation Studio; this tab only shows a summary + deep link (see
+  // Section B below) so there's exactly one place scripts get approved.
+  const scriptCounts = useMemo(() => {
+    const byStatus = (statuses: string[]) =>
+      scripts.filter((s) => statuses.includes((s.status ?? "").toLowerCase())).length;
+    return {
+      approved: byStatus(["approved"]),
+      inReview: byStatus(["in_review", "pending_approval", "under_review"]),
+      draft: byStatus(["draft", "ai_draft"]),
+      rejected: byStatus(["rejected"]),
+      playwright: scripts.filter((s) => (s.framework ?? "").toLowerCase() === "playwright").length,
+      pytest: scripts.filter((s) => (s.framework ?? "").toLowerCase() === "pytest").length,
+    };
+  }, [scripts]);
+  const approvedCount = scriptCounts.approved;
 
   const triggerExternalRun = async () => {
     if (externalMappingsForTool.length === 0) return;
@@ -325,14 +591,22 @@ export function AutomationBuilderTab({
     }
   };
 
-  const busy = approveScript.isPending || regenerate.isPending;
-
   return (
     <>
       <RunTriggerDialog
         target={runTarget}
         onClose={() => setRunTarget(null)}
         projectId={Number(projectId)}
+        defaultEnvironment={environment}
+        environments={planning?.summary.available_environments ?? []}
+        onStarted={onViewActiveRuns}
+      />
+
+      <RunAllEligibleDialog
+        open={runAllOpen}
+        onClose={() => setRunAllOpen(false)}
+        projectId={Number(projectId)}
+        candidates={runAllCandidates}
         defaultEnvironment={environment}
         environments={planning?.summary.available_environments ?? []}
         onStarted={onViewActiveRuns}
@@ -347,7 +621,18 @@ export function AutomationBuilderTab({
                 <SectionMark letter="A" />
                 <h3 className="text-sm font-semibold text-slate-800">Eligible Automation Test Cases</h3>
               </div>
-              <RunnerStatusChip />
+              <div className="flex items-center gap-2">
+                <RunnerStatusChip />
+                <Button
+                  size="sm"
+                  onClick={() => setRunAllOpen(true)}
+                  disabled={runAllCandidates.length === 0}
+                  className="h-7 gap-1.5 px-2.5 text-[11px]"
+                  title={runAllCandidates.length === 0 ? "No approved scripts ready to run" : undefined}
+                >
+                  <PlayCircle className="h-3.5 w-3.5" /> Run All Eligible ({runAllCandidates.length})
+                </Button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -447,116 +732,40 @@ export function AutomationBuilderTab({
           </CardContent>
         </Card>
 
-        {/* ─── Section B: Playwright / Pytest Script Approval ─────── */}
+        {/* ─── Section B: Script Readiness ─────────────────────────── */}
+        {/* Authoring, code review, and approval happen in the AI Automation
+            Studio only — this is a read-only summary so there's exactly one
+            place scripts get approved, not two disagreeing surfaces. */}
         <Card>
-          <CardContent className="p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <SectionMark letter="B" />
-              <h3 className="text-sm font-semibold text-slate-800">Playwright / Pytest Script Generation &amp; Approval</h3>
+          <CardContent className="flex h-full flex-col p-4">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <SectionMark letter="B" />
+                <h3 className="text-sm font-semibold text-slate-800">Script Readiness</h3>
+              </div>
+              <Link
+                href={buildHref("/automation", { project: projectId })}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1b59f8] hover:underline"
+              >
+                Open AI Automation Studio <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+            <p className="mb-4 text-[11px] leading-relaxed text-slate-500">
+              Generate, review, and approve Playwright / Pytest scripts in the Studio. Execution
+              only runs scripts that are already approved there.
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <ReadinessStat label="Approved" value={scriptCounts.approved} tone="emerald" />
+              <ReadinessStat label="In Review" value={scriptCounts.inReview} tone="orange" />
+              <ReadinessStat label="Draft" value={scriptCounts.draft} tone="slate" />
+              <ReadinessStat label="Rejected" value={scriptCounts.rejected} tone="red" />
             </div>
 
-            <div className="mb-3 border-b border-slate-200">
-              <div className="flex items-center gap-4">
-                {FRAMEWORK_TABS.map((t) => (
-                  <button
-                    key={t.key}
-                    onClick={() => { setActiveFramework(t.key); setActiveScriptId(null); }}
-                    className={cn(
-                      "-mb-px border-b-2 pb-2 text-xs font-semibold transition-colors",
-                      activeFramework === t.key ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500 hover:text-slate-700",
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-5 gap-3">
-              <div className="col-span-2 space-y-1">
-                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Generated Scripts</p>
-                <div className="max-h-[280px] space-y-1 overflow-y-auto pr-1">
-                  {filteredScripts.length === 0 ? (
-                    <p className="rounded border border-dashed border-slate-200 px-2 py-3 text-center text-[11px] text-slate-400">No {activeFramework} scripts yet</p>
-                  ) : filteredScripts.map((s) => {
-                    const active = activeScript?.id === s.id;
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => setActiveScriptId(s.id)}
-                        className={cn(
-                          "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors",
-                          active ? "bg-blue-50 ring-1 ring-blue-100" : "hover:bg-slate-50",
-                        )}
-                      >
-                        <span className="flex min-w-0 items-center gap-1.5">
-                          <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                          <span className="truncate font-mono text-[11px] text-slate-700">
-                            {(s.file_path ?? s.script_id ?? "").split("/").pop() ?? s.script_id}
-                          </span>
-                        </span>
-                        <ScriptStatusBadge status={s.status} className="shrink-0 text-[9px]" />
-                      </button>
-                    );
-                  })}
-                </div>
-                <Link href={buildHref("/automation", { project: projectId })} className="mt-2 block text-[11px] text-[#1b59f8] hover:underline">
-                  View all scripts →
-                </Link>
-              </div>
-
-              <div className="col-span-3 overflow-hidden rounded-lg border border-slate-200">
-                {activeScript ? (
-                  <>
-                    <div className="border-b border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="truncate text-[11px] font-semibold text-slate-700">
-                        Preview: {(activeScript.file_path ?? activeScript.script_id ?? "").split("/").pop() ?? activeScript.script_id}
-                      </p>
-                    </div>
-                    <CodePreview code={activeScript.code ?? ""} />
-                    <div className="flex items-center justify-end gap-1.5 border-t border-slate-200 bg-white p-2">
-                      <Button
-                        size="sm" variant="outline" disabled={busy} onClick={regenerateActive}
-                        className="gap-1 text-xs" title="Re-run generation with current application/URL context"
-                      >
-                        <RefreshCw className="h-3 w-3" /> Regenerate
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy || !runnable(activeScript.status)}
-                        title={runnable(activeScript.status) ? undefined : "Only approved scripts can run — submit for review and approve first"}
-                        onClick={() =>
-                          setRunTarget({
-                            scriptId: activeScript.id,
-                            framework: activeScript.framework,
-                            label: activeScript.script_id,
-                          })
-                        }
-                        className="gap-1 text-xs"
-                      >
-                        <Play className="h-3 w-3" /> Run
-                      </Button>
-                      <Button
-                        size="sm" disabled={busy || activeScript.status === "approved"}
-                        onClick={() => approve("approve")}
-                        className="bg-emerald-600 text-xs text-white hover:bg-emerald-700"
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        size="sm" variant="destructive" disabled={busy}
-                        onClick={() => approve("reject")}
-                        className="text-xs"
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <div className="p-8 text-center text-[11px] text-slate-400">Select a script to preview</div>
-                )}
-              </div>
+            <div className="mt-auto flex items-center gap-4 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
+              <span>{scriptCounts.playwright} Playwright</span>
+              <span>{scriptCounts.pytest} Pytest</span>
+              <span className="ml-auto font-semibold text-slate-700">{scripts.length} total scripts</span>
             </div>
           </CardContent>
         </Card>
@@ -701,53 +910,20 @@ function ReadOnlyValue({ value, mono }: { value: string; mono?: boolean }) {
   );
 }
 
-function CodePreview({ code }: { code: string }) {
-  if (!code || code.trim().length === 0) {
-    return (
-      <div className="bg-slate-50 p-6 text-center text-[11px] italic text-slate-400">
-        No code stored for this script yet.
-      </div>
-    );
-  }
-  const lines = code.split("\n").slice(0, 12);
-  return (
-    <pre className="max-h-[220px] overflow-x-auto bg-white p-3 font-mono text-[11px] leading-relaxed text-slate-700">
-      {lines.map((ln, i) => (
-        <div key={i} className="flex">
-          <span className="w-7 shrink-0 select-none pr-2 text-right tabular-nums text-slate-300">{i + 1}</span>
-          <span className="whitespace-pre">{syntaxColor(ln)}</span>
-        </div>
-      ))}
-    </pre>
-  );
-}
+const READINESS_TONE: Record<string, string> = {
+  emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  orange: "bg-orange-50 text-orange-700 ring-orange-100",
+  slate: "bg-slate-50 text-slate-600 ring-slate-100",
+  red: "bg-red-50 text-red-700 ring-red-100",
+};
 
-function syntaxColor(line: string): React.ReactNode {
-  // Lightweight token highlighter for the preview only — not a real lexer.
-  const parts: React.ReactNode[] = [];
-  let rest = line;
-  const patterns: { re: RegExp; cls: string }[] = [
-    { re: /\b(import|from|test|expect|async|await|const|let|var|return|if|else|function)\b/, cls: "text-violet-600" },
-    { re: /'[^']*'|"[^"]*"|`[^`]*`/, cls: "text-emerald-600" },
-    { re: /\b\d+\b/, cls: "text-amber-600" },
-  ];
-  while (rest.length > 0) {
-    let matched = false;
-    for (const { re, cls } of patterns) {
-      const m = rest.match(re);
-      if (m && m.index === 0) {
-        parts.push(<span key={parts.length} className={cls}>{m[0]}</span>);
-        rest = rest.slice(m[0].length);
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) {
-      parts.push(rest[0]);
-      rest = rest.slice(1);
-    }
-  }
-  return <>{parts}</>;
+function ReadinessStat({ label, value, tone }: { label: string; value: number; tone: keyof typeof READINESS_TONE }) {
+  return (
+    <div className={cn("rounded-lg px-3 py-2 ring-1", READINESS_TONE[tone])}>
+      <p className="text-lg font-bold tabular-nums leading-none">{value}</p>
+      <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider opacity-80">{label}</p>
+    </div>
+  );
 }
 
 function ExecutionFlow({ steps }: { steps: Array<{ icon: React.ComponentType<{ className?: string }>; label: string; tone: "blue" | "violet" | "orange" | "cyan" | "slate"; value?: string }> }) {

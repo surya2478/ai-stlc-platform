@@ -19,16 +19,14 @@ import {
   ErrorState,
   ExecutionPageHeader,
 } from "../_components/execution-shared";
-import { runVerdict } from "../_components/run-utils";
 import { AutomationBuilderTab } from "../_components/AutomationBuilderTab";
-import { ActiveRunsTab } from "../_components/ActiveRunsTab";
-import { RunHistoryTab } from "../_components/RunHistoryTab";
+import { CommandCenterTab } from "../_components/CommandCenterTab";
 import { AutomationInsightsTab } from "../_components/AutomationInsightsTab";
 
 type ExecutionMode = "standard" | "ai-assisted";
-type AutomationTab = "builder" | "active" | "history" | "insights";
+type AutomationTab = "runs" | "builder" | "insights";
 
-const TAB_KEYS: AutomationTab[] = ["builder", "active", "history", "insights"];
+const TAB_KEYS: AutomationTab[] = ["runs", "builder", "insights"];
 
 function AutomationExecutionContent() {
   const searchParams = useSearchParams();
@@ -42,7 +40,15 @@ function AutomationExecutionContent() {
   const mode: ExecutionMode =
     searchParams.get("mode") === "ai-assisted" ? "ai-assisted" : "standard";
   const rawTab = searchParams.get("tab") as AutomationTab | null;
-  const tab: AutomationTab = rawTab && TAB_KEYS.includes(rawTab) ? rawTab : "builder";
+  const tab: AutomationTab = rawTab && TAB_KEYS.includes(rawTab) ? rawTab : "runs";
+  // Set when navigating here after queuing a run (e.g. Retry Failed from a
+  // drawer elsewhere) so the Command Center opens with that run selected.
+  const initialSelectedRunId = useMemo(() => {
+    const raw = searchParams.get("run");
+    const parsed = raw ? Number(raw) : NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const updateParam = useCallback(
     (key: string, value: string | null) => {
@@ -59,7 +65,7 @@ function AutomationExecutionContent() {
     [updateParam],
   );
   const setTab = useCallback(
-    (next: AutomationTab) => updateParam("tab", next === "builder" ? null : next),
+    (next: AutomationTab) => updateParam("tab", next === "runs" ? null : next),
     [updateParam],
   );
 
@@ -220,9 +226,19 @@ function AutomationExecutionContent() {
       <AutomationExecutionTabs
         tab={tab}
         onChange={setTab}
-        counts={{ active: activeRuns.length, history: automationRuns.length }}
+        counts={{ runs: automationRuns.length }}
       />
 
+      {tab === "runs" && (
+        <CommandCenterTab
+          projectId={projectId}
+          environment={environment}
+          runs={automationRuns}
+          loading={loading}
+          planning={planning}
+          initialSelectedRunId={initialSelectedRunId}
+        />
+      )}
       {tab === "builder" && (
         <AutomationBuilderTab
           projectId={projectId}
@@ -234,18 +250,8 @@ function AutomationExecutionContent() {
           activeRunCount={activeRuns.length}
           totalRunCount={automationRuns.length}
           defectsToday={defectsToday}
-          onViewActiveRuns={() => setTab("active")}
+          onViewActiveRuns={() => setTab("runs")}
         />
-      )}
-      {tab === "active" && (
-        <ActiveRunsTab
-          runs={activeRuns}
-          loading={loading}
-          isPolling={activeRuns.length > 0}
-        />
-      )}
-      {tab === "history" && (
-        <RunHistoryTab runs={historyRuns} loading={loading} projectId={Number(projectId)} />
       )}
       {tab === "insights" && (
         <AutomationInsightsTab
@@ -335,12 +341,11 @@ function AutomationExecutionTabs({
 }: {
   tab: AutomationTab;
   onChange: (next: AutomationTab) => void;
-  counts: { active: number; history: number };
+  counts: { runs: number };
 }) {
   const items: { key: AutomationTab; label: string; badge?: number }[] = [
+    { key: "runs", label: "Command Center", badge: counts.runs },
     { key: "builder", label: "Run Builder" },
-    { key: "active", label: "Active Runs", badge: counts.active },
-    { key: "history", label: "Run History", badge: counts.history },
     { key: "insights", label: "Results & Insights" },
   ];
   return (
