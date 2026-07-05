@@ -373,9 +373,10 @@ function RunCard({ run, selected, onClick }: { run: ExecutionRun; selected: bool
         <AiAssistedBadge run={run} />
       </div>
       <div className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-400">
-        {/* Sourced from the Test Cases module (TestCase.test_suite_id ->
-            TestSuite.environment/.name), not the run's own deployment
-            environment field — see execution_service._attach_test_suite_info. */}
+        {/* Sourced from the Test Cases module: test_environment is
+            TestCase.test_phase, test_suite_name is TestCase.test_suite_id ->
+            TestSuite.name — not the run's own deployment environment field.
+            See execution_service._attach_test_suite_info. */}
         <span className="truncate" title="Test Environment">{run.test_environment ?? "—"}</span>
         <span>·</span>
         <span className="truncate" title="Test Suite">{run.test_suite_name ?? "—"}</span>

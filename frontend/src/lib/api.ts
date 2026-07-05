@@ -1611,9 +1611,10 @@ export interface ExecutionRun {
   status: string;
   triggered_by?: number | null;
   triggered_by_name?: string | null;
-  // Resolved live from the Test Cases module (TestCase.test_suite_id ->
-  // TestSuite.name/.environment) — distinct from `suite_name` above, which
-  // is just this run's own free-text title.
+  // Resolved live from the Test Cases module: test_suite_name via
+  // TestCase.test_suite_id -> TestSuite.name, test_environment via
+  // TestCase.test_phase. Distinct from `suite_name` above, which is just
+  // this run's own free-text title.
   test_suite_name?: string | null;
   test_environment?: string | null;
   started_at?: string | null;

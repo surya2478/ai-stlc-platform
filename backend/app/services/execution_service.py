@@ -25,14 +25,21 @@ async def _attach_triggered_by_names(db: AsyncSession, runs: list[ExecutionRun])
 
 async def _attach_test_suite_info(db: AsyncSession, runs: list[ExecutionRun]) -> None:
     """Populate dynamic `test_suite_name` / `test_environment` attributes,
-    resolved live from the Test Cases module (TestCase.test_suite_id ->
-    TestSuite.name/.environment) rather than snapshotted at run-creation
-    time — so the run list always reflects the test case's current suite
-    assignment, the same single source of truth the Test Cases screen shows.
+    resolved live from the Test Cases module rather than snapshotted at
+    run-creation time — so the run list always reflects the test case's
+    current data, the same single source of truth the Test Cases screen
+    shows.
 
-    A run's constituent tests can in principle span more than one suite (an
-    "All Eligible" run isn't suite-scoped); we attribute the run to whichever
-    suite the most of its ExecutionResults belong to.
+    - test_suite_name: TestCase.test_suite_id -> TestSuite.name.
+    - test_environment: TestCase.test_phase — this is the field the Test
+      Cases module actually labels "Test Environment" (SIT/QA/UAT/
+      Regression/...); it's independent of TestSuite.environment, which is
+      a separate column most projects leave unset.
+
+    Both are resolved independently per run: a run's constituent tests can
+    span more than one suite or phase (an "All Eligible" run isn't
+    suite-scoped), so each attribute is attributed to whichever value the
+    majority of that run's test cases carry.
     """
     run_ids = [r.id for r in runs]
     if not run_ids:
@@ -48,40 +55,40 @@ async def _attach_test_suite_info(db: AsyncSession, runs: list[ExecutionRun]) ->
         return
 
     test_case_ids = {tc_id for _, tc_id in pairs}
-    suite_id_by_test_case = dict(
-        (
-            await db.execute(
-                select(TestCase.id, TestCase.test_suite_id).where(TestCase.id.in_(test_case_ids))
-            )
-        ).all()
-    )
+    test_case_rows = (
+        await db.execute(
+            select(TestCase.id, TestCase.test_suite_id, TestCase.test_phase).where(TestCase.id.in_(test_case_ids))
+        )
+    ).all()
+    suite_id_by_test_case = {row[0]: row[1] for row in test_case_rows}
+    test_phase_by_test_case = {row[0]: row[2] for row in test_case_rows}
 
     suite_ids = {sid for sid in suite_id_by_test_case.values() if sid is not None}
-    if not suite_ids:
-        return
-    suite_info_by_id = {
-        row[0]: (row[1], row[2])
-        for row in (
-            await db.execute(
-                select(TestSuite.id, TestSuite.name, TestSuite.environment).where(TestSuite.id.in_(suite_ids))
-            )
-        ).all()
-    }
+    suite_name_by_id: dict[int, str] = {}
+    if suite_ids:
+        suite_name_by_id = dict(
+            (await db.execute(select(TestSuite.id, TestSuite.name).where(TestSuite.id.in_(suite_ids)))).all()
+        )
 
     suite_ids_by_run: dict[int, list[int]] = {}
+    phases_by_run: dict[int, list[str]] = {}
     for run_id, test_case_id in pairs:
         suite_id = suite_id_by_test_case.get(test_case_id)
         if suite_id is not None:
             suite_ids_by_run.setdefault(run_id, []).append(suite_id)
+        phase = test_phase_by_test_case.get(test_case_id)
+        if phase:
+            phases_by_run.setdefault(run_id, []).append(phase)
 
     for run in runs:
         candidate_suite_ids = suite_ids_by_run.get(run.id)
-        if not candidate_suite_ids:
-            continue
-        dominant_suite_id = Counter(candidate_suite_ids).most_common(1)[0][0]
-        name, environment = suite_info_by_id.get(dominant_suite_id, (None, None))
-        run.test_suite_name = name  # type: ignore[attr-defined]
-        run.test_environment = environment  # type: ignore[attr-defined]
+        if candidate_suite_ids:
+            dominant_suite_id = Counter(candidate_suite_ids).most_common(1)[0][0]
+            run.test_suite_name = suite_name_by_id.get(dominant_suite_id)  # type: ignore[attr-defined]
+
+        candidate_phases = phases_by_run.get(run.id)
+        if candidate_phases:
+            run.test_environment = Counter(candidate_phases).most_common(1)[0][0]  # type: ignore[attr-defined]
 
 
 async def list_runs(
