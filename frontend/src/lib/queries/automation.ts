@@ -142,3 +142,55 @@ export function useExecuteScript(projectId: number | null) {
     },
   });
 }
+
+/**
+ * Triggers a batch local-runner execution ("Run All Eligible") covering
+ * several approved scripts as one ExecutionRun. On success invalidates the
+ * project's run list so polling picks the new run up immediately.
+ */
+export function useExecuteBatch(projectId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      scriptIds,
+      environment,
+      timeoutSeconds,
+      runName,
+      parentRunId,
+    }: {
+      scriptIds: number[];
+      environment?: string;
+      timeoutSeconds?: number;
+      runName?: string;
+      parentRunId?: number;
+    }) =>
+      (
+        await automationApi.executeBatch(projectId as number, scriptIds, {
+          environment,
+          timeout_seconds: timeoutSeconds,
+          run_name: runName,
+          parent_run_id: parentRunId,
+        })
+      ).data,
+    onSuccess: () => {
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: executionKeys.runs(projectId) });
+      }
+    },
+  });
+}
+
+/** Best-effort cancel for an in-flight local-runner run (single or batch). */
+export function useCancelRun(projectId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (runId: number) => (await automationApi.cancelRun(runId)).data,
+    onSuccess: (_data, runId) => {
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: executionKeys.runs(projectId) });
+      }
+      queryClient.invalidateQueries({ queryKey: executionKeys.run(runId) });
+      queryClient.invalidateQueries({ queryKey: executionKeys.results(runId) });
+    },
+  });
+}

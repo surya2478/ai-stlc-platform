@@ -1330,6 +1330,8 @@ export interface AutomationPlanningCandidate {
   coverage_hint?: string | null;
   updated_at?: string | null;
   framework_options: AutomationFrameworkOption[];
+  test_suite_id?: number | null;
+  test_suite_name?: string | null;
 }
 
 export interface AutomationPlanningSummary {
@@ -1530,6 +1532,25 @@ export const automationApi = {
       `/automation/scripts/${scriptId}/execute`,
       { environment: payload?.environment ?? "staging", timeout_seconds: payload?.timeout_seconds ?? 600 },
     ),
+  // "Run All Eligible" — runs several approved scripts as one batch ExecutionRun.
+  executeBatch: (
+    projectId: number,
+    scriptIds: number[],
+    payload?: { environment?: string; timeout_seconds?: number; run_name?: string; parent_run_id?: number },
+  ) =>
+    api.post<{ execution_run_id: number; task_id?: string; status: string; script_count: number; message: string }>(
+      `/automation/project/${projectId}/execute-batch`,
+      {
+        script_ids: scriptIds,
+        environment: payload?.environment ?? "staging",
+        timeout_seconds: payload?.timeout_seconds ?? 600,
+        run_name: payload?.run_name,
+        parent_run_id: payload?.parent_run_id,
+      },
+    ),
+  // Best-effort cancel for a local-runner run (single script or batch).
+  cancelRun: (runId: number) =>
+    api.post<{ execution_run_id: number; status: string; message: string }>(`/automation/runs/${runId}/cancel`),
   // Re-runs generation for this script using current application/URL context
   // and resets it to draft for re-review. Fixes scripts generated before a
   // real application URL was configured (e.g. ones hardcoding example.com).
@@ -1571,6 +1592,7 @@ export interface ExecutionResult {
   jira_test_key?: string;
   raw_result_json?: Record<string, unknown>;
   logs?: string[];
+  metadata_?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -1588,6 +1610,7 @@ export interface ExecutionRun {
   environment?: string;
   status: string;
   triggered_by?: number | null;
+  triggered_by_name?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
   duration_seconds?: number | null;

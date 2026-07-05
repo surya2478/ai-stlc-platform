@@ -1,8 +1,44 @@
 "use client";
 
-import { Loader2, Sparkles } from "lucide-react";
+import { Camera, Film, Loader2, Route, ScrollText, Sparkles, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ExecutionRun } from "@/lib/api";
+import { automationApi, type ExecutionResult, type ExecutionRun } from "@/lib/api";
+
+export interface ArtifactLink {
+  kind: "log" | "screenshot" | "video" | "trace";
+  label: string;
+  icon: LucideIcon;
+  href: string;
+}
+
+/**
+ * Local-runner artifacts (`*_path`) are served through the runner artifact
+ * endpoint; external-tool results only carry absolute `*_url` links — use
+ * those directly so the download doesn't 404 against the local runner.
+ * Shared by RunDetailDrawer's result rows and the Command Center's failure panel.
+ */
+export function buildArtifactLinks(result: ExecutionResult): ArtifactLink[] {
+  const links: ArtifactLink[] = [];
+  if (result.logs?.length) {
+    links.push({ kind: "log", label: "Log", icon: ScrollText, href: automationApi.runnerArtifactUrl(result.id, "log") });
+  } else if (result.log_url) {
+    links.push({ kind: "log", label: "Log", icon: ScrollText, href: result.log_url });
+  }
+  if (result.screenshot_path) {
+    links.push({ kind: "screenshot", label: "Screenshot", icon: Camera, href: automationApi.runnerArtifactUrl(result.id, "screenshot") });
+  } else if (result.screenshot_url) {
+    links.push({ kind: "screenshot", label: "Screenshot", icon: Camera, href: result.screenshot_url });
+  }
+  if (result.video_path) {
+    links.push({ kind: "video", label: "Video", icon: Film, href: automationApi.runnerArtifactUrl(result.id, "video") });
+  } else if (result.video_url) {
+    links.push({ kind: "video", label: "Video", icon: Film, href: result.video_url });
+  }
+  if (result.trace_path) {
+    links.push({ kind: "trace", label: "Trace", icon: Route, href: automationApi.runnerArtifactUrl(result.id, "trace") });
+  }
+  return links;
+}
 
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
