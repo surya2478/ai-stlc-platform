@@ -21,6 +21,7 @@ import { StepEditor } from "../_components/manual/StepEditor";
 import { StartRunDialog } from "../_components/manual/StartRunDialog";
 import { CreateDefectDialog, type DefectPrefill } from "../_components/CreateDefectDialog";
 import { TraceabilityDrawer, type TraceTarget } from "../_components/TraceabilityDrawer";
+import { runVerdict, type RunVerdict } from "../_components/run-utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +59,8 @@ function ManualExecutionContent() {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [suiteFilter, setSuiteFilter] = useState<string>("all");
+  const [runFilter, setRunFilter] = useState<"all" | RunVerdict>("all");
   const [autosaveMsg, setAutosaveMsg] = useState<string | null>(null);
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [completeOpen, setCompleteOpen] = useState(false);
@@ -74,16 +77,60 @@ function ManualExecutionContent() {
     ]).finally(() => setLoading(false));
   }, [projectId]);
 
+  const allManualTcs = useMemo(
+    () => allTcs.filter((tc) => tc.execution_mode === "manual" || tc.execution_mode === "hybrid"),
+    [allTcs],
+  );
+
+  // Test Suite tags present among manual TCs — powers "Select all in suite"
+  // below. Suites themselves are created/assigned from the Test Cases module.
+  const manualSuites = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; count: number }>();
+    for (const tc of allManualTcs) {
+      if (tc.test_suite_id == null) continue;
+      const existing = map.get(tc.test_suite_id);
+      if (existing) existing.count += 1;
+      else map.set(tc.test_suite_id, { id: tc.test_suite_id, name: tc.test_suite_name || `Suite #${tc.test_suite_id}`, count: 1 });
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [allManualTcs]);
+
   const manualTcs = useMemo(() => {
-    let list = allTcs.filter((tc) => tc.execution_mode === "manual" || tc.execution_mode === "hybrid");
+    let list = allManualTcs;
+    if (suiteFilter !== "all") list = list.filter((tc) => String(tc.test_suite_id) === suiteFilter);
     const term = search.trim().toLowerCase();
     if (term) {
       list = list.filter((tc) => tc.test_case_id.toLowerCase().includes(term) || tc.title.toLowerCase().includes(term));
     }
     return list;
-  }, [allTcs, search]);
+  }, [allManualTcs, suiteFilter, search]);
+
+  const selectAllInSuite = () => {
+    setSelectedTcIds((prev) => {
+      const next = new Set(prev);
+      for (const tc of manualTcs) next.add(tc.id);
+      return next;
+    });
+  };
+
+  const selectedSuiteName = suiteFilter !== "all"
+    ? manualSuites.find((s) => String(s.id) === suiteFilter)?.name
+    : undefined;
 
   const manualRuns = useMemo(() => allRuns.filter((r) => r.execution_type === "manual"), [allRuns]);
+
+  const runFilterCounts = useMemo(() => {
+    const counts: Record<"all" | RunVerdict, number> = {
+      all: manualRuns.length, in_progress: 0, passed: 0, failed: 0, blocked: 0, review_required: 0, cancelled: 0, skipped: 0,
+    };
+    for (const r of manualRuns) counts[runVerdict(r)] += 1;
+    return counts;
+  }, [manualRuns]);
+
+  const filteredManualRuns = useMemo(
+    () => (runFilter === "all" ? manualRuns : manualRuns.filter((r) => runVerdict(r) === runFilter)),
+    [manualRuns, runFilter],
+  );
 
   useEffect(() => {
     if (!activeRunId && manualRuns.length > 0) {
@@ -401,6 +448,29 @@ function ManualExecutionContent() {
                 className="w-40 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
               />
             </div>
+            {manualSuites.length > 0 && (
+              <div className="mb-3 flex items-center gap-2">
+                <select
+                  value={suiteFilter}
+                  onChange={(e) => setSuiteFilter(e.target.value)}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
+                >
+                  <option value="all">All suites</option>
+                  {manualSuites.map((s) => (
+                    <option key={s.id} value={String(s.id)}>{s.name} ({s.count})</option>
+                  ))}
+                </select>
+                {suiteFilter !== "all" && (
+                  <button
+                    type="button"
+                    onClick={selectAllInSuite}
+                    className="text-[11px] font-semibold text-[#1b59f8] hover:underline"
+                  >
+                    Select all {manualTcs.length} in this suite
+                  </button>
+                )}
+              </div>
+            )}
             {loading ? (
               <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-slate-100" />)}</div>
             ) : manualTcs.length === 0 ? (
@@ -604,8 +674,30 @@ function ManualExecutionContent() {
               </Link>
             </div>
           </div>
+          {manualRuns.length > 0 && (
+            <div className="mb-3 flex flex-wrap gap-1">
+              {([
+                ["all", "All"], ["in_progress", "In Progress"], ["passed", "Passed"],
+                ["failed", "Failed"], ["blocked", "Blocked"],
+              ] as [typeof runFilter, string][]).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setRunFilter(key)}
+                  className={cn(
+                    "rounded-md px-2 py-1 text-[11px] font-medium transition",
+                    runFilter === key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                  )}
+                >
+                  {label} ({runFilterCounts[key]})
+                </button>
+              ))}
+            </div>
+          )}
           {manualRuns.length === 0 ? (
             <EmptyState icon={ClipboardList} title="No manual runs yet" description="Pick test cases above and start one." />
+          ) : filteredManualRuns.length === 0 ? (
+            <EmptyState icon={ClipboardList} title="No runs match this filter" />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
@@ -621,7 +713,7 @@ function ManualExecutionContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {manualRuns.slice(0, 10).map((r) => (
+                  {filteredManualRuns.slice(0, 10).map((r) => (
                     <tr key={r.id} className={cn("border-b border-slate-50 hover:bg-slate-50/50", activeRunId === r.id && "bg-blue-50/30")}>
                       <td className="py-2 pr-3 font-mono text-[#1b59f8]">{r.execution_id}</td>
                       <td className="py-2 pr-3 max-w-[200px] truncate text-slate-700">{r.suite_name ?? "—"}</td>
@@ -664,6 +756,7 @@ function ManualExecutionContent() {
         selectedTcs={allTcs.filter((tc) => selectedTcIds.has(tc.id))}
         busy={starting}
         onStart={startRun}
+        defaultSuiteName={selectedSuiteName}
       />
 
       {/* Defect draft from a failed step */}

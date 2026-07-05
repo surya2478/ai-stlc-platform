@@ -32,6 +32,7 @@ export function StartRunDialog({
   selectedTcs,
   busy,
   onStart,
+  defaultSuiteName,
 }: {
   open: boolean;
   onClose: () => void;
@@ -40,6 +41,10 @@ export function StartRunDialog({
   selectedTcs: TestCase[];
   busy: boolean;
   onStart: (options: { suiteName: string; boundRecords: Record<number, number> }) => void;
+  /** Pre-fills the suite name — e.g. the Test Suite tag when the selection
+   * came from "Select all in suite" — so Run History reads the suite's real
+   * name instead of a generic "Manual Run · <date>". */
+  defaultSuiteName?: string;
 }) {
   const [records, setRecords] = useState<BindableRecord[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
@@ -48,8 +53,12 @@ export function StartRunDialog({
 
   useEffect(() => {
     if (!open) return;
-    setSuiteName(`Manual Run · ${new Date().toLocaleDateString()}`);
+    setSuiteName(defaultSuiteName || `Manual Run · ${new Date().toLocaleDateString()}`);
     setBindings({});
+  }, [open, defaultSuiteName]);
+
+  useEffect(() => {
+    if (!open) return;
     setRecordsLoading(true);
     testDataApi
       .listBindableRecords(projectId, { limit: 500 })
