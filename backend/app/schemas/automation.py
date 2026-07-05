@@ -196,6 +196,11 @@ class AutomationPlanningCandidateOut(BaseModel):
     coverage_hint: str | None = None
     updated_at: datetime | None = None
     framework_options: list[AutomationFrameworkOption] = Field(default_factory=list)
+    # The real Test Suite tag (TestCase.test_suite_id) — distinct from
+    # `inferred_suite`, which is a free-form label the LLM wrote into script
+    # metadata. Used to group candidates into "Run by Suite" batch runs.
+    test_suite_id: int | None = None
+    test_suite_name: str | None = None
 
 
 class AutomationPlanningSummaryOut(BaseModel):
@@ -233,6 +238,25 @@ class AutomationScriptExecuteResponse(BaseModel):
     message: str
 
 
+class AutomationBatchExecuteRequest(BaseModel):
+    """Request to run several approved scripts as one batch ("Run All Eligible")."""
+    script_ids: list[int] = Field(min_length=1, max_length=200)
+    environment: str | None = Field(default="staging", max_length=100)
+    timeout_seconds: int = Field(default=600, ge=30, le=3600)
+    run_name: str | None = Field(default=None, max_length=255)
+    # Set when this batch is a "Retry Failed" of an earlier run — recorded in
+    # metadata_ for lineage; not enforced server-side beyond that.
+    parent_run_id: int | None = None
+
+
+class AutomationBatchExecuteResponse(BaseModel):
+    execution_run_id: int
+    task_id: str | None = None
+    status: str  # "queued"
+    script_count: int
+    message: str
+
+
 class RunnerFrameworkStatus(BaseModel):
     framework: str
     available: bool
@@ -241,3 +265,9 @@ class RunnerFrameworkStatus(BaseModel):
 
 class RunnerStatusOut(BaseModel):
     frameworks: list[RunnerFrameworkStatus]
+
+
+class AutomationRunCancelResponse(BaseModel):
+    execution_run_id: int
+    status: str
+    message: str

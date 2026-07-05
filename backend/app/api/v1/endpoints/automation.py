@@ -14,7 +14,10 @@ from app.models.execution import ExecutionResult, ExecutionRun
 from app.models.test_case import TestCase
 from app.schemas.automation import (
     AgentAutomationTrigger,
+    AutomationBatchExecuteRequest,
+    AutomationBatchExecuteResponse,
     AutomationPlanningOut,
+    AutomationRunCancelResponse,
     AutomationScriptExecuteRequest,
     AutomationScriptExecuteResponse,
     AutomationScriptOut,
@@ -665,14 +668,199 @@ async def execute_automation_script(
     from app.worker.tasks.automation_tasks import run_automation_script
 
     async_result = run_automation_script.delay(run.id, body.timeout_seconds)
+    task_id = str(async_result.id) if async_result else None
+    if task_id:
+        # Persisted so a later Cancel Run request can revoke the Celery task.
+        run.metadata_ = {**(run.metadata_ or {}), "task_id": task_id}
+        await db.commit()
     return AutomationScriptExecuteResponse(
         execution_run_id=run.id,
-        task_id=str(async_result.id) if async_result else None,
+        task_id=task_id,
         status="queued",
         message=(
             f"Automation script {script.script_id} queued on the local "
             f"{framework} runner."
         ),
+    )
+
+
+@router.post(
+    "/project/{project_id}/execute-batch",
+    response_model=AutomationBatchExecuteResponse,
+    status_code=202,
+)
+async def execute_automation_batch(
+    project_id: int,
+    body: AutomationBatchExecuteRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Run several approved scripts as one batch — "Run All Eligible" / suite runs.
+
+    Creates a single ExecutionRun covering every script (one placeholder
+    ExecutionResult each, tagged with metadata_.automation_script_id), then
+    enqueues a Celery task that executes them sequentially against the local
+    subprocess runner and commits progress after each script.
+    """
+    await require_permission(EXECUTE_TESTS, project_id, current_user, db)
+
+    result = await db.execute(
+        select(AutomationScript).where(AutomationScript.id.in_(body.script_ids))
+    )
+    scripts_by_id = {s.id: s for s in result.scalars().all()}
+    missing = [sid for sid in body.script_ids if sid not in scripts_by_id]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Automation script(s) not found: {missing}")
+
+    # Preserve caller-specified order but dedupe (a script appearing twice
+    # would otherwise get two ExecutionResult placeholders).
+    seen: set[int] = set()
+    ordered_scripts: list[AutomationScript] = []
+    for sid in body.script_ids:
+        if sid in seen:
+            continue
+        seen.add(sid)
+        ordered_scripts.append(scripts_by_id[sid])
+
+    wrong_project = [s.script_id for s in ordered_scripts if s.project_id != project_id]
+    if wrong_project:
+        raise HTTPException(status_code=422, detail=f"Script(s) not in project {project_id}: {wrong_project}")
+
+    not_approved = [s.script_id for s in ordered_scripts if s.status not in {"approved", "executed"}]
+    if not_approved:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Script(s) must be approved before batch execution: {not_approved}",
+        )
+
+    unsupported = [
+        f"{s.script_id} ({s.framework})"
+        for s in ordered_scripts
+        if (s.framework or "").lower() not in {"playwright", "pytest"}
+    ]
+    if unsupported:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Framework not supported by the local runner: {unsupported}",
+        )
+
+    run = ExecutionRun(
+        project_id=project_id,
+        created_by=current_user.id,
+        execution_id=temporary_id("ER"),
+        suite_name=body.run_name or f"All Eligible Automation ({len(ordered_scripts)})",
+        environment=body.environment,
+        status="queued",
+        execution_type="automation",
+        source_type="automation_local_batch",
+        total_tests=len(ordered_scripts),
+        passed=0,
+        failed=0,
+        skipped=0,
+        execution_logs=[],
+        metadata_={
+            "source_type": "automation_local_batch",
+            "automation_script_ids": [s.id for s in ordered_scripts],
+            "timeout_seconds": body.timeout_seconds,
+            "parent_run_id": body.parent_run_id,
+        },
+    )
+    db.add(run)
+    await db.flush()
+    run.execution_id = display_id("ER", run.id)
+    await db.flush()
+
+    for script in ordered_scripts:
+        placeholder = ExecutionResult(
+            execution_run_id=run.id,
+            test_case_id=script.test_case_id,
+            project_id=project_id,
+            test_name=script.script_id,
+            status="pending",
+            metadata_={"automation_script_id": script.id},
+        )
+        db.add(placeholder)
+    await db.flush()
+
+    await db.commit()
+
+    from app.worker.tasks.automation_tasks import run_automation_batch
+
+    async_result = run_automation_batch.delay(run.id, body.timeout_seconds)
+    task_id = str(async_result.id) if async_result else None
+    if task_id:
+        # Persisted so a later Cancel Run request can revoke the Celery task.
+        run.metadata_ = {**(run.metadata_ or {}), "task_id": task_id}
+        await db.commit()
+    return AutomationBatchExecuteResponse(
+        execution_run_id=run.id,
+        task_id=task_id,
+        status="queued",
+        script_count=len(ordered_scripts),
+        message=f"{len(ordered_scripts)} automation script(s) queued as batch run {run.execution_id}.",
+    )
+
+
+@router.post(
+    "/runs/{run_id}/cancel",
+    response_model=AutomationRunCancelResponse,
+)
+async def cancel_automation_run(
+    run_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Best-effort cancel for a local-runner automation run.
+
+    Revokes the Celery task (terminate=True) and marks the run + any
+    still-pending ExecutionResult rows as cancelled/skipped immediately, so
+    the UI reflects the cancellation right away. If the task has already
+    progressed past a checkpoint the revoke may not stop it mid-subprocess —
+    the run's final DB state still wins once/if the task itself resumes.
+    """
+    run = await db.get(ExecutionRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Execution run not found")
+    await require_permission(EXECUTE_TESTS, run.project_id, current_user, db)
+
+    source_type = (run.metadata_ or {}).get("source_type")
+    if source_type not in {"automation_local", "automation_local_batch"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Only local-runner automation runs (single or batch) can be cancelled here.",
+        )
+    if run.status not in {"pending", "queued", "running"}:
+        raise HTTPException(status_code=422, detail=f"Run is already '{run.status}' — nothing to cancel.")
+
+    task_id = (run.metadata_ or {}).get("task_id")
+    if task_id:
+        from app.worker.celery_app import celery_app
+
+        try:
+            celery_app.control.revoke(task_id, terminate=True)
+        except Exception:
+            # Best-effort — a broker hiccup shouldn't block the user from
+            # marking the run cancelled in the DB.
+            pass
+
+    result = await db.execute(
+        select(ExecutionResult).where(
+            ExecutionResult.execution_run_id == run.id,
+            ExecutionResult.status.in_(["pending", "running"]),
+        )
+    )
+    for pending_result in result.scalars().all():
+        pending_result.status = "skip"
+        pending_result.error_message = pending_result.error_message or "Cancelled before this test ran."
+
+    run.status = "cancelled"
+    run.metadata_ = {**(run.metadata_ or {}), "cancelled_by": current_user.id}
+    await db.commit()
+
+    return AutomationRunCancelResponse(
+        execution_run_id=run.id,
+        status=run.status,
+        message=f"Run {run.execution_id} cancelled.",
     )
 
 

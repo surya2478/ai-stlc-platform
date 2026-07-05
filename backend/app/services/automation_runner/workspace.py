@@ -30,12 +30,17 @@ def workspace_root() -> Path:
     return Path(settings.file_storage_path) / "automation_workspace"
 
 
-def workspace_dir_for_run(run_id: int) -> Path:
+def workspace_dir_for_run(run_id: int | str) -> Path:
     return workspace_root() / str(run_id)
 
 
-def reset_workspace(run_id: int) -> Path:
-    """Wipe + recreate the workspace dir. Idempotent for retries."""
+def reset_workspace(run_id: int | str) -> Path:
+    """Wipe + recreate the workspace dir. Idempotent for retries.
+
+    Accepts a plain run id for single-script runs, or a composite string key
+    (e.g. "{run_id}-{script_id}") for batch runs where several scripts share
+    one ExecutionRun and need isolated workspace directories.
+    """
     path = workspace_dir_for_run(run_id)
     if path.exists():
         shutil.rmtree(path, ignore_errors=True)
