@@ -29,6 +29,7 @@ from app.models.test_case import TestCase
 from app.services.automation_runner import run_script_for_execution, runtime_status
 from app.services.project_application_service import resolve_environment_url
 from app.services.automation_runner.workspace import (
+    materialize_bundle,
     materialize_script,
     reset_workspace,
     write_playwright_config,
@@ -135,6 +136,11 @@ async def _run_script_and_persist(
     """
     workspace = reset_workspace(workspace_key)
     framework = (script.framework or "").lower()
+    # Phase 2: a compiled bundle (specs/pages/fixtures/utils) materialises as
+    # a full tree; a legacy single-string script still materialises as one
+    # file at the workspace root. Playwright's testDir switches accordingly
+    # so `npx playwright test` discovers the right entry either way.
+    has_bundle = bool(script.compiled_files)
     if framework == "playwright":
         base_url = await _resolve_playwright_base_url(db, script, run.environment)
         if not base_url:
@@ -143,16 +149,20 @@ async def _run_script_and_persist(
                 "calls in the generated spec will fail with 'Cannot navigate to invalid URL'.",
                 run.id, script.id,
             )
-        write_playwright_config(workspace, base_url=base_url)
+        write_playwright_config(workspace, base_url=base_url, test_dir="specs" if has_bundle else ".")
     elif framework == "pytest":
         write_pytest_config(workspace)
 
-    script_file = materialize_script(
-        workspace=workspace,
-        framework=framework,
-        code=script.code,
-        suggested_file_path=script.file_path,
-    )
+    if has_bundle:
+        materialize_bundle(workspace=workspace, compiled_files=script.compiled_files)
+        script_file = script.file_path or next(iter(script.compiled_files))
+    else:
+        script_file = materialize_script(
+            workspace=workspace,
+            framework=framework,
+            code=script.code,
+            suggested_file_path=script.file_path,
+        )
 
     runner_result = await run_script_for_execution(
         framework=framework,
@@ -198,6 +208,8 @@ async def _run_script_and_persist(
             "automation_script_id": script.id,
             "runner": runner_result.metadata,
             "raw": per_test.raw,
+            "console_logs": per_test.console_logs,
+            "network_logs": per_test.network_logs,
         }
         if per_test.status == "pass":
             passed += 1

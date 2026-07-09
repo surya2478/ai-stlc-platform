@@ -70,6 +70,73 @@ class RequirementLLMOutput(LLMBaseModel):
     )(_string_list)
 
 
+class ScenarioReviewLLMOutput(LLMBaseModel):
+    """LLM output for the scenario_review agent (Phase 1 reviewer)."""
+    scenario_id: str = ""  # business scenario_id, e.g. "TS-001" — for matching
+
+    coverage_score: float = Field(default=3.0, ge=1, le=5)
+    business_alignment_score: float = Field(default=3.0, ge=1, le=5)
+    clarity_score: float = Field(default=3.0, ge=1, le=5)
+    prioritization_score: float = Field(default=3.0, ge=1, le=5)
+    overall_score: float = Field(default=3.0, ge=1, le=5)
+
+    verdict: str = "needs_revision"
+    # verdict: pass | needs_revision | fail
+
+    coverage_gaps: list[str] = Field(default_factory=list)
+    # acceptance criteria / business rules this scenario set does not cover
+    issues: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+    _normalize_lists = field_validator("coverage_gaps", "issues", "suggestions", mode="before")(_string_list)
+
+
+class TestCaseReviewLLMOutput(LLMBaseModel):
+    """LLM output for the test_case_review agent (Phase 1 reviewer)."""
+    test_case_id: str = ""  # business test_case_id, e.g. "TC-0001" — for matching
+
+    step_quality_score: float = Field(default=3.0, ge=1, le=5)
+    data_readiness_score: float = Field(default=3.0, ge=1, le=5)
+    expected_result_clarity_score: float = Field(default=3.0, ge=1, le=5)
+    phase_fit_score: float = Field(default=3.0, ge=1, le=5)
+    coverage_score: float = Field(default=3.0, ge=1, le=5)
+    overall_score: float = Field(default=3.0, ge=1, le=5)
+
+    verdict: str = "needs_revision"
+    # verdict: pass | needs_revision | fail
+
+    coverage_gaps: list[str] = Field(default_factory=list)
+    # scenario steps / acceptance criteria this test case set does not cover
+    issues: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+    _normalize_lists = field_validator("coverage_gaps", "issues", "suggestions", mode="before")(_string_list)
+
+
+class AutomationScriptReviewLLMOutput(LLMBaseModel):
+    """LLM output for the automation_script_review agent (Phase 4.5 reviewer).
+    Hybrid: the Static Quality Gate result and dry-run evidence are already
+    computed facts given to the LLM; this schema captures what only a
+    senior human reviewer's judgement can add on top of them."""
+    test_case_id: str = ""  # for matching, e.g. "TC-0001"
+
+    business_step_coverage_score: float = Field(default=3.0, ge=1, le=5)
+    assertion_meaningfulness_score: float = Field(default=3.0, ge=1, le=5)
+    code_cleanliness_score: float = Field(default=3.0, ge=1, le=5)
+    cleanup_presence_score: float = Field(default=3.0, ge=1, le=5)
+    overall_score: float = Field(default=3.0, ge=1, le=5)
+
+    verdict: str = "needs_revision"
+    # verdict: pass | needs_revision | fail
+
+    coverage_gaps: list[str] = Field(default_factory=list)
+    # test case steps/expected results this script does not actually exercise
+    issues: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+    _normalize_lists = field_validator("coverage_gaps", "issues", "suggestions", mode="before")(_string_list)
+
+
 class RequirementQualityLLMOutput(LLMBaseModel):
     requirement_title: str = ""
     requirement_id: int | None = None  # numeric DB id — preferred over title matching

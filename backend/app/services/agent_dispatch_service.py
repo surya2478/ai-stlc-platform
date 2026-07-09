@@ -25,6 +25,25 @@ async def _completed_run_is_reusable(db: AsyncSession, run: AgentRun, agent_name
             )
         )
         return result.scalar_one_or_none() is not None
+
+    if agent_name == "test_scenario":
+        from app.models.test_scenario import TestScenario
+        result = await db.execute(
+            select(TestScenario.id).where(
+                TestScenario.agent_run_id == run.id
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    if agent_name == "test_case":
+        from app.models.test_case import TestCase
+        result = await db.execute(
+            select(TestCase.id).where(
+                TestCase.agent_run_id == run.id
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
     return True
 
 

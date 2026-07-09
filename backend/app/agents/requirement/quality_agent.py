@@ -12,7 +12,7 @@ from langgraph.graph import StateGraph, END
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import RequirementQualityLLMOutput
 from app.llm.provider import get_llm
 from app.llm.structured import validate_structured_output
@@ -209,12 +209,12 @@ _graph = _build_graph()
 class RequirementQualityAgent(BaseAgent):
     """Quality-reviews requirements with telecom domain awareness."""
 
-    async def run(self, requirements: list[dict], project_id: int = 0) -> "RequirementAgentResult":
+    async def run(self, requirements: list[dict], project_id: int = 0) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Quality-reviewing {len(requirements)} requirements")
 
         if not requirements:
-            return RequirementAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="No requirements to review",
                 data={},
@@ -252,14 +252,14 @@ class RequirementQualityAgent(BaseAgent):
                     quality_results[str(req_id)] = qr
 
         if not quality_results and errors:
-            return RequirementAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="Quality review failed for all requirements: " + "; ".join(errors),
                 data={},
                 logs=self._logs,
             )
 
-        return RequirementAgentResult(
+        return AgentRunResult(
             success=True,
             data={
                 "requirements": reviewed,
@@ -276,11 +276,3 @@ class RequirementQualityAgent(BaseAgent):
             project_id=input_data.get("project_id", 0),
         )
         return result.data
-
-
-class RequirementAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error

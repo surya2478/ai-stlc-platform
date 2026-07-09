@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import RequirementLLMOutput
 from app.llm.provider import get_llm
 from app.llm.structured import validate_structured_output
@@ -181,13 +181,13 @@ _graph = _build_graph()
 class RequirementIntakeAgent(BaseAgent):
     """Extracts structured requirements from uploaded document text."""
 
-    async def run(self, document_text: str, project_id: int) -> "RequirementAgentResult":
+    async def run(self, document_text: str, project_id: int) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Starting requirement intake for project {project_id}")
         self.log("info", "info", f"Document length: {len(document_text)} chars")
 
         if not document_text.strip():
-            return RequirementAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="Document text is empty",
                 data={},
@@ -197,7 +197,7 @@ class RequirementIntakeAgent(BaseAgent):
         from app.security.prompt_guard import detect_prompt_injection
         if detect_prompt_injection(document_text):
             self.log("error", "security_violation", "Potential prompt injection attempt blocked.")
-            return RequirementAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="Potential prompt injection attempt blocked.",
                 data={},
@@ -222,7 +222,7 @@ class RequirementIntakeAgent(BaseAgent):
             for e in errors:
                 self.log("warning", "warning", e)
 
-        return RequirementAgentResult(
+        return AgentRunResult(
             success=True,
             data={"requirements": reqs, "count": len(reqs)},
             logs=self._logs,
@@ -234,11 +234,3 @@ class RequirementIntakeAgent(BaseAgent):
             project_id=input_data.get("project_id", 0),
         )
         return result.data
-
-
-class RequirementAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error

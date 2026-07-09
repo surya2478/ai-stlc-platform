@@ -16,6 +16,7 @@ from app.models.defect import DefectDraft
 from app.schemas.report import ReportOut, AgentReportTrigger
 from app.services import agent_run_service, report_service, traceability_service
 from app.services.agent_dispatch_service import enqueue_agent_run
+from app.services.automation_baseline_service import capture_and_persist_baseline, capture_and_persist_comparison
 from app.services.display_id_service import display_id, temporary_id
 from app.services.rbac_service import APPROVE_RELEASE_REPORT
 from app.agents.reporting.reporting_agent import TestReportingAgent
@@ -40,6 +41,38 @@ async def get_report(report_id: int, db: DBSession, current_user: CurrentUser):
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
     await require_entity_project_access(report, current_user, db)
+    return report
+
+
+@router.post("/automation-baseline/{project_id}", response_model=ReportOut)
+async def capture_automation_baseline_report(project_id: int, db: DBSession, current_user: CurrentUser):
+    """Capture a point-in-time automation-generation quality snapshot (Phase 0
+    foundation hardening) — script generation success rate, execution pass
+    rate, and static quality issue counts. Intended to be run once before
+    Playwright MCP grounding (Phase 3) lands, and again after, so the
+    improvement can be measured against a real baseline rather than asserted.
+    """
+    await require_permission(APPROVE_RELEASE_REPORT, project_id, current_user, db)
+    report = await capture_and_persist_baseline(db, project_id=project_id, user_id=current_user.id)
+    await db.commit()
+    await db.refresh(report)
+    return report
+
+
+@router.post("/automation-baseline-comparison/{project_id}", response_model=ReportOut)
+async def capture_automation_baseline_comparison_report(project_id: int, db: DBSession, current_user: CurrentUser):
+    """Phase 4 exit criterion: diff a fresh snapshot against the earliest
+    pre-MCP baseline for this project, surfacing the grounded-generation
+    metrics (grounded pass rate, avg locator confidence, repair-loop success
+    rate, dry-run stability) alongside the original Phase 0 metrics.
+    """
+    await require_permission(APPROVE_RELEASE_REPORT, project_id, current_user, db)
+    try:
+        report = await capture_and_persist_comparison(db, project_id=project_id, user_id=current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await db.commit()
+    await db.refresh(report)
     return report
 
 

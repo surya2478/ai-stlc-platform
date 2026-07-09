@@ -58,6 +58,9 @@ _HARDCODED_EMAIL = re.compile(r"['\"]([\w._%+-]+@[\w.-]+\.[A-Za-z]{2,})['\"]")
 _HARDCODED_URL = re.compile(r"['\"](https?://[^'\"\s]+)['\"]")
 _BEARER_TOKEN = re.compile(r"['\"]Bearer\s+[A-Za-z0-9._\-]{16,}['\"]")
 _PASSWORD_LIKE = re.compile(r"\bpassword\s*[:=]\s*['\"][^'\"]{4,}['\"]", re.IGNORECASE)
+_API_KEY_LIKE = re.compile(
+    r"\b(?:api[_-]?key|secret|access[_-]?token)\s*[:=]\s*['\"][A-Za-z0-9._\-]{8,}['\"]", re.IGNORECASE
+)
 _TEARDOWN_HOOK = re.compile(r"\b(?:afterEach|afterAll|fixture\b|teardown|cleanup)\b", re.IGNORECASE)
 _ENV_LEAK_HOSTS = re.compile(r"\b(?:staging|dev|qa|uat|test)\.[\w.-]+\b")
 
@@ -284,6 +287,18 @@ def _analyze_recommendations(code: str, sid: int) -> list[Recommendation]:
             description="Hardcoded bearer token is a credential leak.",
             proposal="Read from an env var or secrets manager.",
             related=f"line {m.line}",
+        ))
+
+    for m in _scan(_API_KEY_LIKE, code):
+        out.append(Recommendation(
+            id=_stable_id(sid, "exposed_credential_apikey", m.line),
+            kind="exposed_credential",
+            title="API key / secret in source",
+            severity="high",
+            confidence=90,
+            description="Hardcoded API key, secret, or access token is a credential leak.",
+            proposal="Read from process.env / os.environ or a secrets manager, never a literal.",
+            related=f"line {m.line}: {m.snippet}",
         ))
 
     return out

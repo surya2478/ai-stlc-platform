@@ -9,7 +9,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import ReportLLMOutput
 from app.llm.provider import get_llm
 from app.llm.structured import validate_structured_output, parse_and_validate_llm_output
@@ -104,18 +104,10 @@ def _build_graph() -> Any:
 _graph = _build_graph()
 
 
-class ReportAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error
-
-
 class TestReportingAgent(BaseAgent):
     """Aggregates STLC metrics and writes a structured QA status report."""
 
-    async def run(self, metrics: dict, project_name: str, report_type: str = "sprint") -> ReportAgentResult:
+    async def run(self, metrics: dict, project_name: str, report_type: str = "sprint") -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Generating {report_type} report for '{project_name}'")
 
@@ -134,7 +126,7 @@ class TestReportingAgent(BaseAgent):
 
         self.log("info", "complete", f"Report generated: '{report.get('title', '')}'")
 
-        return ReportAgentResult(
+        return AgentRunResult(
             success=True,
             data={"report": report},
             logs=self._logs,

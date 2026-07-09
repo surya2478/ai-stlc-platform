@@ -1019,8 +1019,12 @@ export const scenariosApi = {
     api.get<TestScenario[]>(`/test-plans/scenarios/project/${projectId}`, {
       params: requirementId ? { requirement_id: requirementId } : undefined,
     }),
-  approve: (scenarioId: number, action: "approve" | "reject", notes?: string) =>
-    api.post<TestScenario>(`/test-plans/scenarios/${scenarioId}/approve`, { action, notes }),
+  approve: (scenarioId: number, action: "approve" | "reject", notes?: string, overrideReviewGate = false) =>
+    api.post<TestScenario>(`/test-plans/scenarios/${scenarioId}/approve`, {
+      action,
+      notes,
+      override_review_gate: overrideReviewGate,
+    }),
 };
 
 // ── Test Cases ────────────────────────────────────────────────────────────────
@@ -1033,8 +1037,12 @@ export const testCasesApi = {
   get: (id: number) => api.get<TestCase>(`/test-cases/${id}`),
   update: (id: number, data: Partial<TestCase>) =>
     api.patch<TestCase>(`/test-cases/${id}`, data),
-  approve: (id: number, action: "approve" | "reject", notes?: string) =>
-    api.post<TestCase>(`/test-plans/cases/${id}/approve`, { action, notes }),
+  approve: (id: number, action: "approve" | "reject", notes?: string, overrideReviewGate = false) =>
+    api.post<TestCase>(`/test-plans/cases/${id}/approve`, {
+      action,
+      notes,
+      override_review_gate: overrideReviewGate,
+    }),
   history: (id: number) => api.get<TestCaseHistory[]>(`/test-cases/${id}/history`),
   syncJira: (id: number) => api.post<{ test_case_id: number; status: string; sync_job_id?: number; task_id?: string }>(`/test-cases/${id}/sync-jira`),
   generateCases: (projectId: number, scenarioIds?: number[], requirementIds?: number[], overrideQualityGate = false) =>
@@ -1453,6 +1461,12 @@ export const automationApi = {
     api.patch<AutomationScript>(`/automation/${id}`, data),
   approve: (id: number, action: "approve" | "reject", notes?: string) =>
     api.post<AutomationScript>(`/automation/${id}/approve`, { action, notes }),
+  bulkApprove: (scriptIds: number[], action: "approve" | "reject", notes?: string) =>
+    api.post<{
+      results: Array<{ script_id: number; ok: boolean; error?: string | null }>;
+      approved_count: number;
+      failed_count: number;
+    }>("/automation/scripts/bulk-approve", { script_ids: scriptIds, action, notes }),
   transition: (
     id: number,
     action: "submit_for_review" | "request_changes" | "restore_draft",
@@ -2209,4 +2223,72 @@ export const reportsApi = {
   get: (id: number) => api.get<Report>(`/reports/${id}`),
   generate: (projectId: number, reportType: string = "sprint") =>
     api.post("/reports/agent/generate-report", { project_id: projectId, report_type: reportType }),
+};
+
+// ── Reviews & Coverage Matrix (Phase 1 stage reviewer agents) ─────────────────
+
+export type ReviewVerdict = "pass" | "needs_revision" | "fail";
+
+export interface ReviewFinding {
+  dimension: string;
+  issue: string;
+  suggestion?: string | null;
+}
+
+export interface CoverageGap {
+  source_ref: string;
+  description: string;
+  severity: "high" | "medium" | "low";
+}
+
+export interface ArtifactReview {
+  id: number;
+  project_id: number;
+  agent_run_id?: number;
+  artifact_type: string;
+  artifact_id: number;
+  reviewer_agent: string;
+  scores?: Record<string, number>;
+  overall_score?: number;
+  verdict: ReviewVerdict;
+  findings?: ReviewFinding[];
+  coverage_gaps?: CoverageGap[];
+  review_mode: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CoverageMatrixEntry {
+  id: number;
+  project_id: number;
+  requirement_id?: number;
+  scenario_id?: number;
+  test_case_id?: number;
+  script_id?: number;
+  execution_result_id?: number;
+  defect_id?: number;
+  test_type?: string;
+  risk_level?: string;
+  case_class?: string;
+  automation_eligible?: string;
+  automation_reason?: string;
+  execution_status?: string;
+  defect_linked: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const reviewsApi = {
+  /** Most recent review per reviewed artifact — for table badge overlays. */
+  listForProject: (projectId: number, artifactType?: string) =>
+    api.get<ArtifactReview[]>(`/reviews/project/${projectId}`, {
+      params: artifactType ? { artifact_type: artifactType } : undefined,
+    }),
+  /** Full review history for one artifact, newest first — for a findings drawer. */
+  history: (artifactType: string, artifactId: number, projectId: number) =>
+    api.get<ArtifactReview[]>(`/reviews/artifact/${artifactType}/${artifactId}`, {
+      params: { project_id: projectId },
+    }),
+  coverageMatrix: (projectId: number, params?: { requirement_id?: number; scenario_id?: number }) =>
+    api.get<CoverageMatrixEntry[]>(`/reviews/coverage-matrix/project/${projectId}`, { params }),
 };

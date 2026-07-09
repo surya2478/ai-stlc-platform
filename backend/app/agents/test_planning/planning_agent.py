@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import TestPlanLLMOutput
 from app.llm.provider import get_llm
 from app.llm.structured import validate_structured_output, parse_and_validate_llm_output
@@ -173,12 +173,12 @@ _graph = _build_graph()
 class TestPlanningAgent(BaseAgent):
     """Generates a structured test plan from approved requirements."""
 
-    async def run(self, requirements: list[dict], project_name: str = "Project") -> "TestPlanAgentResult":
+    async def run(self, requirements: list[dict], project_name: str = "Project") -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Creating test plan for '{project_name}' from {len(requirements)} requirements")
 
         if not requirements:
-            return TestPlanAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="No requirements provided for test planning",
                 data={},
@@ -202,7 +202,7 @@ class TestPlanningAgent(BaseAgent):
 
         self.log("info", "complete", f"Test plan generated: '{plan.get('title', 'N/A')}'")
 
-        return TestPlanAgentResult(
+        return AgentRunResult(
             success=True,
             data={"test_plan": plan},
             logs=self._logs,
@@ -214,11 +214,3 @@ class TestPlanningAgent(BaseAgent):
             project_name=input_data.get("project_name", "Project"),
         )
         return result.data
-
-
-class TestPlanAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error

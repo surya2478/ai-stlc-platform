@@ -18,6 +18,10 @@ class Project(TimestampMixin, Base):
     project_manager_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     business_pm_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     domain: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    review_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="advisory", server_default="advisory")
+    # review_mode: off | advisory | gating — governs whether stage reviewer
+    # agents (Phase 1) are purely informational (advisory) or block approval
+    # of a fail-verdict artifact (gating). See ADR_001 / Phase 1 plan.
 
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)

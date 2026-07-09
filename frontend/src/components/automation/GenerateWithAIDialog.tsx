@@ -7,6 +7,8 @@ import {
   Search,
   ShieldCheck,
   AlertTriangle,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import {
   Drawer,
@@ -83,6 +85,20 @@ export function GenerateWithAIDialog({
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  };
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((tc) => selected.has(tc.id));
+  const toggleAll = () => {
+    setSelected((prev) => {
+      if (allFilteredSelected) {
+        const next = new Set(prev);
+        filtered.forEach((tc) => next.delete(tc.id));
+        return next;
+      }
+      const next = new Set(prev);
+      filtered.forEach((tc) => next.add(tc.id));
       return next;
     });
   };
@@ -170,6 +186,14 @@ export function GenerateWithAIDialog({
                     onChange={(e) => setSearch(e.target.value)}
                     className="flex-1 bg-transparent text-xs focus:outline-none"
                   />
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold text-violet-700 hover:underline"
+                  >
+                    {allFilteredSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                    {allFilteredSelected ? "Deselect all" : "Select all"}
+                  </button>
                   {selected.size > 0 && (
                     <button
                       type="button"

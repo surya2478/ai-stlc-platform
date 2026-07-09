@@ -186,6 +186,11 @@ RequirementListOut = RequirementOut
 class ApprovalRequest(BaseModel):
     action: Literal["approve", "reject"]
     notes: str | None = None
+    # Phase 1: when the project's review_mode is "gating", approving an
+    # artifact whose latest senior-reviewer verdict is "fail" is blocked
+    # unless this is set — the override itself is still recorded via the
+    # existing ApprovalAction audit trail (notes/action), never silent.
+    override_review_gate: bool = False
 
 
 class AgentTriggerRequest(BaseModel):

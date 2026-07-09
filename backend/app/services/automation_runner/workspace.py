@@ -88,6 +88,17 @@ def materialize_script(
     return filename
 
 
+def materialize_bundle(*, workspace: Path, compiled_files: dict[str, str]) -> None:
+    """Write every file in a Script Compiler bundle (Phase 2) into the
+    workspace, creating subdirectories (specs/pages/fixtures/utils) as
+    needed. Use `AutomationScript.file_path` as the entry path passed to
+    `run_script_for_execution` — this only materialises the tree."""
+    for relative_path, content in compiled_files.items():
+        target = workspace / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+
 # ── Framework-specific scaffolding ───────────────────────────────────────────
 
 PLAYWRIGHT_PACKAGE_JSON = {
@@ -106,10 +117,12 @@ PLAYWRIGHT_PACKAGE_JSON = {
 # reporter dumps to results.json which the runner parses for per-test outcomes.
 # {base_url_line} expands to either an empty string or `    baseURL: '...',`
 # depending on whether the caller resolved a target URL for the run.
+# {test_dir} is '.' for a legacy single-file script, or 'specs' for a Phase 2
+# compiled bundle (specs/pages/fixtures/utils tree).
 PLAYWRIGHT_CONFIG_TS_TEMPLATE = """import {{ defineConfig }} from '@playwright/test';
 
 export default defineConfig({{
-  testDir: '.',
+  testDir: '{test_dir}',
   fullyParallel: false,
   retries: 0,
   workers: 1,
@@ -127,7 +140,7 @@ export default defineConfig({{
 """
 
 
-def _render_playwright_config(base_url: str | None) -> str:
+def _render_playwright_config(base_url: str | None, test_dir: str) -> str:
     """Build the playwright.config.ts source, injecting baseURL when supplied."""
     if base_url:
         # JSON-encoding gives us a safely quoted string we can embed in TS.
@@ -135,10 +148,10 @@ def _render_playwright_config(base_url: str | None) -> str:
         base_url_line = f"    baseURL: {escaped},\n"
     else:
         base_url_line = ""
-    return PLAYWRIGHT_CONFIG_TS_TEMPLATE.format(base_url_line=base_url_line)
+    return PLAYWRIGHT_CONFIG_TS_TEMPLATE.format(base_url_line=base_url_line, test_dir=test_dir)
 
 
-def write_playwright_config(workspace: Path, base_url: str | None = None) -> None:
+def write_playwright_config(workspace: Path, base_url: str | None = None, test_dir: str = ".") -> None:
     """Drop package.json + playwright.config.ts and make @playwright/test
     resolvable from the workspace.
 
@@ -150,13 +163,15 @@ def write_playwright_config(workspace: Path, base_url: str | None = None) -> Non
     in a `npm install`-ed local project.
 
     When `base_url` is provided, it's injected as Playwright's `use.baseURL`
-    so generated specs can use relative paths like `page.goto('/')`.
+    so generated specs can use relative paths like `page.goto('/')`. Pass
+    `test_dir="specs"` for a Phase 2 compiled bundle (specs/pages/fixtures/
+    utils tree); the default `"."` matches a legacy single-file script.
     """
     (workspace / "package.json").write_text(
         json.dumps(PLAYWRIGHT_PACKAGE_JSON, indent=2), encoding="utf-8"
     )
     (workspace / "playwright.config.ts").write_text(
-        _render_playwright_config(base_url), encoding="utf-8"
+        _render_playwright_config(base_url, test_dir), encoding="utf-8"
     )
     _link_npm_global_modules(workspace)
 

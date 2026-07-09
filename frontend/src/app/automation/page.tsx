@@ -150,6 +150,8 @@ function AutomationContent() {
 
   // AI Automation Studio — Phase 2B additions
   const [selectedInventoryId, setSelectedInventoryId] = useState<number | null>(null);
+  const [selectedInventoryIds, setSelectedInventoryIds] = useState<Set<number>>(new Set());
+  const [bulkApproveBusy, setBulkApproveBusy] = useState(false);
 
   // AI Automation Studio — Phase 2C additions
   const [transitionBusyId, setTransitionBusyId] = useState<number | null>(null);
@@ -484,10 +486,13 @@ function AutomationContent() {
         testCaseKey: tc.test_case_id,
         title: tc.title,
         module: tc.product ?? tc.product_group ?? null,
+        testSuiteId: tc.test_suite_id ?? null,
+        testSuiteName: tc.test_suite_name ?? null,
         priority: tc.priority,
         framework: candidate?.recommended_framework ?? script?.framework ?? null,
         automationKind: isExternal ? "external" : "internal",
         externalTool: mapping?.external_tool_name ?? null,
+        scriptId: scriptId,
         scriptStatus: script?.status ?? candidate?.script_status ?? null,
         externalStatus: mapping?.automation_status ?? null,
         automationReady: candidate?.automation_ready ?? false,
@@ -502,6 +507,71 @@ function AutomationContent() {
       setSelectedInventoryId(inventoryItems[0].id);
     }
   }, [inventoryItems, selectedInventoryId]);
+
+  function handleToggleInventorySelect(id: number) {
+    setSelectedInventoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleSelectManyInventory(ids: number[], checked: boolean) {
+    setSelectedInventoryIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  function handleBulkGenerate(ids: number[]) {
+    setAiDialogPreselect(ids);
+    setAiDialogOpen(true);
+  }
+
+  async function handleBulkApprove(ids: number[]) {
+    const approvableStatuses = new Set(["in_review", "pending_approval", "under_review"]);
+    const scriptIds = ids
+      .map((id) => inventoryItems.find((i) => i.id === id))
+      .filter(
+        (item): item is InventoryItem =>
+          !!item &&
+          item.automationKind === "internal" &&
+          item.scriptId != null &&
+          approvableStatuses.has((item.scriptStatus ?? "").toLowerCase()),
+      )
+      .map((item) => item.scriptId as number);
+
+    if (scriptIds.length === 0) {
+      toast({
+        title: "Nothing to approve",
+        description: "Select test cases with a script currently in review.",
+        variant: "error",
+      });
+      return;
+    }
+
+    setBulkApproveBusy(true);
+    try {
+      const res = await automationApi.bulkApprove(scriptIds, "approve");
+      const { approved_count, failed_count } = res.data;
+      toast({
+        title: `${approved_count} script${approved_count === 1 ? "" : "s"} approved`,
+        description: failed_count > 0 ? `${failed_count} could not be approved.` : undefined,
+        variant: failed_count > 0 ? "error" : "success",
+      });
+      setSelectedInventoryIds(new Set());
+      loadData();
+    } catch (bulkError) {
+      toast({ title: "Bulk approve failed", description: messageFromError(bulkError, ""), variant: "error" });
+    } finally {
+      setBulkApproveBusy(false);
+    }
+  }
 
   const selectedItem = useMemo(
     () => inventoryItems.find((i) => i.id === selectedInventoryId) ?? null,
@@ -705,6 +775,12 @@ function AutomationContent() {
             items={inventoryItems}
             selectedId={selectedInventoryId}
             onSelect={(item) => setSelectedInventoryId(item.id)}
+            selectedIds={selectedInventoryIds}
+            onToggleSelect={handleToggleInventorySelect}
+            onSelectMany={handleSelectManyInventory}
+            onBulkGenerate={handleBulkGenerate}
+            onBulkApprove={handleBulkApprove}
+            bulkBusy={bulkApproveBusy}
           />
         </div>
         <div className="space-y-4">

@@ -11,7 +11,7 @@ overwrites user edits or Jira sync data.
 """
 import logging
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.requirement.intake_agent import RequirementIntakeAgent
 
 logger = logging.getLogger(__name__)
@@ -20,12 +20,12 @@ logger = logging.getLogger(__name__)
 class RequirementEnrichmentAgent(BaseAgent):
     """Enriches existing requirements (e.g. Jira imports) with structured fields."""
 
-    async def run(self, requirements: list[dict], project_id: int = 0) -> "EnrichmentAgentResult":
+    async def run(self, requirements: list[dict], project_id: int = 0) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Enriching {len(requirements)} requirements")
 
         if not requirements:
-            return EnrichmentAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="No requirements to enrich",
                 data={},
@@ -67,14 +67,14 @@ class RequirementEnrichmentAgent(BaseAgent):
             self.log("warning", "warning", e)
 
         if not enriched and errors:
-            return EnrichmentAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="Enrichment failed for all requirements. " + "; ".join(errors[:3]),
                 data={"enriched_requirements": [], "count": 0},
                 logs=self._logs,
             )
 
-        return EnrichmentAgentResult(
+        return AgentRunResult(
             success=True,
             data={"enriched_requirements": enriched, "count": len(enriched)},
             logs=self._logs,
@@ -86,11 +86,3 @@ class RequirementEnrichmentAgent(BaseAgent):
             project_id=input_data.get("project_id", 0),
         )
         return result.data
-
-
-class EnrichmentAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error

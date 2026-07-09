@@ -26,6 +26,13 @@ class PerTestResult:
     screenshot_path: str | None = None
     video_path: str | None = None
     trace_path: str | None = None
+    # Parsed inline (small, structured JSON) rather than left as a file path —
+    # captured via page.on('console'/'response') listeners the compiler
+    # always renders and attaches with testInfo.attach() (Phase 4.2). Using
+    # Playwright's public attachment API instead of parsing trace.zip's
+    # internal format, which isn't a supported external parsing target.
+    console_logs: list[dict] | None = None
+    network_logs: list[dict] | None = None
     raw: dict = field(default_factory=dict)
 
 

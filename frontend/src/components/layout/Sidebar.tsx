@@ -8,7 +8,7 @@ import {
   TestTube2, Play, Bug, BarChart3, Settings,
   Bot, ChevronRight, ChevronDown, Users, Database,
   ChevronLeft, Brain, BookOpen,
-  Hand, Cpu, Sparkles, Gauge,
+  Hand, Cpu, Sparkles, Gauge, Table2,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -52,6 +52,7 @@ const NAV_ITEMS: NavGroup[] = [
       },
       { label: "Defects", href: "/defects", icon: Bug },
       { label: "Reports", href: "/reports", icon: BarChart3 },
+      { label: "Coverage Matrix", href: "/coverage-matrix", icon: Table2 },
     ],
   },
   {

@@ -12,6 +12,7 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel
@@ -19,6 +20,23 @@ from pydantic import BaseModel
 from app.llm.provider import LLMProvider, get_llm
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AgentRunResult:
+    """Standard result envelope for a concrete agent's public `run()` method.
+
+    Every concrete agent used to define its own identically-shaped result
+    class (`RequirementAgentResult`, `ExecutionAgentResult`, ... 11 copies).
+    This is the single shared replacement — same fields, same semantics.
+    Distinct from `AgentResult` below, which wraps the `_run()` template
+    method's timeout/logging lifecycle instead.
+    """
+
+    success: bool
+    data: dict[str, Any] = field(default_factory=dict)
+    logs: list[dict] = field(default_factory=list)
+    error: str | None = None
 
 
 class AgentResult(BaseModel):

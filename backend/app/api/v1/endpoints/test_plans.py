@@ -24,7 +24,7 @@ from app.schemas.test_plan import (
 )
 from app.schemas.common import MessageResponse
 from app.schemas.requirement import ApprovalRequest
-from app.services import agent_run_service, approval_service, test_plan_service, traceability_service
+from app.services import agent_run_service, approval_service, artifact_review_service, test_plan_service, traceability_service
 from app.services import project_application_service
 from app.services.agent_dispatch_service import enqueue_agent_run
 from app.services.display_id_service import display_id, temporary_id
@@ -157,6 +157,38 @@ def _enforce_quality_gate(req_rows: list[Requirement], override: bool) -> None:
         )
 
 
+# ── Phase 1: stage reviewer gate ──────────────────────────────────────────────
+
+async def _enforce_review_gate(
+    db, *, project_id: int, artifact_type: str, artifact_id: int | None, override: bool
+) -> None:
+    """Block approval of a fail-verdict reviewed artifact when the project's
+    review_mode is 'gating'. off/advisory modes never block — advisory only
+    surfaces the verdict in the UI, it doesn't change approval behaviour."""
+    if artifact_id is None:
+        return
+    review_mode = await artifact_review_service.get_review_mode(db, project_id)
+    if review_mode != "gating":
+        return
+    review = await artifact_review_service.latest_review_for(
+        db, artifact_type=artifact_type, artifact_id=artifact_id
+    )
+    if review is None or review.verdict != "fail" or override:
+        return
+    raise HTTPException(
+        status_code=422,
+        detail={
+            "code": "review_gate_blocked",
+            "message": (
+                f"The {artifact_type.replace('_', ' ')} review verdict is 'fail'. "
+                "Address the reviewer's findings or retry with override_review_gate=true."
+            ),
+            "review_id": review.id,
+            "coverage_gaps": review.coverage_gaps,
+        },
+    )
+
+
 # ── Test Plans ────────────────────────────────────────────────────────────────
 
 @router.get("/project/{project_id}", response_model=list[TestPlanOut])
@@ -275,6 +307,14 @@ async def approve_scenario(
     if not sc:
         raise HTTPException(status_code=404, detail="Scenario not found")
     await require_permission(APPROVE_TEST_PLANS, sc.project_id, current_user, db)
+    if body.action == "approve":
+        await _enforce_review_gate(
+            db,
+            project_id=sc.project_id,
+            artifact_type="requirement_scenario_coverage",
+            artifact_id=sc.requirement_id,
+            override=body.override_review_gate,
+        )
     sc = await test_plan_service.approve_test_scenario(db, sc, body.action, body.notes)
     await approval_service.create_approval_action(
         db,
@@ -387,6 +427,14 @@ async def approve_test_case(
     if not tc:
         raise HTTPException(status_code=404, detail="Test case not found")
     await require_entity_permission(tc, APPROVE_TEST_CASES, current_user, db)
+    if body.action == "approve":
+        await _enforce_review_gate(
+            db,
+            project_id=tc.project_id,
+            artifact_type="scenario_test_case_coverage",
+            artifact_id=tc.scenario_id,
+            override=body.override_review_gate,
+        )
     tc = await test_plan_service.approve_test_case(db, tc, body.action, body.notes, current_user.id)
     await approval_service.create_approval_action(
         db,

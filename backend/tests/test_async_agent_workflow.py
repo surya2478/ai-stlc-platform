@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import anyio
@@ -9,6 +10,7 @@ from app.database import get_db
 from app.main import app
 from app.models.agent import AgentLog, AgentRun
 from app.models.project import Project
+from app.models.project_application import ProjectApplication
 from app.models.test_case import TestCase
 from app.models.user import User
 from app.services import agent_dispatch_service, agent_run_service
@@ -129,6 +131,75 @@ def test_trigger_returns_202_with_agent_run_id(monkeypatch):
     assert response.status_code == 202
     assert response.json()["agent_run_id"] == 1
     assert response.json()["task_id"] == "task-123"
+
+
+def test_discovery_trigger_returns_202_with_agent_run_id(monkeypatch):
+    db = _AgentDB(
+        [
+            Project(id=1, owner_id=1, name="Project"),
+            TestCase(
+                id=1, project_id=1, created_by=1, test_case_id="TC-1",
+                title="Login test", status="approved", application_id=None,
+            ),
+            ProjectApplication(
+                id=7, project_id=1, key="web", name="Web App", is_default=True, is_active=True,
+                environment_urls={"QA": "http://app.example.com"},
+            ),
+            None,
+        ]
+    )
+
+    class _Task:
+        id = "task-mcp-1"
+
+    async def fake_db() -> AsyncIterator[_AgentDB]:
+        yield db
+
+    monkeypatch.setattr(agent_dispatch_service.run_agent, "delay", lambda *args: _Task())
+    app.dependency_overrides[get_db] = fake_db
+    app.dependency_overrides[require_user] = _user
+    try:
+        response = TestClient(app).post(
+            "/api/v1/automation/agent/discover-ui",
+            json={"project_id": 1, "test_case_ids": [1], "environment": "QA"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 202
+    assert response.json()["agent_run_id"] == 1
+    assert response.json()["task_id"] == "task-mcp-1"
+
+
+def test_discovery_trigger_422s_when_no_application_url_configured(monkeypatch):
+    db = _AgentDB(
+        [
+            Project(id=1, owner_id=1, name="Project"),
+            TestCase(
+                id=1, project_id=1, created_by=1, test_case_id="TC-1",
+                title="Login test", status="approved", application_id=None,
+            ),
+            ProjectApplication(
+                id=7, project_id=1, key="web", name="Web App", is_default=True, is_active=True,
+                environment_urls={},  # no URL configured for any environment
+            ),
+        ]
+    )
+
+    async def fake_db() -> AsyncIterator[_AgentDB]:
+        yield db
+
+    app.dependency_overrides[get_db] = fake_db
+    app.dependency_overrides[require_user] = _user
+    try:
+        response = TestClient(app).post(
+            "/api/v1/automation/agent/discover-ui",
+            json={"project_id": 1, "test_case_ids": [1], "environment": "QA"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
 
 
 def test_duplicate_trigger_returns_existing_agent_run_without_new_run(monkeypatch):
@@ -318,6 +389,169 @@ def test_transient_failure_classified_for_retry():
 
 def test_permanent_failure_classified_no_retry():
     assert agent_tasks.classify_exception(agent_tasks.PermanentAgentError("bad input")) == "permanent"
+
+
+def test_cancel_self_triggered_pending_run_revokes_celery_task(monkeypatch):
+    now = datetime.now(timezone.utc)
+    run = AgentRun(
+        id=5, project_id=1, triggered_by=1, agent_name="fake",
+        status="pending", celery_task_id="task-abc",
+        progress_percent=0, created_at=now, updated_at=now,
+    )
+    db = _AgentDB([run])
+    revoke_calls = []
+
+    async def fake_db() -> AsyncIterator[_AgentDB]:
+        yield db
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.agents.celery_app.control.revoke",
+        lambda task_id, terminate=False: revoke_calls.append((task_id, terminate)),
+    )
+    app.dependency_overrides[get_db] = fake_db
+    app.dependency_overrides[require_user] = _user
+    try:
+        response = TestClient(app).post("/api/v1/agents/5/cancel")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+    assert run.status == "cancelled"
+    assert revoke_calls == [("task-abc", True)]
+
+
+def test_cancel_already_completed_run_returns_409(monkeypatch):
+    now = datetime.now(timezone.utc)
+    run = AgentRun(
+        id=6, project_id=1, triggered_by=1, agent_name="fake",
+        status="completed", celery_task_id="task-xyz",
+        progress_percent=100, created_at=now, updated_at=now,
+    )
+    db = _AgentDB([run])
+
+    async def fake_db() -> AsyncIterator[_AgentDB]:
+        yield db
+
+    app.dependency_overrides[get_db] = fake_db
+    app.dependency_overrides[require_user] = _user
+    try:
+        response = TestClient(app).post("/api/v1/agents/6/cancel")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert run.status == "completed"
+
+
+def test_queued_run_cancelled_before_worker_start_is_not_overwritten(monkeypatch):
+    run = AgentRun(id=1, project_id=1, triggered_by=1, agent_name="fake", status="cancelled")
+    db = _AgentDB([run])
+
+    async def fake_agent(_input):
+        raise AssertionError("agent must not run once the run is already cancelled")
+
+    async def run_task():
+        monkeypatch.setitem(agent_tasks.AGENT_REGISTRY, "fake", fake_agent)
+        monkeypatch.setattr(agent_tasks, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+        return await agent_tasks._run_agent_task("task-1", 1, "fake", {})
+
+    result = anyio.run(run_task)
+
+    assert result == {"agent_run_id": 1, "status": "cancelled"}
+    assert run.status == "cancelled"
+
+
+def test_run_cancelled_mid_execution_is_not_marked_completed(monkeypatch):
+    run = AgentRun(id=1, project_id=1, triggered_by=1, agent_name="fake", status="pending")
+    # Response order: [0] top-of-task select(AgentRun), [1] the project LLM
+    # route lookup inside _run_agent_with_project_llm_routes (empty = no
+    # project-specific routes configured), [2] this function's own
+    # post-execution cancellation re-check.
+    db = _AgentDB([run, [], "cancelled"])
+
+    async def fake_agent(_input):
+        return SimpleNamespace(success=True, data={"ok": True}, logs=[])
+
+    async def run_task():
+        monkeypatch.setitem(agent_tasks.AGENT_REGISTRY, "fake", fake_agent)
+        monkeypatch.setattr(agent_tasks, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+        return await agent_tasks._run_agent_task("task-1", 1, "fake", {})
+
+    result = anyio.run(run_task)
+
+    assert result == {"agent_run_id": 1, "status": "cancelled"}
+    assert run.status != "completed"
+
+
+def test_get_agent_spec_falls_back_to_default_for_unknown_agent():
+    assert agent_tasks.get_agent_spec("no_such_agent") is agent_tasks.DEFAULT_AGENT_SPEC
+
+
+def test_get_agent_spec_returns_registered_spec():
+    spec = agent_tasks.get_agent_spec("test_execution")
+    assert spec.timeout_seconds == 300.0
+    assert spec.module_scope == "execution"
+
+
+def test_chain_on_success_enqueues_configured_next_agent(monkeypatch):
+    run = AgentRun(id=1, project_id=7, triggered_by=3, agent_name="fake", status="pending")
+    db = _AgentDB([run, run])
+
+    async def fake_agent(_input):
+        return SimpleNamespace(success=True, data={"ok": True}, logs=[])
+
+    captured = {}
+
+    async def fake_enqueue(_db, **kwargs):
+        captured.update(kwargs)
+
+        class _Run:
+            id = 99
+
+        return _Run(), "task-chained"
+
+    async def run_task():
+        monkeypatch.setitem(agent_tasks.AGENT_REGISTRY, "fake", fake_agent)
+        monkeypatch.setitem(
+            agent_tasks.AGENT_SPECS, "fake", agent_tasks.AgentSpec(chain_on_success=("fake_child",))
+        )
+        async def fake_builder(_db, chained_run, _input, _output):
+            return {"parent_run_id": chained_run.id}
+
+        monkeypatch.setitem(agent_tasks.CHAIN_INPUT_BUILDERS, "fake_child", fake_builder)
+        monkeypatch.setattr(agent_tasks, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+        monkeypatch.setattr(agent_dispatch_service, "enqueue_agent_run", fake_enqueue)
+        return await agent_tasks._run_agent_task("task-1", 1, "fake", {})
+
+    result = anyio.run(run_task)
+
+    assert result == {"agent_run_id": 1, "status": "completed"}
+    assert captured["agent_name"] == "fake_child"
+    assert captured["input_data"] == {"parent_run_id": 1}
+    assert captured["project_id"] == 7
+    assert captured["user_id"] == 3
+
+
+def test_chain_on_success_missing_builder_does_not_fail_parent_run(monkeypatch):
+    run = AgentRun(id=1, project_id=7, triggered_by=3, agent_name="fake", status="pending")
+    db = _AgentDB([run, run])
+
+    async def fake_agent(_input):
+        return SimpleNamespace(success=True, data={"ok": True}, logs=[])
+
+    async def run_task():
+        monkeypatch.setitem(agent_tasks.AGENT_REGISTRY, "fake", fake_agent)
+        monkeypatch.setitem(
+            agent_tasks.AGENT_SPECS, "fake", agent_tasks.AgentSpec(chain_on_success=("unregistered_child",))
+        )
+        monkeypatch.setattr(agent_tasks, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+        return await agent_tasks._run_agent_task("task-1", 1, "fake", {})
+
+    result = anyio.run(run_task)
+
+    assert result == {"agent_run_id": 1, "status": "completed"}
+    assert run.status == "completed"
 
 
 def test_progress_percent_visible_via_polling_schema():

@@ -10,8 +10,8 @@ import {
 import { AuditStamp } from "@/components/ui/AuditStamp";
 import { useUserDirectory } from "@/hooks/useUserDirectory";
 import {
-  agentRunsApi, api, projectsApi, requirementsApi, scenariosApi, testCasesApi, testSuitesApi,
-  type Requirement, type TestCase, type TestCaseBulkUpdateResult,
+  agentRunsApi, api, projectsApi, requirementsApi, reviewsApi, scenariosApi, testCasesApi, testSuitesApi,
+  type ArtifactReview, type Requirement, type TestCase, type TestCaseBulkUpdateResult,
   type TestCaseHistory, type TestCaseSummary, type TestScenario, type TestSuite,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody, DrawerFooter, DrawerClose
 } from "@/components/ui/drawer";
+import { ReviewBadge } from "@/components/reviews/ReviewBadge";
 
 // ── Dropdown and Form Options ──────────────────────────────────────────────────
 
@@ -312,6 +313,7 @@ function TestCasesContent() {
   const [summary, setSummary] = useState<TestCaseSummary | null>(null);
   const [scenarios, setScenarios] = useState<TestScenario[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [testCaseReviews, setTestCaseReviews] = useState<ArtifactReview[]>([]);
   
   // Drawer States
   const [selectedTestCase, setSelectedTestCase] = useState<TestCase | null>(null);
@@ -427,11 +429,12 @@ function TestCasesContent() {
     setLoading(true);
     setError("");
     try {
-      const [tcRes, summaryRes, scRes, reqRes] = await Promise.all([
+      const [tcRes, summaryRes, scRes, reqRes, reviewsRes] = await Promise.all([
         testCasesApi.list(selectedProject),
         testCasesApi.summary(selectedProject),
         scenariosApi.list(selectedProject),
         requirementsApi.list(selectedProject, { status: "approved" }),
+        reviewsApi.listForProject(selectedProject, "scenario_test_case_coverage"),
       ]);
       const approvedScenarios = scRes.data.filter((s) => s.status === "approved");
       setTestCases(tcRes.data);
@@ -440,6 +443,7 @@ function TestCasesContent() {
       setRequirements(reqRes.data);
       setSelectedScenarioIds(approvedScenarios.map((s) => s.id));
       setDrafts(Object.fromEntries(tcRes.data.map((tc) => [tc.id, toDraft(tc)])));
+      setTestCaseReviews(reviewsRes.data);
     } catch (loadError) {
       setError(messageFromError(loadError, "Could not load test case data."));
     } finally {
@@ -812,6 +816,10 @@ function TestCasesContent() {
     });
     return set;
   }, [testCases]);
+
+  const testCaseReviewByScenarioId = useMemo(() => new Map(
+    testCaseReviews.map((r) => [r.artifact_id, r])
+  ), [testCaseReviews]);
 
   const total = summary?.total ?? testCases.length;
   const approved = summary?.by_status?.approved ?? 0;
@@ -1524,6 +1532,16 @@ function TestCasesContent() {
                     <span className="font-mono text-xs font-bold text-[#1b59f8]">
                       {selectedTestCase.test_case_id}
                     </span>
+                    {(selectedTestCase.scenario_id ?? selectedTestCase.linked_scenario_id) != null && selectedProject && (
+                      <ReviewBadge
+                        review={testCaseReviewByScenarioId.get(
+                          (selectedTestCase.scenario_id ?? selectedTestCase.linked_scenario_id) as number
+                        )}
+                        artifactType="scenario_test_case_coverage"
+                        artifactId={(selectedTestCase.scenario_id ?? selectedTestCase.linked_scenario_id) as number}
+                        projectId={selectedProject}
+                      />
+                    )}
                     {hasChanges(selectedTestCase) && (
                       <span className="inline-flex items-center rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 uppercase tracking-wider">
                         Unsaved Edits

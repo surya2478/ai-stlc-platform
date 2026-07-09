@@ -31,11 +31,9 @@ import re
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.llm.provider import get_llm
 from app.llm.structured import validate_structured_output
 
@@ -265,16 +263,6 @@ def _repo_size_bytes(path: Path) -> int:
     return total
 
 
-# ── Result dataclass ───────────────────────────────────────────────────────────
-
-@dataclass
-class CodeAnalysisAgentResult:
-    success: bool
-    data: dict[str, Any] = field(default_factory=dict)
-    error: str | None = None
-    logs: list[dict] = field(default_factory=list)
-
-
 # ── Agent ──────────────────────────────────────────────────────────────────────
 
 class CodeAnalysisAgent(BaseAgent):
@@ -296,7 +284,7 @@ class CodeAnalysisAgent(BaseAgent):
         local_path: str | None = None,
         # Shared
         languages: list[str] | None = None,
-    ) -> CodeAnalysisAgentResult:
+    ) -> AgentRunResult:
         self._logs.clear()
         languages = languages or ["python", "javascript", "typescript"]
         tmp_dir: str | None = None
@@ -305,7 +293,7 @@ class CodeAnalysisAgent(BaseAgent):
             # ── 1. Resolve the root directory ─────────────────────────────────
             if source == "github":
                 if not github_url:
-                    return CodeAnalysisAgentResult(
+                    return AgentRunResult(
                         success=False, error="github_url is required"
                     )
                 self.log("info", "clone", f"Cloning {github_url} branch={github_branch}")
@@ -313,26 +301,26 @@ class CodeAnalysisAgent(BaseAgent):
                 try:
                     _clone_repo(github_url, github_branch, github_token, Path(tmp_dir))
                 except (RuntimeError, subprocess.TimeoutExpired) as exc:
-                    return CodeAnalysisAgentResult(
+                    return AgentRunResult(
                         success=False, error=f"Clone failed: {exc}"
                     )
                 root = Path(tmp_dir)
                 if github_subpath:
                     sub_root = root / github_subpath
                     if not sub_root.exists() or not sub_root.is_dir():
-                        return CodeAnalysisAgentResult(
+                        return AgentRunResult(
                             success=False,
                             error=f"GitHub subdirectory not found in repository: {github_subpath}",
                         )
                     root = sub_root
             else:
                 if not local_path:
-                    return CodeAnalysisAgentResult(
+                    return AgentRunResult(
                         success=False, error="local_path is required"
                     )
                 root = Path(local_path)
                 if not root.exists() or not root.is_dir():
-                    return CodeAnalysisAgentResult(
+                    return AgentRunResult(
                         success=False, error=f"local_path not found: {local_path}"
                     )
 
@@ -340,7 +328,7 @@ class CodeAnalysisAgent(BaseAgent):
             repo_size = _repo_size_bytes(root)
             self.log("info", "size", f"Repository size: {repo_size / 1024 / 1024:.1f} MB")
             if repo_size > _MAX_REPO_BYTES:
-                return CodeAnalysisAgentResult(
+                return AgentRunResult(
                     success=False,
                     error=f"Repository is too large ({repo_size // 1024 // 1024} MB > 500 MB limit)",
                 )
@@ -349,7 +337,7 @@ class CodeAnalysisAgent(BaseAgent):
             files = _collect_files(root, languages)
             self.log("info", "collect", f"Collected {len(files)} source files for languages={languages}")
             if not files:
-                return CodeAnalysisAgentResult(
+                return AgentRunResult(
                     success=False,
                     error=f"No source files found for languages: {languages}. Check the repository path and language filter.",
                 )
@@ -400,7 +388,7 @@ class CodeAnalysisAgent(BaseAgent):
                     if entry.get("level") == "warning"
                 ]
                 error_detail = "; ".join(warning_messages[:3])
-                return CodeAnalysisAgentResult(
+                return AgentRunResult(
                     success=False,
                     error=(
                         "Code analysis produced no requirements."
@@ -419,7 +407,7 @@ class CodeAnalysisAgent(BaseAgent):
                     },
                     logs=list(self._logs),
                 )
-            return CodeAnalysisAgentResult(
+            return AgentRunResult(
                 success=True,
                 data={
                     "requirements": all_requirements,

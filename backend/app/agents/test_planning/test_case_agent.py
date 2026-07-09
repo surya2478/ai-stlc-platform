@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import TestCaseLLMOutput
 from app.agents.test_planning.scenario_agent import ENVIRONMENT_GUIDANCE
 from app.llm.provider import get_llm
@@ -189,12 +189,12 @@ _graph = _build_graph()
 class TestCaseDevelopmentAgent(BaseAgent):
     """Generates detailed test cases from test scenarios."""
 
-    async def run(self, scenarios: list[dict]) -> "TestCaseAgentResult":
+    async def run(self, scenarios: list[dict]) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Generating test cases from {len(scenarios)} scenarios")
 
         if not scenarios:
-            return TestCaseAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="No scenarios provided",
                 data={},
@@ -218,14 +218,14 @@ class TestCaseDevelopmentAgent(BaseAgent):
             self.log("warning", "warning", e)
 
         if not test_cases and errors:
-            return TestCaseAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="Test case generation failed for all scenarios. " + "; ".join(errors),
                 data={"test_cases": [], "count": 0, "automation_candidates": 0},
                 logs=self._logs,
             )
 
-        return TestCaseAgentResult(
+        return AgentRunResult(
             success=True,
             data={"test_cases": test_cases, "count": len(test_cases), "automation_candidates": auto},
             logs=self._logs,
@@ -234,11 +234,3 @@ class TestCaseDevelopmentAgent(BaseAgent):
     async def _run(self, input_data: dict) -> dict:
         result = await self.run(scenarios=input_data.get("scenarios", []))
         return result.data
-
-
-class TestCaseAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error

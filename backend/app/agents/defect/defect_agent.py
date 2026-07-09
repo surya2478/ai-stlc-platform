@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.agents.base.base_agent import BaseAgent, AgentResult
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import DefectLLMOutput
 from app.llm.provider import get_llm
 from app.llm.structured import validate_structured_output, clean_json_text
@@ -203,14 +203,6 @@ _graph = _build_graph()
 
 # ── Agent Class ────────────────────────────────────────────────────────────────
 
-class DefectAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error
-
-
 class DefectAnalysisAgent(BaseAgent):
     """Analyses failed test results and generates structured defect drafts."""
 
@@ -218,12 +210,12 @@ class DefectAnalysisAgent(BaseAgent):
         self,
         failed_results: list[dict],
         project_name: str = "Project",
-    ) -> DefectAgentResult:
+    ) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Analysing {len(failed_results)} failed test results")
 
         if not failed_results:
-            return DefectAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="No failed results to analyse",
                 data={"defects": []},
@@ -246,7 +238,7 @@ class DefectAnalysisAgent(BaseAgent):
 
         self.log("info", "complete", f"Generated {len(defects)} defect drafts")
 
-        return DefectAgentResult(
+        return AgentRunResult(
             success=True,
             data={"defects": defects},
             logs=self._logs,

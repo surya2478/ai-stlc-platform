@@ -11,7 +11,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.agents.base.base_agent import BaseAgent, AgentResult
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import ExecutionResultLLMOutput
 from app.llm.provider import get_llm
 from app.llm.structured import validate_structured_output, parse_and_validate_llm_list
@@ -145,14 +145,6 @@ _graph = _build_graph()
 
 # ── Agent Class ────────────────────────────────────────────────────────────────
 
-class ExecutionAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error
-
-
 class TestExecutionAgent(BaseAgent):
     """Executes test cases and returns structured pass/fail results."""
 
@@ -187,12 +179,12 @@ class TestExecutionAgent(BaseAgent):
         environment: str = "staging",
         suite_name: str = "Test Suite",
         source_type: str = "manual",
-    ) -> ExecutionAgentResult:
+    ) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Executing {len(test_cases)} tests on '{environment}'")
 
         if not test_cases:
-            return ExecutionAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="No test cases provided",
                 data={},
@@ -202,7 +194,7 @@ class TestExecutionAgent(BaseAgent):
         if source_type == "ai":
             results = self._controlled_ai_gateway_unavailable(test_cases)
             self.log("warning", "ai_gateway", "Controlled AI execution gateway is not configured; AI run stopped without mock execution.")
-            return ExecutionAgentResult(
+            return AgentRunResult(
                 success=True,
                 data={
                     "results": results,
@@ -237,7 +229,7 @@ class TestExecutionAgent(BaseAgent):
 
         self.log("info", "complete", f"Execution complete — {passed} passed / {failed} failed / {skipped} skipped")
 
-        return ExecutionAgentResult(
+        return AgentRunResult(
             success=True,
             data={
                 "results": results,

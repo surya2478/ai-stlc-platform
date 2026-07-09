@@ -5,6 +5,7 @@ import asyncio
 import logging
 import socket
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,6 +13,12 @@ import httpx
 from sqlalchemy import select
 
 from app.agents.automation.automation_agent import AutomationScriptAgent
+from app.agents.automation.dry_run_agent import DryRunAgent
+from app.agents.automation.eligibility_agent import AutomationEligibilityAgent
+from app.agents.automation.mcp_discovery_agent import PlaywrightMCPDiscoveryAgent
+from app.agents.execution.failure_classification_agent import FailureClassificationAgent
+from app.agents.automation.repair_agent import RepairLoopAgent
+from app.agents.automation.script_review_agent import AutomationScriptReviewAgent
 from app.agents.defect.defect_agent import DefectAnalysisAgent
 from app.agents.execution.execution_agent import TestExecutionAgent
 from app.agents.reporting.reporting_agent import TestReportingAgent
@@ -23,13 +30,16 @@ from app.agents.requirement.ui_analysis_agent import UIAnalysisAgent
 from app.agents.requirement.url_analysis_agent import URLAnalysisAgent
 from app.agents.test_planning.planning_agent import TestPlanningAgent
 from app.agents.test_planning.scenario_agent import TestScenarioAgent
+from app.agents.test_planning.scenario_review_agent import ScenarioReviewAgent
 from app.agents.test_planning.test_case_agent import TestCaseDevelopmentAgent
+from app.agents.test_planning.test_case_review_agent import TestCaseReviewAgent
 from app.database import AsyncSessionLocal
 from app.models.agent import AgentRun
 from app.models.automation_script import AutomationScript
 from app.models.defect import DefectDraft
 from app.models.document import UploadedDocument
 from app.models.execution import ExecutionResult, ExecutionRun
+from app.models.project_application import ProjectApplication
 from app.models.report import Report
 from app.models.requirement import Requirement
 from app.models.requirement_review import RequirementQualityReview
@@ -38,8 +48,14 @@ from app.models.test_plan import TestPlan
 from app.models.test_scenario import TestScenario
 from app.llm.provider import LLMRouteOverride, reset_llm_route_override, set_llm_route_override
 from app.services import agent_run_service
+from app.services import artifact_review_service
+from app.services import automation_service
+from app.services import coverage_matrix_service
+from app.services import locator_map_service
+from app.services import static_quality_gate
 from app.services import requirement_service
 from app.services.display_id_service import display_id, temporary_id
+from app.services.project_application_service import resolve_default_application, resolve_environment_url
 from app.services.project_llm_settings_service import resolve_project_llm_routes
 from app.services import traceability_service
 from app.worker.celery_app import celery_app
@@ -119,15 +135,54 @@ async def _test_scenario(input_data: dict[str, Any]) -> Any:
     return await TestScenarioAgent().run(requirements=input_data["requirements"])
 
 
+async def _scenario_review(input_data: dict[str, Any]) -> Any:
+    return await ScenarioReviewAgent().run(
+        requirements=input_data["requirements"],
+        scenarios=input_data["scenarios"],
+    )
+
+
 async def _test_case(input_data: dict[str, Any]) -> Any:
     return await TestCaseDevelopmentAgent().run(scenarios=input_data["scenarios"])
+
+
+async def _test_case_review(input_data: dict[str, Any]) -> Any:
+    return await TestCaseReviewAgent().run(
+        scenarios=input_data["scenarios"],
+        test_cases=input_data["test_cases"],
+    )
+
+
+async def _automation_eligibility(input_data: dict[str, Any]) -> Any:
+    return await AutomationEligibilityAgent().run(test_cases=input_data["test_cases"])
+
+
+async def _playwright_mcp_discovery(input_data: dict[str, Any]) -> Any:
+    return await PlaywrightMCPDiscoveryAgent().run(test_cases=input_data["test_cases"])
 
 
 async def _automation_script(input_data: dict[str, Any]) -> Any:
     return await AutomationScriptAgent().run(
         test_cases=input_data["test_cases"],
         framework=input_data.get("framework", "playwright"),
+        locator_map=input_data.get("locator_map"),
     )
+
+
+async def _automation_dry_run(input_data: dict[str, Any]) -> Any:
+    return await DryRunAgent().run(scripts=input_data["scripts"])
+
+
+async def _failure_classification(input_data: dict[str, Any]) -> Any:
+    return await FailureClassificationAgent().run(results=input_data["results"])
+
+
+async def _automation_repair_loop(input_data: dict[str, Any]) -> Any:
+    return await RepairLoopAgent().run(scripts=input_data["scripts"])
+
+
+async def _automation_script_review(input_data: dict[str, Any]) -> Any:
+    return await AutomationScriptReviewAgent().run(scripts=input_data["scripts"])
 
 
 async def _test_execution(input_data: dict[str, Any]) -> Any:
@@ -163,12 +218,378 @@ AGENT_REGISTRY: dict[str, AgentCallable] = {
     "code_analysis": _code_analysis,
     "test_planning": _test_planning,
     "test_scenario": _test_scenario,
+    "scenario_review": _scenario_review,
     "test_case": _test_case,
+    "test_case_review": _test_case_review,
+    "automation_eligibility": _automation_eligibility,
+    "playwright_mcp_discovery": _playwright_mcp_discovery,
     "automation_script": _automation_script,
+    "automation_dry_run": _automation_dry_run,
+    "failure_classification": _failure_classification,
+    "automation_repair_loop": _automation_repair_loop,
+    "automation_script_review": _automation_script_review,
     "test_execution": _test_execution,
     "defect_analysis": _defect_analysis,
     "test_reporting": _test_reporting,
 }
+
+
+@dataclass(frozen=True)
+class AgentSpec:
+    """Per-agent execution policy (Phase 0 foundation hardening).
+
+    Looked up by agent_name via `get_agent_spec`; any agent_name not present in
+    `AGENT_SPECS` (e.g. an ad-hoc name used in tests) falls back to
+    `DEFAULT_AGENT_SPEC` rather than raising, so this is purely additive over
+    `AGENT_REGISTRY` — it does not change how agents are invoked.
+    """
+
+    timeout_seconds: float = 120.0
+    retry_policy: str = "default"  # default | none | aggressive
+    chain_on_success: tuple[str, ...] = ()
+    module_scope: str | None = None
+
+
+DEFAULT_AGENT_SPEC = AgentSpec()
+
+# Timeouts reflect real observed cost: LLM-only generators stay near the
+# original 120s default; multi-call graphs (URL/code analysis crawl multiple
+# pages/files) and the execution runner (spawns a real subprocess) get more
+# headroom. Reviewer/MCP-grounded agents added in later phases should be
+# registered here with their own timeout rather than relying on the default.
+AGENT_SPECS: dict[str, AgentSpec] = {
+    "requirement_intake": AgentSpec(timeout_seconds=120.0, module_scope="requirement"),
+    "requirement_quality": AgentSpec(timeout_seconds=180.0, module_scope="requirement_review"),
+    "requirement_enrichment": AgentSpec(timeout_seconds=120.0, module_scope="requirement"),
+    "ui_image_analysis": AgentSpec(timeout_seconds=180.0, module_scope="requirement"),
+    "url_analysis": AgentSpec(timeout_seconds=240.0, module_scope="requirement"),
+    "code_analysis": AgentSpec(timeout_seconds=240.0, module_scope="requirement"),
+    "test_planning": AgentSpec(timeout_seconds=180.0, module_scope="test_planning"),
+    "test_scenario": AgentSpec(
+        timeout_seconds=180.0, module_scope="test_planning", chain_on_success=("scenario_review",)
+    ),
+    "scenario_review": AgentSpec(timeout_seconds=180.0, module_scope="scenario_review"),
+    "test_case": AgentSpec(
+        timeout_seconds=180.0, module_scope="test_planning", chain_on_success=("test_case_review",)
+    ),
+    "test_case_review": AgentSpec(
+        timeout_seconds=180.0, module_scope="test_case_review", chain_on_success=("automation_eligibility",)
+    ),
+    "automation_eligibility": AgentSpec(timeout_seconds=60.0, module_scope="automation_eligibility"),
+    # No chain_on_success here on purpose: discovery spawns a real browser
+    # session against a live environment, unlike the purely-analytical
+    # agents above it in the pipeline — it stays a deliberate, user-triggered
+    # action (mirrors automation_script's same reasoning) rather than firing
+    # automatically the moment test cases pass eligibility.
+    "playwright_mcp_discovery": AgentSpec(timeout_seconds=450.0, module_scope="mcp_discovery"),
+    "automation_script": AgentSpec(
+        timeout_seconds=240.0, module_scope="automation", chain_on_success=("automation_dry_run",)
+    ),
+    # Real subprocess per script (dry run) — a real, if generous, execution
+    # budget, distinct from the LLM-call-bounded generator above it.
+    "automation_dry_run": AgentSpec(
+        timeout_seconds=450.0, module_scope="automation_dry_run",
+        # Failed dry-runs go to classification/repair; passed ones (the only
+        # scripts the plan allows reviewers to see) go straight to review.
+        chain_on_success=("failure_classification", "automation_script_review"),
+    ),
+    "failure_classification": AgentSpec(
+        timeout_seconds=90.0, module_scope="failure_classification",
+        chain_on_success=("automation_repair_loop",),
+    ),
+    # Up to MAX_REPAIR_ATTEMPTS (3) full patch->compile->gate->dry-run
+    # cycles per script — generous budget to match.
+    "automation_repair_loop": AgentSpec(
+        timeout_seconds=600.0, module_scope="automation_repair_loop",
+        chain_on_success=("automation_script_review",),
+    ),
+    "automation_script_review": AgentSpec(timeout_seconds=180.0, module_scope="automation_script_review"),
+    "test_execution": AgentSpec(timeout_seconds=300.0, module_scope="execution"),
+    "defect_analysis": AgentSpec(timeout_seconds=180.0, module_scope="defect"),
+    "test_reporting": AgentSpec(timeout_seconds=180.0, module_scope="reporting"),
+}
+
+
+def get_agent_spec(agent_name: str) -> AgentSpec:
+    return AGENT_SPECS.get(agent_name, DEFAULT_AGENT_SPEC)
+
+
+# Chain-input builders, keyed by the *child* agent_name. `chain_on_success` on
+# an AgentSpec only names the next agent(s) to run; a builder here maps the
+# parent's (db, run, input_data, output_data) into the child's input_data,
+# since that mapping is agent-pair-specific and can't be inferred
+# generically. Builders are async and receive `db` because the parent's
+# `output_data` only carries persisted row IDs — building a reviewer's input
+# means fetching the full rows back out (see _build_scenario_review_input).
+ChainInputBuilder = Callable[[Any, AgentRun, dict[str, Any], dict[str, Any]], Awaitable[dict[str, Any] | None]]
+CHAIN_INPUT_BUILDERS: dict[str, ChainInputBuilder] = {}
+
+
+async def _build_scenario_review_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    scenario_ids = output_data.get("scenario_ids") or []
+    requirements = input_data.get("requirements") or []
+    if not scenario_ids or not requirements:
+        return None
+    result = await db.execute(select(TestScenario).where(TestScenario.id.in_(scenario_ids)))
+    scenarios = [
+        {
+            "id": s.id,
+            "scenario_id": s.scenario_id,
+            "title": s.title,
+            "description": s.description,
+            "scenario_type": s.scenario_type,
+            "priority": s.priority,
+            "coverage_mapping": s.coverage_mapping or [],
+            "_source_requirement_id": s.requirement_id,
+        }
+        for s in result.scalars().all()
+    ]
+    if not scenarios:
+        return None
+    return {"requirements": requirements, "scenarios": scenarios}
+
+
+async def _build_test_case_review_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    tc_ids = output_data.get("test_case_ids") or []
+    scenarios = input_data.get("scenarios") or []
+    if not tc_ids or not scenarios:
+        return None
+    result = await db.execute(select(TestCase).where(TestCase.id.in_(tc_ids)))
+    test_cases = [
+        {
+            "id": tc.id,
+            "test_case_id": tc.test_case_id,
+            "title": tc.title,
+            "preconditions": tc.preconditions or [],
+            "steps": tc.steps or [],
+            "expected_result": tc.expected_result,
+            "priority": tc.priority,
+            "test_type": tc.test_type,
+            "_source_scenario_id": tc.scenario_id,
+        }
+        for tc in result.scalars().all()
+    ]
+    if not test_cases:
+        return None
+    return {"scenarios": scenarios, "test_cases": test_cases}
+
+
+async def _build_automation_eligibility_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    # test_case_review's own input already carries the full test case dicts
+    # (see _build_test_case_review_input) — no DB re-fetch needed.
+    test_cases = input_data.get("test_cases") or []
+    if not test_cases:
+        return None
+    return {"test_cases": test_cases}
+
+
+async def _build_dry_run_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    script_ids = output_data.get("script_ids") or []
+    if not script_ids:
+        return None
+    result = await db.execute(select(AutomationScript).where(AutomationScript.id.in_(script_ids)))
+    tc_by_db_id = {tc.get("id"): tc for tc in input_data.get("test_cases", [])}
+    scripts = []
+    for script in result.scalars().all():
+        if script.status != "static_passed" or script.project_id != run.project_id:
+            continue  # only dry-run scripts the static gate actually passed
+        tc = tc_by_db_id.get(script.test_case_id) or {}
+        scripts.append({
+            "script_id": script.id,
+            "framework": script.framework,
+            "file_path": script.file_path,
+            "compiled_files": script.compiled_files,
+            "execution_command": script.execution_command,
+            "application_url": tc.get("application_url"),
+            "environment": tc.get("test_phase") or tc.get("test_environment") or "QA",
+        })
+    if not scripts:
+        return None
+    return {"scripts": scripts}
+
+
+async def _build_failure_classification_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    result = await db.execute(
+        select(ExecutionResult)
+        .join(ExecutionRun, ExecutionResult.execution_run_id == ExecutionRun.id)
+        .where(ExecutionRun.agent_run_id == run.id, ExecutionResult.status != "pass")
+    )
+    rows = result.scalars().all()
+    if not rows:
+        return None
+    results = [
+        {
+            "result_id": r.id,
+            "status": r.status,
+            "error_message": r.error_message,
+            "stack_trace": r.stack_trace,
+            "console_logs": (r.metadata_ or {}).get("console_logs"),
+            "network_logs": (r.metadata_ or {}).get("network_logs"),
+        }
+        for r in rows
+    ]
+    return {"results": results}
+
+
+async def _build_repair_loop_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    classified_ids = output_data.get("classified_result_ids") or []
+    if not classified_ids:
+        return None
+    result = await db.execute(select(ExecutionResult).where(ExecutionResult.id.in_(classified_ids)))
+
+    scripts = []
+    for exec_result in result.scalars().all():
+        classification_info = (exec_result.metadata_ or {}).get("failure_classification") or {}
+        if not classification_info.get("repairable"):
+            continue
+        automation_script_id = (exec_result.metadata_ or {}).get("automation_script_id")
+        if not automation_script_id:
+            continue
+        script = await db.get(AutomationScript, automation_script_id)
+        if not script or not script.contract or script.project_id != run.project_id:
+            continue
+
+        application_url = None
+        environment = "QA"
+        catalog: list[dict] = []
+        tc = await db.get(TestCase, script.test_case_id) if script.test_case_id else None
+        if tc:
+            environment = tc.test_phase or "QA"
+            application = await db.get(ProjectApplication, tc.application_id) if tc.application_id else None
+            if application is None:
+                application = await resolve_default_application(db, run.project_id)
+            if application:
+                application_url = resolve_environment_url(application, environment)
+                entries = await locator_map_service.list_for_application(
+                    db, project_id=run.project_id, application_id=application.id
+                )
+                catalog = [
+                    {
+                        "element_name": e.element_name,
+                        "recommended_locator": e.recommended_locator,
+                        "business_meaning": e.business_meaning,
+                    }
+                    for e in entries
+                ]
+
+        scripts.append({
+            "script_id": script.id,
+            "contract": script.contract,
+            "framework": script.framework,
+            "application_url": application_url,
+            "environment": environment,
+            "locator_catalog": catalog,
+            "failure": {
+                "classification": classification_info.get("classification"),
+                "error_message": exec_result.error_message,
+                "stack_trace": exec_result.stack_trace,
+            },
+        })
+
+    if not scripts:
+        return None
+    return {"scripts": scripts}
+
+
+async def _build_script_review_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    # Reachable from two parents (automation_dry_run's "promoted_script_ids"
+    # and automation_repair_loop's "resolved_script_ids") — both name only
+    # dry_run_passed scripts, matching the plan's exit criterion that only
+    # dry_run_passed scripts reach reviewers.
+    script_ids = output_data.get("promoted_script_ids") or output_data.get("resolved_script_ids") or []
+    if not script_ids:
+        return None
+    result = await db.execute(select(AutomationScript).where(AutomationScript.id.in_(script_ids)))
+    scripts = []
+    for script in result.scalars().all():
+        if script.project_id != run.project_id:
+            continue
+        tc = await db.get(TestCase, script.test_case_id) if script.test_case_id else None
+        last_dry_run = (script.metadata_ or {}).get("last_dry_run") or {"passed": True}
+        scripts.append({
+            "script_id": script.id,
+            "test_case": {
+                "test_case_id": tc.test_case_id if tc else None,
+                "title": tc.title if tc else None,
+                "preconditions": tc.preconditions if tc else [],
+                "steps": tc.steps if tc else [],
+                "expected_result": tc.expected_result if tc else None,
+            } if tc else {},
+            "code": script.code,
+            "static_gate_result": script.static_gate_result,
+            "dry_run_evidence": last_dry_run,
+        })
+    if not scripts:
+        return None
+    return {"scripts": scripts}
+
+
+CHAIN_INPUT_BUILDERS["scenario_review"] = _build_scenario_review_input
+CHAIN_INPUT_BUILDERS["test_case_review"] = _build_test_case_review_input
+CHAIN_INPUT_BUILDERS["automation_eligibility"] = _build_automation_eligibility_input
+CHAIN_INPUT_BUILDERS["automation_dry_run"] = _build_dry_run_input
+CHAIN_INPUT_BUILDERS["failure_classification"] = _build_failure_classification_input
+CHAIN_INPUT_BUILDERS["automation_repair_loop"] = _build_repair_loop_input
+CHAIN_INPUT_BUILDERS["automation_script_review"] = _build_script_review_input
+
+
+async def _chain_next_agents(
+    db,
+    run: AgentRun,
+    agent_name: str,
+    input_data: dict[str, Any],
+    output_data: dict[str, Any] | None,
+) -> None:
+    """Enqueue any agents configured to run after `agent_name` completes.
+
+    Isolated from the parent run's outcome: a chaining failure is logged and
+    skipped, never raised — the parent agent already completed successfully
+    and that result must stand regardless of what happens downstream.
+    """
+    next_names = get_agent_spec(agent_name).chain_on_success
+    if not next_names:
+        return
+    from app.services import agent_dispatch_service  # deferred: avoids import cycle
+
+    for next_name in next_names:
+        builder = CHAIN_INPUT_BUILDERS.get(next_name)
+        if builder is None:
+            logger.warning(
+                "chain_on_success names '%s' after '%s' but no input builder is registered; skipping",
+                next_name, agent_name,
+            )
+            continue
+        try:
+            chain_input = await builder(db, run, input_data, output_data or {})
+            if chain_input is None:
+                continue
+            await agent_dispatch_service.enqueue_agent_run(
+                db,
+                project_id=run.project_id,
+                user_id=run.triggered_by,
+                agent_name=next_name,
+                input_data=chain_input,
+                metadata={"chained_from_run_id": run.id},
+            )
+            await db.commit()
+        except Exception:
+            logger.exception(
+                "Failed to chain '%s' after agent run %s ('%s')", next_name, run.id, agent_name,
+            )
 
 
 def _is_success(agent_result: Any) -> bool:
@@ -447,6 +868,7 @@ async def _persist_agent_artifacts(
         # Requirement, and mirror a compact summary into metadata_ for the UI.
         quality_data: dict = data.get("quality_results", {}) or {}
         updated_ids: list[int] = []
+        review_mode = await artifact_review_service.get_review_mode(db, run.project_id)
         for str_id, qr in quality_data.items():
             try:
                 req_id = int(str_id)
@@ -513,6 +935,34 @@ async def _persist_agent_artifacts(
             )
             db.add(review)
             await db.flush()
+
+            # Phase 1: also write the generic ArtifactReview row so this stage
+            # shares one review/badge surface with scenario_review and
+            # test_case_review, rather than the requirement-only table above.
+            await artifact_review_service.create_review(
+                db,
+                project_id=run.project_id,
+                agent_run_id=run.id,
+                artifact_type="requirement",
+                artifact_id=req.id,
+                reviewer_agent="requirement_quality",
+                scores={
+                    "completeness": qr.get("completeness_score"),
+                    "clarity": qr.get("clarity_score"),
+                    "testability": qr.get("testability_score"),
+                    "ambiguity": qr.get("ambiguity_score"),
+                    "acceptance_criteria": qr.get("acceptance_criteria_score"),
+                    "interface_readiness": qr.get("interface_readiness_score"),
+                    "telecom_domain_completeness": qr.get("telecom_domain_completeness"),
+                    "scenario_generation_readiness": scenario_readiness,
+                },
+                overall_score=overall,
+                verdict=verdict,
+                findings=[{"dimension": "issue", "issue": i} for i in qr.get("issues", [])]
+                + [{"dimension": "suggestion", "issue": s} for s in qr.get("suggestions", [])],
+                coverage_gaps=None,
+                review_mode=review_mode,
+            )
             updated_ids.append(req.id)
         return {"requirement_ids": updated_ids, "count": len(updated_ids)}
 
@@ -628,6 +1078,43 @@ async def _persist_agent_artifacts(
             created.append(sc.id)
         return {"scenario_ids": created, "count": len(created)}
 
+    if agent_name == "scenario_review":
+        # Phase 1: coverage-focused review of the requirement's *set* of
+        # scenarios. input_data here is what _build_scenario_review_input
+        # assembled — full requirement dicts + the persisted scenario rows.
+        requirements = input_data.get("requirements", [])
+        req_lookup: dict[str, int] = {}
+        for r in requirements:
+            rid = r.get("id")
+            if rid is None:
+                continue
+            req_lookup[str(rid)] = rid
+            if r.get("requirement_id"):
+                req_lookup[r["requirement_id"]] = rid
+
+        review_mode = await artifact_review_service.get_review_mode(db, run.project_id)
+        created_ids = []
+        for rv in data.get("reviews", []):
+            req_id = req_lookup.get(rv.get("target_ref"))
+            if req_id is None:
+                continue
+            review = await artifact_review_service.create_review(
+                db,
+                project_id=run.project_id,
+                agent_run_id=run.id,
+                artifact_type="requirement_scenario_coverage",
+                artifact_id=req_id,
+                reviewer_agent="scenario_review",
+                scores=rv.get("scores"),
+                overall_score=rv.get("overall_score"),
+                verdict=rv.get("verdict", "needs_revision"),
+                findings=rv.get("findings"),
+                coverage_gaps=rv.get("coverage_gaps"),
+                review_mode=review_mode,
+            )
+            created_ids.append(review.id)
+        return {"review_ids": created_ids, "count": len(created_ids), "summary": data.get("summary")}
+
     if agent_name == "test_case":
         scenarios = input_data.get("scenarios", [])
         scenario_id_map = {s.get("scenario_id"): s.get("id") for s in scenarios}
@@ -680,7 +1167,154 @@ async def _persist_agent_artifacts(
             created.append(tc.id)
         return {"test_case_ids": created, "count": len(created)}
 
+    if agent_name == "test_case_review":
+        # Phase 1: coverage-focused review of the scenario's *set* of test
+        # cases. Also seeds the coverage_matrix baseline row for every test
+        # case under the reviewed scenario, since this is the first point in
+        # the pipeline where a test case's full context (requirement,
+        # scenario, case class) is all resolved together.
+        scenarios = input_data.get("scenarios", [])
+        scenario_lookup: dict[str, int] = {}
+        scenario_type_by_id: dict[int, str | None] = {}
+        for s in scenarios:
+            sid = s.get("id")
+            if sid is None:
+                continue
+            scenario_lookup[str(sid)] = sid
+            if s.get("scenario_id"):
+                scenario_lookup[s["scenario_id"]] = sid
+            scenario_type_by_id[sid] = s.get("scenario_type")
+
+        tc_ids_all = [tc.get("id") for tc in input_data.get("test_cases", []) if tc.get("id")]
+        tc_rows: dict[int, TestCase] = {}
+        if tc_ids_all:
+            tc_result = await db.execute(select(TestCase).where(TestCase.id.in_(tc_ids_all)))
+            tc_rows = {tc.id: tc for tc in tc_result.scalars().all()}
+
+        review_mode = await artifact_review_service.get_review_mode(db, run.project_id)
+        created_ids = []
+        for rv in data.get("reviews", []):
+            scenario_db_id = scenario_lookup.get(rv.get("target_ref"))
+            if scenario_db_id is None:
+                continue
+            review = await artifact_review_service.create_review(
+                db,
+                project_id=run.project_id,
+                agent_run_id=run.id,
+                artifact_type="scenario_test_case_coverage",
+                artifact_id=scenario_db_id,
+                reviewer_agent="test_case_review",
+                scores=rv.get("scores"),
+                overall_score=rv.get("overall_score"),
+                verdict=rv.get("verdict", "needs_revision"),
+                findings=rv.get("findings"),
+                coverage_gaps=rv.get("coverage_gaps"),
+                review_mode=review_mode,
+            )
+            created_ids.append(review.id)
+
+            case_class = coverage_matrix_service.case_class_from_scenario_type(
+                scenario_type_by_id.get(scenario_db_id)
+            )
+            for tc in tc_rows.values():
+                if tc.scenario_id == scenario_db_id:
+                    await coverage_matrix_service.seed_from_test_case(
+                        db, project_id=run.project_id, test_case=tc, case_class=case_class,
+                    )
+        return {"review_ids": created_ids, "count": len(created_ids), "summary": data.get("summary")}
+
+    if agent_name == "automation_eligibility":
+        # Phase 2.7: replaces the one-shot automation_candidate boolean with
+        # an auditable verdict on TestCase + the coverage_matrix row seeded
+        # by test_case_review.
+        tc_lookup = {tc.get("test_case_id"): tc.get("id") for tc in input_data.get("test_cases", [])}
+        status_by_verdict = {"yes": "ready_for_automation", "no": "not_required"}
+        updated_ids: list[int] = []
+        for result in data.get("results", []):
+            db_tc_id = tc_lookup.get(result.get("test_case_id"))
+            if not db_tc_id:
+                continue
+            tc = await db.get(TestCase, db_tc_id)
+            if not tc or tc.project_id != run.project_id:
+                continue
+            verdict = result.get("verdict", "unknown")
+            reason = result.get("reason", "")
+            tc.automation_eligible = verdict
+            if verdict in status_by_verdict:
+                tc.automation_status = status_by_verdict[verdict]
+            metadata = dict(tc.metadata_ or {})
+            metadata["automation_eligibility"] = {
+                "verdict": verdict,
+                "reason": reason,
+                "automation_style": result.get("automation_style"),
+                "agent_run_id": run.id,
+            }
+            tc.metadata_ = metadata
+            await coverage_matrix_service.record_eligibility(
+                db, test_case_id=tc.id, automation_eligible=verdict, automation_reason=reason,
+            )
+            updated_ids.append(tc.id)
+        return {"test_case_ids": updated_ids, "count": len(updated_ids), "summary": data.get("summary")}
+
+    if agent_name == "playwright_mcp_discovery":
+        # Phase 3.4/3.5/3.6: persist the durable locator knowledge base and
+        # apply eligibility pass 2 (live-evidence overrides of the static
+        # pass-1 guess from automation_eligibility).
+        tc_lookup = {tc.get("test_case_id"): tc.get("id") for tc in input_data.get("test_cases", [])}
+        locator_ids: list[int] = []
+        overridden_tc_ids: list[int] = []
+
+        for app_result in data.get("applications", []):
+            application_id = app_result.get("application_id")
+            for page in app_result.get("pages", []):
+                page_url = page.get("url") or ""
+                for element in page.get("elements", []):
+                    entry = await locator_map_service.upsert_locator(
+                        db,
+                        project_id=run.project_id,
+                        application_id=application_id,
+                        page=page_url,
+                        element_name=element["element_name"],
+                        recommended_locator=element["recommended_locator"],
+                        recommended_strategy=element["recommended_strategy"],
+                        business_meaning=element.get("business_meaning"),
+                        confidence_score=element.get("confidence_score", 0),
+                    )
+                    locator_ids.append(entry.id)
+
+            for tc_business_id, reasons in (app_result.get("eligibility_overrides") or {}).items():
+                db_tc_id = tc_lookup.get(tc_business_id)
+                if not db_tc_id:
+                    continue
+                tc = await db.get(TestCase, db_tc_id)
+                if not tc or tc.project_id != run.project_id:
+                    continue
+                tc.automation_eligible = "no"
+                tc.automation_status = "not_required"
+                metadata = dict(tc.metadata_ or {})
+                metadata["automation_eligibility_live_override"] = {
+                    "reasons": reasons,
+                    "agent_run_id": run.id,
+                }
+                tc.metadata_ = metadata
+                await coverage_matrix_service.record_eligibility(
+                    db, test_case_id=tc.id, automation_eligible="no",
+                    automation_reason="Live discovery evidence: " + "; ".join(reasons),
+                )
+                overridden_tc_ids.append(tc.id)
+
+        return {
+            "locator_entry_ids": locator_ids,
+            "count": len(locator_ids),
+            "eligibility_overridden_test_case_ids": overridden_tc_ids,
+        }
+
     if agent_name == "automation_script":
+        # Phase 2 (ADR-001): script_data.code is compiler output, not
+        # free-form LLM text — script_data always carries `contract` (the
+        # validated Automation Generation Contract) and `compiled_files`
+        # (the full multi-file bundle). Status starts "generated" and the
+        # Static Quality Gate runs immediately, before any human sees it.
         test_cases = input_data.get("test_cases", [])
         tc_map = {tc.get("test_case_id"): tc.get("id") for tc in test_cases}
         created = []
@@ -696,14 +1330,29 @@ async def _persist_agent_artifacts(
                 code=_to_text(script_data.get("code")) or "",
                 setup_required=_to_list(script_data.get("setup_required")),
                 execution_command=_to_text(script_data.get("execution_command")),
-                status="ai_draft",
+                compiled_files=script_data.get("compiled_files"),
+                contract=script_data.get("contract"),
+                status="generated",
                 agent_run_id=run.id,
-                metadata_={"source": "ai_generation"},
+                metadata_={
+                    "source": "ai_generation",
+                    "grounding": {
+                        "grounded": script_data.get("grounded", False),
+                        "grounded_element_count": script_data.get("grounded_element_count", 0),
+                        "ungrounded_elements": script_data.get("ungrounded_elements", []),
+                    },
+                },
             )
             db.add(script)
             await db.flush()
             script.script_id = display_id("AS", script.id)
             await db.flush()
+
+            gate_result = static_quality_gate.run_static_quality_gate(script)
+            script.static_gate_result = gate_result.as_dict()
+            if gate_result.passed:
+                script.status = "static_passed"
+
             if db_tc_id:
                 await traceability_service.create_lineage(
                     db,
@@ -714,8 +1363,229 @@ async def _persist_agent_artifacts(
                     child_id=script.id,
                     agent_run_id=run.id,
                 )
+                await coverage_matrix_service.record_script_linked(
+                    db, test_case_id=db_tc_id, script_id=script.id
+                )
             created.append(script.id)
         return {"script_ids": created, "count": len(created)}
+
+    if agent_name == "automation_dry_run":
+        # Phase 4.2: one real subprocess execution per newly-generated
+        # script, tagged source_type="dry_run" so it's distinguishable from
+        # a human-triggered regression run. Promotion to "dry_run_passed"
+        # only happens when every test in the script passed — anything else
+        # stays at "static_passed" for failure_classification / the repair
+        # loop (Phase 4.3/4.4) to pick up.
+        promoted_ids: list[int] = []
+        for dry_run in data.get("dry_runs", []):
+            script = await db.get(AutomationScript, dry_run.get("script_id"))
+            if not script or script.project_id != run.project_id:
+                continue
+            results = dry_run.get("results", [])
+            exec_run = ExecutionRun(
+                project_id=run.project_id,
+                created_by=run.triggered_by,
+                triggered_by=run.triggered_by,
+                execution_id=temporary_id("ER"),
+                environment="dry-run",
+                execution_type="automation",
+                source_type="dry_run",
+                status="completed" if dry_run.get("run_status") == "completed" else "failed",
+                total_tests=len(results),
+                passed=sum(1 for r in results if r.get("status") == "pass"),
+                failed=sum(1 for r in results if r.get("status") == "fail"),
+                skipped=sum(1 for r in results if r.get("status") == "skip"),
+                agent_run_id=run.id,
+                metadata_={"automation_script_id": script.id, "dry_run": True},
+            )
+            db.add(exec_run)
+            await db.flush()
+            exec_run.execution_id = display_id("ER", exec_run.id)
+            for r in results:
+                db.add(ExecutionResult(
+                    execution_run_id=exec_run.id,
+                    test_case_id=script.test_case_id,
+                    project_id=run.project_id,
+                    test_name=r.get("name") or script.script_id,
+                    status=r.get("status") or "error",
+                    duration_ms=r.get("duration_ms"),
+                    error_message=r.get("error_message"),
+                    stack_trace=r.get("stack_trace"),
+                    screenshot_path=r.get("screenshot_path"),
+                    video_path=r.get("video_path"),
+                    trace_path=r.get("trace_path"),
+                    metadata_={
+                        "automation_script_id": script.id,
+                        "dry_run": True,
+                        "console_logs": r.get("console_logs"),
+                        "network_logs": r.get("network_logs"),
+                    },
+                ))
+            await db.flush()
+
+            metadata = dict(script.metadata_ or {})
+            metadata["last_dry_run"] = {
+                "execution_run_id": exec_run.id,
+                "passed": dry_run.get("passed", False),
+                "agent_run_id": run.id,
+            }
+            script.metadata_ = metadata
+            if dry_run.get("passed"):
+                script.status = "dry_run_passed"
+                promoted_ids.append(script.id)
+
+        return {"promoted_script_ids": promoted_ids, "count": len(promoted_ids)}
+
+    if agent_name == "failure_classification":
+        classified_ids: list[int] = []
+        for c in data.get("classifications", []):
+            exec_result = await db.get(ExecutionResult, c.get("result_id"))
+            if not exec_result or exec_result.project_id != run.project_id:
+                continue
+            metadata = dict(exec_result.metadata_ or {})
+            metadata["failure_classification"] = {
+                "classification": c.get("classification"),
+                "reason": c.get("reason"),
+                "source": c.get("source"),
+                "repairable": c.get("repairable", False),
+                "agent_run_id": run.id,
+            }
+            exec_result.metadata_ = metadata
+            classified_ids.append(exec_result.id)
+        return {"classified_result_ids": classified_ids, "count": len(classified_ids)}
+
+    if agent_name == "automation_repair_loop":
+        # Phase 4.4: one new AutomationScript VERSION per attempt
+        # (automation_service.create_new_version — the parent row is never
+        # mutated or deleted, so every attempt stays restorable), each with
+        # its own dry-run evidence tagged source_type="repair_dry_run".
+        resolved_ids: list[int] = []
+        for repair in data.get("repairs", []):
+            parent_script = await db.get(AutomationScript, repair.get("script_id"))
+            if not parent_script or parent_script.project_id != run.project_id:
+                continue
+
+            current_parent = parent_script
+            last_version = None
+            for attempt in repair.get("attempts", []):
+                if "compiled_files" not in attempt:
+                    continue  # llm_patch_failed / compile_failed — nothing to version
+
+                status = "generated"
+                if attempt.get("static_gate_passed"):
+                    status = "static_passed"
+                if attempt.get("dry_run_passed"):
+                    status = "dry_run_passed"
+
+                new_version = await automation_service.create_new_version(
+                    db, current_parent,
+                    code=attempt["compiled_files"].get(attempt["file_path"], ""),
+                    compiled_files=attempt["compiled_files"],
+                    contract=attempt["contract"],
+                    status=status,
+                )
+                new_version.static_gate_result = attempt.get("static_gate_result")
+                new_version.metadata_ = {
+                    **(new_version.metadata_ or {}),
+                    "source": "repair_loop",
+                    "repair_attempt": attempt.get("attempt"),
+                }
+                await db.flush()
+
+                dry_run_result = attempt.get("dry_run_result")
+                if dry_run_result:
+                    dr_results = dry_run_result.get("results", [])
+                    exec_run = ExecutionRun(
+                        project_id=run.project_id,
+                        created_by=run.triggered_by,
+                        triggered_by=run.triggered_by,
+                        execution_id=temporary_id("ER"),
+                        environment="dry-run",
+                        execution_type="automation",
+                        source_type="repair_dry_run",
+                        status="completed" if dry_run_result.get("run_status") == "completed" else "failed",
+                        total_tests=len(dr_results),
+                        passed=sum(1 for r in dr_results if r.get("status") == "pass"),
+                        failed=sum(1 for r in dr_results if r.get("status") == "fail"),
+                        skipped=sum(1 for r in dr_results if r.get("status") == "skip"),
+                        agent_run_id=run.id,
+                        metadata_={
+                            "automation_script_id": new_version.id,
+                            "dry_run": True,
+                            "repair_attempt": attempt.get("attempt"),
+                        },
+                    )
+                    db.add(exec_run)
+                    await db.flush()
+                    exec_run.execution_id = display_id("ER", exec_run.id)
+                    for r in dr_results:
+                        db.add(ExecutionResult(
+                            execution_run_id=exec_run.id,
+                            test_case_id=new_version.test_case_id,
+                            project_id=run.project_id,
+                            test_name=r.get("name") or new_version.script_id,
+                            status=r.get("status") or "error",
+                            duration_ms=r.get("duration_ms"),
+                            error_message=r.get("error_message"),
+                            stack_trace=r.get("stack_trace"),
+                            screenshot_path=r.get("screenshot_path"),
+                            video_path=r.get("video_path"),
+                            trace_path=r.get("trace_path"),
+                            metadata_={
+                                "automation_script_id": new_version.id,
+                                "dry_run": True,
+                                "console_logs": r.get("console_logs"),
+                                "network_logs": r.get("network_logs"),
+                            },
+                        ))
+                    await db.flush()
+
+                current_parent = new_version
+                last_version = new_version
+
+            if last_version is None:
+                continue
+            if repair.get("resolved"):
+                resolved_ids.append(last_version.id)
+            else:
+                last_version.metadata_ = {**(last_version.metadata_ or {}), "repair_loop_exhausted": True}
+
+        return {"resolved_script_ids": resolved_ids, "count": len(resolved_ids)}
+
+    if agent_name == "automation_script_review":
+        # Phase 4.5: senior-reviewer verdict per script version, on top of the
+        # already-passed Static Quality Gate + dry run. Writes an
+        # ArtifactReview only — it does NOT flip script.status itself; the
+        # reviewer_approved/lead_approved transitions are human role-gated
+        # (Task 42) and merely informed by this verdict.
+        review_mode = await artifact_review_service.get_review_mode(db, run.project_id)
+        created_ids = []
+        for rv in data.get("reviews", []):
+            script_id = None
+            target_ref = rv.get("target_ref")
+            for s in input_data.get("scripts", []):
+                tc_id = s.get("test_case", {}).get("test_case_id")
+                if (tc_id and tc_id == target_ref) or (not tc_id and str(s.get("script_id")) == target_ref):
+                    script_id = s.get("script_id")
+                    break
+            if script_id is None:
+                continue
+            review = await artifact_review_service.create_review(
+                db,
+                project_id=run.project_id,
+                agent_run_id=run.id,
+                artifact_type="automation_script",
+                artifact_id=script_id,
+                reviewer_agent="automation_script_review",
+                scores=rv.get("scores"),
+                overall_score=rv.get("overall_score"),
+                verdict=rv.get("verdict", "needs_revision"),
+                findings=rv.get("findings"),
+                coverage_gaps=rv.get("coverage_gaps"),
+                review_mode=review_mode,
+            )
+            created_ids.append(review.id)
+        return {"review_ids": created_ids, "count": len(created_ids), "summary": data.get("summary")}
 
     if agent_name == "test_execution":
         summary = data.get("summary", {})
@@ -793,6 +1663,9 @@ async def _persist_agent_artifacts(
                     tc.latest_evidence_available = bool(exec_result.logs or exec_result.error_message or exec_result.stack_trace)
                     tc.last_status_updated_by = run.triggered_by
                     tc.last_status_updated_at = now
+                await coverage_matrix_service.record_execution_status(
+                    db, test_case_id=db_tc_id, execution_status=exec_result.status
+                )
             parents = [("execution_run", run_record.id)]
             if db_tc_id:
                 parents.append(("test_case", db_tc_id))
@@ -865,6 +1738,10 @@ async def _persist_agent_artifacts(
                 child_id=draft.id,
                 agent_run_id=run.id,
             )
+            if tc_map.get(ref):
+                await coverage_matrix_service.record_defect_linked(
+                    db, test_case_id=tc_map[ref], defect_id=draft.id
+                )
             created.append(draft.id)
         return {"defect_ids": created, "count": len(created)}
 
@@ -930,7 +1807,7 @@ async def _run_agent_with_project_llm_routes(
     routes = await resolve_project_llm_routes(
         db,
         project_id=run.project_id,
-        module_scope=input_data.get("module_scope"),
+        module_scope=input_data.get("module_scope") or get_agent_spec(agent_name).module_scope,
     )
     last_result: Any = None
     last_error: Exception | None = None
@@ -997,6 +1874,10 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
         if not run:
             raise ValueError(f"AgentRun {agent_run_id} not found")
 
+        if run.status == "cancelled":
+            # Cancelled while still queued — never overwrite a user's cancel.
+            return {"agent_run_id": agent_run_id, "status": "cancelled"}
+
         run.status = "running"
         run.celery_task_id = task_id
         await agent_run_service.update_progress(db, run, percent=10, message="Worker started", step="running")
@@ -1011,6 +1892,7 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
             await db.commit()
             return {"agent_run_id": agent_run_id, "status": "failed", "error": message}
 
+        spec = get_agent_spec(agent_name)
         try:
             await agent_run_service.update_progress(db, run, percent=30, message="Agent execution started")
             await db.commit()
@@ -1023,10 +1905,10 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
                         agent_func,
                         input_data or {},
                     ),
-                    timeout=120.0
+                    timeout=spec.timeout_seconds
                 )
             except (asyncio.TimeoutError, TimeoutError):
-                error = "Agent execution timed out after 120 seconds."
+                error = f"Agent execution timed out after {int(spec.timeout_seconds)} seconds."
                 await agent_run_service.fail_agent_run(
                     db,
                     run,
@@ -1035,11 +1917,19 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
                 await db.commit()
                 return {"agent_run_id": agent_run_id, "status": "failed", "error": error}
 
+            # Re-check from the DB (not the in-memory `run`) — a concurrent
+            # cancel request commits from a different session, so only a
+            # fresh read observes it.
+            cancel_check = await db.execute(select(AgentRun.status).where(AgentRun.id == agent_run_id))
+            if cancel_check.scalar_one_or_none() == "cancelled":
+                return {"agent_run_id": agent_run_id, "status": "cancelled"}
+
             if _is_success(agent_result):
                 await agent_run_service.update_progress(db, run, percent=90, message="Persisting agent result")
                 output_data = await _persist_agent_artifacts(db, run, agent_name, input_data or {}, agent_result)
                 await agent_run_service.complete_agent_run(db, run, agent_result=agent_result, output_data=output_data)
                 await db.commit()
+                await _chain_next_agents(db, run, agent_name, input_data or {}, output_data)
                 return {"agent_run_id": agent_run_id, "status": "completed"}
 
             error = getattr(agent_result, "error", None) or "Agent failed"
@@ -1055,22 +1945,6 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
             logger.exception("Agent task failed: agent=%s run_id=%s", agent_name, agent_run_id)
             await db.rollback()
             raise
-
-
-def classify_exception(exc: Exception) -> str:
-    if isinstance(exc, PermanentAgentError):
-        return "permanent"
-    if isinstance(exc, TransientAgentError):
-        return "transient"
-    if isinstance(exc, (TimeoutError, ConnectionError, socket.timeout, httpx.TimeoutException, httpx.ConnectError)):
-        return "transient"
-    return "permanent"
-
-
-async def _mark_agent_failed(agent_run_id: int, exc: Exception) -> None:
-    async with AsyncSessionLocal() as db:
-        await agent_run_service.fail_agent_run(db, agent_run_id, error_message=str(exc))
-        await db.commit()
 
 
 @celery_app.task(bind=True, name="agent_tasks.run_agent", max_retries=3, default_retry_delay=1)

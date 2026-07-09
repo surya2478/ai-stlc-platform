@@ -141,11 +141,21 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
     script.code = _regen_str(sc_data.get("code")) or script.code
     script.setup_required = _regen_str_list(sc_data.get("setup_required")) or script.setup_required
     script.execution_command = _regen_str(sc_data.get("execution_command")) or script.execution_command
+    script.compiled_files = sc_data.get("compiled_files") or script.compiled_files
+    script.contract = sc_data.get("contract") or script.contract
 
     history = list((script.metadata_ or {}).get("transition_history", []))
     history.append({"action": "regenerate", "by": user_id, "from_status": script.status})
     script.metadata_ = {**(script.metadata_ or {}), "transition_history": history}
     script.status = "draft"
+
+    # NOTE: this mutates the existing row in place rather than creating a new
+    # version (see create_new_version / ADR-001's rollback guarantee). Phase
+    # 4/5's bounded repair loop is the intended replacement for this call
+    # path; tracked as a known gap until then, not silently unenforced.
+    from app.services import static_quality_gate
+    gate_result = static_quality_gate.run_static_quality_gate(script)
+    script.static_gate_result = gate_result.as_dict()
 
     await db.flush()
     await db.refresh(script)
@@ -159,6 +169,10 @@ _TRANSITIONS: dict[str, dict[str, str]] = {
     "submit_for_review": {
         "ai_draft": "in_review",
         "draft": "in_review",
+        # Phase 2: compiler-produced scripts that passed (or were left at
+        # "generated" pending) the Static Quality Gate can go straight to review.
+        "generated": "in_review",
+        "static_passed": "in_review",
     },
     "request_changes": {
         "in_review": "draft",
@@ -197,6 +211,115 @@ async def transition_script(
         history = list((script.metadata_ or {}).get("transition_history", []))
         history.append({"action": action, "notes": notes, "to": target})
         script.metadata_ = {**(script.metadata_ or {}), "transition_history": history}
+    await db.flush()
+    await db.refresh(script)
+    return script
+
+
+async def create_new_version(
+    db: AsyncSession,
+    parent: AutomationScript,
+    *,
+    code: str,
+    compiled_files: dict | None = None,
+    contract: dict | None = None,
+    status: str = "generated",
+) -> AutomationScript:
+    """Create a new AutomationScript version superseding `parent` (Phase 2,
+    ADR-001 rollback guarantee). The parent row is never mutated or
+    deleted — only its status may later change (e.g. to "deprecated") once
+    the caller has confirmed the new version is promoted; this helper does
+    not do that itself, since "promoted" is a later-phase (repair loop /
+    healing) decision, not a generic versioning concern.
+    """
+    child = AutomationScript(
+        project_id=parent.project_id,
+        test_case_id=parent.test_case_id,
+        created_by=parent.created_by,
+        script_id=temporary_id("AS"),
+        framework=parent.framework,
+        file_path=parent.file_path,
+        code=code,
+        setup_required=parent.setup_required,
+        execution_command=parent.execution_command,
+        version=parent.version + 1,
+        parent_script_id=parent.id,
+        compiled_files=compiled_files,
+        contract=contract,
+        status=status,
+        agent_run_id=parent.agent_run_id,
+    )
+    db.add(child)
+    await db.flush()
+    child.script_id = display_id("AS", child.id)
+    await db.flush()
+    return child
+
+
+# Phase 4.6: staged post-generation approval chain, distinct from the
+# legacy draft/in_review/approved-or-rejected flow above (`approve_script` /
+# `transition_script`), which pre-dates the grounded-generation pipeline and
+# is left untouched for scripts still using it. Every step here is additive
+# and audited via a dedicated ApprovalAction (see the endpoint), and never
+# skips a stage — each action's `from` status is enforced strictly.
+# `environment_approve` never changes `status`; it only requires an
+# ApprovalAction to exist before `mark_ci_ready` will proceed when the
+# script's contract targets PROD_SANITY (see _prod_sanity_gate_satisfied).
+LIFECYCLE_APPROVAL_ACTIONS: dict[str, dict[str, str | None]] = {
+    "reviewer_approve": {"from": "dry_run_passed", "to": "reviewer_approved"},
+    "reviewer_reject": {"from": "dry_run_passed", "to": "rejected"},
+    "lead_approve": {"from": "reviewer_approved", "to": "lead_approved"},
+    "lead_reject": {"from": "reviewer_approved", "to": "rejected"},
+    "environment_approve": {"from": "lead_approved", "to": None},  # no status change
+    "mark_ci_ready": {"from": "lead_approved", "to": "ci_ready"},
+}
+
+
+def _requires_prod_sanity_gate(script: AutomationScript) -> bool:
+    return (script.contract or {}).get("environmentProfile") == "PROD_SANITY"
+
+
+async def prod_sanity_gate_satisfied(db: AsyncSession, script: AutomationScript) -> bool:
+    """PROD_SANITY scripts must have a recorded environment_approve action
+    before they can reach ci_ready — "PROD_SANITY always strict" per the plan."""
+    if not _requires_prod_sanity_gate(script):
+        return True
+    from app.models.approval import ApprovalAction
+
+    result = await db.execute(
+        select(ApprovalAction).where(
+            ApprovalAction.entity_type == "automation_script",
+            ApprovalAction.entity_id == script.id,
+            ApprovalAction.action_type == "environment_approve_automation_script",
+            ApprovalAction.decision == "approved",
+        )
+    )
+    return result.scalars().first() is not None
+
+
+async def advance_script_lifecycle(
+    db: AsyncSession,
+    script: AutomationScript,
+    action: str,
+    notes: str | None,
+) -> AutomationScript:
+    spec = LIFECYCLE_APPROVAL_ACTIONS.get(action)
+    if spec is None:
+        raise ValueError(f"Unknown lifecycle approval action: {action}")
+    if script.status != spec["from"]:
+        raise ValueError(
+            f"Cannot '{action}' a script in status '{script.status}'. "
+            f"Expected status '{spec['from']}'."
+        )
+    if action == "mark_ci_ready" and not await prod_sanity_gate_satisfied(db, script):
+        raise ValueError(
+            "This script targets PROD_SANITY and requires an environment_approve "
+            "action before it can be marked ci_ready."
+        )
+    if spec["to"] is not None:
+        script.status = spec["to"]
+    if notes:
+        script.metadata_ = {**(script.metadata_ or {}), f"{action}_notes": notes}
     await db.flush()
     await db.refresh(script)
     return script

@@ -59,3 +59,8 @@ eslint-security-report.json
 *.secret
 secrets/
 .secrets
+
+# Playwright MCP local output (snapshots/console logs written to CWD when
+# running the discovery agent or its smoke tests outside a configured
+# --output-dir)
+.playwright-mcp/

@@ -1,6 +1,8 @@
 """
 Agent Runs & Logs endpoints.
 """
+import logging
+
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 from datetime import datetime
@@ -9,9 +11,15 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, DBSession, require_entity_permission, require_permission
 from app.models.agent import AgentRun, AgentLog
-from app.services.rbac_service import VIEW_AUDIT_LOGS
+from app.services import agent_run_service
+from app.services.rbac_service import MANAGE_PROJECT, VIEW_AUDIT_LOGS
+from app.worker.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+CANCELLABLE_STATUSES = {"pending", "running"}
 
 
 class AgentRunOut(BaseModel):
@@ -96,3 +104,45 @@ async def get_agent_run_logs(run_id: int, db: DBSession, current_user: CurrentUs
         .order_by(AgentLog.created_at.asc())
     )
     return list(result.scalars().all())
+
+
+@router.post("/{run_id}/cancel", response_model=AgentRunOut)
+async def cancel_agent_run(run_id: int, db: DBSession, current_user: CurrentUser):
+    """Cancel a pending/running agent run.
+
+    The triggering user can always cancel their own run; cancelling someone
+    else's requires MANAGE_PROJECT. Marks the run cancelled immediately (the
+    DB row is the source of truth for downstream checks) and best-effort
+    revokes the Celery task — a revoke failure (e.g. broker unreachable)
+    still leaves the run cancelled rather than blocking the API response.
+    """
+    result = await db.execute(select(AgentRun).where(AgentRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+    if run.triggered_by != current_user.id:
+        await require_entity_permission(run, MANAGE_PROJECT, current_user, db)
+
+    if run.status not in CANCELLABLE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Agent run is '{run.status}' and can no longer be cancelled",
+        )
+
+    if run.celery_task_id:
+        try:
+            celery_app.control.revoke(run.celery_task_id, terminate=True)
+        except Exception:
+            logger.exception(
+                "Failed to revoke Celery task %s for agent run %s", run.celery_task_id, run.id
+            )
+
+    run.status = "cancelled"
+    run.progress_message = "Cancelled by user"
+    await agent_run_service.add_log(
+        db, run, level="warning", step="cancelled",
+        message=f"Agent run cancelled by user {current_user.id}",
+    )
+    await db.commit()
+    await db.refresh(run)
+    return run

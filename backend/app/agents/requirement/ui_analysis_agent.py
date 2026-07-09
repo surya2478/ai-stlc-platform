@@ -20,7 +20,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import RequirementLLMOutput
 from app.llm.provider import get_llm, get_vision_llm
 from app.llm.structured import validate_structured_output
@@ -199,12 +199,12 @@ class UIAnalysisAgent(BaseAgent):
         image_name: str = "screenshot",
         context_note: str = "",
         project_id: int = 0,
-    ) -> "UIAnalysisAgentResult":
+    ) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Analysing UI screenshot '{image_name}' for project {project_id}")
 
         if not image_path:
-            return UIAnalysisAgentResult(
+            return AgentRunResult(
                 success=False, error="No image path provided", data={}, logs=self._logs
             )
 
@@ -232,14 +232,14 @@ class UIAnalysisAgent(BaseAgent):
             self.log("warning", "warning", e)
 
         if not reqs:
-            return UIAnalysisAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="UI analysis produced no requirements. " + "; ".join(errors[:3]),
                 data={"ui_analysis": analysis, "requirements": [], "count": 0},
                 logs=self._logs,
             )
 
-        return UIAnalysisAgentResult(
+        return AgentRunResult(
             success=True,
             data={"ui_analysis": analysis, "requirements": reqs, "count": len(reqs)},
             logs=self._logs,
@@ -253,11 +253,3 @@ class UIAnalysisAgent(BaseAgent):
             project_id=input_data.get("project_id", 0),
         )
         return result.data
-
-
-class UIAnalysisAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error

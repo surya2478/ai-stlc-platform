@@ -44,6 +44,11 @@ langchain-openai==0.1.8
 # ── Browser Automation (GAP-2: portal URL analysis) ──────────────────────────
 playwright==1.44.0
 
+# ── Playwright MCP Discovery Agent (Phase 3) ─────────────────────────────────
+# Pinned per ADR-001 — never use @latest. The Node-side @playwright/mcp server
+# itself is pinned in app/agents/automation/mcp_session.py (invoked via npx).
+mcp==1.9.4
+
 # ── Reporting ─────────────────────────────────────────────────────────────────
 jinja2==3.1.4
 

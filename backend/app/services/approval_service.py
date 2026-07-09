@@ -23,8 +23,14 @@ async def create_approval_action(
     correlation_id: str | None = None,
     request_id: str | None = None,
     agent_run_id: int | None = None,
+    decision: str | None = None,
 ) -> ApprovalAction:
-    decision = "approved" if action == "approve" else "rejected"
+    # Default: bare "approve"/"reject" actions map directly. Callers with
+    # multi-step action names (e.g. "reviewer_approve", "lead_reject") must
+    # pass `decision` explicitly since the action string itself no longer
+    # says which way the decision went.
+    if decision is None:
+        decision = "approved" if action == "approve" else "rejected"
     entry = ApprovalAction(
         project_id=project_id,
         user_id=user_id,

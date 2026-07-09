@@ -11,11 +11,14 @@ from app.api.deps import CurrentUser, DBSession, require_entity_permission, requ
 from app.config import get_settings
 from app.models.automation_script import AutomationScript
 from app.models.execution import ExecutionResult, ExecutionRun
+from app.models.project_application import ProjectApplication
 from app.models.test_case import TestCase
 from app.schemas.automation import (
     AgentAutomationTrigger,
+    AgentMCPDiscoveryTrigger,
     AutomationBatchExecuteRequest,
     AutomationBatchExecuteResponse,
+    AutomationConfidenceScoreOut,
     AutomationPlanningOut,
     AutomationRunCancelResponse,
     AutomationScriptExecuteRequest,
@@ -25,25 +28,40 @@ from app.schemas.automation import (
     AutomationTestMappingCreate,
     AutomationTestMappingOut,
     AutomationTestMappingUpdate,
+    BulkScriptApprovalRequest,
+    BulkScriptApprovalResponse,
+    BulkScriptApprovalResult,
     ExternalAutomationRunOut,
     ExternalAutomationRunRequest,
     ExternalAutomationSyncRequest,
     JiraExecutionStatusOut,
     JiraExecutionStatusSyncRequest,
+    LifecycleApprovalRequest,
     RecommendationDecisionRequest,
     RunnerFrameworkStatus,
     RunnerStatusOut,
     ScriptTransitionRequest,
 )
-from app.services import automation_intelligence
+from app.services import automation_confidence_service, automation_intelligence
 from app.schemas.execution import ExecutionResultOut
 from app.schemas.requirement import ApprovalRequest
 from app.services import agent_run_service, approval_service, automation_service, traceability_service
 from app.services.agent_dispatch_service import enqueue_agent_run
 from app.services.automation_runner import runtime_status
-from app.services.project_application_service import build_test_case_application_context
+from app.services.project_application_service import (
+    build_test_case_application_context,
+    resolve_default_application,
+    resolve_environment_url,
+)
 from app.services.display_id_service import display_id, temporary_id
-from app.services.rbac_service import EXECUTE_TESTS, GENERATE_AUTOMATION
+from app.services.rbac_service import (
+    APPROVE_RELEASE_REPORT,
+    AUTOMATION_APPROVE_ENVIRONMENT,
+    AUTOMATION_APPROVE_SCRIPT,
+    AUTOMATION_REVIEW_SCRIPT,
+    EXECUTE_TESTS,
+    GENERATE_AUTOMATION,
+)
 from app.agents.automation.automation_agent import AutomationScriptAgent
 from app.integrations.automation.framework_adapters import framework_language
 
@@ -284,6 +302,106 @@ async def approve_automation_script(
     return script
 
 
+# Phase 4.6: staged post-generation approval chain. Distinct from
+# `/approve` above, which drives the legacy draft/in_review workflow —
+# this one only accepts scripts already at dry_run_passed or later and
+# advances them through role-gated stages, each stamped with the acting
+# user's role for audit (see automation_service.advance_script_lifecycle).
+_LIFECYCLE_ACTION_PERMISSIONS = {
+    "reviewer_approve": AUTOMATION_REVIEW_SCRIPT,
+    "reviewer_reject": AUTOMATION_REVIEW_SCRIPT,
+    "lead_approve": AUTOMATION_APPROVE_SCRIPT,
+    "lead_reject": AUTOMATION_APPROVE_SCRIPT,
+    "environment_approve": AUTOMATION_APPROVE_ENVIRONMENT,
+    "mark_ci_ready": APPROVE_RELEASE_REPORT,
+}
+
+
+@router.post("/{script_id}/lifecycle-approval", response_model=AutomationScriptOut)
+async def lifecycle_approval_automation_script(
+    script_id: int,
+    body: LifecycleApprovalRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    script = await automation_service.get_script(db, script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Automation script not found")
+    permission = _LIFECYCLE_ACTION_PERMISSIONS[body.action]
+    await require_entity_permission(script, permission, current_user, db)
+    try:
+        script = await automation_service.advance_script_lifecycle(db, script, body.action, body.notes)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    decision = "rejected" if body.action.endswith("_reject") else "approved"
+    await approval_service.create_approval_action(
+        db,
+        project_id=script.project_id,
+        user_id=current_user.id,
+        entity_type="automation_script",
+        entity_id=script.id,
+        action=body.action,
+        notes=body.notes,
+        actor_role=current_user.role,
+        decision=decision,
+    )
+    await db.commit()
+    return script
+
+
+@router.get("/{script_id}/confidence-score", response_model=AutomationConfidenceScoreOut)
+async def get_automation_confidence_score(
+    script_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    script = await automation_service.get_script(db, script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Automation script not found")
+    await require_entity_permission(script, GENERATE_AUTOMATION, current_user, db)
+    return await automation_confidence_service.compute_confidence_score(db, script)
+
+
+@router.post("/scripts/bulk-approve", response_model=BulkScriptApprovalResponse)
+async def bulk_approve_automation_scripts(
+    body: BulkScriptApprovalRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    if not body.script_ids:
+        raise HTTPException(status_code=422, detail="script_ids must not be empty")
+
+    results: list[BulkScriptApprovalResult] = []
+    for script_id in body.script_ids:
+        try:
+            script = await automation_service.get_script(db, script_id)
+            if not script:
+                results.append(BulkScriptApprovalResult(script_id=script_id, ok=False, error="Script not found"))
+                continue
+            await require_entity_permission(script, GENERATE_AUTOMATION, current_user, db)
+            script = await automation_service.approve_script(db, script, body.action, body.notes)
+            await approval_service.create_approval_action(
+                db,
+                project_id=script.project_id,
+                user_id=current_user.id,
+                entity_type="automation_script",
+                entity_id=script.id,
+                action=body.action,
+                notes=body.notes,
+            )
+            results.append(BulkScriptApprovalResult(script_id=script_id, ok=True))
+        except HTTPException as e:
+            results.append(BulkScriptApprovalResult(script_id=script_id, ok=False, error=str(e.detail)))
+
+    await db.commit()
+    approved_count = sum(1 for r in results if r.ok)
+    return BulkScriptApprovalResponse(
+        results=results,
+        approved_count=approved_count,
+        failed_count=len(results) - approved_count,
+    )
+
+
 @router.post("/{script_id}/transition", response_model=AutomationScriptOut)
 async def transition_automation_script(
     script_id: int,
@@ -402,6 +520,7 @@ async def trigger_automation_agent(
     test_cases = []
     skipped_not_approved = []
     skipped_wrong_project = []
+    locator_map_by_application: dict[int, list[dict]] = {}
     for tc_id in body.test_case_ids:
         r = await db.execute(select(TestCase).where(TestCase.id == tc_id))
         tc = r.scalar_one_or_none()
@@ -414,6 +533,27 @@ async def trigger_automation_agent(
             skipped_not_approved.append(tc_id)
             continue
         app_context = await build_test_case_application_context(db, tc)
+        application = None
+        if tc.application_id:
+            application = await db.get(ProjectApplication, tc.application_id)
+        if application is None:
+            application = await resolve_default_application(db, body.project_id)
+        application_id = application.id if application else None
+        if application_id is not None and application_id not in locator_map_by_application:
+            entries = await locator_map_service.list_for_application(
+                db, project_id=body.project_id, application_id=application_id
+            )
+            locator_map_by_application[application_id] = [
+                {
+                    "element_name": e.element_name,
+                    "page": e.page,
+                    "role": e.recommended_strategy,
+                    "business_meaning": e.business_meaning,
+                    "recommended_locator": e.recommended_locator,
+                    "confidence_score": e.confidence_score,
+                }
+                for e in entries
+            ]
         test_cases.append({
             "id": tc.id,
             "test_case_id": tc.test_case_id,
@@ -424,6 +564,7 @@ async def trigger_automation_agent(
             "bdd_scenario": tc.bdd_scenario,
             "test_type": tc.test_type,
             "priority": tc.priority,
+            "application_id": application_id,
             **app_context,
         })
 
@@ -448,7 +589,11 @@ async def trigger_automation_agent(
             project_id=body.project_id,
             user_id=current_user.id,
             agent_name="automation_script",
-            input_data={"test_cases": test_cases, "framework": body.framework},
+            input_data={
+                "test_cases": test_cases,
+                "framework": body.framework,
+                "locator_map": locator_map_by_application,
+            },
             metadata={"approved_test_case_ids": [tc["id"] for tc in test_cases]},
         )
         return JSONResponse(
@@ -567,6 +712,68 @@ async def trigger_automation_agent(
         "agent_logs": agent_result.logs,
         "agent_run_id": agent_run.id,
     }
+
+
+@router.post("/agent/discover-ui")
+async def trigger_mcp_discovery_agent(
+    body: AgentMCPDiscoveryTrigger,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Trigger the Playwright MCP Discovery Agent (Phase 3): opens the
+    project-configured application in a real, isolated headless browser
+    session and builds a ranked locator knowledge base for the given test
+    cases. Always queued (never a synchronous fallback) — a real browser
+    session belongs on the worker, not the request thread. A deliberate,
+    user-triggered action (like script generation) rather than an automatic
+    chain, since it spawns a real process against a live environment.
+    """
+    await require_permission(GENERATE_AUTOMATION, body.project_id, current_user, db)
+
+    test_cases = []
+    for tc_id in body.test_case_ids:
+        result = await db.execute(select(TestCase).where(TestCase.id == tc_id))
+        tc = result.scalar_one_or_none()
+        if not tc or tc.project_id != body.project_id:
+            continue
+        application = None
+        if tc.application_id:
+            application = await db.get(ProjectApplication, tc.application_id)
+        if application is None:
+            application = await resolve_default_application(db, body.project_id)
+        application_url = resolve_environment_url(application, body.environment)
+        test_cases.append({
+            "id": tc.id,
+            "test_case_id": tc.test_case_id,
+            "title": tc.title,
+            "steps": tc.steps or [],
+            "application_id": application.id if application else None,
+            "application_url": application_url,
+        })
+
+    if not test_cases:
+        raise HTTPException(status_code=422, detail="No valid test cases found in this project")
+    if not any(tc["application_url"] for tc in test_cases):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"No application URL configured for environment '{body.environment}'. "
+                "Configure one in Project Settings → Applications & Environments."
+            ),
+        )
+
+    agent_run, task_id = await enqueue_agent_run(
+        db,
+        project_id=body.project_id,
+        user_id=current_user.id,
+        agent_name="playwright_mcp_discovery",
+        input_data={"test_cases": test_cases},
+        metadata={"test_case_ids": [tc["id"] for tc in test_cases], "environment": body.environment},
+    )
+    return JSONResponse(
+        status_code=202,
+        content={"message": "Playwright MCP discovery queued", "agent_run_id": agent_run.id, "task_id": task_id},
+    )
 
 
 # ── Local subprocess runner ───────────────────────────────────────────────────

@@ -8,7 +8,7 @@ from typing import Any, TypedDict
 
 from langgraph.graph import StateGraph, END
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import TestScenarioLLMOutput
 from app.llm.provider import get_llm
 from app.llm.structured import validate_structured_output, parse_and_validate_llm_list
@@ -194,12 +194,12 @@ class TestScenarioAgent(BaseAgent):
         db=None,
         project_id: int | None = None,
         agent_run_id: int | None = None,
-    ) -> "ScenarioAgentResult":
+    ) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Generating test scenarios from {len(requirements)} requirements")
 
         if not requirements:
-            return ScenarioAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="No requirements provided",
                 data={},
@@ -224,7 +224,7 @@ class TestScenarioAgent(BaseAgent):
         for e in errors:
             self.log("warning", "warning", e)
 
-        return ScenarioAgentResult(
+        return AgentRunResult(
             success=True,
             data={"scenarios": scenarios, "count": len(scenarios)},
             logs=self._logs,
@@ -233,11 +233,3 @@ class TestScenarioAgent(BaseAgent):
     async def _run(self, input_data: dict) -> dict:
         result = await self.run(requirements=input_data.get("requirements", []))
         return result.data
-
-
-class ScenarioAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error

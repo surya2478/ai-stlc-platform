@@ -8,7 +8,7 @@ from app.api.v1.endpoints import (
     requirements, test_plans, test_cases, test_suites,
     test_data, automation, execution, defects,
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
-    applications,
+    applications, reviews,
 )
 
 api_router = APIRouter()
@@ -36,4 +36,5 @@ api_router.include_router(applications.router, tags=["Applications"])
 api_router.include_router(rag.router, prefix="/rag", tags=["RAG"])
 api_router.include_router(assistant.router, prefix="/assistant", tags=["Assistant"])
 api_router.include_router(resource_ops.router, prefix="/resource-operations", tags=["Resource Operations"])
+api_router.include_router(reviews.router, prefix="/reviews", tags=["Reviews"])
 

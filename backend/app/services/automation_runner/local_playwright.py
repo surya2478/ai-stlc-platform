@@ -11,6 +11,7 @@ PerTestResult so the API can serve them.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import re
@@ -199,6 +200,10 @@ class LocalPlaywrightRunner(AutomationRunner):
                         result.get("attachments") or [],
                         workspace_dir,
                     )
+                    console_logs, network_logs = self._lift_json_evidence(
+                        result.get("attachments") or [],
+                        workspace_dir,
+                    )
                     sink.append(PerTestResult(
                         name=spec.get("title") or test.get("title") or "unknown",
                         status=status,
@@ -208,6 +213,8 @@ class LocalPlaywrightRunner(AutomationRunner):
                         screenshot_path=screenshot_path,
                         video_path=video_path,
                         trace_path=trace_path,
+                        console_logs=console_logs,
+                        network_logs=network_logs,
                         raw={"playwright_status": result.get("status")},
                     ))
         for child in suite.get("suites", []):
@@ -238,6 +245,62 @@ class LocalPlaywrightRunner(AutomationRunner):
             elif "trace" in name and not trace:
                 trace = str(abs_path)
         return screenshot, video, trace
+
+    def _lift_json_evidence(
+        self,
+        attachments: list[dict],
+        workspace_dir: Path,
+    ) -> tuple[list[dict] | None, list[dict] | None]:
+        """Read the console-logs/network-logs JSON attachments the compiled
+        spec always emits via testInfo.attach() (see playwright_renderer.py)
+        and parse them inline — small, structured, and immediately useful
+        for failure_classification, unlike trace.zip's opaque binary format.
+
+        Playwright's JSON reporter embeds SMALL attachments inline as
+        base64 in a `body` field rather than writing them to disk — only
+        larger ones get a `path` (confirmed by actually running a compiled
+        script: console/network attachments came back as `body`, not
+        `path`). Both are handled here.
+        """
+        console_logs = network_logs = None
+        for att in attachments:
+            name = (att.get("name") or "").lower()
+            if "json" not in (att.get("contentType") or "").lower():
+                continue
+            if "console-logs" not in name and "network-logs" not in name:
+                continue
+            parsed = self._read_json_attachment(att, workspace_dir)
+            if parsed is None:
+                continue
+            if "console-logs" in name and console_logs is None:
+                console_logs = parsed
+            elif "network-logs" in name and network_logs is None:
+                network_logs = parsed
+        return console_logs, network_logs
+
+    @staticmethod
+    def _read_json_attachment(att: dict, workspace_dir: Path) -> list[dict] | None:
+        body = att.get("body")
+        if body:
+            try:
+                raw = base64.b64decode(body)
+                data = json.loads(raw.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+                return None
+            return data if isinstance(data, list) else None
+        path = att.get("path")
+        if not path:
+            return None
+        abs_path = (workspace_dir / path).resolve()
+        try:
+            abs_path.relative_to(workspace_dir.resolve())
+        except ValueError:
+            return None
+        try:
+            data = json.loads(abs_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return data if isinstance(data, list) else None
 
     def _fallback_row(self, script_file_name: str, exit_code: int) -> PerTestResult:
         if exit_code == 0:

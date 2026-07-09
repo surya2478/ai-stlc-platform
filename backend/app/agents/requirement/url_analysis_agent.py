@@ -17,7 +17,7 @@ import json
 import uuid
 from pathlib import Path
 
-from app.agents.base.base_agent import BaseAgent
+from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.requirement.ui_analysis_agent import (
     DERIVE_SYSTEM,
     VISION_SYSTEM,
@@ -55,18 +55,18 @@ class URLAnalysisAgent(BaseAgent):
         crawl_depth: int = 0,
         context_note: str = "",
         project_id: int = 0,
-    ) -> "URLAnalysisAgentResult":
+    ) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Analysing portal URL {url} (depth {crawl_depth}) for project {project_id}")
 
         if not url or not url.strip():
-            return URLAnalysisAgentResult(success=False, error="No URL provided", data={}, logs=self._logs)
+            return AgentRunResult(success=False, error="No URL provided", data={}, logs=self._logs)
 
         # 1. Capture pages (Playwright render + DOM summary + screenshot)
         try:
             pages = await capture_pages(url, crawl_depth=crawl_depth)
         except Exception as exc:
-            return URLAnalysisAgentResult(
+            return AgentRunResult(
                 success=False,
                 error=f"Page capture failed: {exc}",
                 data={},
@@ -120,7 +120,7 @@ class URLAnalysisAgent(BaseAgent):
 
         total_reqs = sum(len(p["requirements"]) for p in page_results)
         if total_reqs == 0:
-            return URLAnalysisAgentResult(
+            return AgentRunResult(
                 success=False,
                 error="URL analysis produced no requirements. " + "; ".join(errors[:3]),
                 data={"pages": page_results, "count": 0},
@@ -128,7 +128,7 @@ class URLAnalysisAgent(BaseAgent):
             )
 
         self.log("info", "complete", f"Derived {total_reqs} requirements from {len(page_results)} page(s)")
-        return URLAnalysisAgentResult(
+        return AgentRunResult(
             success=True,
             data={"pages": page_results, "count": total_reqs, "source_url": url},
             logs=self._logs,
@@ -217,11 +217,3 @@ class URLAnalysisAgent(BaseAgent):
             project_id=input_data.get("project_id", 0),
         )
         return result.data
-
-
-class URLAnalysisAgentResult:
-    def __init__(self, success: bool, data: dict, logs: list, error: str | None = None):
-        self.success = success
-        self.data = data
-        self.logs = logs
-        self.error = error

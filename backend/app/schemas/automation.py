@@ -65,6 +65,21 @@ class AgentAutomationTrigger(BaseModel):
         return v
 
 
+class AgentMCPDiscoveryTrigger(BaseModel):
+    """Phase 3 — triggers the Playwright MCP Discovery Agent for a batch of
+    test cases against a specific environment."""
+    project_id: int
+    test_case_ids: list[int]
+    environment: str = "QA"
+
+    @field_validator("test_case_ids")
+    @classmethod
+    def test_case_ids_non_empty(cls, v: list[int]) -> list[int]:
+        if not v:
+            raise ValueError("test_case_ids must contain at least one ID")
+        return v
+
+
 ScriptTransitionAction = Literal["submit_for_review", "request_changes", "restore_draft"]
 
 
@@ -76,6 +91,49 @@ class ScriptTransitionRequest(BaseModel):
 class RecommendationDecisionRequest(BaseModel):
     action: Literal["apply", "dismiss"]
     notes: str | None = None
+
+
+class BulkScriptApprovalRequest(BaseModel):
+    script_ids: list[int]
+    action: Literal["approve", "reject"]
+    notes: str | None = None
+
+
+LifecycleApprovalAction = Literal[
+    "reviewer_approve", "reviewer_reject",
+    "lead_approve", "lead_reject",
+    "environment_approve",
+    "mark_ci_ready",
+]
+
+
+class LifecycleApprovalRequest(BaseModel):
+    """Phase 4.6: one step of the staged post-generation approval chain —
+    dry_run_passed -> reviewer_approved -> lead_approved
+    -> [environment_approve, required for PROD_SANITY] -> ci_ready."""
+    action: LifecycleApprovalAction
+    notes: str | None = None
+
+
+class AutomationConfidenceScoreOut(BaseModel):
+    overall: float
+    locator_confidence: float
+    assertion_confidence: float
+    data_readiness: float
+    environment_readiness: float
+    dry_run_stability: float
+
+
+class BulkScriptApprovalResult(BaseModel):
+    script_id: int
+    ok: bool
+    error: str | None = None
+
+
+class BulkScriptApprovalResponse(BaseModel):
+    results: list[BulkScriptApprovalResult]
+    approved_count: int
+    failed_count: int
 
 
 class AutomationTestMappingBase(BaseModel):

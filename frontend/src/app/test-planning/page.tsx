@@ -8,11 +8,14 @@ import {
   projectsApi,
   scenariosApi,
   agentRunsApi,
+  reviewsApi,
   type TestPlan,
   type Requirement,
   type Project,
   type TestScenario,
+  type ArtifactReview,
 } from "@/lib/api";
+import { ReviewBadge } from "@/components/reviews/ReviewBadge";
 import {
   ClipboardList,
   Bot,
@@ -600,6 +603,8 @@ function ScenarioCard({
   onApprove,
   onReject,
   resolveUser,
+  review,
+  projectId,
 }: {
   scenario: TestScenario;
   requirementLabelById: Map<number, string>;
@@ -607,6 +612,8 @@ function ScenarioCard({
   onApprove: (id: number) => void;
   onReject: (id: number, notes: string) => void;
   resolveUser: (id?: number) => string;
+  review?: ArtifactReview;
+  projectId: number;
 }) {
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -630,6 +637,14 @@ function ScenarioCard({
               <Badge variant={getStatusVariant(scenario.status) as any} className="capitalize">
                 {scenario.status.replace(/_/g, " ")}
               </Badge>
+              {scenario.requirement_id && (
+                <ReviewBadge
+                  review={review}
+                  artifactType="requirement_scenario_coverage"
+                  artifactId={scenario.requirement_id}
+                  projectId={projectId}
+                />
+              )}
               {scenario.scenario_type && (
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border px-1.5 py-0.5 rounded shrink-0">
                   {scenario.scenario_type}
@@ -771,6 +786,7 @@ function TestPlanningContent() {
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [plans, setPlans] = useState<TestPlan[]>([]);
   const [scenarios, setScenarios] = useState<TestScenario[]>([]);
+  const [scenarioReviews, setScenarioReviews] = useState<ArtifactReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [agentStatus, setAgentStatus] = useState<string | null>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
@@ -795,14 +811,16 @@ function TestPlanningContent() {
     if (!selectedProject) return;
     setLoading(true);
     try {
-      const [plansRes, reqsRes, scenariosRes] = await Promise.all([
+      const [plansRes, reqsRes, scenariosRes, reviewsRes] = await Promise.all([
         testPlansApi.list(selectedProject),
         requirementsApi.list(selectedProject, { status: "approved" }),
         scenariosApi.list(selectedProject),
+        reviewsApi.listForProject(selectedProject, "requirement_scenario_coverage"),
       ]);
       setPlans(plansRes.data);
       setRequirements(reqsRes.data);
       setScenarios(scenariosRes.data);
+      setScenarioReviews(reviewsRes.data);
     } catch (err) {
       console.error("Could not load test planning details:", err);
     } finally {
@@ -1187,6 +1205,10 @@ function TestPlanningContent() {
     requirements.map((req) => [req.id, req.requirement_id || req.title])
   ), [requirements]);
 
+  const scenarioReviewByReqId = useMemo(() => new Map(
+    scenarioReviews.map((r) => [r.artifact_id, r])
+  ), [scenarioReviews]);
+
   const requirementById = useMemo(() => new Map(
     requirements.map((req) => [req.id, req])
   ), [requirements]);
@@ -1556,6 +1578,8 @@ function TestPlanningContent() {
                     onApprove={handleApproveScenario}
                     onReject={handleRejectScenario}
                     resolveUser={resolveUser}
+                    review={scenario.requirement_id ? scenarioReviewByReqId.get(scenario.requirement_id) : undefined}
+                    projectId={selectedProject!}
                   />
                 ))}
               </div>

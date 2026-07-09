@@ -44,6 +44,12 @@ AUTOMATION_GENERATE_SCRIPT = "automation.generate_script"
 AUTOMATION_EDIT_DRAFT = "automation.edit_draft"
 AUTOMATION_REVIEW_SCRIPT = "automation.review_script"
 AUTOMATION_APPROVE_SCRIPT = "automation.approve_script"
+# Phase 4.6: gates the "Environment Owner" step in the staged automation
+# script approval chain (dry_run_passed -> reviewer_approved -> lead_approved
+# -> [environment_approve, required when environmentProfile == PROD_SANITY]
+# -> ci_ready). Distinct from AUTOMATION_APPROVE_SCRIPT since a PROD
+# environment sign-off is a different accountability than lead review.
+AUTOMATION_APPROVE_ENVIRONMENT = "automation.approve_environment"
 AUTOMATION_CONFIGURE_EXTERNAL_CONNECTOR = "automation.configure_external_connector"
 AUTOMATION_RUN_SANDBOX = "automation.run_sandbox"
 EXECUTION_RUN_AUTOMATION = "execution.run_automation"
@@ -58,6 +64,7 @@ _GRANULAR_AUTOMATION_PERMISSIONS: frozenset[str] = frozenset(
         AUTOMATION_EDIT_DRAFT,
         AUTOMATION_REVIEW_SCRIPT,
         AUTOMATION_APPROVE_SCRIPT,
+        AUTOMATION_APPROVE_ENVIRONMENT,
         AUTOMATION_CONFIGURE_EXTERNAL_CONNECTOR,
         AUTOMATION_RUN_SANDBOX,
     }
@@ -127,6 +134,10 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
         extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})
     if RAISE_DEFECTS in base:
         extra.add(EXECUTION_CREATE_DEFECT_DRAFT)
+    if APPROVE_RELEASE_REPORT in base:
+        # Release-report approvers are the natural "Environment Owner" for
+        # the automation approval chain's PROD_SANITY gate.
+        extra.add(AUTOMATION_APPROVE_ENVIRONMENT)
     return base | frozenset(extra)
 
 
