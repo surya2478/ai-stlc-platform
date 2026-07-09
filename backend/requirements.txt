@@ -24,8 +24,8 @@ python-dotenv==1.0.1
 slowapi>=0.1.9
 
 # ── Validation ────────────────────────────────────────────────────────────────
-pydantic==2.7.1
-pydantic-settings==2.2.1
+pydantic==2.8.2
+pydantic-settings==2.5.2
 email-validator==2.1.1
 
 # ── Document Processing ───────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ jinja2==3.1.4
 # ── Tests ─────────────────────────────────────────────────────────────────────
 pytest==8.2.2
 pytest-asyncio==0.23.7
-anyio[trio]==4.4.0
+anyio[trio]==4.6.2
 # JSON reporter used by the LocalPytestRunner to capture per-test outcomes
 pytest-json-report==1.5.0
 

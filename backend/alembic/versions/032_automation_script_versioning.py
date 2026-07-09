@@ -44,9 +44,13 @@ OLD_STATUSES = (
 
 
 def upgrade() -> None:
-    op.add_column(
-        "automation_scripts",
-        sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
+    # Guarded rather than a plain op.add_column: some environments already
+    # have this column from a manual/out-of-band ALTER predating this
+    # migration (alembic_version can be behind actual schema state) — make
+    # upgrade() idempotent for it rather than crash-looping the app.
+    op.execute(
+        "ALTER TABLE automation_scripts "
+        "ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1"
     )
     op.add_column(
         "automation_scripts",
@@ -96,4 +100,4 @@ def downgrade() -> None:
     op.drop_index("ix_automation_scripts_parent_script_id", table_name="automation_scripts")
     op.drop_constraint("fk_automation_scripts_parent_script_id", "automation_scripts", type_="foreignkey")
     op.drop_column("automation_scripts", "parent_script_id")
-    op.drop_column("automation_scripts", "version")
+    op.execute("ALTER TABLE automation_scripts DROP COLUMN IF EXISTS version")
