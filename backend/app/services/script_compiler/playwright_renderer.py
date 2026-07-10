@@ -118,7 +118,12 @@ def _render_step_line(step: ContractStep, page_var_map: dict[str, str]) -> str:
         return f"await expect({target_expr}).toBeVisible();"
     if step.action == "wait_for_url":
         pattern = step.value or ""
-        return f"await page.waitForURL(/{pattern}/);"
+        # A raw `/{pattern}/` regex literal breaks on any pattern containing
+        # an unescaped "/" — which every http(s):// URL does, since "//"
+        # inside the delimiters prematurely closes the literal (confirmed
+        # via a live run that failed with invalid syntax). new RegExp(...)
+        # over a properly JS-string-escaped value has no delimiter to collide.
+        return f"await page.waitForURL(new RegExp({js_string_literal(pattern)}));"
     if step.action == "custom":
         return f"// TODO: {step.description or 'custom step not auto-rendered — implement manually'}"
     raise ValueError(f"Unhandled step action: {step.action}")
@@ -131,7 +136,9 @@ def _render_assertion_line(a: ContractAssertion, page_var_map: dict[str, str]) -
     if a.type == "text":
         return f"await expect({target_expr}).toContainText({js_string_literal(a.expected)});"
     if a.type == "url":
-        return f"await expect(page).toHaveURL(/{a.expected}/);"
+        # Same delimiter-collision bug as wait_for_url above — a bare
+        # `/{a.expected}/` regex literal breaks on any URL containing "//".
+        return f"await expect(page).toHaveURL(new RegExp({js_string_literal(a.expected)}));"
     if a.type == "value":
         return f"await expect({target_expr}).toHaveValue({js_string_literal(a.expected)});"
     if a.type == "count":

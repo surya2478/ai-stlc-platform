@@ -61,7 +61,30 @@ def test_compile_playwright_spec_has_generation_header_and_structure():
     assert "// Evidence" in spec
     assert "// Cleanup" in spec
     assert "loginPage.usernameInput.fill(TEST_DATA.username)" in spec
-    assert "await expect(page).toHaveURL(/dashboard/);" in spec
+    assert "await expect(page).toHaveURL(new RegExp('dashboard'));" in spec
+
+
+def test_url_assertion_with_slashes_does_not_break_regex_syntax():
+    # A live run failed with invalid JS: `/https://mail.google.com//` — the
+    # "//" from the URL's own scheme prematurely closed the bare regex
+    # literal delimiter. new RegExp('...') has no delimiter to collide with.
+    contract = _contract(assertions=[
+        {"type": "url", "target": "page", "expected": "https://mail.google.com/"},
+    ])
+    bundle = compile_contract(contract)
+    spec = bundle.files[bundle.entry_path]
+    assert "await expect(page).toHaveURL(new RegExp('https://mail.google.com/'));" in spec
+    assert "toHaveURL(/https://mail.google.com//)" not in spec
+
+
+def test_wait_for_url_step_with_slashes_does_not_break_regex_syntax():
+    contract = _contract(steps=[
+        {"phase": "arrange", "action": "navigate", "value": "/login"},
+        {"phase": "assert", "action": "wait_for_url", "value": "https://mail.google.com/"},
+    ])
+    bundle = compile_contract(contract)
+    spec = bundle.files[bundle.entry_path]
+    assert "await page.waitForURL(new RegExp('https://mail.google.com/'));" in spec
 
 
 def test_compile_is_deterministic_for_identical_contracts():
