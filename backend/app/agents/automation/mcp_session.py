@@ -36,8 +36,10 @@ instructions.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import urlparse
 
@@ -50,6 +52,45 @@ logger = logging.getLogger(__name__)
 # track @latest. Node/npx and a pre-installed Chromium are assumed present
 # (same runtime the automation_runner already requires).
 PLAYWRIGHT_MCP_PACKAGE = "@playwright/mcp@0.0.77"
+
+_chromium_executable_path_cache: str | None | bool = False  # False = not yet resolved
+
+
+def _resolve_chromium_executable_path() -> str | None:
+    """Find the Chromium binary `playwright install` already provisioned.
+
+    This pinned @playwright/mcp version's --browser flag only accepts
+    chrome|firefox|webkit|msedge — no "chromium" value — so it defaults to
+    the "chrome" channel, which requires a real Google Chrome install
+    nothing here provisions (confirmed via a live run: "Chromium
+    distribution 'chrome' is not found at /opt/google/chrome/chrome").
+    --executable-path sidesteps the channel entirely by pointing straight at
+    the Chromium build Playwright already installed.
+
+    Deliberately a plain filesystem glob, not `playwright.sync_api` /
+    `async_api` — `sync_playwright()` raises "It looks like you are using
+    Playwright Sync API inside the asyncio loop" when called from this
+    module's actual caller (an async Celery task), and juggling the async
+    API's own driver lifecycle here just to read one path isn't worth the
+    fragility. The install layout (`<cache>/chromium-<build>/chrome-linux/
+    chrome`) is stable across Playwright versions; only the build number
+    changes, which the glob handles.
+    """
+    global _chromium_executable_path_cache
+    if _chromium_executable_path_cache is not False:
+        return _chromium_executable_path_cache
+    try:
+        cache_dir = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or (Path.home() / ".cache" / "ms-playwright"))
+        candidates = sorted(
+            cache_dir.glob("chromium-*/chrome-linux/chrome"),
+            key=lambda p: p.parent.parent.name,
+            reverse=True,  # highest build number (most recently installed) first
+        )
+        _chromium_executable_path_cache = str(candidates[0]) if candidates else None
+    except OSError:
+        logger.warning("Could not resolve a local Chromium executable path", exc_info=True)
+        _chromium_executable_path_cache = None
+    return _chromium_executable_path_cache
 
 OnCall = Callable[[str, dict[str, Any], str], Awaitable[None]]
 """on_call(tool_name, arguments, result_text_excerpt) -> None"""
@@ -110,6 +151,15 @@ class MCPSession:
 
     def _build_args(self) -> list[str]:
         args = ["-y", PLAYWRIGHT_MCP_PACKAGE, "--isolated", "--no-sandbox"]
+        chromium_path = _resolve_chromium_executable_path()
+        if chromium_path:
+            # --executable-path only overrides *where* the selected --browser
+            # channel's binary lives — without an explicit --browser it's
+            # silently ignored and the server still probes for a real Google
+            # Chrome install (confirmed via a live run). --browser chrome
+            # plus --executable-path together point the "chrome" channel at
+            # the Chromium build Playwright already provisioned.
+            args += ["--browser", "chrome", "--executable-path", chromium_path]
         if self._config.headless:
             args.append("--headless")
         args += ["--timeout-action", str(self._config.timeout_action_ms)]
