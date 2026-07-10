@@ -1284,6 +1284,30 @@ export interface AutomationScript {
   updated_at: string;
 }
 
+export interface ScriptQualitySignals {
+  /** null = unknown (no grounding metadata yet), not "known ungrounded". */
+  grounded: boolean | null;
+  ungroundedElements: string[];
+  /** null = never dry-run, distinct from a known failure. */
+  lastDryRunPassed: boolean | null;
+  needsRegeneration: boolean;
+}
+
+/** Reads the same grounding/dry-run signals the backend's
+ * execution_blocked_reason() gates on, so the UI can show *why* a script
+ * isn't trustworthy instead of just "approved" masking a known-bad script. */
+export function getScriptQualitySignals(script: Pick<AutomationScript, "status" | "metadata_"> | null | undefined): ScriptQualitySignals {
+  const metadata = script?.metadata_ ?? {};
+  const grounding = (metadata as { grounding?: { grounded?: boolean; ungrounded_elements?: string[] } }).grounding;
+  const lastDryRun = (metadata as { last_dry_run?: { passed?: boolean } }).last_dry_run;
+  return {
+    grounded: grounding?.grounded ?? null,
+    ungroundedElements: grounding?.ungrounded_elements ?? [],
+    lastDryRunPassed: lastDryRun?.passed ?? null,
+    needsRegeneration: script?.status === "needs_regeneration",
+  };
+}
+
 // Phase 4.6: staged post-generation approval chain — dry_run_passed ->
 // reviewer_approved -> lead_approved -> [environment_approve, required for
 // PROD_SANITY] -> ci_ready. Distinct from the legacy approve/reject flow

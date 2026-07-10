@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Filter, ChevronRight, Sparkles, ShieldCheck, Radar } from "lucide-react";
+import { Search, Filter, ChevronRight, Sparkles, ShieldCheck, Radar, AlertTriangle, Crosshair } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import type { ScriptQualitySignals } from "@/lib/api";
 
 export type InventoryItem = {
   id: number;
@@ -21,7 +22,22 @@ export type InventoryItem = {
   externalStatus?: string | null;
   automationReady: boolean;
   lastUpdated?: string | null;
+  quality?: ScriptQualitySignals | null;
 };
+
+/** A short, specific reason this script's quality is in question despite its
+ * lifecycle status — or null when there's nothing to flag. "Needs
+ * regeneration" already gets its own status badge, so this only surfaces
+ * the cases an "Approved" badge would otherwise hide: a script can be
+ * approved and still carry an ungrounded locator or a known-failed dry run
+ * the approval step never checked. */
+function qualityFlag(item: InventoryItem): string | null {
+  const q = item.quality;
+  if (!q || q.needsRegeneration) return null;
+  if (q.ungroundedElements.length > 0) return `${q.ungroundedElements.length} locator${q.ungroundedElements.length > 1 ? "s" : ""} ungrounded`;
+  if (q.lastDryRunPassed === false) return "Last dry run failed";
+  return null;
+}
 
 export type LifecycleFilter =
   | "all"
@@ -56,6 +72,7 @@ function statusBadge(item: InventoryItem) {
     return { label: "Not linked", variant: "outline" as const };
   }
   const s = (item.scriptStatus ?? "").toLowerCase();
+  if (s === "needs_regeneration") return { label: "Needs regeneration", variant: "destructive" as const };
   if (s === "approved") return { label: "Approved", variant: "success" as const };
   if (s === "in_review" || s === "pending_approval" || s === "under_review")
     return { label: "In review", variant: "warning" as const };
@@ -155,6 +172,7 @@ export function AutomationInventoryPanel({
 
   function renderRow(item: InventoryItem) {
     const badge = statusBadge(item);
+    const flag = qualityFlag(item);
     const selected = item.id === selectedId;
     const checked = selectedIds.has(item.id);
     return (
@@ -185,6 +203,18 @@ export function AutomationInventoryPanel({
             {item.module && <><span>·</span><span>{item.module}</span></>}
             {item.priority && <><span>·</span><span>{item.priority}</span></>}
           </div>
+          {flag && (
+            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+              <AlertTriangle className="h-2.5 w-2.5" />
+              {flag}
+            </div>
+          )}
+          {item.quality?.grounded && item.quality.ungroundedElements.length === 0 && (badge.label === "Approved") && (
+            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700">
+              <Crosshair className="h-2.5 w-2.5" />
+              Grounded
+            </div>
+          )}
         </button>
       </div>
     );

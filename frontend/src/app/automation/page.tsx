@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import {
   automationApi,
+  getScriptQualitySignals,
   projectsApi,
   testCasesApi,
   type AutomationScript,
@@ -534,6 +535,7 @@ function AutomationContent() {
         externalStatus: mapping?.automation_status ?? null,
         automationReady: candidate?.automation_ready ?? false,
         lastUpdated: script?.updated_at ?? null,
+        quality: script ? getScriptQualitySignals(script) : null,
       };
     });
   }, [rows, planningCandidates, mappingByTestCase, scriptsById]);

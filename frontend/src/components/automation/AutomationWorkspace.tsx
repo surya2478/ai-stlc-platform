@@ -22,6 +22,7 @@ import {
   Edit3,
   Network,
   Rocket,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { LifecycleStepper, deriveLifecycleStage } from "./LifecycleStepper";
 import {
   traceabilityApi,
+  getScriptQualitySignals,
   type AutomationScript,
   type AutomationTestMapping,
   type LifecycleApprovalAction,
@@ -185,6 +187,8 @@ export function AutomationWorkspace({
           <LifecycleStepper current={stage} variant={variant} />
         </div>
 
+        <QualityBanner script={script} onGenerate={onGenerate} />
+
         <ActionBar
           isExternal={isExternal}
           isGrounded={variant === "grounded"}
@@ -270,6 +274,72 @@ export function AutomationWorkspace({
       </CardContent>
     </Card>
   );
+}
+
+/** Surfaces the same grounding/dry-run signals execution_blocked_reason()
+ * gates on server-side — without this, "Approved" was the only status
+ * visible here even when the script's own metadata already recorded that
+ * it had ungrounded locators or a failed dry run. */
+function QualityBanner({ script, onGenerate }: { script: AutomationScript | null; onGenerate: () => void }) {
+  if (!script) return null;
+  const quality = getScriptQualitySignals(script);
+
+  if (quality.needsRegeneration) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-red-800">This script needs regeneration</p>
+          <p className="mt-0.5 text-[11px] text-red-700">
+            It predates a fix to how automation locators are grounded, and is known to contain
+            locators that won&apos;t resolve on the real page. Execution is blocked until it&apos;s
+            regenerated.
+          </p>
+        </div>
+        <Button size="sm" onClick={onGenerate} className="shrink-0 gap-1.5 bg-red-600 text-white hover:bg-red-700">
+          <Sparkles className="h-3.5 w-3.5" />
+          Regenerate
+        </Button>
+      </div>
+    );
+  }
+
+  if (quality.ungroundedElements.length > 0) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-amber-800">
+            {quality.ungroundedElements.length} element{quality.ungroundedElements.length > 1 ? "s" : ""} not grounded to a real page
+          </p>
+          <p className="mt-0.5 truncate text-[11px] text-amber-700" title={quality.ungroundedElements.join(", ")}>
+            {quality.ungroundedElements.join(", ")} — this script will likely fail on execution.
+          </p>
+        </div>
+        <Button size="sm" onClick={onGenerate} variant="outline" className="shrink-0 gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-100">
+          <Sparkles className="h-3.5 w-3.5" />
+          Regenerate
+        </Button>
+      </div>
+    );
+  }
+
+  if (quality.lastDryRunPassed === false) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-amber-800">Last dry run failed</p>
+          <p className="mt-0.5 text-[11px] text-amber-700">
+            This script&apos;s most recent dry run did not pass. Review the failure before running it
+            again — retrying the same script won&apos;t change the outcome.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function ActionBar({
