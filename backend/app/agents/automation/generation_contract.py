@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ContractVersion = Literal["1.0"]
 ScriptType = Literal["playwright-typescript", "pytest-python"]
@@ -149,6 +149,78 @@ class AutomationGenerationContract(ContractBaseModel):
     _normalize_lists = field_validator(
         "preconditions", "expected_results", "evidence_required", mode="before"
     )(_string_list)
+
+    @model_validator(mode="after")
+    def _targets_resolve_to_real_elements(self) -> "AutomationGenerationContract":
+        """Reject a contract where a step/assertion/cleanup-action target
+        doesn't resolve to an actual `<PageObjectName>.<elementName>` pair.
+
+        Without this, a page object with zero elements (or a typo'd element
+        name) silently produces a `target` string the compiler renders
+        verbatim — e.g. an assertion on the bare page-object name compiles to
+        invalid TypeScript that calls a method on a class reference instead
+        of a locator. Caught here, at the LLM-output validation boundary
+        (AutomationGenerationContract.model_validate), so it can never reach
+        the compiler regardless of which agent produced the contract
+        (automation_agent's first generation, or repair_agent's patches).
+        """
+        valid_refs = {
+            f"{page.name}.{element.name}" for page in self.page_objects for element in page.elements
+        }
+
+        def check(target: str | None, where: str, *, required: bool = False) -> None:
+            # playwright_renderer._resolve_target treats a missing target
+            # exactly like the literal "page" — both resolve straight to
+            # Playwright's raw Page object, which only supports Page-level
+            # matchers (toHaveURL/toHaveTitle), never Locator methods like
+            # .click()/.fill()/.check() or the .toBeVisible() matcher.
+            # Confirmed via a live run: a "check" step with target=null
+            # compiled to `await page.check();`, which doesn't exist.
+            if target is None:
+                if required:
+                    raise ValueError(f"{where} has no target — needs a specific element")
+                return
+            if target == "page":
+                raise ValueError(
+                    f"{where} target 'page' is only valid for url-type assertions — "
+                    "every other step/assertion needs a specific element"
+                )
+            if "." not in target:
+                raise ValueError(
+                    f"{where} target '{target}' is not a '<PageObject>.<element>' reference "
+                    "(references a bare page object or path, not a specific element)"
+                )
+            if target not in valid_refs:
+                raise ValueError(
+                    f"{where} target '{target}' does not match any declared page object element"
+                )
+
+        # Actions that render `{target}.<method>()` — a Locator method call,
+        # so target must resolve to a real element, never be omitted.
+        ELEMENT_REQUIRED_ACTIONS = {
+            "fill", "click", "check", "uncheck", "select", "hover", "wait_for_visible",
+        }
+        for step in self.steps:
+            if step.action in ("navigate", "custom", "wait_for_url"):
+                # navigate's target is a raw path; custom is a TODO
+                # placeholder; wait_for_url matches against `value`, not a
+                # page-object element at all (see playwright_renderer.py).
+                continue
+            check(step.target, f"step '{step.action}'", required=step.action in ELEMENT_REQUIRED_ACTIONS)
+
+        for assertion in self.assertions:
+            if assertion.type == "url":
+                # Renders as `expect(page).toHaveURL(...)` — target is
+                # conventionally the literal "page", never a page-object
+                # element reference (see playwright_renderer._render_assertion_line).
+                continue
+            check(assertion.target, f"assertion '{assertion.type}'")
+
+        for cleanup in self.cleanup_actions:
+            if cleanup.type == "ui_action":
+                check(cleanup.target, "cleanup action")
+
+        return self
 
     @property
     def all_locators(self) -> list[PageElement]:
