@@ -14,6 +14,7 @@ export const automationKeys = {
   mappings: (projectId: number) => ["automation", "mappings", projectId] as const,
   executionHistory: (testCaseId: number) =>
     ["automation", "execution-history", testCaseId] as const,
+  pipeline: (scriptId: number) => ["automation", "pipeline", scriptId] as const,
 };
 
 export function useScripts(
@@ -55,12 +56,21 @@ export function useExecutionHistory(testCaseId: number | null, opts?: { enabled?
   });
 }
 
+export function usePipelineStages(scriptId: number | null) {
+  return useQuery({
+    queryKey: automationKeys.pipeline(scriptId ?? -1),
+    queryFn: async () => (await automationApi.getPipeline(scriptId as number)).data,
+    enabled: scriptId !== null && scriptId > 0,
+  });
+}
+
 function invalidateScriptQueries(
   queryClient: ReturnType<typeof useQueryClient>,
   script: AutomationScript,
 ) {
   queryClient.invalidateQueries({ queryKey: automationKeys.scripts(script.project_id) });
   queryClient.invalidateQueries({ queryKey: automationKeys.planning(script.project_id) });
+  queryClient.invalidateQueries({ queryKey: automationKeys.pipeline(script.id) });
 }
 
 export function useUpdateScript() {
@@ -110,6 +120,24 @@ export function useRegenerateScript() {
     mutationFn: async (scriptId: number) =>
       (await automationApi.regenerateScript(scriptId)).data,
     onSuccess: (script) => invalidateScriptQueries(queryClient, script),
+  });
+}
+
+export function useRepairScript() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { executionResultId: number; executionRunId: number; projectId: number }) =>
+      (await automationApi.repairFromResult(vars.executionResultId)).data,
+    onSuccess: (data, variables) => {
+      // Refreshes the classification chip (written even when not repaired)
+      // and, if a new script version was created, the inventory/planning lists.
+      queryClient.invalidateQueries({ queryKey: executionKeys.results(variables.executionRunId) });
+      queryClient.invalidateQueries({ queryKey: automationKeys.scripts(variables.projectId) });
+      queryClient.invalidateQueries({ queryKey: automationKeys.planning(variables.projectId) });
+      if (data.new_script_id) {
+        queryClient.invalidateQueries({ queryKey: automationKeys.pipeline(data.new_script_id) });
+      }
+    },
   });
 }
 

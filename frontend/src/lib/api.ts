@@ -1308,6 +1308,23 @@ export function getScriptQualitySignals(script: Pick<AutomationScript, "status" 
   };
 }
 
+export interface GenerationAttempt {
+  attempt: number;
+  outcome: "compiled" | "validation_failed" | "parse_failed" | "llm_error";
+  detail?: string | null;
+  ungrounded_count?: number;
+}
+
+/** Reads metadata_.generation_attempts — every retry the feedback loop
+ * made (validation/parse failures it corrected, or grounding it kept
+ * narrowing) on the way to this script's final result. Empty for scripts
+ * that predate the feedback loop, or that succeeded on the first attempt
+ * with nothing to retry. */
+export function getGenerationAttempts(script: Pick<AutomationScript, "metadata_"> | null | undefined): GenerationAttempt[] {
+  const attempts = (script?.metadata_ as { generation_attempts?: GenerationAttempt[] } | undefined)?.generation_attempts;
+  return attempts ?? [];
+}
+
 // Phase 4.6: staged post-generation approval chain — dry_run_passed ->
 // reviewer_approved -> lead_approved -> [environment_approve, required for
 // PROD_SANITY] -> ci_ready. Distinct from the legacy approve/reject flow
@@ -1636,6 +1653,17 @@ export const automationApi = {
   // real application URL was configured (e.g. ones hardcoding example.com).
   regenerateScript: (scriptId: number) =>
     api.post<AutomationScript>(`/automation/${scriptId}/regenerate`),
+  // On-demand repair for a real (non-dry-run) execution failure — the
+  // manual counterpart to the automatic dry-run chain, which never runs
+  // for real Command Center executions. Classifies the failure first if
+  // it hasn't been already, and only attempts a targeted contract patch
+  // when the classification is repairable (locator_issue/timeout).
+  repairFromResult: (executionResultId: number) =>
+    api.post<RepairOutcome>(`/automation/results/${executionResultId}/repair`),
+  // The real timeline behind a script's status — replaces the abstract,
+  // status-only lifecycle stepper with what actually happened and when.
+  getPipeline: (scriptId: number) =>
+    api.get<PipelineStage[]>(`/automation/${scriptId}/pipeline`),
   runnerArtifactUrl: (resultId: number, kind: "log" | "screenshot" | "video" | "trace") =>
     `/api/v1/automation/runner/results/${resultId}/artifact/${kind}`,
 };
@@ -1675,6 +1703,53 @@ export interface ExecutionResult {
   metadata_?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+}
+
+export type FailureClassificationType =
+  | "app_defect" | "locator_issue" | "data_issue" | "environment_issue" | "api_issue" | "timeout";
+
+export interface FailureClassification {
+  classification: FailureClassificationType;
+  reason: string;
+  source: "rules" | "llm";
+  repairable: boolean;
+}
+
+/** Reads the same classification the backend writes onto
+ * ExecutionResult.metadata_.failure_classification — via the automatic
+ * hook after every real execution (automation_service.classify_failed_results)
+ * or the on-demand repair endpoint. null means not yet classified. */
+export function getFailureClassification(result: Pick<ExecutionResult, "metadata_"> | null | undefined): FailureClassification | null {
+  const info = (result?.metadata_ as { failure_classification?: FailureClassification } | undefined)?.failure_classification;
+  return info ?? null;
+}
+
+export interface RepairAttempt {
+  attempt: number;
+  outcome: string;
+  detail?: string | null;
+  static_gate_passed?: boolean | null;
+  dry_run_passed?: boolean | null;
+}
+
+export interface RepairOutcome {
+  classification: FailureClassificationType | null;
+  classification_reason: string | null;
+  repairable: boolean;
+  repaired: boolean;
+  new_script_id: number | null;
+  attempts: RepairAttempt[];
+  error: string | null;
+}
+
+export type PipelineStageName = "discover" | "generate" | "static" | "dry_run" | "review" | "ci_ready";
+export type PipelineStageState = "done" | "failed" | "pending";
+
+export interface PipelineStage {
+  stage: PipelineStageName;
+  state: PipelineStageState;
+  at: string | null;
+  detail: string | null;
 }
 
 export interface ExecutionRun {

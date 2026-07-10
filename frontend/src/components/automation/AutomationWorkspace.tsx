@@ -23,15 +23,18 @@ import {
   Network,
   Rocket,
   AlertTriangle,
+  Check,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { LifecycleStepper, deriveLifecycleStage } from "./LifecycleStepper";
+import { PipelineStageRail } from "./PipelineStageRail";
 import {
   traceabilityApi,
   getScriptQualitySignals,
+  getGenerationAttempts,
   type AutomationScript,
   type AutomationTestMapping,
   type LifecycleApprovalAction,
@@ -184,10 +187,15 @@ export function AutomationWorkspace({
         </div>
 
         <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
-          <LifecycleStepper current={stage} variant={variant} />
+          {!isExternal && script ? (
+            <PipelineStageRail scriptId={script.id} />
+          ) : (
+            <LifecycleStepper current={stage} variant={variant} />
+          )}
         </div>
 
         <QualityBanner script={script} onGenerate={onGenerate} />
+        <GenerationHistory script={script} />
 
         <ActionBar
           isExternal={isExternal}
@@ -340,6 +348,56 @@ function QualityBanner({ script, onGenerate }: { script: AutomationScript | null
   }
 
   return null;
+}
+
+const GENERATION_OUTCOME_LABELS: Record<string, string> = {
+  compiled: "Compiled",
+  validation_failed: "Validation failed",
+  parse_failed: "Response wasn't valid JSON",
+  llm_error: "LLM call failed",
+};
+
+/** Every attempt the generation feedback loop made — validation/parse
+ * failures it corrected, or grounding it kept narrowing — on the way to
+ * this script's result. Was previously entirely invisible: a script that
+ * needed 3 retries looked identical to one that succeeded on the first
+ * try, so generation felt like a slot machine rather than a loop that
+ * converges. Only rendered when there's more than one attempt — a clean
+ * first-try success has nothing to show. */
+function GenerationHistory({ script }: { script: AutomationScript | null }) {
+  if (!script) return null;
+  const attempts = getGenerationAttempts(script);
+  if (attempts.length <= 1) return null;
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+      <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+        <History className="h-3 w-3" />
+        Generation took {attempts.length} attempts
+      </p>
+      <ul className="space-y-1">
+        {attempts.map((a) => (
+          <li key={a.attempt} className="flex items-start gap-1.5 text-[11px] text-slate-600">
+            {a.outcome === "compiled" ? (
+              <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
+            ) : (
+              <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+            )}
+            <span>
+              <span className="font-mono">#{a.attempt}</span>{" "}
+              {GENERATION_OUTCOME_LABELS[a.outcome] ?? a.outcome}
+              {a.outcome === "compiled" && typeof a.ungrounded_count === "number"
+                ? a.ungrounded_count > 0
+                  ? ` — ${a.ungrounded_count} element(s) still ungrounded`
+                  : " — fully grounded"
+                : ""}
+              {a.detail ? ` — ${a.detail.split("\n")[0]}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function ActionBar({

@@ -4,13 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bug, Check, CheckCircle2, Clock, Download, Loader2, PlayCircle, RotateCcw, Search, XCircle,
-  AlertTriangle, Sparkles,
+  AlertTriangle, Sparkles, Wrench, Database, Globe, GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AutomationPlanning, ExecutionResult, ExecutionRun } from "@/lib/api";
+import {
+  getFailureClassification,
+  type AutomationPlanning, type ExecutionResult, type ExecutionRun, type FailureClassificationType,
+  type RepairOutcome,
+} from "@/lib/api";
 import { isActiveRun, useRun, useRunResults } from "@/lib/queries/execution";
 import { useRunLifecycleActions } from "@/lib/queries/runActions";
-import { useRegenerateScript } from "@/lib/queries/automation";
+import { useRegenerateScript, useRepairScript } from "@/lib/queries/automation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +29,17 @@ import { CreateDefectDialog, type DefectPrefill } from "./CreateDefectDialog";
 import { TraceabilityDrawer, type TraceTarget } from "./TraceabilityDrawer";
 
 const PAGE_SIZE = 8;
+
+// Mirrors the backend's failure_classification_agent vocabulary
+// (app_defect/locator_issue/data_issue/environment_issue/api_issue/timeout).
+const CLASSIFICATION_LABELS: Record<FailureClassificationType, string> = {
+  locator_issue: "Locator issue",
+  timeout: "Timeout",
+  data_issue: "Test data issue",
+  environment_issue: "Environment issue",
+  api_issue: "API issue",
+  app_defect: "App defect",
+};
 
 type RailFilter = "all" | "active" | "failed" | "completed";
 
@@ -223,6 +238,7 @@ export function CommandCenterTab({
       />
 
       <RunDetailPanel
+        projectId={projectId}
         run={run}
         loading={runQuery.isLoading && !run}
         results={results}
@@ -436,8 +452,9 @@ type LifecycleActions = ReturnType<typeof useRunLifecycleActions>;
 type RunDetailSubTab = "monitor" | "tests" | "logs";
 
 function RunDetailPanel({
-  run, loading, results, resultsLoading, lifecycle, selectedResultId, onSelectResult, onTrace, streakByTestCase,
+  projectId, run, loading, results, resultsLoading, lifecycle, selectedResultId, onSelectResult, onTrace, streakByTestCase,
 }: {
+  projectId: string;
   run: ExecutionRun | null;
   loading: boolean;
   results: ExecutionResult[];
@@ -612,6 +629,7 @@ function RunDetailPanel({
                 </div>
               )}
               <ResultsTable
+                projectId={projectId}
                 results={[...results].reverse().slice(0, 6)}
                 loading={resultsLoading}
                 selectedResultId={selectedResultId}
@@ -630,6 +648,7 @@ function RunDetailPanel({
           )}
           {subTab === "tests" && (
             <ResultsTable
+              projectId={projectId}
               results={results}
               loading={resultsLoading}
               selectedResultId={selectedResultId}
@@ -752,13 +771,15 @@ function RunLifecycleStepper({ run }: { run: ExecutionRun }) {
 }
 
 function ResultsTable({
-  results, loading, selectedResultId, onSelectResult,
+  projectId, results, loading, selectedResultId, onSelectResult,
 }: {
+  projectId: string;
   results: ExecutionResult[];
   loading: boolean;
   selectedResultId: number | null;
   onSelectResult: (id: number) => void;
 }) {
+  const router = useRouter();
   if (loading) return <LoadingSkeleton rows={4} />;
   if (results.length === 0) {
     return (
@@ -786,7 +807,24 @@ function ResultsTable({
                 selectedResultId === r.id && "bg-blue-50/60",
               )}
             >
-              <td className="max-w-[220px] truncate px-3 py-2 font-medium text-slate-700">{r.test_name}</td>
+              <td className="max-w-[220px] truncate px-3 py-2 font-medium text-slate-700">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate">{r.test_name}</span>
+                  {r.test_case_id != null && (
+                    <button
+                      type="button"
+                      title="View this script's pipeline stages on /automation"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(buildHref("/automation", { project: projectId, tc: String(r.test_case_id) }));
+                      }}
+                      className="shrink-0 text-slate-300 hover:text-[#1b59f8]"
+                    >
+                      <GitBranch className="h-3 w-3" />
+                    </button>
+                  )}
+                </span>
+              </td>
               <td className="px-3 py-2"><ExecutionStatusBadge status={r.status} className="text-[10px]" /></td>
               <td className="px-3 py-2 text-right tabular-nums text-slate-500">
                 {r.duration_ms != null ? `${(r.duration_ms / 1000).toFixed(1)}s` : "—"}
@@ -844,6 +882,16 @@ function FailureDetailsPanel({
   const { toast } = useToast();
   const router = useRouter();
   const regenerateScript = useRegenerateScript();
+  const repairScript = useRepairScript();
+  // Tracks which results a repair has already been attempted for this
+  // session — once repair has been tried and didn't resolve it, the ladder
+  // escalates to Regenerate instead of offering the same repair again.
+  const [repairedResultIds, setRepairedResultIds] = useState<Set<number>>(new Set());
+  // The auto-repair loop's per-attempt outcomes were previously entirely
+  // invisible — keyed by result id so switching between failures (or
+  // re-selecting the same one) shows the right history, not the last
+  // repair attempted for a different test.
+  const [repairOutcomes, setRepairOutcomes] = useState<Map<number, RepairOutcome>>(new Map());
 
   const failing = useMemo(
     () => results.filter((r) => ["fail", "error", "blocked"].includes(String(r.status).toLowerCase())),
@@ -852,6 +900,26 @@ function FailureDetailsPanel({
   const selected = failing.find((r) => r.id === selectedResultId) ?? failing[0] ?? null;
   const selectedStreak = selected?.test_case_id != null ? streakByTestCase.get(selected.test_case_id) : undefined;
   const isRepeatFailure = (selectedStreak?.count ?? 0) >= 2;
+  const classification = getFailureClassification(selected);
+  // The escalation ladder (M3): a first failure is fine to just retry —
+  // flaky networks happen. Once it repeats, route to the fix the
+  // classification actually calls for instead of offering another bare
+  // re-run of bytes that already failed the same way. Repairable
+  // (locator_issue/timeout) tries the automated patch first and only
+  // escalates to a full Regenerate once repair itself has been tried and
+  // didn't resolve it.
+  const primaryAction: "repair" | "regenerate" | "test_data" | "environment" | "defect" | null = !isRepeatFailure || !classification
+    ? null
+    : classification.repairable && !repairedResultIds.has(selected?.id ?? -1)
+      ? "repair"
+      : classification.repairable
+        ? "regenerate"
+        : classification.classification === "data_issue"
+          ? "test_data"
+          : classification.classification === "environment_issue"
+            ? "environment"
+            : "defect"; // api_issue / app_defect
+  const selectedRepairOutcome = selected ? repairOutcomes.get(selected.id) : undefined;
 
   if (!run) {
     return (
@@ -903,6 +971,53 @@ function FailureDetailsPanel({
     }
   };
 
+  // The automated counterpart to "Retry" for a repairable classification —
+  // patches the contract with a fresh locator catalog rather than
+  // regenerating from scratch. Same as Regenerate, this creates a new
+  // draft version and does not auto-execute; a human still reviews it.
+  const handleRepair = async () => {
+    if (!selected || !run) return;
+    try {
+      const outcome = await repairScript.mutateAsync({
+        executionResultId: selected.id,
+        executionRunId: run.id,
+        projectId: Number(projectId),
+      });
+      setRepairedResultIds((prev) => new Set(prev).add(selected.id));
+      setRepairOutcomes((prev) => new Map(prev).set(selected.id, outcome));
+      if (outcome.repaired) {
+        toast({
+          title: "Script repaired",
+          description: "The patched script passed its own dry run and is a new draft awaiting review.",
+          variant: "success",
+          action: selected.test_case_id != null ? {
+            label: "Review script",
+            onClick: () => router.push(buildHref("/automation", { project: projectId, tc: String(selected.test_case_id) })),
+          } : undefined,
+        });
+      } else if (outcome.repairable) {
+        toast({
+          title: "Repair didn't resolve it",
+          description: `${outcome.attempts.length} attempt(s) made — try Regenerate instead.`,
+          variant: "error",
+        });
+      } else {
+        toast({
+          title: `Not something an automated repair can fix (${outcome.classification})`,
+          description: outcome.classification_reason ?? undefined,
+          variant: "error",
+        });
+      }
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      toast({
+        title: "Could not repair script",
+        description: err?.response?.data?.detail ?? err?.message,
+        variant: "error",
+      });
+    }
+  };
+
   return (
     <Card className="flex flex-col">
       <CardContent className="flex flex-1 flex-col p-4">
@@ -925,6 +1040,15 @@ function FailureDetailsPanel({
               <div className="mb-1.5 flex items-center gap-2">
                 <ExecutionStatusBadge status={selected.status} />
                 <span className="truncate font-mono text-[11px] text-slate-500">{selected.test_name}</span>
+                {classification && (
+                  <Badge
+                    variant={classification.repairable ? "warning" : "secondary"}
+                    className="ml-auto shrink-0 text-[10px]"
+                    title={classification.reason}
+                  >
+                    {CLASSIFICATION_LABELS[classification.classification]}
+                  </Badge>
+                )}
               </div>
               <p className="text-[11px] text-slate-500">
                 Duration: {selected.duration_ms != null ? `${(selected.duration_ms / 1000).toFixed(1)}s` : "—"}
@@ -952,6 +1076,32 @@ function FailureDetailsPanel({
               </div>
             )}
 
+            {selectedRepairOutcome && selectedRepairOutcome.attempts.length > 0 && (
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                  <Wrench className="h-3 w-3" />
+                  Repair {selectedRepairOutcome.repaired ? "resolved it" : "didn't resolve it"} —{" "}
+                  {selectedRepairOutcome.attempts.length} attempt{selectedRepairOutcome.attempts.length === 1 ? "" : "s"}
+                </p>
+                <ul className="space-y-1">
+                  {selectedRepairOutcome.attempts.map((a) => (
+                    <li key={a.attempt} className="flex items-start gap-1.5 text-[11px] text-slate-600">
+                      {a.outcome === "passed" ? (
+                        <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
+                      ) : (
+                        <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                      )}
+                      <span>
+                        <span className="font-mono">#{a.attempt}</span>{" "}
+                        {a.outcome.replace(/_/g, " ")}
+                        {a.detail ? ` — ${a.detail.split("\n")[0]}` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {failing.length > 1 && (
               <div className="mb-4 space-y-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Other failures</p>
@@ -970,17 +1120,57 @@ function FailureDetailsPanel({
 
             <div className="space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Quick Actions</p>
-              {isRepeatFailure && typeof singleScriptId === "number" && (
+
+              {primaryAction === "repair" && typeof singleScriptId === "number" && (
+                <QuickAction
+                  icon={repairScript.isPending ? Loader2 : Wrench}
+                  label={repairScript.isPending ? "Repairing…" : "Repair script"}
+                  onClick={handleRepair}
+                  disabled={repairScript.isPending}
+                  spinning={repairScript.isPending}
+                  title={`${classification ? CLASSIFICATION_LABELS[classification.classification] : ""} — patches the specific issue against a fresh locator catalog. Creates a new draft for review — doesn't auto-execute.`}
+                  tone="primary"
+                />
+              )}
+              {primaryAction === "regenerate" && typeof singleScriptId === "number" && (
                 <QuickAction
                   icon={regenerateScript.isPending ? Loader2 : Sparkles}
                   label={regenerateScript.isPending ? "Regenerating…" : "Regenerate script"}
                   onClick={handleRegenerate}
                   disabled={regenerateScript.isPending}
                   spinning={regenerateScript.isPending}
-                  title="Grounds a fresh script against the current locator catalog. Creates a new draft for review — doesn't auto-execute."
+                  title="A repair attempt already didn't resolve this — generates a fresh script from scratch. Creates a new draft for review."
                   tone="primary"
                 />
               )}
+              {primaryAction === "test_data" && (
+                <QuickAction
+                  icon={Database}
+                  label="Check test data"
+                  onClick={() => router.push(buildHref("/test-data", { project: projectId }))}
+                  title={classification?.reason}
+                  tone="primary"
+                />
+              )}
+              {primaryAction === "environment" && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                  <span className="inline-flex items-center gap-1 font-semibold">
+                    <Globe className="h-3 w-3" /> Environment issue
+                  </span>
+                  {" — "}check the application&apos;s configured URL, DNS, or that the target service is
+                  reachable.{classification?.reason ? ` ${classification.reason}` : ""}
+                </div>
+              )}
+              {primaryAction === "defect" && (
+                <QuickAction
+                  icon={Bug}
+                  label="Draft defect"
+                  onClick={() => onCreateDefect(selected)}
+                  title={classification?.reason}
+                  tone="primary"
+                />
+              )}
+
               <QuickAction
                 icon={isRepeatFailure ? AlertTriangle : RotateCcw}
                 label="Retry this test case"
@@ -1001,7 +1191,7 @@ function FailureDetailsPanel({
                 onClick={() => handleRetryFailed()}
                 disabled={failedScriptIds.length === 0 || retryPending}
               />
-              {!isRepeatFailure && typeof singleScriptId === "number" && (
+              {primaryAction !== "regenerate" && primaryAction !== "repair" && typeof singleScriptId === "number" && (
                 <QuickAction
                   icon={regenerateScript.isPending ? Loader2 : Sparkles}
                   label={regenerateScript.isPending ? "Regenerating…" : "Regenerate script"}
@@ -1011,7 +1201,9 @@ function FailureDetailsPanel({
                   title="Grounds a fresh script against the current locator catalog. Creates a new draft for review — doesn't auto-execute."
                 />
               )}
-              <QuickAction icon={Bug} label="Draft defect" onClick={() => onCreateDefect(selected)} />
+              {primaryAction !== "defect" && (
+                <QuickAction icon={Bug} label="Draft defect" onClick={() => onCreateDefect(selected)} />
+              )}
               {artifacts.map((a) => (
                 <QuickAction
                   key={a.kind}
