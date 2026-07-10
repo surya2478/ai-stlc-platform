@@ -101,7 +101,12 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
     can run, matching the existing request_changes -> draft precedent.
     """
     from app.agents.automation.automation_agent import AutomationScriptAgent
-    from app.services.project_application_service import build_test_case_application_context
+    from app.models.project_application import ProjectApplication
+    from app.services import locator_map_service
+    from app.services.project_application_service import (
+        build_test_case_application_context,
+        resolve_default_application,
+    )
 
     if not script.test_case_id:
         raise HTTPException(status_code=422, detail="Script has no linked test case to regenerate from.")
@@ -112,6 +117,34 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
         raise HTTPException(status_code=404, detail="Linked test case not found.")
 
     app_context = await build_test_case_application_context(db, tc)
+
+    # Mirrors trigger_automation_agent's grounding lookup (automation.py) —
+    # without this, regenerate silently fell back to ungrounded LLM guesses
+    # even when Playwright MCP Discovery had already run for the test case's
+    # application, since only the bulk generate-scripts endpoint fetched
+    # locator_map before.
+    application = None
+    if tc.application_id:
+        application = await db.get(ProjectApplication, tc.application_id)
+    if application is None:
+        application = await resolve_default_application(db, tc.project_id)
+    locator_map: dict[str, list[dict]] = {}
+    if application is not None:
+        entries = await locator_map_service.list_for_application(
+            db, project_id=tc.project_id, application_id=application.id
+        )
+        locator_map[str(application.id)] = [
+            {
+                "element_name": e.element_name,
+                "page": e.page,
+                "role": e.recommended_strategy,
+                "business_meaning": e.business_meaning,
+                "recommended_locator": e.recommended_locator,
+                "confidence_score": e.confidence_score,
+            }
+            for e in entries
+        ]
+
     tc_dict = {
         "id": tc.id,
         "test_case_id": tc.test_case_id,
@@ -122,11 +155,12 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
         "bdd_scenario": tc.bdd_scenario,
         "test_type": tc.test_type,
         "priority": tc.priority,
+        "application_id": application.id if application else None,
         **app_context,
     }
 
     agent = AutomationScriptAgent()
-    agent_result = await agent.run(test_cases=[tc_dict], framework=script.framework)
+    agent_result = await agent.run(test_cases=[tc_dict], framework=script.framework, locator_map=locator_map)
     if not agent_result.success:
         raise HTTPException(status_code=500, detail=agent_result.error or "Script regeneration failed")
 
@@ -146,7 +180,19 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
 
     history = list((script.metadata_ or {}).get("transition_history", []))
     history.append({"action": "regenerate", "by": user_id, "from_status": script.status})
-    script.metadata_ = {**(script.metadata_ or {}), "transition_history": history}
+    script.metadata_ = {
+        **(script.metadata_ or {}),
+        "transition_history": history,
+        # Was previously left stale from whatever generation attempt first
+        # created this row — a regenerated script grounded in a live
+        # locator_map catalog kept displaying "grounded: false" from before
+        # Playwright MCP Discovery had ever run.
+        "grounding": {
+            "grounded": bool(sc_data.get("grounded", False)),
+            "grounded_element_count": sc_data.get("grounded_element_count", 0),
+            "ungrounded_elements": sc_data.get("ungrounded_elements", []),
+        },
+    }
     script.status = "draft"
 
     # NOTE: this mutates the existing row in place rather than creating a new
