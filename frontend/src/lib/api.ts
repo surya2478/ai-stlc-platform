@@ -1635,7 +1635,7 @@ export const automationApi = {
   // and resets it to draft for re-review. Fixes scripts generated before a
   // real application URL was configured (e.g. ones hardcoding example.com).
   regenerateScript: (scriptId: number) =>
-    api.post<AutomationScript>(`/automation/scripts/${scriptId}/regenerate`),
+    api.post<AutomationScript>(`/automation/${scriptId}/regenerate`),
   runnerArtifactUrl: (resultId: number, kind: "log" | "screenshot" | "video" | "trace") =>
     `/api/v1/automation/runner/results/${resultId}/artifact/${kind}`,
 };

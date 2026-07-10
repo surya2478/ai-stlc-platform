@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Bug, Check, CheckCircle2, Clock, Download, Loader2, PlayCircle, RotateCcw, Search, XCircle,
-  AlertTriangle,
+  AlertTriangle, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AutomationPlanning, ExecutionResult, ExecutionRun } from "@/lib/api";
 import { isActiveRun, useRun, useRunResults } from "@/lib/queries/execution";
 import { useRunLifecycleActions } from "@/lib/queries/runActions";
+import { useRegenerateScript } from "@/lib/queries/automation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { EmptyState, ExecutionStatusBadge, LoadingSkeleton } from "./execution-shared";
+import { useToast } from "@/components/ui/toast";
+import { buildHref, EmptyState, ExecutionStatusBadge, LoadingSkeleton } from "./execution-shared";
 import {
   AiAssistedBadge, buildArtifactLinks, formatDate, formatDuration,
   runVerdict, RunVerdictBadge,
@@ -232,6 +235,7 @@ export function CommandCenterTab({
       />
 
       <FailureDetailsPanel
+        projectId={projectId}
         run={run}
         results={results}
         resultsLoading={resultsQuery.isLoading}
@@ -824,8 +828,9 @@ function LogsPanel({ run }: { run: ExecutionRun }) {
 /* ------------------------------------------------------------------ */
 
 function FailureDetailsPanel({
-  run, results, resultsLoading, selectedResultId, onSelectResult, lifecycle, onCreateDefect, streakByTestCase,
+  projectId, run, results, resultsLoading, selectedResultId, onSelectResult, lifecycle, onCreateDefect, streakByTestCase,
 }: {
+  projectId: string;
   run: ExecutionRun | null;
   results: ExecutionResult[];
   resultsLoading: boolean;
@@ -836,6 +841,9 @@ function FailureDetailsPanel({
   streakByTestCase: Map<number, { count: number; error: string | null }>;
 }) {
   const { localRunnerRun, failedScriptIds, retryPending, handleRetry, handleRetryFailed } = lifecycle;
+  const { toast } = useToast();
+  const router = useRouter();
+  const regenerateScript = useRegenerateScript();
 
   const failing = useMemo(
     () => results.filter((r) => ["fail", "error", "blocked"].includes(String(r.status).toLowerCase())),
@@ -858,6 +866,42 @@ function FailureDetailsPanel({
   const singleScriptId = (selected?.metadata_ as { automation_script_id?: number } | undefined)?.automation_script_id;
   const canRetrySingle = localRunnerRun && typeof singleScriptId === "number";
   const artifacts = selected ? buildArtifactLinks(selected) : [];
+
+  // "Retry" alone re-runs the identical script bytes — a locator or
+  // assertion defect is a generation-layer problem, but the only fix path
+  // used to live entirely at the execution layer. This regenerates the
+  // script (grounded against the current locator catalog) and sends the
+  // user straight to it for review — regeneration resets to "draft", so it
+  // deliberately does NOT auto-execute; a human still approves before a
+  // regenerated script runs, same as first-time generation.
+  const handleRegenerate = async () => {
+    if (typeof singleScriptId !== "number") return;
+    try {
+      const script = await regenerateScript.mutateAsync(singleScriptId);
+      const grounding = (script.metadata_ as { grounding?: { grounded?: boolean; ungrounded_elements?: string[] } } | undefined)?.grounding;
+      const groundedNote = grounding?.grounded && (grounding.ungrounded_elements?.length ?? 0) === 0
+        ? "Fully grounded."
+        : grounding?.ungrounded_elements?.length
+          ? `${grounding.ungrounded_elements.length} element(s) still ungrounded.`
+          : "";
+      toast({
+        title: "Script regenerated",
+        description: `${script.script_id} is a new draft awaiting review. ${groundedNote}`.trim(),
+        variant: "success",
+        action: selected?.test_case_id != null ? {
+          label: "Review script",
+          onClick: () => router.push(buildHref("/automation", { project: projectId, tc: String(selected.test_case_id) })),
+        } : undefined,
+      });
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } }; message?: string };
+      toast({
+        title: "Could not regenerate script",
+        description: err?.response?.data?.detail ?? err?.message,
+        variant: "error",
+      });
+    }
+  };
 
   return (
     <Card className="flex flex-col">
@@ -926,6 +970,17 @@ function FailureDetailsPanel({
 
             <div className="space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Quick Actions</p>
+              {isRepeatFailure && typeof singleScriptId === "number" && (
+                <QuickAction
+                  icon={regenerateScript.isPending ? Loader2 : Sparkles}
+                  label={regenerateScript.isPending ? "Regenerating…" : "Regenerate script"}
+                  onClick={handleRegenerate}
+                  disabled={regenerateScript.isPending}
+                  spinning={regenerateScript.isPending}
+                  title="Grounds a fresh script against the current locator catalog. Creates a new draft for review — doesn't auto-execute."
+                  tone="primary"
+                />
+              )}
               <QuickAction
                 icon={isRepeatFailure ? AlertTriangle : RotateCcw}
                 label="Retry this test case"
@@ -946,6 +1001,16 @@ function FailureDetailsPanel({
                 onClick={() => handleRetryFailed()}
                 disabled={failedScriptIds.length === 0 || retryPending}
               />
+              {!isRepeatFailure && typeof singleScriptId === "number" && (
+                <QuickAction
+                  icon={regenerateScript.isPending ? Loader2 : Sparkles}
+                  label={regenerateScript.isPending ? "Regenerating…" : "Regenerate script"}
+                  onClick={handleRegenerate}
+                  disabled={regenerateScript.isPending}
+                  spinning={regenerateScript.isPending}
+                  title="Grounds a fresh script against the current locator catalog. Creates a new draft for review — doesn't auto-execute."
+                />
+              )}
               <QuickAction icon={Bug} label="Draft defect" onClick={() => onCreateDefect(selected)} />
               {artifacts.map((a) => (
                 <QuickAction
@@ -964,7 +1029,7 @@ function FailureDetailsPanel({
 }
 
 function QuickAction({
-  icon: Icon, label, onClick, href, disabled, title, tone = "default",
+  icon: Icon, label, onClick, href, disabled, title, tone = "default", spinning = false,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
@@ -974,15 +1039,26 @@ function QuickAction({
   title?: string;
   /** "warn" flags an action that's technically available but inadvisable
    * right now — e.g. retrying a script that's already failed the same way
-   * repeatedly. */
-  tone?: "default" | "warn";
+   * repeatedly. "primary" highlights the recommended fix — e.g.
+   * regenerating instead of retrying once a failure has repeated. */
+  tone?: "default" | "warn" | "primary";
+  /** Spins the icon — pair with a Loader2 icon while an action is in flight. */
+  spinning?: boolean;
 }) {
   const className = cn(
     "flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
-    tone === "warn" ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-700",
-    disabled ? "cursor-not-allowed opacity-40" : tone === "warn" ? "hover:bg-red-100" : "hover:bg-slate-50",
+    tone === "warn" && "border-red-200 bg-red-50 text-red-800",
+    tone === "primary" && "border-[#1b59f8] bg-[#1b59f8] text-white",
+    tone === "default" && "border-slate-200 bg-white text-slate-700",
+    disabled
+      ? "cursor-not-allowed opacity-40"
+      : tone === "warn" ? "hover:bg-red-100" : tone === "primary" ? "hover:bg-[#1447d1]" : "hover:bg-slate-50",
   );
-  const iconClassName = cn("h-3.5 w-3.5", tone === "warn" ? "text-red-500" : "text-slate-400");
+  const iconClassName = cn(
+    "h-3.5 w-3.5",
+    tone === "warn" ? "text-red-500" : tone === "primary" ? "text-white" : "text-slate-400",
+    spinning && "animate-spin",
+  );
   if (href) {
     return (
       <a href={href} target="_blank" rel="noreferrer" className={className} title={title}>
