@@ -312,6 +312,47 @@ class AutomationScriptExecuteResponse(BaseModel):
     message: str
 
 
+class RepairAttemptOut(BaseModel):
+    attempt: int
+    outcome: str
+    detail: str | None = None
+    static_gate_passed: bool | None = None
+    dry_run_passed: bool | None = None
+
+
+class RepairOutcomeOut(BaseModel):
+    """On-demand repair for a real execution failure — the manual
+    counterpart to the automatic dry-run chain
+    (automation_dry_run -> failure_classification -> automation_repair_loop),
+    which never runs for real Command Center executions."""
+    classification: str | None = None
+    classification_reason: str | None = None
+    # False for a classification the repair loop was never designed to fix
+    # (data_issue/environment_issue/app_defect/api_issue) — repaired stays
+    # False and attempts stays empty in that case, not an error.
+    repairable: bool = False
+    repaired: bool = False
+    new_script_id: int | None = None
+    attempts: list[RepairAttemptOut] = Field(default_factory=list)
+    error: str | None = None
+
+
+PipelineStage = Literal["discover", "generate", "static", "dry_run", "review", "ci_ready"]
+PipelineStageState = Literal["done", "failed", "pending"]
+
+
+class PipelineStageOut(BaseModel):
+    """One stage in a script's real pipeline history — replaces the
+    abstract, status-only lifecycle stepper with what actually happened and
+    when, sourced from ArtifactLineage/AgentRun (discover), the script's own
+    fields (generate/static), metadata_.last_dry_run + ExecutionRun
+    (dry_run), and ApprovalAction history (review/ci_ready)."""
+    stage: PipelineStage
+    state: PipelineStageState
+    at: datetime | None = None
+    detail: str | None = None
+
+
 class AutomationBatchExecuteRequest(BaseModel):
     """Request to run several approved scripts as one batch ("Run All Eligible")."""
     script_ids: list[int] = Field(min_length=1, max_length=200)

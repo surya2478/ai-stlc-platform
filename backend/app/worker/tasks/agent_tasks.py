@@ -1536,100 +1536,24 @@ async def _persist_agent_artifacts(
         return {"classified_result_ids": classified_ids, "count": len(classified_ids)}
 
     if agent_name == "automation_repair_loop":
-        # Phase 4.4: one new AutomationScript VERSION per attempt
-        # (automation_service.create_new_version — the parent row is never
-        # mutated or deleted, so every attempt stays restorable), each with
-        # its own dry-run evidence tagged source_type="repair_dry_run".
+        # Phase 4.4: one new AutomationScript VERSION per attempt — see
+        # automation_service.persist_repair_outcome (shared with the
+        # on-demand "Repair script" trigger for real execution failures).
         resolved_ids: list[int] = []
         for repair in data.get("repairs", []):
             parent_script = await db.get(AutomationScript, repair.get("script_id"))
             if not parent_script or parent_script.project_id != run.project_id:
                 continue
-
-            current_parent = parent_script
-            last_version = None
-            for attempt in repair.get("attempts", []):
-                if "compiled_files" not in attempt:
-                    continue  # llm_patch_failed / compile_failed — nothing to version
-
-                status = "generated"
-                if attempt.get("static_gate_passed"):
-                    status = "static_passed"
-                if attempt.get("dry_run_passed"):
-                    status = "dry_run_passed"
-
-                new_version = await automation_service.create_new_version(
-                    db, current_parent,
-                    code=attempt["compiled_files"].get(attempt["file_path"], ""),
-                    compiled_files=attempt["compiled_files"],
-                    contract=attempt["contract"],
-                    status=status,
-                )
-                new_version.static_gate_result = attempt.get("static_gate_result")
-                new_version.metadata_ = {
-                    **(new_version.metadata_ or {}),
-                    "source": "repair_loop",
-                    "repair_attempt": attempt.get("attempt"),
-                }
-                await db.flush()
-
-                dry_run_result = attempt.get("dry_run_result")
-                if dry_run_result:
-                    dr_results = dry_run_result.get("results", [])
-                    exec_run = ExecutionRun(
-                        project_id=run.project_id,
-                        created_by=run.triggered_by,
-                        triggered_by=run.triggered_by,
-                        execution_id=temporary_id("ER"),
-                        environment="dry-run",
-                        execution_type="automation",
-                        source_type="repair_dry_run",
-                        status="completed" if dry_run_result.get("run_status") == "completed" else "failed",
-                        total_tests=len(dr_results),
-                        passed=sum(1 for r in dr_results if r.get("status") == "pass"),
-                        failed=sum(1 for r in dr_results if r.get("status") == "fail"),
-                        skipped=sum(1 for r in dr_results if r.get("status") == "skip"),
-                        agent_run_id=run.id,
-                        metadata_={
-                            "automation_script_id": new_version.id,
-                            "dry_run": True,
-                            "repair_attempt": attempt.get("attempt"),
-                        },
-                    )
-                    db.add(exec_run)
-                    await db.flush()
-                    exec_run.execution_id = display_id("ER", exec_run.id)
-                    for r in dr_results:
-                        db.add(ExecutionResult(
-                            execution_run_id=exec_run.id,
-                            test_case_id=new_version.test_case_id,
-                            project_id=run.project_id,
-                            test_name=r.get("name") or new_version.script_id,
-                            status=r.get("status") or "error",
-                            duration_ms=r.get("duration_ms"),
-                            error_message=r.get("error_message"),
-                            stack_trace=r.get("stack_trace"),
-                            screenshot_path=r.get("screenshot_path"),
-                            video_path=r.get("video_path"),
-                            trace_path=r.get("trace_path"),
-                            metadata_={
-                                "automation_script_id": new_version.id,
-                                "dry_run": True,
-                                "console_logs": r.get("console_logs"),
-                                "network_logs": r.get("network_logs"),
-                            },
-                        ))
-                    await db.flush()
-
-                current_parent = new_version
-                last_version = new_version
-
-            if last_version is None:
-                continue
-            if repair.get("resolved"):
+            last_version = await automation_service.persist_repair_outcome(
+                db,
+                project_id=run.project_id,
+                triggered_by=run.triggered_by,
+                agent_run_id=run.id,
+                parent_script=parent_script,
+                repair=repair,
+            )
+            if last_version is not None and repair.get("resolved"):
                 resolved_ids.append(last_version.id)
-            else:
-                last_version.metadata_ = {**(last_version.metadata_ or {}), "repair_loop_exhausted": True}
 
         return {"resolved_script_ids": resolved_ids, "count": len(resolved_ids)}
 

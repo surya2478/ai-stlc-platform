@@ -38,6 +38,8 @@ from app.schemas.automation import (
     JiraExecutionStatusSyncRequest,
     LifecycleApprovalRequest,
     RecommendationDecisionRequest,
+    PipelineStageOut,
+    RepairOutcomeOut,
     RunnerFrameworkStatus,
     RunnerStatusOut,
     ScriptTransitionRequest,
@@ -460,6 +462,54 @@ async def regenerate_automation_script(
     script = await automation_service.regenerate_script(db, script, current_user.id)
     await db.commit()
     return script
+
+
+@router.post("/results/{execution_result_id}/repair", response_model=RepairOutcomeOut)
+async def repair_from_execution_result(
+    execution_result_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """On-demand repair for a real (non-dry-run) execution failure.
+
+    The automatic repair loop (automation_dry_run -> failure_classification
+    -> automation_repair_loop) only ever runs for dry runs — a real failure
+    from the local subprocess runner (what "Retry" in the Command Center
+    re-executes) never gets classified or repaired today. This classifies
+    the failure on the spot if it hasn't been already, and — only when the
+    classification is repairable (locator_issue/timeout) — attempts a
+    targeted contract patch grounded against a fresh locator catalog,
+    persisting each attempt as a new script version (never mutates the
+    original). A non-repairable classification (data_issue/
+    environment_issue/app_defect/api_issue) is still returned so the
+    caller can route to the right fix, just without a repair attempt.
+    """
+    result = await db.get(ExecutionResult, execution_result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Execution result not found")
+    await require_entity_permission(result, GENERATE_AUTOMATION, current_user, db)
+    outcome = await automation_service.classify_and_repair(
+        db, execution_result=result, triggered_by=current_user.id
+    )
+    await db.commit()
+    return outcome
+
+
+@router.get("/{script_id}/pipeline", response_model=list[PipelineStageOut])
+async def get_script_pipeline(
+    script_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """The real timeline behind this script's status: Discover -> Generate
+    -> Static gate -> Dry-run -> Review -> CI-ready, each with its actual
+    state and timestamp — not just the current lifecycle stage label.
+    """
+    script = await automation_service.get_script(db, script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Automation script not found")
+    await require_entity_project_access(script, current_user, db)
+    return await automation_service.build_pipeline_stages(db, script)
 
 
 # ── AI Intelligence Assistant (Phase 2D) ──────────────────────────────────────

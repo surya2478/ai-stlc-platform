@@ -449,3 +449,89 @@ def _queue_runner(results):
         return queue.pop(0)
 
     return _fake_run_script_for_execution
+
+
+# ── failure classification wiring: real executions never went through the
+# dry-run chain's failure_classification agent — confirm both task entry
+# points now call it whenever there's an actual failure, and skip the call
+# entirely when everything passed. ────────────────────────────────────────
+
+def test_execute_batch_classifies_failures_when_present(monkeypatch, tmp_path):
+    _stub_filesystem_layer(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        automation_tasks_module, "run_script_for_execution",
+        _queue_runner([_passing_result(), _failing_result(message="assert 1 == 2")]),
+    )
+    calls = []
+
+    async def _fake_classify(_db, *, execution_run_id):
+        calls.append(execution_run_id)
+        return 1
+    monkeypatch.setattr(automation_tasks_module.automation_service, "classify_failed_results", _fake_classify)
+
+    run = _batch_run(script_ids=[1, 2])
+    scripts = {1: _script(1), 2: _script(2)}
+    placeholders = [_placeholder(1, 1), _placeholder(2, 2)]
+    db = _TaskDB(run=run, scripts_by_id=scripts, placeholders=placeholders)
+    monkeypatch.setattr(automation_tasks_module, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+
+    _run_batch(db, execution_run_id=99)
+
+    assert calls == [99]
+
+
+def test_execute_batch_skips_classification_when_everything_passed(monkeypatch, tmp_path):
+    _stub_filesystem_layer(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        automation_tasks_module, "run_script_for_execution",
+        _queue_runner([_passing_result(), _passing_result()]),
+    )
+    calls = []
+
+    async def _fake_classify(_db, *, execution_run_id):
+        calls.append(execution_run_id)
+        return 0
+    monkeypatch.setattr(automation_tasks_module.automation_service, "classify_failed_results", _fake_classify)
+
+    run = _batch_run(script_ids=[1, 2])
+    scripts = {1: _script(1), 2: _script(2)}
+    placeholders = [_placeholder(1, 1), _placeholder(2, 2)]
+    db = _TaskDB(run=run, scripts_by_id=scripts, placeholders=placeholders)
+    monkeypatch.setattr(automation_tasks_module, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+
+    _run_batch(db, execution_run_id=99)
+
+    assert calls == []
+
+
+def test_execute_run_classifies_failures_when_present(monkeypatch, tmp_path):
+    _stub_filesystem_layer(monkeypatch, tmp_path)
+    monkeypatch.setattr(automation_tasks_module, "run_script_for_execution", _queue_runner([_failing_result()]))
+    monkeypatch.setattr(
+        automation_tasks_module, "runtime_status",
+        lambda: {"pytest": SimpleNamespace(available=True, detail="pytest 8.0")},
+    )
+    calls = []
+
+    async def _fake_classify(_db, *, execution_run_id):
+        calls.append(execution_run_id)
+        return 1
+    monkeypatch.setattr(automation_tasks_module.automation_service, "classify_failed_results", _fake_classify)
+
+    run = ExecutionRun(
+        id=200, project_id=1, execution_id="ER-0200", environment="staging",
+        status="queued", execution_type="automation", source_type="automation_local",
+        total_tests=1, passed=0, failed=0, skipped=0, execution_logs=[],
+        metadata_={"source_type": "automation_local", "automation_script_id": 1},
+    )
+    script = _script(1)
+    placeholder = _placeholder(1, 1)
+    db = _TaskDB(run=run, scripts_by_id={1: script}, placeholders=[placeholder])
+    monkeypatch.setattr(automation_tasks_module, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+
+    async def _go():
+        return await _execute_run(200, 600)
+
+    anyio.run(_go)
+
+    assert calls == [200]

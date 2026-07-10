@@ -386,6 +386,433 @@ async def create_new_version(
     return child
 
 
+async def persist_repair_outcome(
+    db: AsyncSession,
+    *,
+    project_id: int,
+    triggered_by: int,
+    agent_run_id: int | None,
+    parent_script: AutomationScript,
+    repair: dict,
+) -> AutomationScript | None:
+    """Persists a RepairLoopAgent outcome: one new AutomationScript VERSION
+    per attempt (the parent row is never mutated or deleted, so every
+    attempt — including the ones that still failed — stays inspectable and
+    restorable), each with its own dry-run evidence tagged
+    source_type="repair_dry_run".
+
+    Shared by the automatic dry-run-chain repair loop
+    (agent_tasks.py's automation_repair_loop persistence, which has an
+    AgentRun to hang project_id/triggered_by/agent_run_id off of) and the
+    on-demand "Repair script" trigger for real execution failures (which
+    doesn't have one) — both need the exact same persisted shape, so this
+    was pulled out from what used to be inline-only agent_tasks.py logic
+    rather than duplicated.
+
+    Returns the last persisted version, or None if every attempt failed
+    before producing anything compilable (llm_patch_failed/compile_failed
+    on attempt 1 — nothing to version).
+    """
+    current_parent = parent_script
+    last_version: AutomationScript | None = None
+    for attempt in repair.get("attempts", []):
+        if "compiled_files" not in attempt:
+            continue  # llm_patch_failed / compile_failed — nothing to version
+
+        status = "generated"
+        if attempt.get("static_gate_passed"):
+            status = "static_passed"
+        if attempt.get("dry_run_passed"):
+            status = "dry_run_passed"
+
+        new_version = await create_new_version(
+            db, current_parent,
+            code=attempt["compiled_files"].get(attempt["file_path"], ""),
+            compiled_files=attempt["compiled_files"],
+            contract=attempt["contract"],
+            status=status,
+        )
+        new_version.static_gate_result = attempt.get("static_gate_result")
+        new_version.metadata_ = {
+            **(new_version.metadata_ or {}),
+            "source": "repair_loop",
+            "repair_attempt": attempt.get("attempt"),
+        }
+        await db.flush()
+
+        dry_run_result = attempt.get("dry_run_result")
+        if dry_run_result:
+            dr_results = dry_run_result.get("results", [])
+            exec_run = ExecutionRun(
+                project_id=project_id,
+                created_by=triggered_by,
+                triggered_by=triggered_by,
+                execution_id=temporary_id("ER"),
+                environment="dry-run",
+                execution_type="automation",
+                source_type="repair_dry_run",
+                status="completed" if dry_run_result.get("run_status") == "completed" else "failed",
+                total_tests=len(dr_results),
+                passed=sum(1 for r in dr_results if r.get("status") == "pass"),
+                failed=sum(1 for r in dr_results if r.get("status") == "fail"),
+                skipped=sum(1 for r in dr_results if r.get("status") == "skip"),
+                agent_run_id=agent_run_id,
+                metadata_={
+                    "automation_script_id": new_version.id,
+                    "dry_run": True,
+                    "repair_attempt": attempt.get("attempt"),
+                },
+            )
+            db.add(exec_run)
+            await db.flush()
+            exec_run.execution_id = display_id("ER", exec_run.id)
+            for r in dr_results:
+                db.add(ExecutionResult(
+                    execution_run_id=exec_run.id,
+                    test_case_id=new_version.test_case_id,
+                    project_id=project_id,
+                    test_name=r.get("name") or new_version.script_id,
+                    status=r.get("status") or "error",
+                    duration_ms=r.get("duration_ms"),
+                    error_message=r.get("error_message"),
+                    stack_trace=r.get("stack_trace"),
+                    screenshot_path=r.get("screenshot_path"),
+                    video_path=r.get("video_path"),
+                    trace_path=r.get("trace_path"),
+                    metadata_={
+                        "automation_script_id": new_version.id,
+                        "dry_run": True,
+                        "console_logs": r.get("console_logs"),
+                        "network_logs": r.get("network_logs"),
+                    },
+                ))
+            await db.flush()
+
+        current_parent = new_version
+        last_version = new_version
+
+    if last_version is not None and not repair.get("resolved"):
+        last_version.metadata_ = {**(last_version.metadata_ or {}), "repair_loop_exhausted": True}
+
+    return last_version
+
+
+async def classify_and_repair(
+    db: AsyncSession, *, execution_result: ExecutionResult, triggered_by: int
+) -> dict:
+    """On-demand repair for a real (non-dry-run) execution failure — the
+    manual counterpart to the automatic dry-run chain (automation_dry_run
+    -> failure_classification -> automation_repair_loop), which never runs
+    for real Command Center executions (automation_tasks.run_automation_script
+    has no chain wiring at all). Classifies the failure first if it hasn't
+    been already — writing the same metadata_.failure_classification shape
+    the automatic chain writes, so it's indistinguishable from either path
+    afterward — then only attempts repair when the classification is
+    repairable (locator_issue/timeout). Other classifications
+    (data_issue/environment_issue/app_defect/api_issue) return the
+    classification without attempting a fix the repair loop was never
+    designed to make; the caller routes those elsewhere (test data,
+    environment config, defect drafting).
+    """
+    from app.agents.automation.repair_agent import RepairLoopAgent
+    from app.agents.execution.failure_classification_agent import (
+        REPAIRABLE_CLASSIFICATIONS,
+        classify_by_rules,
+        classify_with_llm,
+    )
+    from app.models.project_application import ProjectApplication
+    from app.services import locator_map_service
+    from app.services.project_application_service import resolve_default_application, resolve_environment_url
+
+    classification_info = (execution_result.metadata_ or {}).get("failure_classification")
+    if not classification_info:
+        result_dict = {
+            "error_message": execution_result.error_message,
+            "stack_trace": execution_result.stack_trace,
+            "network_logs": (execution_result.metadata_ or {}).get("network_logs"),
+        }
+        classification = classify_by_rules(result_dict)
+        if classification:
+            source, reason = "rules", f"Matched a deterministic rule for {classification}."
+        else:
+            classification, reason = await classify_with_llm(result_dict)
+            source = "llm"
+        classification_info = {
+            "classification": classification,
+            "reason": reason,
+            "source": source,
+            "repairable": classification in REPAIRABLE_CLASSIFICATIONS,
+        }
+        execution_result.metadata_ = {
+            **(execution_result.metadata_ or {}),
+            "failure_classification": classification_info,
+        }
+        await db.flush()
+
+    outcome: dict = {
+        "classification": classification_info.get("classification"),
+        "classification_reason": classification_info.get("reason"),
+        "repairable": bool(classification_info.get("repairable")),
+        "repaired": False,
+        "new_script_id": None,
+        "attempts": [],
+        "error": None,
+    }
+    if not outcome["repairable"]:
+        return outcome
+
+    automation_script_id = (execution_result.metadata_ or {}).get("automation_script_id")
+    if not automation_script_id:
+        outcome["error"] = "No linked automation script to repair."
+        return outcome
+    script = await db.get(AutomationScript, automation_script_id)
+    if not script or not script.contract:
+        outcome["error"] = "Linked script has no contract to repair from — regenerate instead."
+        return outcome
+
+    application_url = None
+    environment = "QA"
+    catalog: list[dict] = []
+    tc = await db.get(TestCase, script.test_case_id) if script.test_case_id else None
+    if tc:
+        environment = tc.test_phase or "QA"
+        application = await db.get(ProjectApplication, tc.application_id) if tc.application_id else None
+        if application is None:
+            application = await resolve_default_application(db, script.project_id)
+        if application:
+            application_url = resolve_environment_url(application, environment)
+            entries = await locator_map_service.list_for_application(
+                db, project_id=script.project_id, application_id=application.id
+            )
+            catalog = [
+                {
+                    "element_name": e.element_name,
+                    "recommended_locator": e.recommended_locator,
+                    "business_meaning": e.business_meaning,
+                }
+                for e in entries
+            ]
+
+    agent_result = await RepairLoopAgent().run(scripts=[{
+        "script_id": script.id,
+        "contract": script.contract,
+        "framework": script.framework,
+        "application_url": application_url,
+        "environment": environment,
+        "locator_catalog": catalog,
+        "failure": {
+            "classification": classification_info.get("classification"),
+            "error_message": execution_result.error_message,
+            "stack_trace": execution_result.stack_trace,
+        },
+    }])
+    if not agent_result.success or not agent_result.data.get("repairs"):
+        outcome["error"] = agent_result.error or "Repair loop produced no result."
+        return outcome
+
+    repair = agent_result.data["repairs"][0]
+    new_version = await persist_repair_outcome(
+        db,
+        project_id=script.project_id,
+        triggered_by=triggered_by,
+        agent_run_id=None,
+        parent_script=script,
+        repair=repair,
+    )
+    outcome["attempts"] = [
+        {
+            "attempt": a.get("attempt"),
+            "outcome": a.get("outcome"),
+            "detail": a.get("detail"),
+            "static_gate_passed": a.get("static_gate_passed"),
+            "dry_run_passed": a.get("dry_run_passed"),
+        }
+        for a in repair.get("attempts", [])
+    ]
+    outcome["repaired"] = bool(repair.get("resolved"))
+    outcome["new_script_id"] = new_version.id if new_version else None
+    return outcome
+
+
+async def classify_failed_results(db: AsyncSession, *, execution_run_id: int) -> int:
+    """Classifies every not-yet-classified failed ExecutionResult on a real
+    (local subprocess runner) execution run — rules first, LLM assist only
+    when rules are inconclusive, same as the automatic dry-run chain's
+    failure_classification agent.
+
+    Real executions never went through that chain at all
+    (automation_tasks.run_automation_script has no agent wiring), so a
+    failure's class was invisible until someone clicked "Repair script" —
+    classify_and_repair() would classify on the spot, but only for the one
+    result being repaired. Called at the end of both the single-script and
+    batch execution tasks so every failure's class is already on the
+    ExecutionResult by the time the UI renders it, not just the one a user
+    happens to click into.
+
+    Returns the number of results classified.
+    """
+    from app.agents.execution.failure_classification_agent import (
+        REPAIRABLE_CLASSIFICATIONS,
+        classify_by_rules,
+        classify_with_llm,
+    )
+
+    result = await db.execute(
+        select(ExecutionResult).where(
+            ExecutionResult.execution_run_id == execution_run_id,
+            ExecutionResult.status != "pass",
+        )
+    )
+    rows = result.scalars().all()
+    classified = 0
+    for row in rows:
+        if (row.metadata_ or {}).get("failure_classification"):
+            continue  # e.g. already classified via an earlier on-demand repair
+        result_dict = {
+            "error_message": row.error_message,
+            "stack_trace": row.stack_trace,
+            "network_logs": (row.metadata_ or {}).get("network_logs"),
+        }
+        classification = classify_by_rules(result_dict)
+        if classification:
+            source, reason = "rules", f"Matched a deterministic rule for {classification}."
+        else:
+            classification, reason = await classify_with_llm(result_dict)
+            source = "llm"
+        row.metadata_ = {
+            **(row.metadata_ or {}),
+            "failure_classification": {
+                "classification": classification,
+                "reason": reason,
+                "source": source,
+                "repairable": classification in REPAIRABLE_CLASSIFICATIONS,
+            },
+        }
+        classified += 1
+    if classified:
+        await db.flush()
+    return classified
+
+
+_REVIEW_APPROVE_ACTIONS = {"reviewer_approve", "lead_approve", "approve"}  # "approve" = legacy /approve endpoint
+_REVIEW_REJECT_ACTIONS = {"reviewer_reject", "lead_reject", "reject"}
+_CI_READY_STATUSES = {"ci_ready", "production_regression_candidate"}
+
+
+async def build_pipeline_stages(db: AsyncSession, script: AutomationScript) -> list[dict]:
+    """The real timeline behind a script's status — replaces the abstract,
+    status-only lifecycle stepper (which only ever showed "Approved" or
+    "Draft", never *when* or *why*) with what actually happened at each
+    stage: Discover -> Generate -> Static gate -> Dry-run -> Review ->
+    CI-ready.
+
+    Each stage is derived from data that already existed but was never
+    surfaced together: discovery from ArtifactLineage (test_case ->
+    locator_map, via the AgentRun that produced it), generation from the
+    script's own creation, the static gate from static_gate_result, the
+    dry run from metadata_.last_dry_run + its ExecutionRun, and review from
+    the ApprovalAction audit trail already recorded on every approve/
+    reject/lifecycle action.
+    """
+    from app.models.agent import AgentRun
+    from app.models.artifact_lineage import ArtifactLineage
+
+    stages: list[dict] = []
+
+    # ── Discover ──────────────────────────────────────────────────────────
+    discover: dict = {"stage": "discover", "state": "pending", "at": None, "detail": None}
+    if script.test_case_id is not None:
+        lineage_result = await db.execute(
+            select(ArtifactLineage)
+            .where(
+                ArtifactLineage.parent_type == "test_case",
+                ArtifactLineage.parent_id == script.test_case_id,
+                ArtifactLineage.child_type == "locator_map",
+            )
+            .order_by(ArtifactLineage.created_at.desc())
+            .limit(1)
+        )
+        lineage = lineage_result.scalar_one_or_none()
+        if lineage is not None:
+            discover["state"] = "done"
+            discover["at"] = lineage.created_at
+            if lineage.agent_run_id is not None:
+                discovery_run = await db.get(AgentRun, lineage.agent_run_id)
+                if discovery_run is not None:
+                    discover["at"] = discovery_run.updated_at
+                    discover["detail"] = discovery_run.status
+    if discover["state"] == "pending":
+        discover["detail"] = "No discovery run found for this test case's application yet."
+    stages.append(discover)
+
+    # ── Generate ──────────────────────────────────────────────────────────
+    attempts = (script.metadata_ or {}).get("generation_attempts") or []
+    generate_detail = f"{len(attempts)} attempt(s)" if len(attempts) > 1 else None
+    stages.append({"stage": "generate", "state": "done", "at": script.created_at, "detail": generate_detail})
+
+    # ── Static gate ───────────────────────────────────────────────────────
+    gate = script.static_gate_result
+    if gate is None:
+        stages.append({"stage": "static", "state": "pending", "at": None, "detail": None})
+    else:
+        violation_count = len(gate.get("violations") or [])
+        stages.append({
+            "stage": "static",
+            "state": "done" if gate.get("passed") else "failed",
+            "at": script.created_at,
+            "detail": f"{violation_count} violation(s)" if violation_count else None,
+        })
+
+    # ── Dry run ───────────────────────────────────────────────────────────
+    last_dry_run = (script.metadata_ or {}).get("last_dry_run")
+    if not last_dry_run:
+        stages.append({"stage": "dry_run", "state": "pending", "at": None, "detail": None})
+    else:
+        dry_run_at = script.updated_at
+        execution_run_id = last_dry_run.get("execution_run_id")
+        if execution_run_id is not None:
+            exec_run = await db.get(ExecutionRun, execution_run_id)
+            if exec_run is not None:
+                dry_run_at = exec_run.updated_at
+        stages.append({
+            "stage": "dry_run",
+            "state": "done" if last_dry_run.get("passed") else "failed",
+            "at": dry_run_at,
+            "detail": None if last_dry_run.get("passed") else "Last dry run failed.",
+        })
+
+    # ── Review + CI-ready (from the ApprovalAction audit trail) ────────────
+    actions, _total = await traceability_service.approval_history(
+        db, project_id=script.project_id, entity_type="automation_script", entity_id=script.id,
+    )
+    review_action = next(
+        (a for a in actions if a.action_type.rsplit("_automation_script", 1)[0] in _REVIEW_APPROVE_ACTIONS | _REVIEW_REJECT_ACTIONS),
+        None,
+    )
+    if review_action is None:
+        stages.append({"stage": "review", "state": "pending", "at": None, "detail": None})
+    else:
+        base_action = review_action.action_type.rsplit("_automation_script", 1)[0]
+        rejected = base_action in _REVIEW_REJECT_ACTIONS
+        stages.append({
+            "stage": "review",
+            "state": "failed" if rejected else "done",
+            "at": review_action.created_at,
+            "detail": review_action.notes if rejected else None,
+        })
+
+    if script.status in _CI_READY_STATUSES:
+        ci_action = next((a for a in actions if a.action_type == "mark_ci_ready_automation_script"), None)
+        stages.append({
+            "stage": "ci_ready", "state": "done",
+            "at": ci_action.created_at if ci_action else script.updated_at, "detail": None,
+        })
+    else:
+        stages.append({"stage": "ci_ready", "state": "pending", "at": None, "detail": None})
+
+    return stages
+
+
 # Phase 4.6: staged post-generation approval chain, distinct from the
 # legacy draft/in_review/approved-or-rejected flow above (`approve_script` /
 # `transition_script`), which pre-dates the grounded-generation pipeline and

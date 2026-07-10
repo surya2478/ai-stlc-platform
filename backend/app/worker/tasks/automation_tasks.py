@@ -26,6 +26,7 @@ from app.models.execution import ExecutionResult, ExecutionRun
 from app.models.project_application import ProjectApplication
 from app.models.requirement import Requirement
 from app.models.test_case import TestCase
+from app.services import automation_service
 from app.services.automation_runner import run_script_for_execution, runtime_status
 from app.services.project_application_service import resolve_environment_url
 from app.services.automation_runner.workspace import (
@@ -323,6 +324,13 @@ async def _execute_run(execution_run_id: int, timeout_seconds: int) -> dict:
         stages = _append_stage(run, "finalizing")
         run.metadata_ = {**(run.metadata_ or {}), "stages": stages}
 
+        # Real executions never went through the dry-run chain's
+        # failure_classification agent — classify failures here so the
+        # class is already on the result by the time the UI renders it,
+        # not just the one result a user happens to click "Repair" on.
+        if failed:
+            await automation_service.classify_failed_results(db, execution_run_id=run.id)
+
         # Run-level roll-up
         run.passed = passed
         run.failed = failed
@@ -435,6 +443,11 @@ async def _execute_batch(execution_run_id: int, timeout_seconds: int) -> dict:
 
         stages = _append_stage(run, "finalizing")
         run.metadata_ = {**(run.metadata_ or {}), "stages": stages}
+
+        # See _execute_run's identical hook — real executions never went
+        # through the dry-run chain's failure_classification agent.
+        if total_failed:
+            await automation_service.classify_failed_results(db, execution_run_id=run.id)
 
         run.status = "completed" if any_completed else "failed"
         run.total_tests = total_passed + total_failed + total_skipped
