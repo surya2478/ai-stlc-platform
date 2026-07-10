@@ -25,4 +25,10 @@ services:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
+    environment:
+      # Native fs events from a Windows bind mount don't reliably reach the
+      # Linux container, so Next's default watcher silently misses file
+      # saves and keeps serving a stale compiled bundle. Force polling.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     command: npm run dev
