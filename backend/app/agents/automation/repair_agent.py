@@ -126,12 +126,25 @@ class RepairLoopAgent(BaseAgent):
         current_contract_data = script_data["contract"]
 
         attempts: list[dict] = []
+        # Confirmed via a live run: the LLM sometimes echoes back the whole
+        # _propose_patch payload wrapper (original_contract/failure_evidence/
+        # fresh_locator_catalog) instead of just the corrected contract,
+        # producing a "testCaseId Field required" validation error on the
+        # very first attempt. Previously that broke the loop immediately,
+        # wasting the remaining MAX_REPAIR_ATTEMPTS budget on nothing — now
+        # a parse/validation failure feeds the exact error back and retries,
+        # the same corrective-feedback pattern automation_agent's
+        # generation loop uses.
+        prior_error: str | None = None
 
         for attempt_number in range(1, MAX_REPAIR_ATTEMPTS + 1):
-            patched = await self._propose_patch(current_contract_data, failure, catalog)
+            patched = await self._propose_patch(current_contract_data, failure, catalog, prior_error=prior_error)
             if patched is None:
                 attempts.append({"attempt": attempt_number, "outcome": "llm_patch_failed"})
-                break
+                if attempt_number == MAX_REPAIR_ATTEMPTS:
+                    break
+                prior_error = "The previous response was not valid JSON."
+                continue
 
             try:
                 contract = AutomationGenerationContract.model_validate(patched)
@@ -139,7 +152,11 @@ class RepairLoopAgent(BaseAgent):
                 bundle = compile_contract(contract)
             except (ValidationError, UnsupportedContractVersionError) as exc:
                 attempts.append({"attempt": attempt_number, "outcome": "compile_failed", "detail": str(exc)})
-                break
+                if attempt_number == MAX_REPAIR_ATTEMPTS:
+                    break
+                prior_error = str(exc)
+                continue
+            prior_error = None
 
             gate_result = run_static_quality_gate(_target_for_gate(script_id, framework, bundle))
 
@@ -201,7 +218,9 @@ class RepairLoopAgent(BaseAgent):
             "resolved": bool(final and final.get("outcome") == "passed"),
         }
 
-    async def _propose_patch(self, contract_data: dict, failure: dict, catalog: list[dict]) -> dict | None:
+    async def _propose_patch(
+        self, contract_data: dict, failure: dict, catalog: list[dict], prior_error: str | None = None
+    ) -> dict | None:
         llm = get_llm(settings.default_llm_provider, settings.default_llm_model)
         payload = {
             "original_contract": contract_data,
@@ -212,7 +231,16 @@ class RepairLoopAgent(BaseAgent):
             },
             "fresh_locator_catalog": catalog,
         }
-        prompt = f"<user_content>\n{json.dumps(payload, indent=2)}\n</user_content>\n\nOutput the corrected contract JSON."
+        if prior_error:
+            payload["previous_attempt_error"] = prior_error
+        instruction = "Output the corrected contract JSON."
+        if prior_error:
+            instruction = (
+                "Your previous response could not be used — see previous_attempt_error above. Output ONLY "
+                "the corrected contract object itself, in the same shape as original_contract — not this "
+                "whole payload, and not original_contract wrapped in another object."
+            )
+        prompt = f"<user_content>\n{json.dumps(payload, indent=2)}\n</user_content>\n\n{instruction}"
         try:
             response = await llm.achat(messages=[
                 {"role": "system", "content": REPAIR_SYSTEM},
