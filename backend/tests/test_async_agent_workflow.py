@@ -133,6 +133,69 @@ def test_trigger_returns_202_with_agent_run_id(monkeypatch):
     assert response.json()["task_id"] == "task-123"
 
 
+def test_trigger_grounds_scripts_when_application_and_locator_map_exist(monkeypatch):
+    # Real bug found via a live run: `locator_map_service` is used at
+    # automation.py's trigger_automation_agent (grounding lookup) but was
+    # never imported at module level — a NameError that only surfaced once
+    # a test case's application actually resolved and locator_map had rows,
+    # a combination no prior test exercised (existing tests all use
+    # application_id=None, which short-circuits past that code entirely).
+    from app.models.locator_map import LocatorMapEntry
+
+    db = _AgentDB(
+        [
+            Project(id=1, owner_id=1, name="Project"),
+            TestCase(
+                id=1, project_id=1, created_by=1, test_case_id="TC-1",
+                title="Approved case", status="approved", application_id=None,
+            ),
+            ProjectApplication(
+                id=7, project_id=1, key="web", name="Web App", is_default=True, is_active=True,
+                environment_urls={"QA": "http://app.example.com"},
+            ),
+            [],  # external dependencies (build_test_case_application_context)
+            ProjectApplication(
+                id=7, project_id=1, key="web", name="Web App", is_default=True, is_active=True,
+                environment_urls={"QA": "http://app.example.com"},
+            ),
+            [LocatorMapEntry(
+                id=1, project_id=1, application_id=7, page="/login", element_name="usernameInput",
+                recommended_locator="page.getByLabel('Username')", recommended_strategy="label",
+                confidence_score=90,
+            )],
+            None,
+        ]
+    )
+
+    class _Task:
+        id = "task-grounded-1"
+
+    async def fake_db() -> AsyncIterator[_AgentDB]:
+        yield db
+
+    monkeypatch.setattr(agent_dispatch_service.run_agent, "delay", lambda *args: _Task())
+    app.dependency_overrides[get_db] = fake_db
+    app.dependency_overrides[require_user] = _user
+    try:
+        response = TestClient(app).post(
+            "/api/v1/automation/agent/generate-scripts",
+            json={"project_id": 1, "test_case_ids": [1], "framework": "playwright"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 202
+    input_data = next(obj for obj in db.added if isinstance(obj, AgentRun)).input_data
+    assert input_data["locator_map"] == {7: [{
+        "element_name": "usernameInput",
+        "page": "/login",
+        "role": "label",
+        "business_meaning": None,
+        "recommended_locator": "page.getByLabel('Username')",
+        "confidence_score": 90,
+    }]}
+
+
 def test_discovery_trigger_returns_202_with_agent_run_id(monkeypatch):
     db = _AgentDB(
         [

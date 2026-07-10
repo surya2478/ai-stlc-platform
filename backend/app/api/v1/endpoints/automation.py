@@ -42,7 +42,7 @@ from app.schemas.automation import (
     RunnerStatusOut,
     ScriptTransitionRequest,
 )
-from app.services import automation_confidence_service, automation_intelligence
+from app.services import automation_confidence_service, automation_intelligence, locator_map_service
 from app.schemas.execution import ExecutionResultOut
 from app.schemas.requirement import ApprovalRequest
 from app.services import agent_run_service, approval_service, automation_service, traceability_service
