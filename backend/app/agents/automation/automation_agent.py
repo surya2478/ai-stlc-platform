@@ -215,9 +215,150 @@ def _parse_contract_json(text: str) -> dict:
 
 # ── Nodes ──────────────────────────────────────────────────────────────────────
 
+# Bounded retry, not unlimited — a contract that still won't validate or
+# ground after 3 corrective rounds is treated as a genuine failure to
+# surface, not something to keep hammering the LLM over. Live testing
+# showed roughly half of first-attempt generations came back either
+# invalid or partially ungrounded; feeding the exact failure back to the
+# LLM (rather than silently accepting or silently discarding the result)
+# is what turns that into a converging loop instead of a one-shot gamble.
+MAX_GENERATION_ATTEMPTS = 3
+
+
+def _rate_limit_message(test_case_id: str, exc_str: str) -> str:
+    wait_match = re.search(r'try again in ([\d.]+[smh])', exc_str)
+    wait_hint = f" Please try again in {wait_match.group(1)}." if wait_match else " Daily token quota may be exhausted — try again later."
+    return f"Rate limit hit for {test_case_id}.{wait_hint}"
+
+
+async def _generate_one_contract(
+    llm: Any,
+    system: str,
+    tc_summary: dict,
+    test_case_id: str,
+    script_type: str,
+    framework: str,
+    catalog: list[dict] | None,
+) -> tuple[dict | None, list[dict], str | None, bool]:
+    """Produce one test case's contract, retrying up to
+    MAX_GENERATION_ATTEMPTS times with the exact failure fed back into the
+    conversation when validation fails, the JSON doesn't parse, or the
+    result comes back with ungrounded elements the catalog could have
+    resolved. Stops retrying the moment a fully-grounded, compiling
+    contract is produced.
+
+    Returns (script_dict_or_None, attempt_log, fatal_error_or_None,
+    is_rate_limited). If every attempt produces *some* compiling contract
+    but none is fully grounded, the attempt with the fewest ungrounded
+    elements is returned rather than nothing — still better than the
+    Phase 2 fallback of an unmarked, ungrounded guess.
+    """
+    messages: list[dict] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": (
+            f"Test Case:\n<user_content>\n{json.dumps(tc_summary, indent=2)}\n</user_content>\n\n"
+            "Produce the Automation Generation Contract JSON object."
+        )},
+    ]
+    attempts: list[dict] = []
+    best: dict | None = None
+    best_ungrounded_count: int | None = None
+
+    for attempt_number in range(1, MAX_GENERATION_ATTEMPTS + 1):
+        try:
+            response = await llm.achat(messages=messages)
+        except Exception as exc:
+            exc_str = str(exc)
+            if "rate_limit_exceeded" in exc_str or "429" in exc_str:
+                msg = _rate_limit_message(test_case_id, exc_str)
+                logger.warning(msg)
+                return best, attempts, msg, True
+            attempts.append({"attempt": attempt_number, "outcome": "llm_error", "detail": exc_str})
+            logger.exception("Contract generation failed for %s", test_case_id)
+            return best, attempts, f"Contract generation error for {test_case_id}: {exc_str}", False
+
+        response = response.strip()
+        retry_note: str | None = None
+
+        try:
+            contract_data = _parse_contract_json(response)
+            contract_data.setdefault("testCaseId", test_case_id)
+            contract_data.setdefault("scriptType", script_type)
+            contract = AutomationGenerationContract.model_validate(contract_data)
+        except json.JSONDecodeError as exc:
+            attempts.append({"attempt": attempt_number, "outcome": "parse_failed", "detail": str(exc)})
+            if attempt_number == MAX_GENERATION_ATTEMPTS:
+                return best, attempts, f"Contract JSON parse error for {test_case_id}: {exc}", False
+            retry_note = (
+                "That response was not valid JSON. Output ONLY the JSON object — no markdown "
+                "fences, no commentary before or after it."
+            )
+        except ValidationError as exc:
+            detail = str(exc)
+            attempts.append({"attempt": attempt_number, "outcome": "validation_failed", "detail": detail})
+            if attempt_number == MAX_GENERATION_ATTEMPTS:
+                return best, attempts, f"Contract validation failed for {test_case_id}: {detail}", False
+            retry_note = f"That contract failed validation:\n{detail}\nProduce a corrected, complete contract JSON object that fixes this."
+
+        if retry_note is not None:
+            messages.append({"role": "assistant", "content": response})
+            messages.append({"role": "user", "content": f"<user_content>\n{retry_note}\n</user_content>"})
+            continue
+
+        locator_policy.ground_page_object_elements(contract, catalog)
+        grounded_count, ungrounded_elements = _check_grounding(contract, catalog)
+
+        try:
+            bundle = compile_contract(contract)
+        except UnsupportedContractVersionError as exc:
+            attempts.append({"attempt": attempt_number, "outcome": "compile_failed", "detail": str(exc)})
+            return best, attempts, f"Compiler cannot render {test_case_id}: {exc}", False
+
+        script = {
+            "test_case_id": test_case_id,
+            "framework": framework,
+            "file_path": bundle.entry_path,
+            "code": bundle.files[bundle.entry_path],
+            "grounded": bool(catalog),
+            "grounded_element_count": grounded_count,
+            "ungrounded_elements": ungrounded_elements,
+            "compiled_files": bundle.files,
+            "contract": contract.model_dump(by_alias=True, mode="json"),
+            "setup_required": bundle.setup_required,
+            "execution_command": bundle.execution_command,
+        }
+        attempts.append({"attempt": attempt_number, "outcome": "compiled", "ungrounded_count": len(ungrounded_elements)})
+
+        if best_ungrounded_count is None or len(ungrounded_elements) < best_ungrounded_count:
+            best, best_ungrounded_count = script, len(ungrounded_elements)
+
+        if not ungrounded_elements:
+            script["generation_attempts"] = attempts
+            return script, attempts, None, False
+
+        if attempt_number == MAX_GENERATION_ATTEMPTS:
+            break
+
+        messages.append({"role": "assistant", "content": response})
+        messages.append({"role": "user", "content": (
+            "<user_content>\n"
+            f"That contract still has {len(ungrounded_elements)} element(s) not grounded to a discovered "
+            f"locator: {', '.join(ungrounded_elements)}. Check the GROUNDED LOCATORS catalog above again and "
+            "reuse an existing entry's exact element_name and locator strategy/value for each of these if one "
+            "matches. Produce a corrected, complete contract JSON object.\n"
+            "</user_content>"
+        )})
+
+    if best is not None:
+        best["generation_attempts"] = attempts
+    return best, attempts, None, False
+
+
 async def _generate_contracts(state: AutomationState) -> AutomationState:
-    """One LLM call per test case: produce and validate its Automation
-    Generation Contract, then compile it. Never persists code directly."""
+    """One test case at a time: produce and validate its Automation
+    Generation Contract, then compile it — retrying with corrective
+    feedback when the LLM's output doesn't validate or doesn't fully
+    ground. Never persists code directly."""
     llm = get_llm(settings.default_llm_provider, settings.default_llm_model)
     framework = state["framework"]
     script_type = "pytest-python" if framework == "pytest" else "playwright-typescript"
@@ -252,53 +393,16 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
         if catalog:
             catalog = locator_policy.filter_catalog_by_page(catalog, tc.get("application_url"))
             system += GROUNDED_LOCATORS_INSTRUCTION.format(locator_catalog=_format_locator_catalog(catalog))
-        prompt = (
-            f"Test Case:\n<user_content>\n{json.dumps(tc_summary, indent=2)}\n</user_content>\n\n"
-            "Produce the Automation Generation Contract JSON object."
-        )
 
-        try:
-            response = await llm.achat(messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ])
-            contract_data = _parse_contract_json(response.strip())
-            contract_data.setdefault("testCaseId", test_case_id)
-            contract_data.setdefault("scriptType", script_type)
-            contract = AutomationGenerationContract.model_validate(contract_data)
-            locator_policy.ground_page_object_elements(contract, catalog)
-            grounded_count, ungrounded_elements = _check_grounding(contract, catalog)
-            bundle = compile_contract(contract)
-            scripts.append({
-                "test_case_id": test_case_id,
-                "framework": framework,
-                "file_path": bundle.entry_path,
-                "code": bundle.files[bundle.entry_path],
-                "grounded": bool(catalog),
-                "grounded_element_count": grounded_count,
-                "ungrounded_elements": ungrounded_elements,
-                "compiled_files": bundle.files,
-                "contract": contract.model_dump(by_alias=True, mode="json"),
-                "setup_required": bundle.setup_required,
-                "execution_command": bundle.execution_command,
-            })
-        except ValidationError as exc:
-            errors.append(f"Contract validation failed for {test_case_id}: {exc}")
-        except UnsupportedContractVersionError as exc:
-            errors.append(f"Compiler cannot render {test_case_id}: {exc}")
-        except json.JSONDecodeError as exc:
-            errors.append(f"Contract JSON parse error for {test_case_id}: {exc}")
-        except Exception as exc:
-            exc_str = str(exc)
-            if "rate_limit_exceeded" in exc_str or "429" in exc_str:
-                wait_match = re.search(r'try again in ([\d.]+[smh])', exc_str)
-                wait_hint = f" Please try again in {wait_match.group(1)}." if wait_match else " Daily token quota may be exhausted — try again later."
-                msg = f"Rate limit hit for {test_case_id}.{wait_hint}"
-                errors.append(msg)
-                logger.warning(msg)
+        script, _attempts, fatal_error, rate_limited = await _generate_one_contract(
+            llm, system, tc_summary, test_case_id, script_type, framework, catalog
+        )
+        if script is not None:
+            scripts.append(script)
+        if fatal_error:
+            errors.append(fatal_error)
+            if rate_limited:
                 break
-            errors.append(f"Contract generation error for {test_case_id}: {exc_str}")
-            logger.exception("Contract generation failed for %s", test_case_id)
 
     logger.info("Automation agent: compiled %d/%d contracts", len(scripts), len(state["test_cases"]))
     return {**state, "scripts": scripts, "errors": errors}

@@ -1417,6 +1417,11 @@ async def _persist_agent_artifacts(
                         "grounded_element_count": script_data.get("grounded_element_count", 0),
                         "ungrounded_elements": script_data.get("ungrounded_elements", []),
                     },
+                    # Every generation attempt (validation/grounding failures
+                    # and the corrective retry that followed each), so a
+                    # reviewer can see *why* a script needed N attempts
+                    # instead of just the final result.
+                    "generation_attempts": script_data.get("generation_attempts", []),
                 },
             )
             db.add(script)

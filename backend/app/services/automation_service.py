@@ -200,6 +200,7 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
             "grounded_element_count": sc_data.get("grounded_element_count", 0),
             "ungrounded_elements": sc_data.get("ungrounded_elements", []),
         },
+        "generation_attempts": sc_data.get("generation_attempts", []),
     }
     script.status = "draft"
 
