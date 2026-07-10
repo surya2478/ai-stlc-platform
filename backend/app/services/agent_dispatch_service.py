@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import AgentRun
+from app.models.automation_script import AutomationScript
 from app.models.test_plan import TestPlan
 from app.services import agent_run_service
 from app.worker.tasks.agent_tasks import run_agent
@@ -41,6 +42,17 @@ async def _completed_run_is_reusable(db: AsyncSession, run: AgentRun, agent_name
             select(TestCase.id).where(
                 TestCase.agent_run_id == run.id
             )
+        )
+        return result.scalar_one_or_none() is not None
+
+    if agent_name == "automation_script":
+        # A completed run with an LLM/rate-limit failure persists zero
+        # scripts (output_data={"script_ids": [], "count": 0}) but is still
+        # marked "completed", not "failed" — without this check it was
+        # treated as permanently reusable, silently blocking every retry
+        # with the same test case forever (found via a live rate-limit run).
+        result = await db.execute(
+            select(AutomationScript.id).where(AutomationScript.agent_run_id == run.id)
         )
         return result.scalar_one_or_none() is not None
 
