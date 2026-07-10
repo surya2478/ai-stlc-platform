@@ -35,7 +35,7 @@ from app.agents.execution.failure_classification_agent import (
 from app.config import get_settings
 from app.llm.provider import get_llm
 from app.llm.structured import clean_json_text
-from app.services.script_compiler import compile_contract
+from app.services.script_compiler import compile_contract, locator_policy
 from app.services.script_compiler.compiler import UnsupportedContractVersionError
 from app.services.static_quality_gate import run_static_quality_gate
 
@@ -134,6 +134,7 @@ class RepairLoopAgent(BaseAgent):
 
             try:
                 contract = AutomationGenerationContract.model_validate(patched)
+                locator_policy.ground_page_object_elements(contract, catalog)
                 bundle = compile_contract(contract)
             except (ValidationError, UnsupportedContractVersionError) as exc:
                 attempts.append({"attempt": attempt_number, "outcome": "compile_failed", "detail": str(exc)})

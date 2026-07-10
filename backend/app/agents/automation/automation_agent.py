@@ -258,6 +258,7 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
             contract_data.setdefault("testCaseId", test_case_id)
             contract_data.setdefault("scriptType", script_type)
             contract = AutomationGenerationContract.model_validate(contract_data)
+            locator_policy.ground_page_object_elements(contract, catalog)
             grounded_count, ungrounded_elements = _check_grounding(contract, catalog)
             bundle = compile_contract(contract)
             scripts.append({

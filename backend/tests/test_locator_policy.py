@@ -39,7 +39,113 @@ def test_render_locator_playwright_rejects_unknown_strategy():
         locator_policy.render_locator_playwright("nonsense", "x")
 
 
+def test_render_locator_playwright_escapes_single_quotes_in_css_selector():
+    # A live run produced `page.locator('input[name='q']')` — a CSS
+    # attribute selector's own single quotes (very common: [attr='value']
+    # syntax) terminated the string literal early, breaking the compiled
+    # TypeScript with a syntax error.
+    rendered = locator_policy.render_locator_playwright("css", "input[name='q']")
+    assert rendered == "page.locator('input[name=\\'q\\']')"
+    # Sanity: the escaped result round-trips back through the parser.
+    assert locator_policy.parse_locator_playwright(rendered) == ("css", "input[name='q']", None)
+
+
+def test_render_locator_playwright_escapes_single_quotes_in_role_name():
+    rendered = locator_policy.render_locator_playwright("role", "Don't submit", "button")
+    assert rendered == "page.getByRole('button', { name: 'Don\\'t submit' })"
+    assert locator_policy.parse_locator_playwright(rendered) == ("role", "Don't submit", "button")
+
+
+def test_render_locator_playwright_escapes_backslashes():
+    rendered = locator_policy.render_locator_playwright("css", "a\\b")
+    assert rendered == "page.locator('a\\\\b')"
+
+
 def test_render_locator_pytest_role_uses_snake_case_api():
     assert locator_policy.render_locator_pytest("role", "Sign in", "button") == \
         "page.get_by_role('button', name='Sign in')"
     assert locator_policy.render_locator_pytest("testid", "order-id") == "page.get_by_test_id('order-id')"
+
+
+def test_render_locator_pytest_escapes_single_quotes_in_css_selector():
+    rendered = locator_policy.render_locator_pytest("css", "input[name='q']")
+    assert rendered == "page.locator('input[name=\\'q\\']')"
+
+
+def test_parse_locator_playwright_inverts_render_for_all_strategies():
+    cases = [
+        ("role", "Sign in", "button"),
+        ("label", "Username", None),
+        ("placeholder", "Search", None),
+        ("text", "Welcome", None),
+        ("testid", "order-id", None),
+        ("css", "#foo", None),
+        ("xpath", "//div", None),
+    ]
+    for strategy, value, role_hint in cases:
+        rendered = locator_policy.render_locator_playwright(strategy, value, role_hint)
+        parsed = locator_policy.parse_locator_playwright(rendered)
+        assert parsed == (strategy, value, role_hint), f"round-trip failed for {strategy}"
+
+
+def test_parse_locator_playwright_handles_non_ascii_and_unicode_names():
+    rendered = locator_policy.render_locator_playwright("role", "بحث", "combobox")
+    assert locator_policy.parse_locator_playwright(rendered) == ("role", "بحث", "combobox")
+
+
+def test_parse_locator_playwright_handles_role_without_name():
+    assert locator_policy.parse_locator_playwright("page.getByRole('button')") == ("role", "", "button")
+
+
+def test_parse_locator_playwright_returns_none_for_unrecognized_string():
+    assert locator_policy.parse_locator_playwright("someRandomExpression()") is None
+
+
+# ── ground_page_object_elements: real bug found via a live run — the LLM
+# named an element after a discovered one ("combobox") but swapped its ARIA
+# role and accessible name between roleHint/locatorValue, producing a
+# locator that matched nothing on the real page despite the correct name ──
+
+def _contract_with_element(name: str, strategy: str, value: str, role_hint: str | None):
+    from app.agents.automation.generation_contract import AutomationGenerationContract
+    return AutomationGenerationContract.model_validate({
+        "contractVersion": "1.0", "testCaseId": "TC-1", "scriptType": "playwright-typescript",
+        "pageObjects": [{"name": "SearchPage", "elements": [{
+            "name": name, "locatorStrategy": strategy, "locatorValue": value, "roleHint": role_hint,
+        }]}],
+    })
+
+
+def test_ground_page_object_elements_overrides_mistranscribed_fields():
+    # LLM swapped role_hint="search" / locatorValue="combobox" — should have
+    # been role_hint="combobox" / locatorValue="بحث" per the catalog.
+    contract = _contract_with_element("combobox", "role", "combobox", "search")
+    catalog = [{
+        "element_name": "combobox",
+        "recommended_locator": "page.getByRole('combobox', { name: 'بحث' })",
+    }]
+
+    locator_policy.ground_page_object_elements(contract, catalog)
+
+    element = contract.page_objects[0].elements[0]
+    assert element.locator_strategy == "role"
+    assert element.locator_value == "بحث"
+    assert element.role_hint == "combobox"
+
+
+def test_ground_page_object_elements_leaves_unmatched_elements_alone():
+    contract = _contract_with_element("mysteryButton", "role", "guess", "button")
+    catalog = [{"element_name": "combobox", "recommended_locator": "page.getByRole('combobox', { name: 'بحث' })"}]
+
+    locator_policy.ground_page_object_elements(contract, catalog)
+
+    element = contract.page_objects[0].elements[0]
+    assert element.locator_value == "guess"  # untouched — no name match in catalog
+
+
+def test_ground_page_object_elements_noop_when_catalog_empty():
+    contract = _contract_with_element("combobox", "role", "combobox", "search")
+    locator_policy.ground_page_object_elements(contract, None)
+    locator_policy.ground_page_object_elements(contract, [])
+    element = contract.page_objects[0].elements[0]
+    assert element.locator_value == "combobox"  # untouched
