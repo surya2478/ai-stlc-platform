@@ -84,9 +84,16 @@ Output a single JSON object with EXACTLY these keys:
     testDataBindings|null (for anything that IS test data), "description": str|null (REQUIRED
     when action="custom" — a plain-language note; the compiler renders it as a TODO comment,
     never a guessed call), "expectedResult": str|null}}
+  IMPORTANT: "check"/"uncheck" toggle an ACTUAL checkbox/radio/switch element — they compile
+  directly to Playwright's .check()/.uncheck(), which only resolves on that kind of element and
+  will hang waiting on anything else (e.g. a link or search box). NEVER use "check"/"uncheck" to
+  mean "verify" or "confirm" something happened, even in an "assert"-phase step — that belongs in
+  the separate assertions array below, not a step.
 - expectedResults: list of strings, the overall expected outcomes
 - assertions: list of {{"type": visible|text|url|value|count, "target": "<PageObjectName>.<elementName>"
-  or "page", "expected": str, "webFirst": true}}
+  or "page", "expected": str, "webFirst": true}} — this is how you verify an outcome; an
+  "assert"-phase step should describe UI interaction (if any) still needed to observe the result,
+  not the verification itself.
 - apiValidations: list of {{"method": GET|POST|PUT|PATCH|DELETE, "path": str, "expectedStatus": int,
   "expectedFields": {{field_name: expected_value_as_string}}}} — only when the test case implies an
   API-verifiable outcome
