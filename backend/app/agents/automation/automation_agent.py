@@ -243,6 +243,7 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
         # back to Phase 2 behaviour unchanged (still generates, just unmarked).
         catalog = locator_map.get(str(tc.get("application_id"))) if tc.get("application_id") is not None else None
         if catalog:
+            catalog = locator_policy.filter_catalog_by_page(catalog, tc.get("application_url"))
             system += GROUNDED_LOCATORS_INSTRUCTION.format(locator_catalog=_format_locator_catalog(catalog))
         prompt = (
             f"Test Case:\n<user_content>\n{json.dumps(tc_summary, indent=2)}\n</user_content>\n\n"

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from app.agents.automation.generation_contract import AutomationGenerationContract
@@ -162,6 +163,32 @@ def render_locator_pytest(strategy: str, value: str, role_hint: str | None = Non
     if strategy == "xpath":
         return f"page.locator('xpath={value}')"
     raise ValueError(f"Unknown locator strategy: {strategy}")
+
+
+def filter_catalog_by_page(catalog: list[dict] | None, base_url: str | None) -> list[dict] | None:
+    """Scope a locator_map catalog down to entries whose discovered page
+    shares the same host as the test's own entry-point URL.
+
+    A locator_map catalog for one "application" can span several distinct
+    pages discovered across a multi-page flow (e.g. a site and the OAuth
+    provider it redirects through). Without this, both the LLM prompt
+    (GROUNDED_LOCATORS_INSTRUCTION) and `ground_page_object_elements` could
+    match an element by name against a locator captured on an entirely
+    different page than the one this specific test ever navigates to —
+    confirmed via a live run where a Google-search test's "search box" got
+    grounded against an accounts.google.com sign-in field from the same
+    application's catalog, which doesn't exist on the page the test
+    actually visits. Falls back to the full catalog when nothing matches
+    the host, or when base_url can't be parsed, rather than silently
+    discarding every entry.
+    """
+    if not catalog or not base_url:
+        return catalog
+    base_host = urlparse(base_url).netloc.lower()
+    if not base_host:
+        return catalog
+    scoped = [entry for entry in catalog if urlparse(entry.get("page") or "").netloc.lower() == base_host]
+    return scoped or catalog
 
 
 def ground_page_object_elements(contract: "AutomationGenerationContract", catalog: list[dict] | None) -> None:

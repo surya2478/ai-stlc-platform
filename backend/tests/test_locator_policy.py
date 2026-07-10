@@ -149,3 +149,39 @@ def test_ground_page_object_elements_noop_when_catalog_empty():
     locator_policy.ground_page_object_elements(contract, [])
     element = contract.page_objects[0].elements[0]
     assert element.locator_value == "combobox"  # untouched
+
+
+# ── filter_catalog_by_page: real bug found via a live run — TC-0110's
+# generated page object grounded its "search box" against an
+# accounts.google.com sign-in field pulled from the same application's
+# locator_map catalog, which spans both google.com and accounts.google.com.
+# That element doesn't exist on the page the test actually visits, so the
+# "grounded: true" result was a false positive. ─────────────────────────────
+
+_CROSS_HOST_CATALOG = [
+    {"element_name": "combobox", "page": "https://www.google.com/",
+     "recommended_locator": "page.getByRole('combobox', { name: 'بحث' })"},
+    {"element_name": "link_gmail", "page": "https://www.google.com/",
+     "recommended_locator": "page.getByRole('link', { name: 'Gmail' })"},
+    {"element_name": "textbox_email_or_phone", "page": "https://accounts.google.com/v3/signin/identifier",
+     "recommended_locator": "page.getByRole('textbox', { name: 'Email or phone' })"},
+]
+
+
+def test_filter_catalog_by_page_excludes_entries_from_a_different_host():
+    scoped = locator_policy.filter_catalog_by_page(_CROSS_HOST_CATALOG, "https://www.google.com/")
+    assert {e["element_name"] for e in scoped} == {"combobox", "link_gmail"}
+
+
+def test_filter_catalog_by_page_falls_back_to_full_catalog_when_nothing_matches():
+    scoped = locator_policy.filter_catalog_by_page(_CROSS_HOST_CATALOG, "https://example.com/")
+    assert scoped == _CROSS_HOST_CATALOG
+
+
+def test_filter_catalog_by_page_returns_catalog_unchanged_without_a_base_url():
+    assert locator_policy.filter_catalog_by_page(_CROSS_HOST_CATALOG, None) == _CROSS_HOST_CATALOG
+
+
+def test_filter_catalog_by_page_passes_through_empty_catalog():
+    assert locator_policy.filter_catalog_by_page([], "https://www.google.com/") == []
+    assert locator_policy.filter_catalog_by_page(None, "https://www.google.com/") is None

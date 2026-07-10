@@ -121,6 +121,7 @@ class RepairLoopAgent(BaseAgent):
         script_id = script_data["script_id"]
         framework = script_data.get("framework", "playwright")
         catalog = script_data.get("locator_catalog") or []
+        catalog = locator_policy.filter_catalog_by_page(catalog, script_data.get("application_url")) or []
         failure = dict(script_data["failure"])
         current_contract_data = script_data["contract"]
 

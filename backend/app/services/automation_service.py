@@ -106,6 +106,7 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
     from app.services.project_application_service import (
         build_test_case_application_context,
         resolve_default_application,
+        resolve_environment_url,
     )
 
     if not script.test_case_id:
@@ -145,6 +146,12 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
             for e in entries
         ]
 
+    # Never wired through before, despite CONTRACT_SYSTEM's own grounding
+    # rules referencing "application_url" — page objects got relative routes
+    # with no real base URL to scope the locator catalog against (see
+    # locator_policy.filter_catalog_by_page).
+    application_url = resolve_environment_url(application, tc.test_phase or "QA") if application else None
+
     tc_dict = {
         "id": tc.id,
         "test_case_id": tc.test_case_id,
@@ -156,6 +163,7 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
         "test_type": tc.test_type,
         "priority": tc.priority,
         "application_id": application.id if application else None,
+        "application_url": application_url,
         **app_context,
     }
 

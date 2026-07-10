@@ -539,6 +539,11 @@ async def trigger_automation_agent(
         if application is None:
             application = await resolve_default_application(db, body.project_id)
         application_id = application.id if application else None
+        # Never wired through to generation before, despite CONTRACT_SYSTEM's
+        # own grounding rules referencing "application_url" — page objects
+        # got relative routes with no real base URL to scope the locator
+        # catalog against (see locator_policy.filter_catalog_by_page).
+        application_url = resolve_environment_url(application, tc.test_phase or "QA") if application else None
         if application_id is not None and application_id not in locator_map_by_application:
             entries = await locator_map_service.list_for_application(
                 db, project_id=body.project_id, application_id=application_id
@@ -565,6 +570,7 @@ async def trigger_automation_agent(
             "test_type": tc.test_type,
             "priority": tc.priority,
             "application_id": application_id,
+            "application_url": application_url,
             **app_context,
         })
 
