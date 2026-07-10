@@ -217,6 +217,28 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
     return script
 
 
+def _quality_issue_summary(script: AutomationScript) -> str | None:
+    """The core "something is known to be wrong with this script" clause,
+    shared by execution_blocked_reason (execution-time gate) and
+    approval_override_reason (approval-time gate) — same positive-evidence
+    signals, two different moments to catch them at. Callers append their
+    own contextual suffix.
+    """
+    metadata = script.metadata_ or {}
+    grounding = metadata.get("grounding") or {}
+    ungrounded = grounding.get("ungrounded_elements") or []
+    if ungrounded:
+        shown = ", ".join(str(e) for e in ungrounded[:3])
+        more = f" (+{len(ungrounded) - 3} more)" if len(ungrounded) > 3 else ""
+        return f"{len(ungrounded)} element(s) not grounded to a real page ({shown}{more})"
+
+    last_dry_run = metadata.get("last_dry_run") or {}
+    if last_dry_run.get("passed") is False:
+        return "the last dry run failed"
+
+    return None
+
+
 def execution_blocked_reason(script: AutomationScript) -> str | None:
     """Why this script can't be executed right now, or None if it can.
 
@@ -238,22 +260,36 @@ def execution_blocked_reason(script: AutomationScript) -> str | None:
     if script.status not in {"approved", "executed"}:
         return "Script is not approved for execution yet."
 
-    metadata = script.metadata_ or {}
-    grounding = metadata.get("grounding") or {}
-    ungrounded = grounding.get("ungrounded_elements") or []
-    if ungrounded:
-        shown = ", ".join(str(e) for e in ungrounded[:3])
-        more = f" (+{len(ungrounded) - 3} more)" if len(ungrounded) > 3 else ""
-        return (
-            f"{len(ungrounded)} element(s) not grounded to a real page ({shown}{more}) — "
-            "regenerate before running."
-        )
-
-    last_dry_run = metadata.get("last_dry_run") or {}
-    if last_dry_run.get("passed") is False:
-        return "The last dry run failed — regenerate or repair the script before running it again."
-
+    issue = _quality_issue_summary(script)
+    if issue:
+        return f"{issue[0].upper()}{issue[1:]} — regenerate before running."
     return None
+
+
+def approval_override_reason(script: AutomationScript, notes: str | None) -> str | None:
+    """Why this approval needs an explicit override reason, or None if it
+    can proceed as-is.
+
+    A reviewer approving a script had no visibility into whether it had
+    unresolved locators or had already failed its own dry run — "Approved"
+    looked identical either way, and the underlying problem only surfaced
+    later at execution time, forever reproducing the same failure. Rather
+    than silently blocking approval outright (which would make regenerating
+    the only path forward even when a reviewer has good reason to approve
+    anyway — e.g. the dry run failed for an unrelated environment reason),
+    approval is still allowed, but only with the reviewer's own notes as an
+    explicit, audited acknowledgement of what they're overriding — the same
+    notes already recorded via approval_service.create_approval_action.
+    """
+    if notes and notes.strip():
+        return None
+    issue = _quality_issue_summary(script)
+    if not issue:
+        return None
+    return (
+        f"This script has a known issue: {issue}. Approving it anyway requires a note "
+        "explaining why — add one to the notes field and resubmit."
+    )
 
 
 # Allowed lifecycle transitions: source statuses that may move to (target, action label).

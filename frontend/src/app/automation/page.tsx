@@ -88,6 +88,19 @@ function messageFromError(error: unknown, fallback: string) {
   return fallback;
 }
 
+/** Recognizes the backend's "approving this requires an explicit override
+ * note" 422 (see automation_service.approval_override_reason) and returns
+ * its message — already phrased as a prompt asking the reviewer why — or
+ * null for any other error. */
+function overrideNoteFromError(error: unknown): string | null {
+  if (!error || typeof error !== "object" || !("response" in error)) return null;
+  const response = (error as { response?: { status?: number; data?: { detail?: unknown } } }).response;
+  if (response?.status !== 422) return null;
+  const detail = response.data?.detail;
+  if (typeof detail === "string" && detail.includes("requires a note explaining why")) return detail;
+  return null;
+}
+
 type MappingForm = {
   external_tool_name: string;
   external_project_id: string;
@@ -427,7 +440,20 @@ function AutomationContent() {
     setReviewBusyId(scriptId);
     setError("");
     try {
-      await automationApi.approve(scriptId, action, notes);
+      try {
+        await automationApi.approve(scriptId, action, notes);
+      } catch (reviewError) {
+        // Approving a script with a known quality issue (ungrounded locator,
+        // failed dry run) is blocked unless the reviewer explicitly says why
+        // — the backend's 422 message names the exact issue. Surface it and
+        // let the reviewer supply that reason on the spot rather than
+        // bouncing them out to figure out what "approve" silently rejected.
+        const overrideReason = overrideNoteFromError(reviewError);
+        if (!overrideReason) throw reviewError;
+        const note = window.prompt(overrideReason);
+        if (note === null || !note.trim()) return;
+        await automationApi.approve(scriptId, action, note.trim());
+      }
       toast({ title: `Script ${action === "approve" ? "approved" : "rejected"}`, variant: "success" });
       loadData();
     } catch (reviewError) {
@@ -449,7 +475,15 @@ function AutomationContent() {
     setLifecycleBusyId(scriptId);
     setError("");
     try {
-      await automationApi.lifecycleApprove(scriptId, action, notes);
+      try {
+        await automationApi.lifecycleApprove(scriptId, action, notes);
+      } catch (lifecycleError) {
+        const overrideReason = overrideNoteFromError(lifecycleError);
+        if (!overrideReason) throw lifecycleError;
+        const note = window.prompt(overrideReason);
+        if (note === null || !note.trim()) return;
+        await automationApi.lifecycleApprove(scriptId, action, note.trim());
+      }
       const labels: Record<LifecycleApprovalAction, string> = {
         reviewer_approve: "approved by reviewer",
         reviewer_reject: "rejected by reviewer",
@@ -540,12 +574,19 @@ function AutomationContent() {
     });
   }, [rows, planningCandidates, mappingByTestCase, scriptsById]);
 
-  // Auto-select the first item once data lands.
+  // Deep-link support: a "tc" query param (test case id) — set by e.g. the
+  // execution page's "Regenerate script" action — pre-selects that item
+  // instead of the default first-item selection, so a failure can send the
+  // user straight to the script that caused it rather than leaving them to
+  // hunt for it in the inventory list.
   useEffect(() => {
-    if (selectedInventoryId == null && inventoryItems.length > 0) {
-      setSelectedInventoryId(inventoryItems[0].id);
-    }
-  }, [inventoryItems, selectedInventoryId]);
+    if (selectedInventoryId != null || inventoryItems.length === 0) return;
+    const tcParam = Number(searchParams.get("tc"));
+    const target = Number.isFinite(tcParam) && inventoryItems.some((i) => i.id === tcParam)
+      ? tcParam
+      : inventoryItems[0].id;
+    setSelectedInventoryId(target);
+  }, [inventoryItems, selectedInventoryId, searchParams]);
 
   function handleToggleInventorySelect(id: number) {
     setSelectedInventoryIds((prev) => {

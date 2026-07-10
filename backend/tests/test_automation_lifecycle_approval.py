@@ -247,6 +247,48 @@ def test_lifecycle_approval_endpoint_rejects_tester_for_lead_approve():
     assert response.status_code == 403
 
 
+def test_lifecycle_approval_endpoint_blocks_reviewer_approve_when_ungrounded_without_notes():
+    script = _script(status="dry_run_passed", metadata_={"grounding": {"ungrounded_elements": ["Page.searchBar"]}})
+    db = _FakeDB(script, _project(), _membership("Test Lead"), _membership("Test Lead"))
+
+    async def fake_db() -> AsyncIterator[_FakeDB]:
+        yield db
+
+    app.dependency_overrides[get_db] = fake_db
+    app.dependency_overrides[require_user] = _member_user
+    try:
+        response = TestClient(app).post(
+            "/api/v1/automation/1/lifecycle-approval",
+            json={"action": "reviewer_approve"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    assert "Page.searchBar" in response.json()["detail"]
+
+
+def test_lifecycle_approval_endpoint_allows_reviewer_approve_when_ungrounded_with_notes():
+    script = _script(status="dry_run_passed", metadata_={"grounding": {"ungrounded_elements": ["Page.searchBar"]}})
+    db = _FakeDB(script, _project(), _membership("Test Lead"), _membership("Test Lead"))
+
+    async def fake_db() -> AsyncIterator[_FakeDB]:
+        yield db
+
+    app.dependency_overrides[get_db] = fake_db
+    app.dependency_overrides[require_user] = _member_user
+    try:
+        response = TestClient(app).post(
+            "/api/v1/automation/1/lifecycle-approval",
+            json={"action": "reviewer_approve", "notes": "Known gap, approving for manual follow-up"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "reviewer_approved"
+
+
 def test_lifecycle_approval_endpoint_returns_409_on_wrong_stage():
     script = _script(status="dry_run_passed")  # not yet reviewer_approved
     db = _FakeDB(script, _project(), _membership("Test Lead"), _membership("Test Lead"))

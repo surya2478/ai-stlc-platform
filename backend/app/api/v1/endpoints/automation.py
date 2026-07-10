@@ -288,6 +288,10 @@ async def approve_automation_script(
     if not script:
         raise HTTPException(status_code=404, detail="Automation script not found")
     await require_entity_permission(script, GENERATE_AUTOMATION, current_user, db)
+    if body.action == "approve":
+        override_reason = automation_service.approval_override_reason(script, body.notes)
+        if override_reason:
+            raise HTTPException(status_code=422, detail=override_reason)
     script = await automation_service.approve_script(db, script, body.action, body.notes)
     await approval_service.create_approval_action(
         db,
@@ -329,6 +333,14 @@ async def lifecycle_approval_automation_script(
         raise HTTPException(status_code=404, detail="Automation script not found")
     permission = _LIFECYCLE_ACTION_PERMISSIONS[body.action]
     await require_entity_permission(script, permission, current_user, db)
+    # Only the entry points to human approval (reviewer/lead) are gated —
+    # by the time a script reaches environment_approve/mark_ci_ready a
+    # reviewer has already had the chance to catch (or knowingly override)
+    # a quality issue at reviewer_approve/lead_approve.
+    if body.action in ("reviewer_approve", "lead_approve"):
+        override_reason = automation_service.approval_override_reason(script, body.notes)
+        if override_reason:
+            raise HTTPException(status_code=422, detail=override_reason)
     try:
         script = await automation_service.advance_script_lifecycle(db, script, body.action, body.notes)
     except ValueError as exc:
@@ -379,6 +391,10 @@ async def bulk_approve_automation_scripts(
                 results.append(BulkScriptApprovalResult(script_id=script_id, ok=False, error="Script not found"))
                 continue
             await require_entity_permission(script, GENERATE_AUTOMATION, current_user, db)
+            if body.action == "approve":
+                override_reason = automation_service.approval_override_reason(script, body.notes)
+                if override_reason:
+                    raise HTTPException(status_code=422, detail=override_reason)
             script = await automation_service.approve_script(db, script, body.action, body.notes)
             await approval_service.create_approval_action(
                 db,
