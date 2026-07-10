@@ -275,12 +275,17 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     "test_case_review": AgentSpec(
         timeout_seconds=180.0, module_scope="test_case_review", chain_on_success=("automation_eligibility",)
     ),
-    "automation_eligibility": AgentSpec(timeout_seconds=60.0, module_scope="automation_eligibility"),
-    # No chain_on_success here on purpose: discovery spawns a real browser
-    # session against a live environment, unlike the purely-analytical
-    # agents above it in the pipeline — it stays a deliberate, user-triggered
-    # action (mirrors automation_script's same reasoning) rather than firing
-    # automatically the moment test cases pass eligibility.
+    "automation_eligibility": AgentSpec(
+        timeout_seconds=60.0, module_scope="automation_eligibility",
+        chain_on_success=("playwright_mcp_discovery",),
+    ),
+    # Auto-chained since Phase 5 — was deliberately manual-only in Phase 3
+    # (discovery spawns a real browser session against a live environment).
+    # Kept safe by _build_mcp_discovery_input only firing for test cases
+    # whose application already has a real, resolvable environment URL
+    # (skips silently otherwise) — it never guesses or spawns against a
+    # placeholder. The manual "Discover UI" trigger (POST /agent/discover-ui)
+    # still exists for re-running discovery on demand (e.g. after a UI change).
     "playwright_mcp_discovery": AgentSpec(timeout_seconds=450.0, module_scope="mcp_discovery"),
     "automation_script": AgentSpec(
         timeout_seconds=240.0, module_scope="automation", chain_on_success=("automation_dry_run",)
@@ -384,6 +389,54 @@ async def _build_automation_eligibility_input(
     # test_case_review's own input already carries the full test case dicts
     # (see _build_test_case_review_input) — no DB re-fetch needed.
     test_cases = input_data.get("test_cases") or []
+    if not test_cases:
+        return None
+    return {"test_cases": test_cases}
+
+
+async def _build_mcp_discovery_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Auto-chain discovery for newly-eligible test cases whose application
+    already has a real, resolvable environment URL.
+
+    This reverses an earlier deliberate decision to keep discovery
+    exclusively manual (it spawns a real browser session against a live
+    environment). Kept safe by only firing when a URL is actually
+    resolvable — silently skipping any test case whose application isn't
+    configured yet, same as every other "nothing to do" case in this file —
+    so it never spawns a browser at a guessed or placeholder URL. Multiple
+    test cases across multiple applications in one batch are all passed
+    into a single discovery run; the agent already groups them internally
+    by application_id (see mcp_discovery_agent.run's `by_application` split).
+    """
+    tc_ids = output_data.get("test_case_ids") or []
+    if not tc_ids:
+        return None
+    result = await db.execute(select(TestCase).where(TestCase.id.in_(tc_ids)))
+    test_cases = []
+    for tc in result.scalars().all():
+        if tc.project_id != run.project_id or tc.automation_eligible != "yes":
+            continue
+        application = None
+        if tc.application_id:
+            application = await db.get(ProjectApplication, tc.application_id)
+        if application is None:
+            application = await resolve_default_application(db, run.project_id)
+        if application is None:
+            continue
+        environment = tc.test_phase or "QA"
+        application_url = resolve_environment_url(application, environment)
+        if not application_url:
+            continue  # no URL configured for this environment — nothing to discover against
+        test_cases.append({
+            "id": tc.id,
+            "test_case_id": tc.test_case_id,
+            "title": tc.title,
+            "steps": tc.steps or [],
+            "application_id": application.id,
+            "application_url": application_url,
+        })
     if not test_cases:
         return None
     return {"test_cases": test_cases}
@@ -541,6 +594,7 @@ async def _build_script_review_input(
 CHAIN_INPUT_BUILDERS["scenario_review"] = _build_scenario_review_input
 CHAIN_INPUT_BUILDERS["test_case_review"] = _build_test_case_review_input
 CHAIN_INPUT_BUILDERS["automation_eligibility"] = _build_automation_eligibility_input
+CHAIN_INPUT_BUILDERS["playwright_mcp_discovery"] = _build_mcp_discovery_input
 CHAIN_INPUT_BUILDERS["automation_dry_run"] = _build_dry_run_input
 CHAIN_INPUT_BUILDERS["failure_classification"] = _build_failure_classification_input
 CHAIN_INPUT_BUILDERS["automation_repair_loop"] = _build_repair_loop_input
@@ -1261,11 +1315,24 @@ async def _persist_agent_artifacts(
         # apply eligibility pass 2 (live-evidence overrides of the static
         # pass-1 guess from automation_eligibility).
         tc_lookup = {tc.get("test_case_id"): tc.get("id") for tc in input_data.get("test_cases", [])}
+        # Every test case whose application was discovered is a parent of
+        # every element discovered for that application — discovery grounds
+        # the whole page, not one element per test case. Without this, the
+        # Trace drawer had no way to show "this TC's automation was grounded
+        # by discovery run X" (locator_map has no test_case_id column at all).
+        tc_ids_by_application: dict[int, list[int]] = {}
+        for tc in input_data.get("test_cases", []):
+            app_id = tc.get("application_id")
+            tc_db_id = tc.get("id")
+            if app_id is not None and tc_db_id is not None:
+                tc_ids_by_application.setdefault(app_id, []).append(tc_db_id)
+
         locator_ids: list[int] = []
         overridden_tc_ids: list[int] = []
 
         for app_result in data.get("applications", []):
             application_id = app_result.get("application_id")
+            parent_tc_ids = tc_ids_by_application.get(application_id, [])
             for page in app_result.get("pages", []):
                 page_url = page.get("url") or ""
                 for element in page.get("elements", []):
@@ -1281,6 +1348,15 @@ async def _persist_agent_artifacts(
                         confidence_score=element.get("confidence_score", 0),
                     )
                     locator_ids.append(entry.id)
+                    if parent_tc_ids:
+                        await traceability_service.create_lineage_many(
+                            db,
+                            project_id=run.project_id,
+                            parents=[("test_case", tc_id) for tc_id in parent_tc_ids],
+                            child_type="locator_map",
+                            child_id=entry.id,
+                            agent_run_id=run.id,
+                        )
 
             for tc_business_id, reasons in (app_result.get("eligibility_overrides") or {}).items():
                 db_tc_id = tc_lookup.get(tc_business_id)

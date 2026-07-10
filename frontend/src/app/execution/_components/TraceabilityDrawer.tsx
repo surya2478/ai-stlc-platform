@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowUpRight, Bug, ClipboardList, Code2, FileText, GitBranch,
+  ArrowUpRight, Bug, ClipboardList, Code2, Crosshair, FileText, GitBranch,
   ListChecks, Network, Play, Table2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,7 @@ const TYPE_META: Record<string, { label: string; icon: typeof FileText; href?: (
   test_case:         { label: "Test Case", icon: Table2, href: (p) => buildHref("/test-cases", { project: p }) },
   test_data:         { label: "Test Data", icon: Table2, href: (p) => buildHref("/test-data", { project: p }) },
   automation_script: { label: "Script", icon: Code2, href: (p) => buildHref("/automation", { project: p }) },
+  locator_map:       { label: "Discovered Locator", icon: Crosshair },
   execution_run:     { label: "Run", icon: Play, href: (p) => buildHref("/execution/automation", { project: p, tab: "history" }) },
   execution_result:  { label: "Result", icon: Play },
   defect_draft:      { label: "Defect", icon: Bug, href: (p) => buildHref("/defects", { project: p }) },
