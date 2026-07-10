@@ -191,6 +191,20 @@ def filter_catalog_by_page(catalog: list[dict] | None, base_url: str | None) -> 
     return scoped or catalog
 
 
+_FILLABLE_ROLE_HINTS = frozenset({"textbox", "combobox", "searchbox", "search"})
+
+
+def _apply_catalog_entry(element, entry: dict) -> bool:
+    parsed = parse_locator_playwright(entry.get("recommended_locator") or "")
+    if parsed is None:
+        return False
+    strategy, value, role_hint = parsed
+    element.locator_strategy = strategy
+    element.locator_value = value
+    element.role_hint = role_hint
+    return True
+
+
 def ground_page_object_elements(contract: "AutomationGenerationContract", catalog: list[dict] | None) -> None:
     """Force-correct an element's locator fields from a locator_map catalog
     when a contract names it after a discovered element (matched by
@@ -207,19 +221,50 @@ def ground_page_object_elements(contract: "AutomationGenerationContract", catalo
     `recommended_locator` (via `parse_locator_playwright`) removes that
     failure mode entirely for any element the LLM correctly identified by
     name, rather than just detecting the mistake after the fact.
+
+    Also covers a second, harder failure mode confirmed via three
+    consecutive live regenerations of the same test case: the LLM never
+    reused the catalog's element name OR locator at all — inventing
+    "searchBar"/input[name='q'], then an unnamed searchBox, then
+    "searchInput"/getByPlaceholder('Search'), none matching the catalog's
+    "combobox" by name, so nothing above ever triggers. When a "fill" step
+    targets an element that's still ungrounded after name-matching, and the
+    catalog has exactly one unambiguous text-input-like element (role
+    textbox/combobox/searchbox) on this page, ground that step's element to
+    it regardless of what the LLM called it or what locator it guessed —
+    deliberately narrow to the single-candidate case so it can never
+    silently pick the wrong field among several inputs.
     """
     if not catalog:
         return
     catalog_by_name = {entry["element_name"]: entry for entry in catalog if entry.get("element_name")}
+    matched_by_name: set[str] = set()
     for page_object in contract.page_objects:
         for element in page_object.elements:
             entry = catalog_by_name.get(element.name)
             if entry is None:
                 continue
-            parsed = parse_locator_playwright(entry.get("recommended_locator") or "")
-            if parsed is None:
-                continue
-            strategy, value, role_hint = parsed
-            element.locator_strategy = strategy
-            element.locator_value = value
-            element.role_hint = role_hint
+            if _apply_catalog_entry(element, entry):
+                matched_by_name.add(element.name)
+
+    text_input_candidates = []
+    for entry in catalog:
+        parsed = parse_locator_playwright(entry.get("recommended_locator") or "")
+        if parsed and parsed[0] == "role" and (parsed[2] or "").lower() in _FILLABLE_ROLE_HINTS:
+            text_input_candidates.append(entry)
+    if len(text_input_candidates) != 1:
+        return
+    fallback_entry = text_input_candidates[0]
+
+    elements_by_ref = {
+        f"{page_object.name}.{element.name}": element
+        for page_object in contract.page_objects
+        for element in page_object.elements
+    }
+    for step in contract.steps:
+        if step.action != "fill" or not step.target:
+            continue
+        element = elements_by_ref.get(step.target)
+        if element is None or element.name in matched_by_name:
+            continue
+        _apply_catalog_entry(element, fallback_entry)

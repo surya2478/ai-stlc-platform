@@ -151,6 +151,82 @@ def test_ground_page_object_elements_noop_when_catalog_empty():
     assert element.locator_value == "combobox"  # untouched
 
 
+# ── ground_page_object_elements: single-candidate fill-step fallback — a
+# harder failure mode confirmed via three consecutive live regenerations of
+# the same test case, where the LLM never reused the catalog's element name
+# OR locator at all ("searchBar"/input[name='q'], then an unnamed
+# searchBox, then "searchInput"/getByPlaceholder('Search')), so
+# name-matching alone never triggered. ──────────────────────────────────────
+
+def _contract_with_fill_step(element_name: str, strategy: str, value: str, role_hint: str | None = None):
+    from app.agents.automation.generation_contract import AutomationGenerationContract
+    return AutomationGenerationContract.model_validate({
+        "contractVersion": "1.0", "testCaseId": "TC-1", "scriptType": "playwright-typescript",
+        "pageObjects": [{"name": "SearchPage", "elements": [{
+            "name": element_name, "locatorStrategy": strategy, "locatorValue": value, "roleHint": role_hint,
+        }]}],
+        "steps": [{"phase": "act", "action": "fill", "target": f"SearchPage.{element_name}", "dataBinding": "q"}],
+    })
+
+
+def test_ground_page_object_elements_grounds_unmatched_fill_target_via_single_text_input_candidate():
+    contract = _contract_with_fill_step("searchInput", "placeholder", "Search")
+    catalog = [
+        {"element_name": "combobox", "recommended_locator": "page.getByRole('combobox', { name: 'بحث' })"},
+        {"element_name": "link_gmail", "recommended_locator": "page.getByRole('link', { name: 'Gmail' })"},
+    ]
+
+    locator_policy.ground_page_object_elements(contract, catalog)
+
+    element = contract.page_objects[0].elements[0]
+    assert element.locator_strategy == "role"
+    assert element.locator_value == "بحث"
+    assert element.role_hint == "combobox"
+
+
+def test_ground_page_object_elements_skips_fallback_when_multiple_text_input_candidates():
+    contract = _contract_with_fill_step("searchInput", "placeholder", "Search")
+    catalog = [
+        {"element_name": "combobox", "recommended_locator": "page.getByRole('combobox', { name: 'بحث' })"},
+        {"element_name": "textbox_email", "recommended_locator": "page.getByRole('textbox', { name: 'Email' })"},
+    ]
+
+    locator_policy.ground_page_object_elements(contract, catalog)
+
+    element = contract.page_objects[0].elements[0]
+    assert element.locator_value == "Search"  # untouched — ambiguous, no single candidate
+
+
+def test_ground_page_object_elements_fallback_does_not_override_a_name_match():
+    contract = _contract_with_fill_step("combobox", "role", "combobox", "search")
+    catalog = [
+        {"element_name": "combobox", "recommended_locator": "page.getByRole('combobox', { name: 'بحث' })"},
+    ]
+
+    locator_policy.ground_page_object_elements(contract, catalog)
+
+    element = contract.page_objects[0].elements[0]
+    assert element.role_hint == "combobox"
+    assert element.locator_value == "بحث"
+
+
+def test_ground_page_object_elements_fallback_ignores_non_fill_steps():
+    from app.agents.automation.generation_contract import AutomationGenerationContract
+    contract = AutomationGenerationContract.model_validate({
+        "contractVersion": "1.0", "testCaseId": "TC-1", "scriptType": "playwright-typescript",
+        "pageObjects": [{"name": "SearchPage", "elements": [{
+            "name": "searchInput", "locatorStrategy": "placeholder", "locatorValue": "Search",
+        }]}],
+        "steps": [{"phase": "act", "action": "click", "target": "SearchPage.searchInput"}],
+    })
+    catalog = [{"element_name": "combobox", "recommended_locator": "page.getByRole('combobox', { name: 'بحث' })"}]
+
+    locator_policy.ground_page_object_elements(contract, catalog)
+
+    element = contract.page_objects[0].elements[0]
+    assert element.locator_value == "Search"  # untouched — not a fill step
+
+
 # ── filter_catalog_by_page: real bug found via a live run — TC-0110's
 # generated page object grounded its "search box" against an
 # accounts.google.com sign-in field pulled from the same application's
