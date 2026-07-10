@@ -39,6 +39,9 @@ AutomationScriptStatus = Literal[
     "executed",
     "deprecated",
     "blocked",
+    # Data-migration status for scripts generated before locator grounding
+    # fixes landed — see execution_blocked_reason in automation_service.py.
+    "needs_regeneration",
 ]
 
 
@@ -245,6 +248,19 @@ class AutomationPlanningCandidateOut(BaseModel):
     script_id: int | None = None
     linked_script_ids: list[int] = Field(default_factory=list)
     script_status: str | None = None
+    # None = unknown (no grounding/dry-run metadata yet, e.g. a script that
+    # predates it, or was authored outside the grounded pipeline) — distinct
+    # from a known-false/known-empty result. See execution_blocked_reason().
+    grounded: bool | None = None
+    ungrounded_element_count: int = 0
+    last_dry_run_passed: bool | None = None
+    execution_blocked_reason: str | None = None
+    # How many times in a row (most recent first) this test case has failed
+    # with the *same* error message — 0 means either no failures, or the
+    # most recent result passed. Powers the "retrying won't change the
+    # outcome" warning on repeat-failure retries.
+    consecutive_failure_count: int = 0
+    last_failure_error: str | None = None
     repository: str | None = None
     branch: str | None = None
     script_path: str | None = None

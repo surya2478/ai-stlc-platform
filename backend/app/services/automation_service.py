@@ -216,6 +216,45 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
     return script
 
 
+def execution_blocked_reason(script: AutomationScript) -> str | None:
+    """Why this script can't be executed right now, or None if it can.
+
+    "Approved" alone was the only gate the execute endpoints ever checked —
+    but grounding and dry-run outcomes are known-good signals already stored
+    on every script's metadata_ (see regenerate_script's "grounding" write
+    and automation_tasks.py's "last_dry_run" write) that were never actually
+    consulted. A script with unresolved locators or a known-failing dry run
+    would show "approved" and run anyway, forever reproducing the same
+    failure on every retry. Only blocks on *positive* evidence of a problem
+    — a script with no grounding/dry-run metadata at all (e.g. externally
+    authored, or predating this metadata) is treated as unknown, not bad.
+    """
+    if script.status == "needs_regeneration":
+        return (
+            "This script predates locator grounding fixes and is known to contain "
+            "invalid locators — regenerate it before running."
+        )
+    if script.status not in {"approved", "executed"}:
+        return "Script is not approved for execution yet."
+
+    metadata = script.metadata_ or {}
+    grounding = metadata.get("grounding") or {}
+    ungrounded = grounding.get("ungrounded_elements") or []
+    if ungrounded:
+        shown = ", ".join(str(e) for e in ungrounded[:3])
+        more = f" (+{len(ungrounded) - 3} more)" if len(ungrounded) > 3 else ""
+        return (
+            f"{len(ungrounded)} element(s) not grounded to a real page ({shown}{more}) — "
+            "regenerate before running."
+        )
+
+    last_dry_run = metadata.get("last_dry_run") or {}
+    if last_dry_run.get("passed") is False:
+        return "The last dry run failed — regenerate or repair the script before running it again."
+
+    return None
+
+
 # Allowed lifecycle transitions: source statuses that may move to (target, action label).
 # Keep in sync with backend/app/models/automation_script.py status docs and
 # frontend/src/components/automation/AutomationWorkspace.tsx action bar.
@@ -388,6 +427,56 @@ async def count_scripts_by_project(db: AsyncSession, project_id: int) -> dict:
     return {row[0]: row[1] for row in result.all()}
 
 
+_FAIL_STATUSES = {"fail", "error", "blocked"}
+
+
+async def _consecutive_failure_streaks(
+    db: AsyncSession, *, project_id: int, test_case_ids: list[int]
+) -> dict[int, dict]:
+    """For each test case, how many times in a row (most recent first) it
+    has failed with the *same* error message, stopping at the first pass or
+    a differing error.
+
+    Powers the "retrying this won't change the outcome" warning — a signal
+    that was previously invisible: a test case could fail the same way 20+
+    times across separate "Retry" clicks and nothing recorded that these
+    were repeats of each other, since each ExecutionResult only knows about
+    its own run.
+    """
+    if not test_case_ids:
+        return {}
+    result = await db.execute(
+        select(ExecutionResult.test_case_id, ExecutionResult.status, ExecutionResult.error_message, ExecutionResult.created_at)
+        .where(
+            ExecutionResult.project_id == project_id,
+            ExecutionResult.test_case_id.in_(test_case_ids),
+        )
+        .order_by(ExecutionResult.test_case_id, ExecutionResult.created_at.desc())
+    )
+    streaks: dict[int, dict] = {}
+    active_tc: int | None = None
+    active_error: str | None = None
+    broken = False  # True once this tc's streak has been closed off (pass, or an error mismatch)
+    for tc_id, status, error_message, _created_at in result.all():
+        if tc_id != active_tc:
+            active_tc = tc_id
+            active_error = None
+            broken = False
+        if broken:
+            continue
+        if (status or "").lower() not in _FAIL_STATUSES:
+            broken = True  # most-recent-so-far result was a pass — no active streak
+            continue
+        if active_error is None:
+            active_error = error_message
+            streaks[tc_id] = {"count": 1, "error_message": error_message}
+        elif error_message == active_error:
+            streaks[tc_id]["count"] += 1
+        else:
+            broken = True  # a different error breaks the streak
+    return streaks
+
+
 async def planning_summary(db: AsyncSession, *, project_id: int) -> dict:
     test_case_result = await db.execute(
         select(TestCase)
@@ -436,6 +525,10 @@ async def planning_summary(db: AsyncSession, *, project_id: int) -> dict:
     suite_result = await db.execute(select(TestSuite.id, TestSuite.name).where(TestSuite.project_id == project_id))
     suite_name_by_id = {row[0]: row[1] for row in suite_result.all()}
 
+    failure_streaks = await _consecutive_failure_streaks(
+        db, project_id=project_id, test_case_ids=[tc.id for tc in test_cases]
+    )
+
     candidates: list[dict] = []
     for test_case in test_cases:
         related_scripts = scripts_by_test_case.get(test_case.id, [])
@@ -456,6 +549,15 @@ async def planning_summary(db: AsyncSession, *, project_id: int) -> dict:
             handoff = "repository_ready"
         else:
             handoff = "ready_for_execution"
+
+        # Surfaces the same signals execution_blocked_reason() gates on, so
+        # the UI can show *why* a script isn't runnable instead of a bare
+        # "not eligible" — these were already computed and stored on every
+        # script but never read back out anywhere before.
+        script_grounding = metadata.get("grounding") if isinstance(metadata, dict) else None
+        script_last_dry_run = metadata.get("last_dry_run") if isinstance(metadata, dict) else None
+        blocked_reason = execution_blocked_reason(latest_script) if latest_script else None
+        streak = failure_streaks.get(test_case.id)
 
         candidates.append(
             {
@@ -479,6 +581,12 @@ async def planning_summary(db: AsyncSession, *, project_id: int) -> dict:
                 "script_id": latest_script.id if latest_script else None,
                 "linked_script_ids": [script.id for script in related_scripts],
                 "script_status": latest_script.status if latest_script else None,
+                "grounded": script_grounding.get("grounded") if script_grounding else None,
+                "ungrounded_element_count": len(script_grounding.get("ungrounded_elements") or []) if script_grounding else 0,
+                "last_dry_run_passed": script_last_dry_run.get("passed") if script_last_dry_run else None,
+                "execution_blocked_reason": blocked_reason,
+                "consecutive_failure_count": streak["count"] if streak else 0,
+                "last_failure_error": streak["error_message"] if streak else None,
                 "repository": metadata.get("repository") if isinstance(metadata, dict) else None,
                 "branch": metadata.get("branch") if isinstance(metadata, dict) else None,
                 "script_path": latest_script.file_path if latest_script else None,

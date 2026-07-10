@@ -822,11 +822,9 @@ async def execute_automation_script(
         raise HTTPException(status_code=404, detail="Automation script not found")
     await require_permission(EXECUTE_TESTS, script.project_id, current_user, db)
 
-    if script.status not in {"approved", "executed"}:
-        raise HTTPException(
-            status_code=422,
-            detail="Script must be approved before it can be executed.",
-        )
+    blocked_reason = automation_service.execution_blocked_reason(script)
+    if blocked_reason:
+        raise HTTPException(status_code=422, detail=blocked_reason)
 
     framework = (script.framework or "").lower()
     if framework not in {"playwright", "pytest"}:
@@ -939,11 +937,15 @@ async def execute_automation_batch(
     if wrong_project:
         raise HTTPException(status_code=422, detail=f"Script(s) not in project {project_id}: {wrong_project}")
 
-    not_approved = [s.script_id for s in ordered_scripts if s.status not in {"approved", "executed"}]
-    if not_approved:
+    blocked = [
+        f"{s.script_id} ({reason})"
+        for s in ordered_scripts
+        if (reason := automation_service.execution_blocked_reason(s))
+    ]
+    if blocked:
         raise HTTPException(
             status_code=422,
-            detail=f"Script(s) must be approved before batch execution: {not_approved}",
+            detail=f"Script(s) cannot be executed: {'; '.join(blocked)}",
         )
 
     unsupported = [
