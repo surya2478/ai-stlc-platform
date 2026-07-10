@@ -21,13 +21,19 @@ import {
   Bot,
   Edit3,
   Network,
+  Rocket,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { LifecycleStepper, deriveLifecycleStage } from "./LifecycleStepper";
-import { traceabilityApi, type AutomationScript, type AutomationTestMapping } from "@/lib/api";
+import {
+  traceabilityApi,
+  type AutomationScript,
+  type AutomationTestMapping,
+  type LifecycleApprovalAction,
+} from "@/lib/api";
 import type { InventoryItem } from "./AutomationInventoryPanel";
 
 type Tab =
@@ -63,7 +69,9 @@ type Props = {
   busyTransition: boolean;
   busySave: boolean;
   busySandbox?: boolean;
+  busyLifecycle?: boolean;
   onApprove: (action: "approve" | "reject") => Promise<void>;
+  onLifecycleApprove: (action: LifecycleApprovalAction) => Promise<void>;
   onTransition: (action: TransitionAction) => Promise<void>;
   onSaveDraft: (code: string) => Promise<void>;
   onConfigureExternal: () => void;
@@ -82,7 +90,9 @@ export function AutomationWorkspace({
   busyTransition,
   busySave,
   busySandbox,
+  busyLifecycle,
   onApprove,
+  onLifecycleApprove,
   onTransition,
   onSaveDraft,
   onConfigureExternal,
@@ -177,13 +187,16 @@ export function AutomationWorkspace({
 
         <ActionBar
           isExternal={isExternal}
+          isGrounded={variant === "grounded"}
           stage={stage}
           scriptStatus={script?.status ?? null}
           busyApprove={busyApprove}
           busyTransition={busyTransition}
           busySandbox={busySandbox ?? false}
+          busyLifecycle={busyLifecycle ?? false}
           hasScript={Boolean(script)}
           onApprove={onApprove}
+          onLifecycleApprove={onLifecycleApprove}
           onTransition={onTransition}
           onConfigureExternal={onConfigureExternal}
           onRunSandbox={onRunSandbox}
@@ -261,25 +274,31 @@ export function AutomationWorkspace({
 
 function ActionBar({
   isExternal,
+  isGrounded,
   stage,
   scriptStatus,
   busyApprove,
   busyTransition,
   busySandbox,
+  busyLifecycle,
   hasScript,
   onApprove,
+  onLifecycleApprove,
   onTransition,
   onConfigureExternal,
   onRunSandbox,
 }: {
   isExternal: boolean;
+  isGrounded: boolean;
   stage: string;
   scriptStatus: string | null;
   busyApprove: boolean;
   busyTransition: boolean;
   busySandbox: boolean;
+  busyLifecycle: boolean;
   hasScript: boolean;
   onApprove: (action: "approve" | "reject") => Promise<void>;
+  onLifecycleApprove: (action: LifecycleApprovalAction) => Promise<void>;
   onTransition: (action: TransitionAction) => Promise<void>;
   onConfigureExternal: () => void;
   onRunSandbox: () => void;
@@ -302,6 +321,10 @@ function ActionBar({
         </Button>
       </div>
     );
+  }
+
+  if (isGrounded && hasScript) {
+    return <GroundedActionBar stage={stage} busy={busyLifecycle} onApprove={onLifecycleApprove} />;
   }
 
   // Mirror the backend transition map (automation_service.py _TRANSITIONS):
@@ -383,6 +406,120 @@ function ActionBar({
       </Button>
     </div>
   );
+}
+
+// Phase 4.6: staged post-generation approval chain for the grounded
+// generation pipeline (dry_run_passed -> reviewer_approved -> lead_approved
+// -> [environment_approve, required for PROD_SANITY] -> ci_ready). "Static
+// Gate Passed" and "Generated" have no human action here — the static gate
+// and dry run are automatic pipeline steps; a human only steps in once a
+// script has actually proven it runs.
+function GroundedActionBar({
+  stage,
+  busy,
+  onApprove,
+}: {
+  stage: string;
+  busy: boolean;
+  onApprove: (action: LifecycleApprovalAction) => Promise<void>;
+}) {
+  if (stage === "generated" || stage === "static_passed") {
+    return (
+      <p className="text-[11px] text-slate-500">
+        Waiting on the automatic static quality gate and dry run to finish before this script
+        can be reviewed. No action needed here yet.
+      </p>
+    );
+  }
+
+  if (stage === "dry_run_passed") {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => onApprove("reviewer_approve")}
+          className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+          Reviewer approve
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => onApprove("reviewer_reject")}
+          className="gap-1.5 border-red-200 text-red-700 hover:bg-red-50"
+        >
+          <XCircle className="h-3.5 w-3.5" />
+          Reject
+        </Button>
+      </div>
+    );
+  }
+
+  if (stage === "reviewer_approved") {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => onApprove("lead_approve")}
+          className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+          Lead approve
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => onApprove("lead_reject")}
+          className="gap-1.5 border-red-200 text-red-700 hover:bg-red-50"
+        >
+          <XCircle className="h-3.5 w-3.5" />
+          Reject
+        </Button>
+      </div>
+    );
+  }
+
+  if (stage === "lead_approved") {
+    return (
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => onApprove("environment_approve")}
+          className="gap-1.5"
+          title="Required before Mark CI ready when the script targets PROD_SANITY"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+          Environment approve
+        </Button>
+        <Button
+          size="sm"
+          disabled={busy}
+          onClick={() => onApprove("mark_ci_ready")}
+          className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+        >
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+          Mark CI ready
+        </Button>
+      </div>
+    );
+  }
+
+  if (stage === "ci_ready") {
+    return (
+      <p className="text-[11px] font-semibold text-emerald-700">
+        This script is CI-ready and part of the regression suite.
+      </p>
+    );
+  }
+
+  return null;
 }
 
 function ScriptTab({

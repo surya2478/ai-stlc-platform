@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Sparkles, FileEdit, Eye, ShieldCheck, PlayCircle } from "lucide-react";
+import { Check, Sparkles, FileEdit, Eye, ShieldCheck, PlayCircle, Wrench, UserCheck, Award, Rocket } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type LifecycleStage =
@@ -11,9 +11,18 @@ export type LifecycleStage =
   | "in_review"
   | "approved"
   | "verified"
-  | "ready";
+  | "ready"
+  // Phase 2-4 grounded generation pipeline (ADR-001 contract -> compiler ->
+  // static gate -> dry run -> staged human approval) — a separate status
+  // vocabulary from the legacy manual draft/review flow above.
+  | "generated"
+  | "static_passed"
+  | "dry_run_passed"
+  | "reviewer_approved"
+  | "lead_approved"
+  | "ci_ready";
 
-type Variant = "internal" | "external";
+type Variant = "internal" | "external" | "grounded";
 
 type Step = {
   key: LifecycleStage;
@@ -37,13 +46,23 @@ const EXTERNAL_STEPS: Step[] = [
   { key: "ready", label: "Ready for Execution", icon: PlayCircle },
 ];
 
+// Mirrors automation_service.LIFECYCLE_APPROVAL_ACTIONS on the backend.
+const GROUNDED_STEPS: Step[] = [
+  { key: "generated", label: "Generated", icon: Sparkles },
+  { key: "static_passed", label: "Static Gate Passed", icon: Wrench },
+  { key: "dry_run_passed", label: "Dry Run Passed", icon: PlayCircle },
+  { key: "reviewer_approved", label: "Reviewer Approved", icon: Eye },
+  { key: "lead_approved", label: "Lead Approved", icon: UserCheck },
+  { key: "ci_ready", label: "CI Ready", icon: Rocket },
+];
+
 type Props = {
   current: LifecycleStage;
   variant?: Variant;
 };
 
 export function LifecycleStepper({ current, variant = "internal" }: Props) {
-  const steps = variant === "external" ? EXTERNAL_STEPS : INTERNAL_STEPS;
+  const steps = variant === "external" ? EXTERNAL_STEPS : variant === "grounded" ? GROUNDED_STEPS : INTERNAL_STEPS;
   const currentIndex = steps.findIndex((s) => s.key === current);
   const effectiveIndex = currentIndex >= 0 ? currentIndex : 0;
 
@@ -96,6 +115,22 @@ export function deriveLifecycleStage(
   if (s === "in_review" || s === "pending_approval" || s === "under_review")
     return { stage: "in_review", variant: "internal" };
   if (s === "draft") return { stage: "draft", variant: "internal" };
+  // "ai_draft" is a legacy manual-review status (pre-Phase-2); the grounded
+  // pipeline's freshly-compiled scripts start at "generated" instead, so
+  // this check must come first or every grounded script would mis-render
+  // as being at the very first legacy step.
+  if (
+    s === "generated" ||
+    s === "static_passed" ||
+    s === "dry_run_passed" ||
+    s === "reviewer_approved" ||
+    s === "lead_approved" ||
+    s === "ci_ready" ||
+    s === "production_regression_candidate"
+  ) {
+    const stage = s === "production_regression_candidate" ? "ci_ready" : (s as LifecycleStage);
+    return { stage, variant: "grounded" };
+  }
   if (s === "ai_draft") return { stage: "ai_draft", variant: "internal" };
   return { stage: "approved_tc", variant: "internal" };
 }

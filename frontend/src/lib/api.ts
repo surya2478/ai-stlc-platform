@@ -1284,6 +1284,28 @@ export interface AutomationScript {
   updated_at: string;
 }
 
+// Phase 4.6: staged post-generation approval chain — dry_run_passed ->
+// reviewer_approved -> lead_approved -> [environment_approve, required for
+// PROD_SANITY] -> ci_ready. Distinct from the legacy approve/reject flow
+// above (AutomationScript.status ai_draft/draft/in_review/approved/rejected),
+// which still governs manually-authored scripts.
+export type LifecycleApprovalAction =
+  | "reviewer_approve"
+  | "reviewer_reject"
+  | "lead_approve"
+  | "lead_reject"
+  | "environment_approve"
+  | "mark_ci_ready";
+
+export interface AutomationConfidenceScore {
+  overall: number;
+  locator_confidence: number;
+  assertion_confidence: number;
+  data_readiness: number;
+  environment_readiness: number;
+  dry_run_stability: number;
+}
+
 export interface AutomationTestMapping {
   id: number;
   project_id: number;
@@ -1472,6 +1494,10 @@ export const automationApi = {
     action: "submit_for_review" | "request_changes" | "restore_draft",
     notes?: string,
   ) => api.post<AutomationScript>(`/automation/${id}/transition`, { action, notes }),
+  lifecycleApprove: (id: number, action: LifecycleApprovalAction, notes?: string) =>
+    api.post<AutomationScript>(`/automation/${id}/lifecycle-approval`, { action, notes }),
+  getConfidenceScore: (id: number) =>
+    api.get<AutomationConfidenceScore>(`/automation/${id}/confidence-score`),
   getIntelligence: (scriptId: number) =>
     api.get<IntelligenceReport>(`/automation/${scriptId}/intelligence`),
   recommendationDecision: (
@@ -1495,6 +1521,12 @@ export const automationApi = {
       test_case_ids: testCaseIds,
       framework,
       source,
+    }),
+  discoverUi: (projectId: number, testCaseIds: number[], environment: string = "QA") =>
+    api.post<{ message: string; agent_run_id: number; task_id: string }>("/automation/agent/discover-ui", {
+      project_id: projectId,
+      test_case_ids: testCaseIds,
+      environment,
     }),
   createAutomationMapping: (data: {
     project_id: number;

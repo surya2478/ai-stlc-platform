@@ -35,6 +35,7 @@ import {
   type AutomationTestMapping,
   type ExecutionResult,
   type ExecutionRun,
+  type LifecycleApprovalAction,
   type TestCase,
 } from "@/lib/api";
 import { useAutomationMappings, usePlanning, useScripts } from "@/lib/queries/automation";
@@ -132,6 +133,7 @@ function AutomationContent() {
   const [environment, setEnvironment] = useState("staging");
   const [showAiScripts, setShowAiScripts] = useState(false);
   const [reviewBusyId, setReviewBusyId] = useState<number | null>(null);
+  const [lifecycleBusyId, setLifecycleBusyId] = useState<number | null>(null);
   const loading = tcLoading || scriptsQuery.isLoading || planningQuery.isLoading || mappingsQuery.isLoading;
 
   // Drawer States
@@ -152,6 +154,7 @@ function AutomationContent() {
   const [selectedInventoryId, setSelectedInventoryId] = useState<number | null>(null);
   const [selectedInventoryIds, setSelectedInventoryIds] = useState<Set<number>>(new Set());
   const [bulkApproveBusy, setBulkApproveBusy] = useState(false);
+  const [bulkDiscoverBusy, setBulkDiscoverBusy] = useState(false);
 
   // AI Automation Studio — Phase 2C additions
   const [transitionBusyId, setTransitionBusyId] = useState<number | null>(null);
@@ -433,6 +436,40 @@ function AutomationContent() {
     }
   }
 
+  async function handleLifecycleApproval(scriptId: number, action: LifecycleApprovalAction) {
+    // Rejections carry a reason into the approval audit trail, same as the
+    // legacy review flow.
+    let notes: string | undefined;
+    if (action === "reviewer_reject" || action === "lead_reject") {
+      const reason = window.prompt("Reason for rejection (recorded in the approval audit trail):");
+      if (reason === null) return; // cancelled
+      notes = reason.trim() || undefined;
+    }
+    setLifecycleBusyId(scriptId);
+    setError("");
+    try {
+      await automationApi.lifecycleApprove(scriptId, action, notes);
+      const labels: Record<LifecycleApprovalAction, string> = {
+        reviewer_approve: "approved by reviewer",
+        reviewer_reject: "rejected by reviewer",
+        lead_approve: "approved by lead",
+        lead_reject: "rejected by lead",
+        environment_approve: "environment-approved",
+        mark_ci_ready: "marked CI ready",
+      };
+      toast({ title: `Script ${labels[action]}`, variant: "success" });
+      loadData();
+    } catch (lifecycleError) {
+      toast({
+        title: "Could not update script approval state",
+        description: messageFromError(lifecycleError, ""),
+        variant: "error",
+      });
+    } finally {
+      setLifecycleBusyId(null);
+    }
+  }
+
   async function handleSaveDraft(scriptId: number, nextCode: string) {
     setSaveBusyId(scriptId);
     setError("");
@@ -570,6 +607,49 @@ function AutomationContent() {
       toast({ title: "Bulk approve failed", description: messageFromError(bulkError, ""), variant: "error" });
     } finally {
       setBulkApproveBusy(false);
+    }
+  }
+
+  async function handleBulkDiscover(ids: number[]) {
+    if (!selectedProject) return;
+    // Each test case's own configured environment (test_phase) — not the
+    // page's generic "environment" dropdown, which defaults to "staging"
+    // and has nothing to do with what's actually configured for these test
+    // cases' application. Mirrors the backend auto-chain's own fallback
+    // (tc.test_phase or "QA").
+    const idsByEnvironment = new Map<string, number[]>();
+    for (const id of ids) {
+      const env = rows.find((tc) => tc.id === id)?.test_phase || "QA";
+      const group = idsByEnvironment.get(env) ?? [];
+      group.push(id);
+      idsByEnvironment.set(env, group);
+    }
+
+    setBulkDiscoverBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        Array.from(idsByEnvironment.entries()).map(([env, groupIds]) =>
+          automationApi.discoverUi(selectedProject, groupIds, env),
+        ),
+      );
+      const failed = results.filter((r) => r.status === "rejected");
+      if (failed.length === 0) {
+        toast({
+          title: "Discovery queued",
+          description: "Opening a live browser session to ground automation in the real page. This can take a minute — locators will appear once it completes.",
+          variant: "success",
+        });
+      } else {
+        const firstError = (failed[0] as PromiseRejectedResult).reason;
+        toast({
+          title: failed.length === results.length ? "Could not start discovery" : "Some discovery runs could not start",
+          description: messageFromError(firstError, ""),
+          variant: "error",
+        });
+      }
+      setSelectedInventoryIds(new Set());
+    } finally {
+      setBulkDiscoverBusy(false);
     }
   }
 
@@ -780,7 +860,9 @@ function AutomationContent() {
             onSelectMany={handleSelectManyInventory}
             onBulkGenerate={handleBulkGenerate}
             onBulkApprove={handleBulkApprove}
+            onBulkDiscover={handleBulkDiscover}
             bulkBusy={bulkApproveBusy}
+            bulkDiscoverBusy={bulkDiscoverBusy}
           />
         </div>
         <div className="space-y-4">
@@ -791,9 +873,14 @@ function AutomationContent() {
             busyApprove={reviewBusyId != null}
             busyTransition={transitionBusyId != null}
             busySave={saveBusyId != null}
+            busyLifecycle={lifecycleBusyId != null}
             onApprove={async (action) => {
               if (!selectedScript) return;
               await handleReviewScript(selectedScript.id, action);
+            }}
+            onLifecycleApprove={async (action) => {
+              if (!selectedScript) return;
+              await handleLifecycleApproval(selectedScript.id, action);
             }}
             onTransition={async (action) => {
               if (!selectedScript) return;

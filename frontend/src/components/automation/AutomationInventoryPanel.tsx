@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Filter, ChevronRight, Sparkles, ShieldCheck } from "lucide-react";
+import { Search, Filter, ChevronRight, Sparkles, ShieldCheck, Radar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -44,7 +44,9 @@ type Props = {
   onSelectMany: (ids: number[], checked: boolean) => void;
   onBulkGenerate: (ids: number[]) => void;
   onBulkApprove: (ids: number[]) => void;
+  onBulkDiscover?: (ids: number[]) => void;
   bulkBusy?: boolean;
+  bulkDiscoverBusy?: boolean;
 };
 
 function statusBadge(item: InventoryItem) {
@@ -78,7 +80,9 @@ export function AutomationInventoryPanel({
   onSelectMany,
   onBulkGenerate,
   onBulkApprove,
+  onBulkDiscover,
   bulkBusy,
+  bulkDiscoverBusy,
 }: Props) {
   const [search, setSearch] = useState("");
   const [framework, setFramework] = useState<FrameworkFilter>("all");
@@ -282,6 +286,18 @@ export function AutomationInventoryPanel({
             >
               Clear
             </button>
+            {onBulkDiscover && (
+              <button
+                type="button"
+                disabled={bulkDiscoverBusy}
+                onClick={() => onBulkDiscover(Array.from(selectedIds))}
+                title="Ground automation in the real page: opens a live browser session and captures real locators before you generate scripts."
+                className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+              >
+                <Radar className="h-3 w-3" />
+                Discover UI
+              </button>
+            )}
             <button
               type="button"
               disabled={bulkBusy}
