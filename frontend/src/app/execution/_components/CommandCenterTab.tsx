@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Bug, Check, CheckCircle2, Clock, Download, Loader2, PlayCircle, RotateCcw, Search, XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AutomationPlanning, ExecutionResult, ExecutionRun } from "@/lib/api";
@@ -16,7 +17,7 @@ import {
   AiAssistedBadge, buildArtifactLinks, formatDate, formatDuration,
   runVerdict, RunVerdictBadge,
 } from "./run-utils";
-import { RunAllEligibleDialog, type BatchRunCandidate } from "./AutomationBuilderTab";
+import { RunAllEligibleDialog, type BatchRunCandidate, type BlockedRunCandidate } from "./AutomationBuilderTab";
 import { CreateDefectDialog, type DefectPrefill } from "./CreateDefectDialog";
 import { TraceabilityDrawer, type TraceTarget } from "./TraceabilityDrawer";
 
@@ -136,10 +137,15 @@ export function CommandCenterTab({
     setSelectedResultId(firstFailing?.id ?? null);
   }, [results, selectedResultId]);
 
+  // A candidate needs a script AND to actually be runnable — "approved"
+  // alone used to be the only check here, which is how known-ungrounded and
+  // known-failed scripts kept landing in "eligible" batch runs. Blocked
+  // candidates aren't dropped silently: they're tallied below so the button
+  // can say how many are excluded and why.
   const runAllCandidates = useMemo<BatchRunCandidate[]>(
     () =>
       (planning?.candidates ?? [])
-        .filter((c) => Boolean(c.script_id) && ["approved", "executed"].includes((c.script_status ?? "").toLowerCase()))
+        .filter((c) => Boolean(c.script_id) && !c.execution_blocked_reason)
         .map((c) => ({
           scriptId: c.script_id as number,
           framework: c.recommended_framework,
@@ -150,6 +156,28 @@ export function CommandCenterTab({
         })),
     [planning],
   );
+  const blockedCandidates = useMemo<BlockedRunCandidate[]>(
+    () =>
+      (planning?.candidates ?? [])
+        .filter((c) => Boolean(c.script_id) && Boolean(c.execution_blocked_reason))
+        .map((c) => ({
+          key: c.test_case_key,
+          label: `${c.test_case_key} — ${c.title}`,
+          reason: c.execution_blocked_reason as string,
+        })),
+    [planning],
+  );
+
+  // Same-error repeat-failure streaks, keyed by test_case_id — lets the
+  // retry buttons warn "this won't change the outcome" instead of quietly
+  // offering another identical re-run.
+  const streakByTestCase = useMemo(() => {
+    const map = new Map<number, { count: number; error: string | null }>();
+    for (const c of planning?.candidates ?? []) {
+      map.set(c.test_case_id, { count: c.consecutive_failure_count ?? 0, error: c.last_failure_error ?? null });
+    }
+    return map;
+  }, [planning]);
 
   const openDefectDialog = (result: ExecutionResult) => {
     setDefectPrefill({
@@ -200,6 +228,7 @@ export function CommandCenterTab({
         selectedResultId={selectedResultId}
         onSelectResult={setSelectedResultId}
         onTrace={(runId, label) => setTraceTarget({ entityType: "execution_run", entityId: runId, label })}
+        streakByTestCase={streakByTestCase}
       />
 
       <FailureDetailsPanel
@@ -210,6 +239,7 @@ export function CommandCenterTab({
         onSelectResult={setSelectedResultId}
         lifecycle={lifecycle}
         onCreateDefect={openDefectDialog}
+        streakByTestCase={streakByTestCase}
       />
 
       <RunAllEligibleDialog
@@ -217,6 +247,7 @@ export function CommandCenterTab({
         onClose={() => setRunAllOpen(false)}
         projectId={Number(projectId)}
         candidates={runAllCandidates}
+        blockedCandidates={blockedCandidates}
         defaultEnvironment={environment}
         environments={planning?.summary.available_environments ?? []}
         onStarted={onRunStarted}
@@ -401,7 +432,7 @@ type LifecycleActions = ReturnType<typeof useRunLifecycleActions>;
 type RunDetailSubTab = "monitor" | "tests" | "logs";
 
 function RunDetailPanel({
-  run, loading, results, resultsLoading, lifecycle, selectedResultId, onSelectResult, onTrace,
+  run, loading, results, resultsLoading, lifecycle, selectedResultId, onSelectResult, onTrace, streakByTestCase,
 }: {
   run: ExecutionRun | null;
   loading: boolean;
@@ -411,6 +442,7 @@ function RunDetailPanel({
   selectedResultId: number | null;
   onSelectResult: (id: number) => void;
   onTrace: (runId: number, label: string) => void;
+  streakByTestCase: Map<number, { count: number; error: string | null }>;
 }) {
   const [subTab, setSubTab] = useState<RunDetailSubTab>("monitor");
 
@@ -438,6 +470,15 @@ function RunDetailPanel({
   const currentlyRunning = progressPct !== null
     ? results.find((r) => (r.status ?? "").toLowerCase() === "pending")
     : undefined;
+
+  // How many of this run's failures are repeats — the same test case
+  // failing with the same error it failed with last time too. A non-zero
+  // count means "Retry Failed" will reproduce at least one identical
+  // failure rather than fix it.
+  const repeatFailureCount = results.filter((r) => {
+    if (!["fail", "error", "blocked"].includes((r.status ?? "").toLowerCase())) return false;
+    return (streakByTestCase.get(r.test_case_id as number)?.count ?? 0) >= 2;
+  }).length;
 
   return (
     <Card className="flex flex-col">
@@ -471,9 +512,25 @@ function RunDetailPanel({
             {localRunnerRun && failedScriptIds.length > 0 && (
               <Button
                 size="sm" variant="outline" onClick={() => handleRetryFailed()} disabled={retryPending}
-                className="h-7 gap-1 border-orange-200 px-2 text-[10px] text-orange-700 hover:bg-orange-50"
+                className={cn(
+                  "h-7 gap-1 px-2 text-[10px]",
+                  repeatFailureCount > 0
+                    ? "border-red-200 text-red-700 hover:bg-red-50"
+                    : "border-orange-200 text-orange-700 hover:bg-orange-50",
+                )}
+                title={
+                  repeatFailureCount > 0
+                    ? `${repeatFailureCount} of these failed the same way last time — retrying won't change the outcome. Regenerate or repair instead.`
+                    : undefined
+                }
               >
-                {retryPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                {retryPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : repeatFailureCount > 0 ? (
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                )}
                 Retry Failed ({failedScriptIds.length})
               </Button>
             )}
@@ -767,7 +824,7 @@ function LogsPanel({ run }: { run: ExecutionRun }) {
 /* ------------------------------------------------------------------ */
 
 function FailureDetailsPanel({
-  run, results, resultsLoading, selectedResultId, onSelectResult, lifecycle, onCreateDefect,
+  run, results, resultsLoading, selectedResultId, onSelectResult, lifecycle, onCreateDefect, streakByTestCase,
 }: {
   run: ExecutionRun | null;
   results: ExecutionResult[];
@@ -776,6 +833,7 @@ function FailureDetailsPanel({
   onSelectResult: (id: number) => void;
   lifecycle: LifecycleActions;
   onCreateDefect: (result: ExecutionResult) => void;
+  streakByTestCase: Map<number, { count: number; error: string | null }>;
 }) {
   const { localRunnerRun, failedScriptIds, retryPending, handleRetry, handleRetryFailed } = lifecycle;
 
@@ -784,6 +842,8 @@ function FailureDetailsPanel({
     [results],
   );
   const selected = failing.find((r) => r.id === selectedResultId) ?? failing[0] ?? null;
+  const selectedStreak = selected?.test_case_id != null ? streakByTestCase.get(selected.test_case_id) : undefined;
+  const isRepeatFailure = (selectedStreak?.count ?? 0) >= 2;
 
   if (!run) {
     return (
@@ -833,6 +893,21 @@ function FailureDetailsPanel({
               )}
             </div>
 
+            {isRepeatFailure && (
+              <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-red-800">
+                    This test has failed the same way {selectedStreak?.count}x in a row
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-red-700">
+                    Retrying will run the identical script again and very likely reproduce the same
+                    failure. Regenerate the script, or fix the underlying issue, instead of retrying.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {failing.length > 1 && (
               <div className="mb-4 space-y-1">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Other failures</p>
@@ -852,11 +927,18 @@ function FailureDetailsPanel({
             <div className="space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Quick Actions</p>
               <QuickAction
-                icon={RotateCcw}
+                icon={isRepeatFailure ? AlertTriangle : RotateCcw}
                 label="Retry this test case"
                 onClick={() => canRetrySingle && handleRetry([singleScriptId as number])}
                 disabled={!canRetrySingle || retryPending}
-                title={canRetrySingle ? undefined : "Only local-runner scripts can be retried from here"}
+                title={
+                  !canRetrySingle
+                    ? "Only local-runner scripts can be retried from here"
+                    : isRepeatFailure
+                      ? `Failed the same way ${selectedStreak?.count}x in a row — retrying won't change the outcome`
+                      : undefined
+                }
+                tone={isRepeatFailure ? "warn" : "default"}
               />
               <QuickAction
                 icon={RotateCcw}
@@ -882,7 +964,7 @@ function FailureDetailsPanel({
 }
 
 function QuickAction({
-  icon: Icon, label, onClick, href, disabled, title,
+  icon: Icon, label, onClick, href, disabled, title, tone = "default",
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
@@ -890,15 +972,21 @@ function QuickAction({
   href?: string;
   disabled?: boolean;
   title?: string;
+  /** "warn" flags an action that's technically available but inadvisable
+   * right now — e.g. retrying a script that's already failed the same way
+   * repeatedly. */
+  tone?: "default" | "warn";
 }) {
   const className = cn(
-    "flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition",
-    disabled ? "cursor-not-allowed opacity-40" : "hover:bg-slate-50",
+    "flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
+    tone === "warn" ? "border-red-200 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-700",
+    disabled ? "cursor-not-allowed opacity-40" : tone === "warn" ? "hover:bg-red-100" : "hover:bg-slate-50",
   );
+  const iconClassName = cn("h-3.5 w-3.5", tone === "warn" ? "text-red-500" : "text-slate-400");
   if (href) {
     return (
       <a href={href} target="_blank" rel="noreferrer" className={className} title={title}>
-        <Icon className="h-3.5 w-3.5 text-slate-400" />
+        <Icon className={iconClassName} />
         {label}
         <Download className="ml-auto h-3 w-3 text-slate-400" />
       </a>
@@ -906,7 +994,7 @@ function QuickAction({
   }
   return (
     <button type="button" onClick={onClick} disabled={disabled} className={className} title={title}>
-      <Icon className="h-3.5 w-3.5 text-slate-400" />
+      <Icon className={iconClassName} />
       {label}
     </button>
   );

@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowRight, BarChart3, CheckSquare, Code2, ListChecks, Loader2, Play, PlayCircle,
   RefreshCw, ShieldCheck, Square, UserCheck, Workflow, ChevronRight as ChevronRightIcon,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -43,6 +44,7 @@ const FALLBACK_ENVIRONMENTS = ["staging", "development", "production", "ci"];
 function approvalStatusBadge(c: AutomationPlanningCandidate): { variant: "success" | "warning" | "secondary" | "outline" | "destructive" | "info"; label: string } {
   const ms = (c.mapping_status ?? "").toLowerCase();
   const ss = (c.script_status ?? "").toLowerCase();
+  if (ss === "needs_regeneration") return { variant: "destructive", label: "Needs regeneration" };
   if (ms === "approved" || ss === "approved") return { variant: "success", label: "Approved" };
   if (ss === "rejected" || ms === "rejected") return { variant: "destructive", label: "Rejected" };
   if (ms === "pending" || ms === "pending_approval" || ss === "pending_approval" || ss === "under_review" || ss === "in_review") {
@@ -224,6 +226,15 @@ export interface BatchRunCandidate {
   testSuiteName?: string | null;
 }
 
+/** A candidate with a script that exists but isn't safe to run — shown so
+ * the exclusion is visible and explained, not just a silently smaller
+ * "eligible" count. */
+export interface BlockedRunCandidate {
+  key: string;
+  label: string;
+  reason: string;
+}
+
 const ALL_ELIGIBLE_SCOPE = "__all__";
 
 export function RunAllEligibleDialog({
@@ -231,6 +242,7 @@ export function RunAllEligibleDialog({
   onClose,
   projectId,
   candidates,
+  blockedCandidates,
   defaultEnvironment,
   environments,
   onStarted,
@@ -240,6 +252,9 @@ export function RunAllEligibleDialog({
   onClose: () => void;
   projectId: number;
   candidates: BatchRunCandidate[];
+  /** Scripts excluded from `candidates` because they're known-bad, not just
+   * unapproved — shown with their reason instead of vanishing silently. */
+  blockedCandidates?: BlockedRunCandidate[];
   defaultEnvironment: string;
   environments: string[];
   onStarted?: (executionRunId: number) => void;
@@ -467,6 +482,10 @@ export function RunAllEligibleDialog({
                   ))
                 )}
               </div>
+
+              {blockedCandidates && blockedCandidates.length > 0 && (
+                <BlockedCandidatesNotice candidates={blockedCandidates} />
+              )}
             </>
           )}
         </DrawerBody>
@@ -486,6 +505,39 @@ export function RunAllEligibleDialog({
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
+  );
+}
+
+/** Scripts that exist but were left out of the runnable list — shown so the
+ * exclusion has a visible, specific reason instead of just a smaller count. */
+function BlockedCandidatesNotice({ candidates }: { candidates: BlockedRunCandidate[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const shown = expanded ? candidates : candidates.slice(0, 3);
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2.5">
+      <div className="flex items-start gap-1.5">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+        <p className="text-[11px] font-semibold text-amber-800">
+          {candidates.length} script{candidates.length === 1 ? "" : "s"} excluded — not safe to run
+        </p>
+      </div>
+      <ul className="mt-1.5 space-y-1 pl-5">
+        {shown.map((c) => (
+          <li key={c.key} className="text-[10px] text-amber-700">
+            <span className="font-mono">{c.key}</span> — {c.reason}
+          </li>
+        ))}
+      </ul>
+      {candidates.length > 3 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 pl-5 text-[10px] font-semibold text-amber-800 hover:underline"
+        >
+          {expanded ? "Show less" : `Show ${candidates.length - 3} more`}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -530,12 +582,15 @@ export function AutomationBuilderTab({
   );
   const totalCandidates = planning?.summary.total_candidates ?? planning?.candidates.length ?? 0;
 
-  // Every candidate with an approved (or previously executed) script — the
-  // full "Run All Eligible" batch, not just the top-8 preview row above.
+  // Every candidate with a script that's actually safe to run — the full
+  // "Run All Eligible" batch, not just the top-8 preview row above. Mirrors
+  // the backend's execution_blocked_reason gate, not just "approved":
+  // approval alone doesn't mean the script is grounded or ever passed a
+  // dry run.
   const runAllCandidates = useMemo<BatchRunCandidate[]>(
     () =>
       (planning?.candidates ?? [])
-        .filter((c) => Boolean(c.script_id) && ["approved", "executed"].includes((c.script_status ?? "").toLowerCase()))
+        .filter((c) => Boolean(c.script_id) && !c.execution_blocked_reason)
         .map((c) => ({
           scriptId: c.script_id as number,
           framework: c.recommended_framework,
@@ -546,6 +601,17 @@ export function AutomationBuilderTab({
         })),
     [planning],
   );
+  const blockedCandidates = useMemo<BlockedRunCandidate[]>(
+    () =>
+      (planning?.candidates ?? [])
+        .filter((c) => Boolean(c.script_id) && Boolean(c.execution_blocked_reason))
+        .map((c) => ({
+          key: c.test_case_key,
+          label: `${c.test_case_key} — ${c.title}`,
+          reason: c.execution_blocked_reason as string,
+        })),
+    [planning],
+  );
 
   const externalMappingsForTool = useMemo(
     () => mappings.filter((m) => (m.external_tool_name ?? "").toLowerCase().includes(activeTool.toLowerCase())),
@@ -553,8 +619,6 @@ export function AutomationBuilderTab({
   );
   const toolConnected = externalMappingsForTool.length > 0;
 
-  const runnable = (status: string | null | undefined) =>
-    ["approved", "executed"].includes((status ?? "").toLowerCase());
 
   // Script readiness counts — authoring/review/approval happen in the AI
   // Automation Studio; this tab only shows a summary + deep link (see
@@ -607,6 +671,7 @@ export function AutomationBuilderTab({
         onClose={() => setRunAllOpen(false)}
         projectId={Number(projectId)}
         candidates={runAllCandidates}
+        blockedCandidates={blockedCandidates}
         defaultEnvironment={environment}
         environments={planning?.summary.available_environments ?? []}
         onStarted={onViewActiveRuns}
@@ -628,7 +693,13 @@ export function AutomationBuilderTab({
                   onClick={() => setRunAllOpen(true)}
                   disabled={runAllCandidates.length === 0}
                   className="h-7 gap-1.5 px-2.5 text-[11px]"
-                  title={runAllCandidates.length === 0 ? "No approved scripts ready to run" : undefined}
+                  title={
+                    runAllCandidates.length === 0
+                      ? "No scripts are currently safe to run"
+                      : blockedCandidates.length > 0
+                        ? `${blockedCandidates.length} script(s) excluded — see the dialog for why`
+                        : undefined
+                  }
                 >
                   <PlayCircle className="h-3.5 w-3.5" /> Run All Eligible ({runAllCandidates.length})
                 </Button>
@@ -655,7 +726,7 @@ export function AutomationBuilderTab({
                     eligibleCandidates.map((c) => {
                       const approval = approvalStatusBadge(c);
                       const stage = handoffBadge(c);
-                      const canRun = Boolean(c.script_id) && runnable(c.script_status);
+                      const canRun = Boolean(c.script_id) && !c.execution_blocked_reason;
                       return (
                         <tr key={c.test_case_id} className="border-b border-slate-50 hover:bg-slate-50/50" title={c.title}>
                           <td className="whitespace-nowrap py-2 pr-3 font-mono text-slate-700">{c.test_case_key}</td>
@@ -705,7 +776,7 @@ export function AutomationBuilderTab({
                             ) : (
                               <span
                                 className="text-[10px] text-slate-300"
-                                title="Script must be generated and approved before it can run"
+                                title={c.execution_blocked_reason ?? "Script must be generated and approved before it can run"}
                               >
                                 —
                               </span>

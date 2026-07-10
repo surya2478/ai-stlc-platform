@@ -1375,6 +1375,16 @@ export interface AutomationPlanningCandidate {
   script_id?: number | null;
   linked_script_ids: number[];
   script_status?: string | null;
+  /** null = unknown (no grounding metadata yet) — see getScriptQualitySignals. */
+  grounded?: boolean | null;
+  ungrounded_element_count?: number;
+  last_dry_run_passed?: boolean | null;
+  /** null = eligible to execute; otherwise the specific reason it's blocked
+   * (mirrors the backend's execution_blocked_reason gate — the same check
+   * the execute/execute-batch endpoints enforce server-side). */
+  execution_blocked_reason?: string | null;
+  consecutive_failure_count?: number;
+  last_failure_error?: string | null;
   repository?: string | null;
   branch?: string | null;
   script_path?: string | null;
