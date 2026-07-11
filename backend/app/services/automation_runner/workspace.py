@@ -134,6 +134,7 @@ export default defineConfig({{
 {base_url_line}    headless: true,
     locale: 'en-US',
     timezoneId: 'America/New_York',
+    storageState: 'storageState.json',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -171,6 +172,24 @@ def write_playwright_config(workspace: Path, base_url: str | None = None, test_d
     """
     (workspace / "package.json").write_text(
         json.dumps(PLAYWRIGHT_PACKAGE_JSON, indent=2), encoding="utf-8"
+    )
+    storage_state = {
+        "cookies": [
+            {
+                "name": "PREF",
+                "value": "hl=en",
+                "domain": ".google.com",
+                "path": "/",
+                "expires": 1800000000,
+                "httpOnly": False,
+                "secure": True,
+                "sameSite": "Lax"
+            }
+        ],
+        "origins": []
+    }
+    (workspace / "storageState.json").write_text(
+        json.dumps(storage_state, indent=2), encoding="utf-8"
     )
     (workspace / "playwright.config.ts").write_text(
         _render_playwright_config(base_url, test_dir), encoding="utf-8"

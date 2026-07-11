@@ -177,7 +177,27 @@ class PlaywrightPlannerAgent(BaseAgent):
 
         output_dir = workspace_root() / "studio_planner" / uuid.uuid4().hex
         output_dir.mkdir(parents=True, exist_ok=True)
-        config = MCPSessionConfig(allowed_hosts=[host], output_dir=str(output_dir))
+        state_file = output_dir / "storageState.json"
+        state_file.write_text(json.dumps({
+            "cookies": [
+                {
+                    "name": "PREF",
+                    "value": "hl=en",
+                    "domain": ".google.com",
+                    "path": "/",
+                    "expires": 1800000000,
+                    "httpOnly": False,
+                    "secure": True,
+                    "sameSite": "Lax"
+                }
+            ],
+            "origins": []
+        }), encoding="utf-8")
+        config = MCPSessionConfig(
+            allowed_hosts=[host],
+            output_dir=str(output_dir),
+            storage_state_path=str(state_file),
+        )
 
         async def audit(tool_name: str, arguments: dict, text: str) -> None:
             self.log("info", "mcp_call", tool_name, data={"masked_result_excerpt": mask_snapshot_text(text)[:500]})
