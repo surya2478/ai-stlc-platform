@@ -162,6 +162,29 @@ class Settings(BaseSettings):
     file_storage_path: str = "/app/storage"
     max_upload_size_mb: int = 25
 
+    # ── Automation Runner (Playwright AI Studio Docker execution) ─────────────
+    # "local" = subprocess inside the worker container (the original runner).
+    # "docker" = ephemeral sibling containers via the Docker socket — requires
+    # /var/run/docker.sock mounted into the worker and the docker CLI in its
+    # image (see docker-compose.yml + backend/Dockerfile).
+    automation_runner_mode: Literal["local", "docker"] = "local"
+    # Image for spawned runner containers. Defaults to the worker's own image
+    # (same Node + @playwright/test + Chromium the local runner uses — exact
+    # version parity, nothing downloaded at container start). Compose v2 names
+    # it "<project>-worker"; override if your project directory differs.
+    automation_docker_image: str = "stlc-platform-worker"
+    # Named volume shared between the worker and spawned containers, and the
+    # path it's mounted at in BOTH — workspace paths must resolve identically
+    # inside the spawned container. Compose v2 prefixes the project name.
+    automation_docker_volume: str = "stlc-platform_stlc_storage"
+    automation_docker_storage_mount: str = "/app/storage"
+    # Optional docker network for spawned containers (e.g. the compose
+    # network, needed when the app under test runs inside the same compose
+    # stack). Empty = docker's default bridge (fine for external SIT/UAT URLs).
+    automation_docker_network: str = ""
+    # Max concurrently running script containers per batch run.
+    studio_max_parallel: int = 4
+
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days
     retention_rag_events_days: int = 180      # purge RAG retrieval audit events older than N days

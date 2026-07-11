@@ -44,14 +44,14 @@ from app.schemas.automation import (
     RunnerStatusOut,
     ScriptTransitionRequest,
 )
-from app.services import automation_confidence_service, automation_intelligence, locator_map_service
+from app.services import automation_confidence_service, automation_intelligence
 from app.schemas.execution import ExecutionResultOut
 from app.schemas.requirement import ApprovalRequest
-from app.services import agent_run_service, approval_service, automation_service, traceability_service
+from app.services import agent_run_service, approval_service, automation_execution_service, automation_service, traceability_service
 from app.services.agent_dispatch_service import enqueue_agent_run
+from app.services.automation_generation_service import build_generation_payload
 from app.services.automation_runner import runtime_status
 from app.services.project_application_service import (
-    build_test_case_application_context,
     resolve_default_application,
     resolve_environment_url,
 )
@@ -583,62 +583,15 @@ async def trigger_automation_agent(
     """
     await require_permission(GENERATE_AUTOMATION, body.project_id, current_user, db)
 
-    test_cases = []
-    skipped_not_approved = []
-    skipped_wrong_project = []
-    locator_map_by_application: dict[int, list[dict]] = {}
-    for tc_id in body.test_case_ids:
-        r = await db.execute(select(TestCase).where(TestCase.id == tc_id))
-        tc = r.scalar_one_or_none()
-        if not tc:
-            continue
-        if tc.project_id != body.project_id:
-            skipped_wrong_project.append(tc_id)
-            continue
-        if tc.status != "approved":
-            skipped_not_approved.append(tc_id)
-            continue
-        app_context = await build_test_case_application_context(db, tc)
-        application = None
-        if tc.application_id:
-            application = await db.get(ProjectApplication, tc.application_id)
-        if application is None:
-            application = await resolve_default_application(db, body.project_id)
-        application_id = application.id if application else None
-        # Never wired through to generation before, despite CONTRACT_SYSTEM's
-        # own grounding rules referencing "application_url" — page objects
-        # got relative routes with no real base URL to scope the locator
-        # catalog against (see locator_policy.filter_catalog_by_page).
-        application_url = resolve_environment_url(application, tc.test_phase or "QA") if application else None
-        if application_id is not None and application_id not in locator_map_by_application:
-            entries = await locator_map_service.list_for_application(
-                db, project_id=body.project_id, application_id=application_id
-            )
-            locator_map_by_application[application_id] = [
-                {
-                    "element_name": e.element_name,
-                    "page": e.page,
-                    "role": e.recommended_strategy,
-                    "business_meaning": e.business_meaning,
-                    "recommended_locator": e.recommended_locator,
-                    "confidence_score": e.confidence_score,
-                }
-                for e in entries
-            ]
-        test_cases.append({
-            "id": tc.id,
-            "test_case_id": tc.test_case_id,
-            "title": tc.title,
-            "preconditions": tc.preconditions,
-            "steps": tc.steps,
-            "expected_result": tc.expected_result,
-            "bdd_scenario": tc.bdd_scenario,
-            "test_type": tc.test_type,
-            "priority": tc.priority,
-            "application_id": application_id,
-            "application_url": application_url,
-            **app_context,
-        })
+    # Payload building shared with Playwright AI Studio's bulk plan-approval
+    # gate — see automation_generation_service.
+    payload = await build_generation_payload(
+        db, project_id=body.project_id, test_case_ids=body.test_case_ids
+    )
+    test_cases = payload.test_cases
+    skipped_not_approved = payload.skipped_not_approved
+    skipped_wrong_project = payload.skipped_wrong_project
+    locator_map_by_application = payload.locator_map
 
     if skipped_wrong_project:
         raise HTTPException(
@@ -981,104 +934,31 @@ async def execute_automation_batch(
     """
     await require_permission(EXECUTE_TESTS, project_id, current_user, db)
 
-    result = await db.execute(
-        select(AutomationScript).where(AutomationScript.id.in_(body.script_ids))
-    )
-    scripts_by_id = {s.id: s for s in result.scalars().all()}
-    missing = [sid for sid in body.script_ids if sid not in scripts_by_id]
-    if missing:
-        raise HTTPException(status_code=404, detail=f"Automation script(s) not found: {missing}")
-
-    # Preserve caller-specified order but dedupe (a script appearing twice
-    # would otherwise get two ExecutionResult placeholders).
-    seen: set[int] = set()
-    ordered_scripts: list[AutomationScript] = []
-    for sid in body.script_ids:
-        if sid in seen:
-            continue
-        seen.add(sid)
-        ordered_scripts.append(scripts_by_id[sid])
-
-    wrong_project = [s.script_id for s in ordered_scripts if s.project_id != project_id]
-    if wrong_project:
-        raise HTTPException(status_code=422, detail=f"Script(s) not in project {project_id}: {wrong_project}")
-
-    blocked = [
-        f"{s.script_id} ({reason})"
-        for s in ordered_scripts
-        if (reason := automation_service.execution_blocked_reason(s))
-    ]
-    if blocked:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Script(s) cannot be executed: {'; '.join(blocked)}",
-        )
-
-    unsupported = [
-        f"{s.script_id} ({s.framework})"
-        for s in ordered_scripts
-        if (s.framework or "").lower() not in {"playwright", "pytest"}
-    ]
-    if unsupported:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Framework not supported by the local runner: {unsupported}",
-        )
-
-    run = ExecutionRun(
-        project_id=project_id,
-        created_by=current_user.id,
-        execution_id=temporary_id("ER"),
-        suite_name=body.run_name or f"All Eligible Automation ({len(ordered_scripts)})",
-        environment=body.environment,
-        status="queued",
-        execution_type="automation",
-        source_type="automation_local_batch",
-        total_tests=len(ordered_scripts),
-        passed=0,
-        failed=0,
-        skipped=0,
-        execution_logs=[],
-        metadata_={
-            "source_type": "automation_local_batch",
-            "automation_script_ids": [s.id for s in ordered_scripts],
-            "timeout_seconds": body.timeout_seconds,
-            "parent_run_id": body.parent_run_id,
-        },
-    )
-    db.add(run)
-    await db.flush()
-    run.execution_id = display_id("ER", run.id)
-    await db.flush()
-
-    for script in ordered_scripts:
-        placeholder = ExecutionResult(
-            execution_run_id=run.id,
-            test_case_id=script.test_case_id,
+    # Validation + ExecutionRun bookkeeping + Celery dispatch shared with
+    # Playwright AI Studio's bulk execution — see automation_execution_service.
+    try:
+        run, task_id = await automation_execution_service.start_batch_execution(
+            db,
             project_id=project_id,
-            test_name=script.script_id,
-            status="pending",
-            metadata_={"automation_script_id": script.id},
+            user_id=current_user.id,
+            script_ids=body.script_ids,
+            environment=body.environment,
+            timeout_seconds=body.timeout_seconds,
+            run_name=body.run_name,
+            parent_run_id=body.parent_run_id,
         )
-        db.add(placeholder)
-    await db.flush()
+    except automation_execution_service.ScriptsNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except automation_execution_service.BatchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    await db.commit()
-
-    from app.worker.tasks.automation_tasks import run_automation_batch
-
-    async_result = run_automation_batch.delay(run.id, body.timeout_seconds)
-    task_id = str(async_result.id) if async_result else None
-    if task_id:
-        # Persisted so a later Cancel Run request can revoke the Celery task.
-        run.metadata_ = {**(run.metadata_ or {}), "task_id": task_id}
-        await db.commit()
+    script_count = len((run.metadata_ or {}).get("automation_script_ids", []))
     return AutomationBatchExecuteResponse(
         execution_run_id=run.id,
         task_id=task_id,
         status="queued",
-        script_count=len(ordered_scripts),
-        message=f"{len(ordered_scripts)} automation script(s) queued as batch run {run.execution_id}.",
+        script_count=script_count,
+        message=f"{script_count} automation script(s) queued as batch run {run.execution_id}.",
     )
 
 

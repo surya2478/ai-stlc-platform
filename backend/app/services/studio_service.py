@@ -1,0 +1,534 @@
+"""Playwright AI Studio orchestration — stage machine + bulk gates.
+
+A StudioRun is the umbrella over existing first-class artifacts (AgentRun,
+TestCase, AutomationScript, ExecutionRun); this module advances its stage
+machine and performs the two bulk approval gates. It deliberately reuses
+the same primitives the /automation flow uses one-at-a-time:
+
+  - Plan approval materializes proposals as real TestCase rows (status
+    "approved") + ApprovalAction audit rows, then enqueues generation waves
+    through automation_generation_service.build_generation_payload — from
+    there the existing chain (contract → compile → static gate → dry run →
+    classification → repair) takes over untouched.
+  - Script approval reuses the legacy bulk-approve semantics
+    (automation_service.approve_script + approval_override_reason): that is
+    the status ("approved") the execution gate (execution_blocked_reason)
+    actually accepts, and it keeps the audited override-note requirement
+    for ungrounded/failed scripts. The reviewer/lead lifecycle chain
+    (advance_script_lifecycle) remains the /automation flow's
+    governance-heavy path; Studio is explicitly the bulk path.
+
+Reconciliation happens at read time (get_run_detail): agent-run failures
+and execution completion flip the StudioRun status without needing extra
+worker hooks.
+"""
+from __future__ import annotations
+
+import logging
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.agent import AgentRun
+from app.models.automation_script import AutomationScript
+from app.models.execution import ExecutionResult, ExecutionRun
+from app.models.project_application import ProjectApplication
+from app.models.studio_run import StudioRun
+from app.models.test_case import TestCase
+from app.services import approval_service, automation_execution_service, automation_service
+from app.services.agent_dispatch_service import enqueue_agent_run
+from app.services.automation_generation_service import build_generation_payload
+from app.services.display_id_service import display_id, temporary_id
+from app.services.project_application_service import resolve_environment_url
+
+logger = logging.getLogger(__name__)
+
+GENERATION_WAVE_SIZE = 25
+# Matches AutomationBatchExecuteRequest's script_ids max_length — bigger
+# Studio runs fan out into several chunked ExecutionRuns.
+EXECUTION_CHUNK_SIZE = 200
+
+_AGENT_TERMINAL = {"completed", "failed", "cancelled"}
+_RUN_TERMINAL = {"completed", "failed", "cancelled"}
+ACTIVE_STATUSES = {"exploring", "plan_ready", "generating", "scripts_ready", "executing", "healing"}
+
+
+class StudioStateError(Exception):
+    """The run is not in a stage that allows the requested action."""
+
+
+class StudioValidationError(Exception):
+    """The request payload is invalid for this run (bad application/env,
+    empty selection, missing override note, ...)."""
+
+
+def _chunks(items: list, size: int) -> list[list]:
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+async def get_run(db: AsyncSession, run_id: int) -> StudioRun | None:
+    return await db.get(StudioRun, run_id)
+
+
+async def list_runs(db: AsyncSession, project_id: int) -> list[StudioRun]:
+    result = await db.execute(
+        select(StudioRun).where(StudioRun.project_id == project_id).order_by(StudioRun.id.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def create_run(db: AsyncSession, *, project_id: int, user_id: int, data) -> StudioRun:
+    application = await db.get(ProjectApplication, data.application_id)
+    if application is None or application.project_id != project_id:
+        raise StudioValidationError(f"Application {data.application_id} not found in project {project_id}")
+    target_url = resolve_environment_url(application, data.environment)
+    if not target_url:
+        raise StudioValidationError(
+            f"Application '{application.name}' has no URL configured for environment "
+            f"'{data.environment}' — add one under Settings → Applications first."
+        )
+    run = StudioRun(
+        project_id=project_id,
+        created_by=user_id,
+        name=data.name,
+        status="draft",
+        config={
+            "application_id": application.id,
+            "application_name": application.name,
+            "environment": data.environment,
+            "target_url": target_url,
+            "objective": data.objective,
+            "coverage_types": data.coverage_types,
+            "excluded_paths": data.excluded_paths,
+            "browser": data.browser,
+            "max_pages": data.max_pages,
+            "max_minutes": data.max_minutes,
+            "framework": data.framework,
+            "runner_mode": data.runner_mode,
+            "parallelism": data.parallelism,
+            "timeout_seconds": data.timeout_seconds,
+        },
+    )
+    db.add(run)
+    await db.flush()
+    return run
+
+
+async def start_exploration(db: AsyncSession, run: StudioRun, user_id: int) -> tuple[AgentRun, str | None]:
+    if run.status not in {"draft", "failed"}:
+        raise StudioStateError(f"Cannot start exploration from status '{run.status}'")
+    config = run.config or {}
+    agent_run, task_id = await enqueue_agent_run(
+        db,
+        project_id=run.project_id,
+        user_id=user_id,
+        agent_name="playwright_planner",
+        input_data={
+            "studio_run_id": run.id,
+            "application_id": config.get("application_id"),
+            "application_url": config.get("target_url"),
+            "environment": config.get("environment"),
+            "objective": config.get("objective") or "",
+            "coverage_types": config.get("coverage_types") or ["positive", "negative"],
+            "excluded_paths": config.get("excluded_paths") or [],
+            "max_pages": config.get("max_pages") or 10,
+            "max_minutes": config.get("max_minutes") or 20,
+        },
+        metadata={"studio_run_id": run.id},
+    )
+    run.status = "exploring"
+    run.error = None
+    run.agent_runs = {**(run.agent_runs or {}), "planner": agent_run.id}
+    await db.flush()
+    return agent_run, task_id
+
+
+async def apply_planner_output(db: AsyncSession, *, studio_run_id: int, agent_run: AgentRun, output: dict) -> None:
+    """Called from agent_tasks.py's playwright_planner persistence branch.
+
+    Stores a UI-sized plan (page summaries + full proposals) on the run and
+    advances exploring → plan_ready. Full element catalogs are NOT copied
+    here — they live in locator_map, where generation grounding reads them.
+    """
+    run = await db.get(StudioRun, studio_run_id)
+    if run is None:
+        logger.warning("Planner output for unknown studio run %s; dropping", studio_run_id)
+        return
+    if run.status not in {"exploring", "draft"}:
+        logger.warning(
+            "Planner output for studio run %s arrived in status '%s'; dropping", studio_run_id, run.status
+        )
+        return
+    pages_summary = [
+        {
+            "url": p.get("url"),
+            "title": p.get("title"),
+            "element_count": len(p.get("elements") or []),
+            "blockers": p.get("blockers") or [],
+        }
+        for p in output.get("pages", [])
+    ]
+    run.plan = {
+        "explored_page_count": output.get("explored_page_count", len(pages_summary)),
+        "pages": pages_summary,
+        "proposed_test_cases": output.get("proposed_test_cases", []),
+        "planner_agent_run_id": agent_run.id,
+    }
+    run.status = "plan_ready"
+    await db.flush()
+
+
+async def approve_plan(
+    db: AsyncSession,
+    run: StudioRun,
+    user_id: int,
+    *,
+    included_keys: list[str] | None,
+    notes: str | None,
+) -> dict:
+    """Bulk gate 1: materialize the approved proposals as real, approved
+    TestCase rows and enqueue generation waves."""
+    if run.status != "plan_ready":
+        raise StudioStateError(f"Cannot approve the plan from status '{run.status}'")
+    proposals = (run.plan or {}).get("proposed_test_cases") or []
+    if included_keys is None:
+        # Default selection = everything the planner didn't flag as blocked
+        # (OTP/CAPTCHA on the live page). Including a blocked proposal is
+        # allowed, but only by explicit key.
+        selected = [p for p in proposals if not p.get("blocked_reasons")]
+    else:
+        wanted = set(included_keys)
+        selected = [p for p in proposals if p.get("key") in wanted]
+    if not selected:
+        raise StudioValidationError("No test case proposals selected for approval")
+
+    config = run.config or {}
+    audit_note = f"Playwright Studio bulk plan approval — run #{run.id}" + (f": {notes}" if notes else "")
+    tc_ids: list[int] = []
+    for proposal in selected:
+        steps = [
+            {"action": s.get("description") or s.get("action") or "", "expected": ""}
+            for s in (proposal.get("steps") or [])
+        ]
+        blocked = proposal.get("blocked_reasons") or []
+        tc = TestCase(
+            project_id=run.project_id,
+            application_id=config.get("application_id"),
+            created_by=user_id,
+            test_case_id=temporary_id("TC"),
+            title=proposal.get("title") or "Untitled Test Case",
+            preconditions=proposal.get("preconditions"),
+            steps=steps,
+            expected_result=proposal.get("expected_result"),
+            priority=proposal.get("priority") or "Medium",
+            test_type=proposal.get("coverage_type") or "positive",
+            automation_candidate=True,
+            execution_mode="automation",
+            automation_eligible="no" if blocked else "yes",
+            automation_status="not_required" if blocked else "pending",
+            test_phase=config.get("environment"),
+            status="approved",
+            metadata_={
+                "origin": "playwright_studio",
+                "studio_run_id": run.id,
+                "planner_key": proposal.get("key"),
+                "page_url": proposal.get("page_url"),
+                "planner_steps": proposal.get("steps"),
+                "blocked_reasons": blocked,
+                "ungrounded_elements": proposal.get("ungrounded_elements") or [],
+            },
+        )
+        db.add(tc)
+        await db.flush()
+        tc.test_case_id = display_id("TC", tc.id)
+        await db.flush()
+        await approval_service.create_approval_action(
+            db,
+            project_id=run.project_id,
+            user_id=user_id,
+            entity_type="test_case",
+            entity_id=tc.id,
+            action="approve",
+            notes=audit_note,
+        )
+        tc_ids.append(tc.id)
+
+    generation_run_ids: list[int] = []
+    for wave in _chunks(tc_ids, GENERATION_WAVE_SIZE):
+        payload = await build_generation_payload(db, project_id=run.project_id, test_case_ids=wave)
+        if not payload.test_cases:
+            continue
+        agent_run, _task_id = await enqueue_agent_run(
+            db,
+            project_id=run.project_id,
+            user_id=user_id,
+            agent_name="automation_script",
+            input_data={
+                "test_cases": payload.test_cases,
+                "framework": config.get("framework") or "playwright",
+                "locator_map": payload.locator_map,
+                "studio_run_id": run.id,
+            },
+            metadata={
+                "studio_run_id": run.id,
+                "approved_test_case_ids": [tc["id"] for tc in payload.test_cases],
+            },
+        )
+        generation_run_ids.append(agent_run.id)
+
+    run.test_case_ids = tc_ids
+    run.agent_runs = {**(run.agent_runs or {}), "generation": generation_run_ids}
+    run.plan = {**(run.plan or {}), "approved_keys": [p.get("key") for p in selected]}
+    run.status = "generating"
+    await db.flush()
+    return {
+        "test_case_ids": tc_ids,
+        "generation_agent_run_ids": generation_run_ids,
+        "wave_count": len(generation_run_ids),
+    }
+
+
+async def _latest_scripts_for_run(db: AsyncSession, run: StudioRun) -> list[AutomationScript]:
+    tc_ids = run.test_case_ids or []
+    if not tc_ids:
+        return []
+    result = await db.execute(
+        select(AutomationScript)
+        .where(AutomationScript.test_case_id.in_(tc_ids))
+        .order_by(AutomationScript.test_case_id, AutomationScript.id.desc())
+    )
+    latest: dict[int, AutomationScript] = {}
+    for script in result.scalars().all():
+        # Rows arrive newest-first per test case; the repair loop's new
+        # versions supersede their parents automatically here.
+        latest.setdefault(script.test_case_id, script)
+    return list(latest.values())
+
+
+async def approve_scripts(
+    db: AsyncSession,
+    run: StudioRun,
+    user_id: int,
+    *,
+    notes: str | None,
+) -> dict:
+    """Bulk gate 2: approve every generated script (audited, override note
+    required if any script has known quality issues) and launch execution."""
+    if run.status != "scripts_ready":
+        raise StudioStateError(f"Cannot approve scripts from status '{run.status}'")
+    scripts = await _latest_scripts_for_run(db, run)
+    scripts = [s for s in scripts if s.status not in {"rejected", "deprecated"}]
+    if not scripts:
+        raise StudioValidationError("No generated scripts found for this run")
+
+    needs_override = [
+        (s.script_id, reason)
+        for s in scripts
+        if (reason := automation_service.approval_override_reason(s, notes))
+    ]
+    if needs_override:
+        listing = "; ".join(f"{sid}: {reason}" for sid, reason in needs_override[:5])
+        raise StudioValidationError(
+            f"{len(needs_override)} script(s) have known issues and need an override note "
+            f"before bulk approval — add a note explaining why. First few: {listing}"
+        )
+
+    audit_note = f"Playwright Studio bulk script approval — run #{run.id}" + (f": {notes}" if notes else "")
+    for script in scripts:
+        await automation_service.approve_script(db, script, "approve", audit_note)
+        await approval_service.create_approval_action(
+            db,
+            project_id=run.project_id,
+            user_id=user_id,
+            entity_type="automation_script",
+            entity_id=script.id,
+            action="approve",
+            notes=audit_note,
+        )
+
+    config = run.config or {}
+    execution_run_ids: list[int] = []
+    chunks = _chunks([s.id for s in scripts], EXECUTION_CHUNK_SIZE)
+    for index, chunk in enumerate(chunks, start=1):
+        suffix = f" — batch {index}/{len(chunks)}" if len(chunks) > 1 else ""
+        exec_run, _task_id = await automation_execution_service.start_batch_execution(
+            db,
+            project_id=run.project_id,
+            user_id=user_id,
+            script_ids=chunk,
+            environment=config.get("environment"),
+            timeout_seconds=int(config.get("timeout_seconds") or 600),
+            run_name=f"{run.name}{suffix}",
+            extra_metadata={
+                "studio_run_id": run.id,
+                "runner_mode": config.get("runner_mode") or "local",
+                "parallelism": config.get("parallelism") or 1,
+            },
+        )
+        execution_run_ids.append(exec_run.id)
+
+    run.execution_run_ids = execution_run_ids
+    run.status = "executing"
+    await db.flush()
+    return {
+        "approved_script_ids": [s.id for s in scripts],
+        "execution_run_ids": execution_run_ids,
+    }
+
+
+async def cancel_run(db: AsyncSession, run: StudioRun, user_id: int) -> None:
+    if run.status in _RUN_TERMINAL:
+        raise StudioStateError(f"Run is already '{run.status}' — nothing to cancel.")
+
+    from app.worker.celery_app import celery_app
+
+    agent_run_ids = []
+    agent_runs = run.agent_runs or {}
+    if agent_runs.get("planner"):
+        agent_run_ids.append(agent_runs["planner"])
+    agent_run_ids.extend(agent_runs.get("generation") or [])
+    for agent_run_id in agent_run_ids:
+        agent_run = await db.get(AgentRun, agent_run_id)
+        if agent_run is None or agent_run.status not in {"pending", "running"}:
+            continue
+        if agent_run.celery_task_id:
+            try:
+                celery_app.control.revoke(agent_run.celery_task_id, terminate=True)
+            except Exception:
+                logger.exception("Failed to revoke agent task %s", agent_run.celery_task_id)
+        agent_run.status = "cancelled"
+        agent_run.progress_message = "Cancelled with Studio run"
+
+    for exec_run_id in run.execution_run_ids or []:
+        exec_run = await db.get(ExecutionRun, exec_run_id)
+        if exec_run is None or exec_run.status not in {"pending", "queued", "running"}:
+            continue
+        task_id = (exec_run.metadata_ or {}).get("task_id")
+        if task_id:
+            try:
+                celery_app.control.revoke(task_id, terminate=True)
+            except Exception:
+                logger.exception("Failed to revoke batch task %s", task_id)
+        pending = await db.execute(
+            select(ExecutionResult).where(
+                ExecutionResult.execution_run_id == exec_run.id,
+                ExecutionResult.status.in_(["pending", "running"]),
+            )
+        )
+        for row in pending.scalars().all():
+            row.status = "skip"
+            row.error_message = row.error_message or "Cancelled before this test ran."
+        exec_run.status = "cancelled"
+        exec_run.metadata_ = {**(exec_run.metadata_ or {}), "cancelled_by": user_id}
+
+    run.status = "cancelled"
+    await db.flush()
+
+
+async def _reconcile_status(db: AsyncSession, run: StudioRun) -> None:
+    """Read-time reconciliation: agent failures and execution completion
+    advance/fail the run without dedicated worker callbacks."""
+    agent_runs = run.agent_runs or {}
+    if run.status == "exploring" and agent_runs.get("planner"):
+        planner = await db.get(AgentRun, agent_runs["planner"])
+        if planner is not None and planner.status in {"failed", "cancelled"}:
+            run.status = "failed"
+            run.error = planner.error_message or "Planner agent failed"
+            await db.flush()
+    elif run.status == "generating":
+        generation_ids = agent_runs.get("generation") or []
+        if generation_ids:
+            result = await db.execute(select(AgentRun).where(AgentRun.id.in_(generation_ids)))
+            runs = list(result.scalars().all())
+            if runs and all(r.status in _AGENT_TERMINAL for r in runs):
+                scripts = await _latest_scripts_for_run(db, run)
+                if scripts:
+                    run.status = "scripts_ready"
+                else:
+                    run.status = "failed"
+                    errors = "; ".join(filter(None, (r.error_message for r in runs)))
+                    run.error = errors or "Script generation produced no scripts"
+                await db.flush()
+    elif run.status == "executing":
+        exec_ids = run.execution_run_ids or []
+        if exec_ids:
+            result = await db.execute(select(ExecutionRun).where(ExecutionRun.id.in_(exec_ids)))
+            exec_runs = list(result.scalars().all())
+            if exec_runs and all(r.status in {"completed", "failed", "cancelled"} for r in exec_runs):
+                run.status = "completed"
+                await db.flush()
+
+
+def _script_summary(script: AutomationScript) -> dict:
+    metadata = script.metadata_ or {}
+    gate = script.static_gate_result or {}
+    return {
+        "id": script.id,
+        "script_id": script.script_id,
+        "test_case_id": script.test_case_id,
+        "status": script.status,
+        "version": script.version,
+        "framework": script.framework,
+        "grounding": metadata.get("grounding"),
+        "static_gate_passed": gate.get("passed"),
+        "last_dry_run": metadata.get("last_dry_run"),
+    }
+
+
+async def get_run_detail(db: AsyncSession, run: StudioRun) -> dict:
+    await _reconcile_status(db, run)
+
+    agent_runs = run.agent_runs or {}
+    agent_summaries: dict = {"planner": None, "generation": []}
+    if agent_runs.get("planner"):
+        planner = await db.get(AgentRun, agent_runs["planner"])
+        if planner is not None:
+            agent_summaries["planner"] = {
+                "id": planner.id,
+                "status": planner.status,
+                "progress_percent": planner.progress_percent,
+                "progress_message": planner.progress_message,
+                "error_message": planner.error_message,
+            }
+    generation_ids = agent_runs.get("generation") or []
+    if generation_ids:
+        result = await db.execute(select(AgentRun).where(AgentRun.id.in_(generation_ids)))
+        agent_summaries["generation"] = [
+            {
+                "id": r.id,
+                "status": r.status,
+                "progress_percent": r.progress_percent,
+                "progress_message": r.progress_message,
+                "error_message": r.error_message,
+            }
+            for r in result.scalars().all()
+        ]
+
+    scripts = await _latest_scripts_for_run(db, run)
+    script_counts: dict[str, int] = {}
+    for s in scripts:
+        script_counts[s.status] = script_counts.get(s.status, 0) + 1
+
+    executions = []
+    exec_ids = run.execution_run_ids or []
+    if exec_ids:
+        result = await db.execute(select(ExecutionRun).where(ExecutionRun.id.in_(exec_ids)))
+        executions = [
+            {
+                "id": r.id,
+                "execution_id": r.execution_id,
+                "status": r.status,
+                "total_tests": r.total_tests,
+                "passed": r.passed,
+                "failed": r.failed,
+                "skipped": r.skipped,
+            }
+            for r in result.scalars().all()
+        ]
+
+    return {
+        "agent_runs": agent_summaries,
+        "scripts": [_script_summary(s) for s in scripts],
+        "script_counts": script_counts,
+        "executions": executions,
+    }

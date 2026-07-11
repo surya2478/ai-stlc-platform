@@ -131,3 +131,46 @@ Restart:
 ```powershell
 docker compose restart backend worker
 ```
+
+## Playwright AI Studio — Docker execution mode
+
+The Studio (`/playwright-studio`) can execute generated scripts in ephemeral
+Docker containers (parallel, isolated) instead of the worker's local
+subprocess. Requirements:
+
+1. **Rebuild the backend/worker image** after pulling this feature — the
+   Dockerfile now installs the docker CLI:
+
+   ```powershell
+   docker compose build backend worker
+   docker compose up -d
+   ```
+
+2. **Docker socket**: `docker-compose.yml` mounts `/var/run/docker.sock`
+   into the worker. On Docker Desktop for Windows this works with the
+   default WSL2 backend (Linux containers).
+
+3. **Settings** (all optional, `.env`):
+
+   ```env
+   AUTOMATION_RUNNER_MODE=local            # global default; Studio runs pick their own mode per run
+   AUTOMATION_DOCKER_IMAGE=stlc-platform-worker
+   AUTOMATION_DOCKER_VOLUME=stlc-platform_stlc_storage
+   AUTOMATION_DOCKER_NETWORK=              # set to the compose network if the app under test runs in-stack
+   STUDIO_MAX_PARALLEL=4
+   ```
+
+   The defaults assume the compose project directory is named
+   `stlc-platform` (compose v2 names the worker image
+   `stlc-platform-worker` and the volume `stlc-platform_stlc_storage`).
+   If your checkout directory differs, check `docker images` /
+   `docker volume ls` and set the two values accordingly.
+
+   Spawned runner containers use the worker's own image, so Node,
+   @playwright/test and Chromium are already inside them — nothing is
+   downloaded at container start.
+
+4. **Verify**: start a Studio run with runner mode "Docker containers",
+   approve the plan and scripts, then `docker ps` — you should see
+   `stlc-pw-<hash>` containers appear (up to the configured parallelism)
+   while the batch executes.

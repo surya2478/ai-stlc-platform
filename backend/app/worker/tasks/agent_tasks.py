@@ -16,6 +16,7 @@ from app.agents.automation.automation_agent import AutomationScriptAgent
 from app.agents.automation.dry_run_agent import DryRunAgent
 from app.agents.automation.eligibility_agent import AutomationEligibilityAgent
 from app.agents.automation.mcp_discovery_agent import PlaywrightMCPDiscoveryAgent
+from app.agents.automation.planner_agent import PlaywrightPlannerAgent
 from app.agents.execution.failure_classification_agent import FailureClassificationAgent
 from app.agents.automation.repair_agent import RepairLoopAgent
 from app.agents.automation.script_review_agent import AutomationScriptReviewAgent
@@ -161,6 +162,19 @@ async def _playwright_mcp_discovery(input_data: dict[str, Any]) -> Any:
     return await PlaywrightMCPDiscoveryAgent().run(test_cases=input_data["test_cases"])
 
 
+async def _playwright_planner(input_data: dict[str, Any]) -> Any:
+    return await PlaywrightPlannerAgent().run(
+        application_id=input_data.get("application_id"),
+        application_url=input_data.get("application_url", ""),
+        environment=input_data.get("environment"),
+        objective=input_data.get("objective", ""),
+        coverage_types=input_data.get("coverage_types"),
+        excluded_paths=input_data.get("excluded_paths"),
+        max_pages=input_data.get("max_pages", 10),
+        max_minutes=input_data.get("max_minutes", 20),
+    )
+
+
 async def _automation_script(input_data: dict[str, Any]) -> Any:
     return await AutomationScriptAgent().run(
         test_cases=input_data["test_cases"],
@@ -223,6 +237,7 @@ AGENT_REGISTRY: dict[str, AgentCallable] = {
     "test_case_review": _test_case_review,
     "automation_eligibility": _automation_eligibility,
     "playwright_mcp_discovery": _playwright_mcp_discovery,
+    "playwright_planner": _playwright_planner,
     "automation_script": _automation_script,
     "automation_dry_run": _automation_dry_run,
     "failure_classification": _failure_classification,
@@ -287,6 +302,13 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     # placeholder. The manual "Discover UI" trigger (POST /agent/discover-ui)
     # still exists for re-running discovery on demand (e.g. after a UI change).
     "playwright_mcp_discovery": AgentSpec(timeout_seconds=450.0, module_scope="mcp_discovery"),
+    # Playwright AI Studio's exploration+planning agent: a bounded BFS crawl
+    # (max 25 pages) with one LLM proposal call per page. The generous cap
+    # covers slow SIT environments; the agent's own max_minutes budget
+    # usually ends the crawl well before this. Deliberately NOT chained —
+    # its output is a *proposal* that must pass the bulk plan-approval gate
+    # (studio_service.approve_plan) before anything else runs.
+    "playwright_planner": AgentSpec(timeout_seconds=1800.0, module_scope="playwright_studio"),
     "automation_script": AgentSpec(
         timeout_seconds=240.0, module_scope="automation", chain_on_success=("automation_dry_run",)
     ),
@@ -1383,6 +1405,47 @@ async def _persist_agent_artifacts(
             "locator_entry_ids": locator_ids,
             "count": len(locator_ids),
             "eligibility_overridden_test_case_ids": overridden_tc_ids,
+        }
+
+    if agent_name == "playwright_planner":
+        # Playwright AI Studio: persist the explored element catalog into
+        # locator_map (same knowledge base discovery feeds — generation
+        # grounding reads it back via build_generation_payload) and hand the
+        # proposed test plan to the StudioRun (exploring → plan_ready).
+        # Proposals stay data on the run row until the bulk plan-approval
+        # gate materializes them as TestCase rows.
+        from app.services import studio_service
+
+        application_id = data.get("application_id") or input_data.get("application_id")
+        locator_ids: list[int] = []
+        for page in data.get("pages", []):
+            page_url = page.get("url") or ""
+            for element in page.get("elements", []):
+                entry = await locator_map_service.upsert_locator(
+                    db,
+                    project_id=run.project_id,
+                    application_id=application_id,
+                    page=page_url,
+                    element_name=element["element_name"],
+                    recommended_locator=element["recommended_locator"],
+                    recommended_strategy=element["recommended_strategy"],
+                    business_meaning=element.get("business_meaning"),
+                    confidence_score=element.get("confidence_score", 0),
+                )
+                locator_ids.append(entry.id)
+
+        studio_run_id = input_data.get("studio_run_id")
+        if studio_run_id:
+            await studio_service.apply_planner_output(
+                db, studio_run_id=studio_run_id, agent_run=run, output=data
+            )
+
+        return {
+            "locator_entry_ids": locator_ids,
+            "count": len(locator_ids),
+            "explored_page_count": data.get("explored_page_count", 0),
+            "proposed_test_case_count": len(data.get("proposed_test_cases", [])),
+            "studio_run_id": studio_run_id,
         }
 
     if agent_name == "automation_script":

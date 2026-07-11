@@ -73,6 +73,11 @@ services:
     volumes:
       - stlc_storage:/app/storage
       - .:/repo
+      # Playwright AI Studio "docker" runner mode: the worker spawns
+      # ephemeral sibling runner containers through the host's Docker
+      # daemon. Runner containers mount the same stlc_storage volume, so
+      # script workspaces resolve at identical paths inside them.
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       db:
         condition: service_healthy

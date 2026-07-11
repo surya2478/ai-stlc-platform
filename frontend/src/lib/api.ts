@@ -1668,6 +1668,203 @@ export const automationApi = {
     `/api/v1/automation/runner/results/${resultId}/artifact/${kind}`,
 };
 
+// ── Playwright AI Studio ──────────────────────────────────────────────────────
+
+export interface StudioRunConfig {
+  application_id: number;
+  application_name?: string;
+  environment: string;
+  target_url: string;
+  objective?: string;
+  coverage_types?: string[];
+  excluded_paths?: string[];
+  browser?: string;
+  max_pages?: number;
+  max_minutes?: number;
+  framework?: string;
+  runner_mode?: "local" | "docker";
+  parallelism?: number;
+  timeout_seconds?: number;
+}
+
+export interface StudioRun {
+  id: number;
+  project_id: number;
+  created_by: number;
+  name: string;
+  status: string;
+  config: StudioRunConfig;
+  error?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StudioPlannedStep {
+  action: string;
+  element?: string | null;
+  value?: string | null;
+  description: string;
+}
+
+export interface StudioProposal {
+  key: string;
+  title: string;
+  page_url: string;
+  module?: string;
+  priority: string;
+  coverage_type: string;
+  preconditions: string[];
+  steps: StudioPlannedStep[];
+  expected_result: string;
+  blocked_reasons: string[];
+  ungrounded_elements: string[];
+}
+
+export interface StudioPlan {
+  explored_page_count: number;
+  pages: Array<{ url: string; title?: string | null; element_count: number; blockers: string[] }>;
+  proposed_test_cases: StudioProposal[];
+  approved_keys?: string[];
+}
+
+export interface StudioAgentRunSummary {
+  id: number;
+  status: string;
+  progress_percent: number;
+  progress_message?: string | null;
+  error_message?: string | null;
+}
+
+export interface StudioScriptSummary {
+  id: number;
+  script_id: string;
+  test_case_id?: number | null;
+  status: string;
+  version: number;
+  framework?: string | null;
+  grounding?: { grounded?: boolean; grounded_element_count?: number; ungrounded_elements?: string[] } | null;
+  static_gate_passed?: boolean | null;
+  last_dry_run?: Record<string, unknown> | null;
+}
+
+export interface StudioExecutionSummary {
+  id: number;
+  execution_id: string;
+  status: string;
+  total_tests: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+}
+
+export interface StudioRunDetail extends StudioRun {
+  plan?: StudioPlan | null;
+  test_case_ids?: number[] | null;
+  agent_runs: { planner?: StudioAgentRunSummary | null; generation: StudioAgentRunSummary[] };
+  scripts: StudioScriptSummary[];
+  script_counts: Record<string, number>;
+  executions: StudioExecutionSummary[];
+}
+
+export interface StudioRunCreatePayload {
+  project_id: number;
+  name: string;
+  application_id: number;
+  environment: string;
+  objective?: string;
+  coverage_types?: string[];
+  excluded_paths?: string[];
+  browser?: string;
+  max_pages?: number;
+  max_minutes?: number;
+  framework?: string;
+  runner_mode?: "local" | "docker";
+  parallelism?: number;
+  timeout_seconds?: number;
+}
+
+export const playwrightStudioApi = {
+  listRuns: (projectId: number) =>
+    api.get<StudioRun[]>("/playwright-studio/runs", { params: { project_id: projectId } }),
+  getRun: (runId: number) => api.get<StudioRunDetail>(`/playwright-studio/runs/${runId}`),
+  createRun: (payload: StudioRunCreatePayload) =>
+    api.post<StudioRun>("/playwright-studio/runs", payload),
+  startRun: (runId: number) =>
+    api.post<{ studio_run_id: number; agent_run_id: number; task_id?: string; status: string; message: string }>(
+      `/playwright-studio/runs/${runId}/start`,
+    ),
+  approvePlan: (runId: number, payload: { included_keys?: string[] | null; notes?: string }) =>
+    api.post<{ studio_run_id: number; status: string; test_case_count: number; wave_count: number; message: string }>(
+      `/playwright-studio/runs/${runId}/approve-plan`,
+      payload,
+    ),
+  approveScripts: (runId: number, payload: { notes?: string }) =>
+    api.post<{
+      studio_run_id: number;
+      status: string;
+      approved_script_count: number;
+      execution_run_ids: number[];
+      message: string;
+    }>(`/playwright-studio/runs/${runId}/approve-scripts`, payload),
+  cancelRun: (runId: number) =>
+    api.post<{ studio_run_id: number; status: string; message: string }>(
+      `/playwright-studio/runs/${runId}/cancel`,
+    ),
+};
+
+// ── MCP Connections (Playwright AI Studio) ────────────────────────────────────
+
+export interface McpConnection {
+  id: number;
+  project_id: number;
+  name: string;
+  connection_type: string;
+  transport: string;
+  target?: string | null;
+  command?: string | null;
+  args?: string[] | null;
+  url?: string | null;
+  access_mode: string;
+  available_to?: string[] | null;
+  status: string;
+  tool_count?: number | null;
+  last_checked_at?: string | null;
+  last_error?: string | null;
+  is_builtin: boolean;
+  has_credentials: boolean;
+}
+
+export interface McpConnectionCreatePayload {
+  project_id: number;
+  name: string;
+  connection_type?: string;
+  transport?: string;
+  target?: string;
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  access_mode?: string;
+  available_to?: string[];
+}
+
+export const mcpConnectionsApi = {
+  list: (projectId: number) =>
+    api.get<McpConnection[]>("/mcp-connections", { params: { project_id: projectId } }),
+  create: (payload: McpConnectionCreatePayload) =>
+    api.post<McpConnection>("/mcp-connections", payload),
+  update: (id: number, payload: Partial<McpConnectionCreatePayload>) =>
+    api.patch<McpConnection>(`/mcp-connections/${id}`, payload),
+  remove: (id: number) => api.delete(`/mcp-connections/${id}`),
+  test: (id: number) => api.post<McpConnection>(`/mcp-connections/${id}/test`),
+  testAll: (projectId: number) =>
+    api.post<{
+      results: Array<{ id: number; name: string; status: string; tool_count?: number | null; last_error?: string | null }>;
+      connected_count: number;
+      error_count: number;
+    }>("/mcp-connections/test-all", undefined, { params: { project_id: projectId } }),
+};
+
 // ── Execution ─────────────────────────────────────────────────────────────────
 
 export interface ExecutionResult {

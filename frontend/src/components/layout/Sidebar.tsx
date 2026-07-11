@@ -40,6 +40,7 @@ const NAV_ITEMS: NavGroup[] = [
       { label: "Test Cases", href: "/test-cases", icon: TestTube2 },
       { label: "Test Data", href: "/test-data", icon: Database },
       { label: "AI Automation Studio", href: "/automation", icon: Sparkles },
+      { label: "Playwright AI Studio", href: "/playwright-studio", icon: Bot },
       {
         label: "Execution",
         href: "/execution",

@@ -64,6 +64,19 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && npm install -g @playwright/test@1.44.0 \
     && npx --yes playwright install chromium
 
+# Docker CLI (client only, no daemon) — Playwright AI Studio's "docker"
+# runner mode spawns ephemeral sibling runner containers through the host
+# socket mounted at /var/run/docker.sock (see docker-compose.yml). The
+# spawned containers use this same image, so everything above (Node,
+# @playwright/test, Chromium) is already present in them.
+RUN install -m 0755 -d /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+    && chmod a+r /etc/apt/keyrings/docker.asc \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+        > /etc/apt/sources.list.d/docker.list \
+    && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY . .
 
 RUN mkdir -p /app/storage/uploads /app/storage/reports /app/storage/artifacts /app/storage/scripts

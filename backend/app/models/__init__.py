@@ -53,5 +53,7 @@ from app.models.resource_ops import (  # noqa: F401
 from app.models.artifact_review import ArtifactReview  # noqa: F401
 from app.models.coverage_matrix import CoverageMatrixEntry  # noqa: F401
 from app.models.locator_map import LocatorMapEntry  # noqa: F401
+from app.models.studio_run import StudioRun  # noqa: F401
+from app.models.mcp_connection import MCPConnection  # noqa: F401
 
 

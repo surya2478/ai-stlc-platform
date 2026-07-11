@@ -115,25 +115,17 @@ async def _resolve_playwright_base_url(
     return env_url.strip() if env_url and env_url.strip() else None
 
 
-async def _run_script_and_persist(
+async def _materialize_for_script(
     db: AsyncSession,
     run: ExecutionRun,
     script: AutomationScript,
-    timeout_seconds: int,
     workspace_key: int | str,
-    own_placeholders: list[ExecutionResult],
 ):
-    """Materialise + execute one script and persist its ExecutionResult rows.
+    """Reset the workspace and materialise one script into it.
 
-    `own_placeholders` are the pre-allocated ExecutionResult rows that belong
-    to THIS script only. Batch runs (several scripts sharing one
-    ExecutionRun) must pre-filter by metadata_.automation_script_id before
-    calling this, so one script's results never clobber another's.
     `workspace_key` isolates the on-disk workspace — for batch runs this is a
     composite "{run_id}-{script_id}" key since the same run.id is reused
-    across scripts.
-
-    Returns (passed, failed, skipped, runner_result).
+    across scripts. Returns (workspace, script_file).
     """
     workspace = reset_workspace(workspace_key)
     framework = (script.framework or "").lower()
@@ -164,16 +156,58 @@ async def _run_script_and_persist(
             code=script.code,
             suggested_file_path=script.file_path,
         )
+    return workspace, script_file
+
+
+async def _run_script_and_persist(
+    db: AsyncSession,
+    run: ExecutionRun,
+    script: AutomationScript,
+    timeout_seconds: int,
+    workspace_key: int | str,
+    own_placeholders: list[ExecutionResult],
+    runner_mode: str | None = None,
+):
+    """Materialise + execute one script and persist its ExecutionResult rows.
+
+    `own_placeholders` are the pre-allocated ExecutionResult rows that belong
+    to THIS script only. Batch runs (several scripts sharing one
+    ExecutionRun) must pre-filter by metadata_.automation_script_id before
+    calling this, so one script's results never clobber another's.
+
+    Returns (passed, failed, skipped, runner_result).
+    """
+    workspace, script_file = await _materialize_for_script(db, run, script, workspace_key)
 
     runner_result = await run_script_for_execution(
-        framework=framework,
+        framework=(script.framework or "").lower(),
         workspace=workspace,
         script_file_name=script_file,
         execution_command=script.execution_command,
         environment=run.environment,
         timeout_seconds=timeout_seconds,
+        runner_mode=runner_mode,
     )
 
+    passed, failed, skipped = await _persist_runner_result(
+        db, run, script, runner_result, own_placeholders
+    )
+    return passed, failed, skipped, runner_result
+
+
+async def _persist_runner_result(
+    db: AsyncSession,
+    run: ExecutionRun,
+    script: AutomationScript,
+    runner_result,
+    own_placeholders: list[ExecutionResult],
+):
+    """Write one script's runner outcome to its ExecutionResult rows + the
+    linked TestCase roll-up. DB-only — safe to call sequentially while the
+    next scripts' containers are still running (parallel batch mode).
+
+    Returns (passed, failed, skipped).
+    """
     # own_placeholders are pre-allocated to keep IDs stable for the artifacts
     # route. If the runner produced more rows than placeholders, allocate new
     # ExecutionResult rows; if fewer, leave the extras as "skipped"/"fail" so
@@ -269,7 +303,7 @@ async def _run_script_and_persist(
         }
     ]
 
-    return passed, failed, skipped, runner_result
+    return passed, failed, skipped
 
 
 async def _execute_run(execution_run_id: int, timeout_seconds: int) -> dict:
@@ -405,9 +439,22 @@ async def _execute_batch(execution_run_id: int, timeout_seconds: int) -> dict:
         )
         all_placeholders = list(existing.scalars().all())
 
+        # Playwright AI Studio batches set runner_mode ("docker" spawns an
+        # ephemeral sibling container per script) and parallelism (N scripts
+        # executing concurrently). Legacy batches carry neither and keep the
+        # original sequential local-subprocess behavior exactly.
+        runner_mode = (run.metadata_ or {}).get("runner_mode") or None
+        try:
+            parallelism = max(1, int((run.metadata_ or {}).get("parallelism") or 1))
+        except (TypeError, ValueError):
+            parallelism = 1
+
         total_passed = total_failed = total_skipped = 0
         any_completed = False
 
+        # Resolve scripts + their placeholder rows up front; deleted scripts
+        # fail their placeholders immediately.
+        work_items: list[tuple[AutomationScript, list[ExecutionResult]]] = []
         for script_id in script_ids:
             script_id = int(script_id)
             own_placeholders = [
@@ -424,22 +471,69 @@ async def _execute_batch(execution_run_id: int, timeout_seconds: int) -> dict:
                 run.passed, run.failed, run.skipped = total_passed, total_failed, total_skipped
                 await db.commit()
                 continue
+            work_items.append((script, own_placeholders))
 
-            passed, failed, skipped, runner_result = await _run_script_and_persist(
-                db, run, script, timeout_seconds,
-                workspace_key=f"{run.id}-{script.id}",
-                own_placeholders=own_placeholders,
-            )
-            total_passed += passed
-            total_failed += failed
-            total_skipped += skipped
-            if not (runner_result.error_message or runner_result.run_status == "failed"):
-                any_completed = True
+        if parallelism <= 1:
+            for script, own_placeholders in work_items:
+                passed, failed, skipped, runner_result = await _run_script_and_persist(
+                    db, run, script, timeout_seconds,
+                    workspace_key=f"{run.id}-{script.id}",
+                    own_placeholders=own_placeholders,
+                    runner_mode=runner_mode,
+                )
+                total_passed += passed
+                total_failed += failed
+                total_skipped += skipped
+                if not (runner_result.error_message or runner_result.run_status == "failed"):
+                    any_completed = True
 
-            # Commit progress after each script so pollers see live movement
-            # (mirrors the "Progress 65%" / live test list in the run monitor).
-            run.passed, run.failed, run.skipped = total_passed, total_failed, total_skipped
-            await db.commit()
+                # Commit progress after each script so pollers see live movement
+                # (mirrors the "Progress 65%" / live test list in the run monitor).
+                run.passed, run.failed, run.skipped = total_passed, total_failed, total_skipped
+                await db.commit()
+        else:
+            # Concurrent path: workspaces are materialized sequentially (DB
+            # reads for baseURL resolution), execution fans out under a
+            # semaphore, and persistence happens back on THIS coroutine as
+            # each script finishes — one AsyncSession is never shared across
+            # concurrent awaits.
+            prepared: list[tuple[AutomationScript, list[ExecutionResult], object, str]] = []
+            for script, own_placeholders in work_items:
+                workspace, script_file = await _materialize_for_script(
+                    db, run, script, f"{run.id}-{script.id}"
+                )
+                prepared.append((script, own_placeholders, workspace, script_file))
+
+            semaphore = asyncio.Semaphore(parallelism)
+
+            async def _execute_one(item):
+                script, _own_placeholders, workspace, script_file = item
+                async with semaphore:
+                    runner_result = await run_script_for_execution(
+                        framework=(script.framework or "").lower(),
+                        workspace=workspace,
+                        script_file_name=script_file,
+                        execution_command=script.execution_command,
+                        environment=run.environment,
+                        timeout_seconds=timeout_seconds,
+                        runner_mode=runner_mode,
+                    )
+                return item, runner_result
+
+            tasks = [asyncio.create_task(_execute_one(item)) for item in prepared]
+            for future in asyncio.as_completed(tasks):
+                item, runner_result = await future
+                script, own_placeholders, _workspace, _script_file = item
+                passed, failed, skipped = await _persist_runner_result(
+                    db, run, script, runner_result, own_placeholders
+                )
+                total_passed += passed
+                total_failed += failed
+                total_skipped += skipped
+                if not (runner_result.error_message or runner_result.run_status == "failed"):
+                    any_completed = True
+                run.passed, run.failed, run.skipped = total_passed, total_failed, total_skipped
+                await db.commit()
 
         stages = _append_stage(run, "finalizing")
         run.metadata_ = {**(run.metadata_ or {}), "stages": stages}
