@@ -65,7 +65,7 @@ def render_locator_playwright(strategy: str, value: str, role_hint: str | None =
     value = _escape_js(value)
     if strategy == "role":
         role = _escape_js(role_hint or "button")
-        return f"page.getByRole('{role}', {{ name: '{value}' }})"
+        return f"page.getByRole('{role}', {{ name: '{value}', exact: true }})"
     if strategy == "label":
         return f"page.getByLabel('{value}')"
     if strategy == "placeholder":
@@ -84,7 +84,7 @@ def render_locator_playwright(strategy: str, value: str, role_hint: str | None =
 _QUOTED = r"((?:[^'\\]|\\.)*)"  # a single-quoted JS string body, escapes tolerated
 
 _PARSE_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
-    ("role", re.compile(rf"^page\.getByRole\('{_QUOTED}',\s*\{{\s*name:\s*'{_QUOTED}'\s*\}}\)$")),
+    ("role", re.compile(rf"^page\.getByRole\('{_QUOTED}',\s*\{{\s*name:\s*'{_QUOTED}'(?:,\s*exact:\s*(true|false))?\s*\}}\)$")),
     ("role_no_name", re.compile(rf"^page\.getByRole\('{_QUOTED}'\)$")),
     ("label", re.compile(rf"^page\.getByLabel\('{_QUOTED}'\)$")),
     ("placeholder", re.compile(rf"^page\.getByPlaceholder\('{_QUOTED}'\)$")),
@@ -149,7 +149,7 @@ def render_locator_pytest(strategy: str, value: str, role_hint: str | None = Non
     value = _escape_py(value)
     if strategy == "role":
         role = _escape_py(role_hint or "button")
-        return f"page.get_by_role('{role}', name='{value}')"
+        return f"page.get_by_role('{role}', name='{value}', exact=True)"
     if strategy == "label":
         return f"page.get_by_label('{value}')"
     if strategy == "placeholder":

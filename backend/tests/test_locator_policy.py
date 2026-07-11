@@ -24,7 +24,7 @@ def test_unknown_strategy_ranks_last():
 
 def test_render_locator_playwright_all_strategies():
     assert locator_policy.render_locator_playwright("role", "Sign in", "button") == \
-        "page.getByRole('button', { name: 'Sign in' })"
+        "page.getByRole('button', { name: 'Sign in', exact: true })"
     assert locator_policy.render_locator_playwright("label", "Username") == "page.getByLabel('Username')"
     assert locator_policy.render_locator_playwright("placeholder", "Search") == "page.getByPlaceholder('Search')"
     assert locator_policy.render_locator_playwright("text", "Welcome") == "page.getByText('Welcome')"
@@ -52,7 +52,7 @@ def test_render_locator_playwright_escapes_single_quotes_in_css_selector():
 
 def test_render_locator_playwright_escapes_single_quotes_in_role_name():
     rendered = locator_policy.render_locator_playwright("role", "Don't submit", "button")
-    assert rendered == "page.getByRole('button', { name: 'Don\\'t submit' })"
+    assert rendered == "page.getByRole('button', { name: 'Don\\'t submit', exact: true })"
     assert locator_policy.parse_locator_playwright(rendered) == ("role", "Don't submit", "button")
 
 
@@ -63,7 +63,7 @@ def test_render_locator_playwright_escapes_backslashes():
 
 def test_render_locator_pytest_role_uses_snake_case_api():
     assert locator_policy.render_locator_pytest("role", "Sign in", "button") == \
-        "page.get_by_role('button', name='Sign in')"
+        "page.get_by_role('button', name='Sign in', exact=True)"
     assert locator_policy.render_locator_pytest("testid", "order-id") == "page.get_by_test_id('order-id')"
 
 
