@@ -41,10 +41,11 @@ class Project(TimestampMixin, Base):
     defect_drafts: Mapped[list["DefectDraft"]] = relationship("DefectDraft", back_populates="project")
     reports: Mapped[list["Report"]] = relationship("Report", back_populates="project")
     agent_runs: Mapped[list["AgentRun"]] = relationship("AgentRun", back_populates="project")
-    memberships: Mapped[list["ProjectMembership"]] = relationship("ProjectMembership", back_populates="project")
-    llm_settings: Mapped[list["ProjectLLMSetting"]] = relationship("ProjectLLMSetting", back_populates="project")
+    memberships: Mapped[list["ProjectMembership"]] = relationship("ProjectMembership", back_populates="project", passive_deletes=True)
+    llm_settings: Mapped[list["ProjectLLMSetting"]] = relationship("ProjectLLMSetting", back_populates="project", passive_deletes=True)
     setting_audit_logs: Mapped[list["ProjectSettingAuditLog"]] = relationship(
         "ProjectSettingAuditLog",
         back_populates="project",
+        passive_deletes=True,
     )
-    applications: Mapped[list["ProjectApplication"]] = relationship("ProjectApplication", back_populates="project")
+    applications: Mapped[list["ProjectApplication"]] = relationship("ProjectApplication", back_populates="project", passive_deletes=True)
