@@ -86,6 +86,9 @@ function withProject(href: string, projectId: string | null): string {
 }
 
 function isActiveHref(pathname: string, href: string): boolean {
+  if (href === "/agents") {
+    return pathname === "/agents";
+  }
   return pathname === href || pathname.startsWith(href + "/");
 }
 
