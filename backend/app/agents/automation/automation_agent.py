@@ -145,25 +145,31 @@ def _format_locator_catalog(catalog: list[dict]) -> str:
 
 
 def _check_grounding(contract: AutomationGenerationContract, catalog: list[dict] | None) -> tuple[int, list[str]]:
-    """Compare each declared element's rendered locator against the live
-    discovery catalog. Both sides render through the same locator_policy
-    function, so a string match is a reliable, exact check — no fuzzy
-    matching needed. Returns (grounded_count, ungrounded_element_refs)."""
+    """Compare each declared element's semantic locator attributes against the live
+    discovery catalog. Semantically parses catalog locators to support
+    exact-matching option flags robustly across legacy data.
+    Returns (grounded_count, ungrounded_element_refs)."""
     if not catalog:
         return 0, []
-    catalog_locators = {entry.get("recommended_locator") for entry in catalog}
+    catalog_parsed = set()
+    for entry in catalog:
+        rec = entry.get("recommended_locator") or ""
+        parsed = locator_policy.parse_locator_playwright(rec)
+        if parsed:
+            catalog_parsed.add(parsed)  # (strategy, value, role_hint)
+        else:
+            # Fallback to direct string matching if parsing fails (e.g. invalid locator syntax)
+            catalog_parsed.add((entry.get("role") or "", entry.get("recommended_locator") or "", None))
+
     grounded = 0
     ungrounded: list[str] = []
     for page_object in contract.page_objects:
         for element in page_object.elements:
-            try:
-                rendered = locator_policy.render_locator_playwright(
-                    element.locator_strategy, element.locator_value, element.role_hint
-                )
-            except ValueError:
-                ungrounded.append(f"{page_object.name}.{element.name}")
-                continue
-            if rendered in catalog_locators:
+            role_hint = element.role_hint
+            if element.locator_strategy == "role" and not role_hint:
+                role_hint = "button"
+            element_key = (element.locator_strategy, element.locator_value, role_hint)
+            if element_key in catalog_parsed:
                 grounded += 1
             else:
                 ungrounded.append(f"{page_object.name}.{element.name}")
@@ -319,7 +325,7 @@ async def _generate_one_contract(
             "framework": framework,
             "file_path": bundle.entry_path,
             "code": bundle.files[bundle.entry_path],
-            "grounded": bool(catalog),
+            "grounded": bool(catalog) and not ungrounded_elements,
             "grounded_element_count": grounded_count,
             "ungrounded_elements": ungrounded_elements,
             "compiled_files": bundle.files,

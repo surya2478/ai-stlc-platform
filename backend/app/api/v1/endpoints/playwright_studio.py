@@ -130,11 +130,13 @@ async def approve_studio_scripts(
     run = await _get_run_or_404(db, run_id)
     await require_permission(GENERATE_AUTOMATION, run.project_id, current_user, db)
     await require_permission(EXECUTE_TESTS, run.project_id, current_user, db)
+    from app.services.automation_execution_service import BatchValidationError
+
     try:
         outcome = await studio_service.approve_scripts(db, run, current_user.id, notes=body.notes)
     except StudioStateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except StudioValidationError as exc:
+    except (StudioValidationError, BatchValidationError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     await db.commit()
     return ApproveScriptsResponse(
