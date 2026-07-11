@@ -132,6 +132,8 @@ export default defineConfig({{
   ],
   use: {{
 {base_url_line}    headless: true,
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

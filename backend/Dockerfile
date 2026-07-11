@@ -1,6 +1,7 @@
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    locales \
     git \
     libpq-dev \
     libmupdf-dev \
@@ -14,7 +15,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dnsutils \
     openssl \
     netcat-openbsd \
+    && echo "en_US.UTF-8 UTF-8" > /etc/locale.gen \
+    && locale-gen \
     && rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 
 WORKDIR /app
 
