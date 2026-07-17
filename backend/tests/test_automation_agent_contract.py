@@ -1,4 +1,6 @@
+import asyncio
 import json
+import time
 
 import anyio
 
@@ -108,3 +110,154 @@ def test_agent_pytest_framework_produces_pytest_script(monkeypatch):
     script = result.data["scripts"][0]
     assert script["file_path"].endswith(".py")
     assert script["execution_command"].startswith("pytest ")
+
+
+# ── Concurrent wave generation (Playwright AI Studio) ────────────────────────
+# A Studio wave submits up to 25 test cases in ONE agent call. Sequential
+# generation blew through the agent's timeout on a live 9-test-case wave
+# (240s ceiling, ~27s/TC average) — losing every already-compiled script in
+# the wave, not just the slow ones. _generate_contracts now fans out with
+# bounded concurrency (GENERATION_CONCURRENCY); these tests lock in that it
+# actually runs concurrently (not serially disguised as async), respects the
+# concurrency cap, and every test case still gets its own contract.
+
+def _contract_json(test_case_id: str) -> str:
+    return json.dumps({
+        "contractVersion": "1.0", "testCaseId": test_case_id, "scriptType": "playwright-typescript",
+        "environmentProfile": "QA", "businessFlow": f"Flow for {test_case_id}",
+        "pageObjects": [{
+            "name": "Page", "elements": [{"name": "el", "locatorStrategy": "label", "locatorValue": "El"}],
+        }],
+        "steps": [{"phase": "act", "action": "click", "target": "Page.el"}],
+        "assertions": [{"type": "url", "target": "page", "expected": "ok"}],
+    })
+
+
+class _SlowKeyedLLM:
+    """Returns a contract keyed to the test case id embedded in the prompt,
+    after an artificial delay — lets tests assert real overlap in flight."""
+
+    def __init__(self, delay: float = 0.05):
+        self.delay = delay
+        self.in_flight = 0
+        self.max_in_flight = 0
+        self.calls = 0
+
+    async def achat(self, *, messages):
+        self.calls += 1
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            await asyncio.sleep(self.delay)
+            prompt = messages[-1]["content"]
+            for tc_id in ("TC-0001", "TC-0002", "TC-0003", "TC-0004", "TC-0005", "TC-0006"):
+                if tc_id in prompt:
+                    return _contract_json(tc_id)
+            return _contract_json("TC-UNKNOWN")
+        finally:
+            self.in_flight -= 1
+
+
+def test_wave_generation_runs_concurrently_not_serially(monkeypatch):
+    llm = _SlowKeyedLLM(delay=0.1)
+    monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: llm)
+
+    test_cases = [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 6)]
+
+    async def run():
+        return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+
+    start = time.monotonic()
+    result = anyio.run(run)
+    elapsed = time.monotonic() - start
+
+    assert result.success is True
+    assert len(result.data["scripts"]) == 5
+    assert {s["contract"]["testCaseId"] for s in result.data["scripts"]} == {
+        "TC-0001", "TC-0002", "TC-0003", "TC-0004", "TC-0005",
+    }
+    # 5 sequential 0.1s calls would take >=0.5s; concurrent (cap=5) should
+    # finish in roughly one delay's worth of wall-clock time.
+    assert elapsed < 0.3
+    assert llm.max_in_flight > 1
+
+
+def test_wave_generation_respects_concurrency_cap(monkeypatch):
+    llm = _SlowKeyedLLM(delay=0.05)
+    monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: llm)
+    monkeypatch.setattr(automation_agent, "GENERATION_CONCURRENCY", 2)
+
+    test_cases = [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 7)]
+
+    async def run():
+        return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+
+    result = anyio.run(run)
+
+    assert len(result.data["scripts"]) == 6
+    assert llm.max_in_flight == 2  # never more than the configured cap
+
+
+def test_wave_generation_all_test_cases_present_even_with_one_slow_call(monkeypatch):
+    """A wave must not lose the scripts that finished quickly just because
+    one test case in the same wave needed a slow/retried call."""
+    class _MixedSpeedLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def achat(self, *, messages):
+            self.calls += 1
+            prompt = messages[-1]["content"]
+            if "TC-SLOW" in prompt:
+                await asyncio.sleep(0.15)
+                return _contract_json("TC-SLOW")
+            return _contract_json("TC-FAST")
+
+    llm = _MixedSpeedLLM()
+    monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: llm)
+
+    test_cases = [
+        {"test_case_id": "TC-SLOW", "title": "Slow"},
+        {"test_case_id": "TC-FAST", "title": "Fast"},
+    ]
+
+    async def run():
+        return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+
+    result = anyio.run(run)
+
+    assert {s["contract"]["testCaseId"] for s in result.data["scripts"]} == {"TC-SLOW", "TC-FAST"}
+
+
+def test_wave_generation_stops_admitting_new_work_after_rate_limit(monkeypatch):
+    """A 429 must stop tasks still queued behind the semaphore from ever
+    calling the LLM — in-flight calls admitted before the limit hit are left
+    to finish rather than aborted mid-call."""
+    monkeypatch.setattr(automation_agent, "GENERATION_CONCURRENCY", 1)
+
+    class _RateLimitedAfterFirstLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def achat(self, *, messages):
+            self.calls += 1
+            if self.calls == 1:
+                raise Exception("429 Too Many Requests: rate_limit_exceeded")
+            return _contract_json("TC-SHOULD-NOT-RUN")
+
+    llm = _RateLimitedAfterFirstLLM()
+    monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: llm)
+
+    test_cases = [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 4)]
+
+    async def run():
+        return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+
+    result = anyio.run(run)
+
+    # With concurrency=1, tasks run strictly one at a time behind the
+    # semaphore — the first hits the rate limit and every subsequent queued
+    # task must bail out before calling the LLM again.
+    assert llm.calls == 1
+    assert result.data["scripts"] == []
+    assert any("rate limit" in log["message"].lower() for log in result.logs)

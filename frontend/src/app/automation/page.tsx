@@ -570,6 +570,7 @@ function AutomationContent() {
         automationReady: candidate?.automation_ready ?? false,
         lastUpdated: script?.updated_at ?? null,
         quality: script ? getScriptQualitySignals(script) : null,
+        staticGateFailed: script?.static_gate_result?.passed === false,
       };
     });
   }, [rows, planningCandidates, mappingByTestCase, scriptsById]);

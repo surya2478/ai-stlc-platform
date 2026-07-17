@@ -3,6 +3,8 @@ import pytest
 from app.agents.automation.generation_contract import AutomationGenerationContract
 from app.services.script_compiler import compile_contract
 from app.services.script_compiler.compiler import UnsupportedContractVersionError
+from app.services.script_compiler.naming import js_string_literal
+from app.services.script_compiler.playwright_renderer import _escape_regex_literal
 
 LOGIN_CONTRACT = {
     "contractVersion": "1.0",
@@ -64,16 +66,40 @@ def test_compile_playwright_spec_has_generation_header_and_structure():
     assert "await expect(page).toHaveURL(new RegExp('dashboard'));" in spec
 
 
+def test_compile_renders_nth_suffix_for_disambiguated_elements():
+    """A live run's strict-mode-violation bug: two "Show password" buttons
+    with the same accessible name compiled to the same non-unique locator.
+    An element carrying `nth` must render with a trailing .nth(N)."""
+    contract = _contract(pageObjects=[{
+        "name": "SignUpPage",
+        "elements": [
+            {"name": "showPasswordToggle", "locatorStrategy": "role",
+             "locatorValue": "Show password", "roleHint": "button", "nth": 1},
+        ],
+    }], steps=[
+        {"phase": "act", "action": "click", "target": "SignUpPage.showPasswordToggle"},
+    ])
+    bundle = compile_contract(contract)
+    page_object_file = bundle.files["pages/SignUpPage.ts"]
+    assert (
+        "this.showPasswordToggle = page.getByRole('button', "
+        "{ name: 'Show password', exact: true }).nth(1);"
+    ) in page_object_file
+
+
 def test_url_assertion_with_slashes_does_not_break_regex_syntax():
     # A live run failed with invalid JS: `/https://mail.google.com//` — the
     # "//" from the URL's own scheme prematurely closed the bare regex
     # literal delimiter. new RegExp('...') has no delimiter to collide with.
+    # The domain's dots are now regex-escaped too (see the escaping test
+    # below) — this test only asserts the delimiter-collision fix.
     contract = _contract(assertions=[
         {"type": "url", "target": "page", "expected": "https://mail.google.com/"},
     ])
     bundle = compile_contract(contract)
     spec = bundle.files[bundle.entry_path]
-    assert "await expect(page).toHaveURL(new RegExp('https://mail.google.com/'));" in spec
+    expected = js_string_literal(_escape_regex_literal("https://mail.google.com/"))
+    assert f"await expect(page).toHaveURL(new RegExp({expected}));" in spec
     assert "toHaveURL(/https://mail.google.com//)" not in spec
 
 
@@ -84,7 +110,66 @@ def test_wait_for_url_step_with_slashes_does_not_break_regex_syntax():
     ])
     bundle = compile_contract(contract)
     spec = bundle.files[bundle.entry_path]
-    assert "await page.waitForURL(new RegExp('https://mail.google.com/'));" in spec
+    expected = js_string_literal(_escape_regex_literal("https://mail.google.com/"))
+    assert f"await page.waitForURL(new RegExp({expected}));" in spec
+
+
+# ── Regex-metacharacter escaping (Playwright AI Studio) ──────────────────────
+# A live run's compiled scripts correctly navigated to the exact target page
+# (confirmed in the runner logs) yet still timed out on wait_for_url/url
+# assertions — root cause: a captured URL fragment like
+# "/sign-up?role=candidate" was passed straight into `new RegExp(...)`
+# unescaped, so the '?' was interpreted as "the preceding character is
+# optional" instead of a literal question mark. Query strings are the norm
+# for real captured URLs, so this silently broke nearly every multi-role /
+# parameterized route.
+
+def test_escape_regex_literal_escapes_query_string_question_mark():
+    assert _escape_regex_literal("/sign-up?role=candidate") == "/sign-up\\?role=candidate"
+
+
+def test_escape_regex_literal_escapes_dots():
+    assert _escape_regex_literal("mail.google.com") == "mail\\.google\\.com"
+
+
+def test_escape_regex_literal_leaves_plain_paths_unchanged():
+    assert _escape_regex_literal("/dashboard") == "/dashboard"
+    assert _escape_regex_literal("dashboard") == "dashboard"
+
+
+def test_escape_regex_literal_does_not_escape_forward_slashes():
+    # new RegExp('...') is the string constructor form (no /pattern/
+    # delimiters), so '/' is just a literal character here — only the
+    # actual JS/TS regex metacharacter set needs escaping.
+    assert _escape_regex_literal("https://mail.google.com/") == "https://mail\\.google\\.com/"
+
+
+def test_wait_for_url_with_real_query_string_matches_the_page_it_navigated_to():
+    """End-to-end reproduction of the live bug: a wait_for_url value that is
+    an exact real captured URL fragment must compile to a regex whose
+    escaped source, once JS-parses the string literal, matches that exact
+    fragment — verified here by decoding the compiler's own escaping the
+    same way a JS engine would (backslash-doubling reversed), rather than
+    trusting the raw source text."""
+    real_target = "/sign-up?role=candidate"
+    contract = _contract(steps=[
+        {"phase": "arrange", "action": "navigate", "value": "/"},
+        {"phase": "act", "action": "wait_for_url", "value": real_target},
+    ])
+    bundle = compile_contract(contract)
+    spec = bundle.files[bundle.entry_path]
+
+    import re as _re
+    match = _re.search(r"new RegExp\('((?:[^'\\]|\\.)*)'\)", spec)
+    assert match, f"no new RegExp(...) call found in:\n{spec}"
+    js_string_content = match.group(1)
+    # Reverse JS string-literal escaping (\\ -> \) to get the actual regex
+    # source the JS engine would compile, then confirm it matches the real
+    # URL as a substring — exactly what waitForURL needs to succeed.
+    regex_source = js_string_content.replace("\\\\", "\\")
+    assert _re.search(regex_source, real_target), (
+        f"compiled regex source {regex_source!r} does not match the real target {real_target!r}"
+    )
 
 
 def test_compile_is_deterministic_for_identical_contracts():
@@ -135,6 +220,31 @@ def test_compile_pytest_produces_flat_file_bundle():
     assert bundle.entry_path.endswith(".py")
     assert "db_validator.py" in bundle.files
     assert "GENERATED BY nxtQA Script Compiler" in bundle.files[bundle.entry_path]
+
+
+def test_pytest_wait_for_url_escapes_regex_metacharacters():
+    """Same live bug, pytest renderer: re.compile() on an unescaped captured
+    URL fragment misinterprets '?'/'.' etc. as regex syntax instead of
+    literal characters."""
+    real_target = "/sign-up?role=candidate"
+    bundle = compile_contract(_contract(
+        scriptType="pytest-python",
+        steps=[
+            {"phase": "arrange", "action": "navigate", "value": "/"},
+            {"phase": "act", "action": "wait_for_url", "value": real_target},
+        ],
+    ))
+    spec = bundle.files[bundle.entry_path]
+
+    import re as _re
+    match = _re.search(r're\.compile\("((?:[^"\\]|\\.)*)"\)', spec)
+    assert match, f"no re.compile(...) call found in:\n{spec}"
+    # py_string_literal uses the same backslash-doubling as js_string_literal
+    # — reverse it to recover the actual regex source Python would compile.
+    regex_source = match.group(1).replace("\\\\", "\\")
+    assert _re.search(regex_source, real_target), (
+        f"compiled regex source {regex_source!r} does not match the real target {real_target!r}"
+    )
 
 
 def test_unsupported_contract_version_raises():

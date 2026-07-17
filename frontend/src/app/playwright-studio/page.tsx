@@ -113,7 +113,7 @@ function PlaywrightStudioContent() {
   const showingRun = selectedRunId !== null && view === "list";
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

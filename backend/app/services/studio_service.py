@@ -25,6 +25,8 @@ worker hooks.
 from __future__ import annotations
 
 import logging
+import re
+from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,6 +68,18 @@ def _chunks(items: list, size: int) -> list[list]:
     return [items[i:i + size] for i in range(0, len(items), size)]
 
 
+def _page_entry_path(page_url: str | None) -> str | None:
+    """Path + query of a planner-captured page URL — what a test must
+    navigate to first."""
+    if not page_url:
+        return None
+    parsed = urlparse(page_url)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    return path
+
+
 async def get_run(db: AsyncSession, run_id: int) -> StudioRun | None:
     return await db.get(StudioRun, run_id)
 
@@ -75,6 +89,30 @@ async def list_runs(db: AsyncSession, project_id: int) -> list[StudioRun]:
         select(StudioRun).where(StudioRun.project_id == project_id).order_by(StudioRun.id.desc())
     )
     return list(result.scalars().all())
+
+
+# Best-effort fallback for a count the user already typed into the free-text
+# Planner Objective (e.g. "generate 5 test cases") rather than the explicit
+# target_test_case_count field — the reliable path is the explicit field;
+# this exists so what users already type today starts being honored too.
+# Deliberately does NOT match "at least"/"minimum"/"more than N ..." — those
+# state a floor, not a ceiling, and capping to them would be the opposite of
+# what the user asked for.
+_TC_COUNT_PATTERN = re.compile(r"\b(\d{1,3})\s*(?:test\s*cases?|tcs?|tests?)\b", re.IGNORECASE)
+_TC_COUNT_FLOOR_PATTERN = re.compile(r"\b(?:at\s*least|minimum(?:\s*of)?|more\s*than|over)\s*$", re.IGNORECASE)
+
+
+def _parse_target_count_from_objective(objective: str | None) -> int | None:
+    if not objective:
+        return None
+    match = _TC_COUNT_PATTERN.search(objective)
+    if not match:
+        return None
+    preceding = objective[:match.start()]
+    if _TC_COUNT_FLOOR_PATTERN.search(preceding):
+        return None
+    count = int(match.group(1))
+    return count if 1 <= count <= 200 else None
 
 
 async def create_run(db: AsyncSession, *, project_id: int, user_id: int, data) -> StudioRun:
@@ -87,6 +125,7 @@ async def create_run(db: AsyncSession, *, project_id: int, user_id: int, data) -
             f"Application '{application.name}' has no URL configured for environment "
             f"'{data.environment}' — add one under Settings → Applications first."
         )
+    target_test_case_count = data.target_test_case_count or _parse_target_count_from_objective(data.objective)
     run = StudioRun(
         project_id=project_id,
         created_by=user_id,
@@ -103,6 +142,7 @@ async def create_run(db: AsyncSession, *, project_id: int, user_id: int, data) -
             "browser": data.browser,
             "max_pages": data.max_pages,
             "max_minutes": data.max_minutes,
+            "target_test_case_count": target_test_case_count,
             "framework": data.framework,
             "runner_mode": data.runner_mode,
             "parallelism": data.parallelism,
@@ -133,6 +173,7 @@ async def start_exploration(db: AsyncSession, run: StudioRun, user_id: int) -> t
             "excluded_paths": config.get("excluded_paths") or [],
             "max_pages": config.get("max_pages") or 10,
             "max_minutes": config.get("max_minutes") or 20,
+            "target_test_case_count": config.get("target_test_case_count"),
         },
         metadata={"studio_run_id": run.id},
     )
@@ -173,6 +214,8 @@ async def apply_planner_output(db: AsyncSession, *, studio_run_id: int, agent_ru
         "pages": pages_summary,
         "proposed_test_cases": output.get("proposed_test_cases", []),
         "planner_agent_run_id": agent_run.id,
+        "total_proposed_before_cap": output.get("total_proposed_before_cap"),
+        "target_test_case_count": output.get("target_test_case_count"),
     }
     run.status = "plan_ready"
     await db.flush()
@@ -204,12 +247,32 @@ async def approve_plan(
 
     config = run.config or {}
     audit_note = f"Playwright Studio bulk plan approval — run #{run.id}" + (f": {notes}" if notes else "")
+    # Every page the planner actually visited (not just this proposal's own
+    # page_url) — a multi-step flow that clicks through to a SECOND page
+    # needs its wait_for_url/url-assertion targets grounded against a real
+    # captured URL too, the same way locators are grounded against the
+    # element catalog. Without this the LLM guesses the destination pattern
+    # (observed live: '/candidate' invented for the real
+    # '/sign-up?role=candidate') and both generation AND repair have no way
+    # to correct it since neither ever sees the real page list.
+    explored_page_paths = sorted({
+        p.get("url") for p in (run.plan or {}).get("pages", []) if p.get("url")
+    })
     tc_ids: list[int] = []
     for proposal in selected:
         steps = [
             {"action": s.get("description") or s.get("action") or "", "expected": ""}
             for s in (proposal.get("steps") or [])
         ]
+        # Make the REAL entry route part of the test case text itself: the
+        # planner captured this proposal's elements on a specific live page,
+        # and LLM-guessed routes were the #1 cause of whole-batch failures
+        # (e.g. '/employer/signup' invented for '/sign-up?role=employer').
+        # Generation additionally force-grounds the contract's first
+        # navigate step to this page (automation_agent._ground_entry_route).
+        entry_path = _page_entry_path(proposal.get("page_url"))
+        if entry_path and entry_path != "/":
+            steps = [{"action": f"Navigate to {entry_path}", "expected": ""}] + steps
         blocked = proposal.get("blocked_reasons") or []
         tc = TestCase(
             project_id=run.project_id,
@@ -233,6 +296,7 @@ async def approve_plan(
                 "studio_run_id": run.id,
                 "planner_key": proposal.get("key"),
                 "page_url": proposal.get("page_url"),
+                "explored_page_paths": explored_page_paths,
                 "planner_steps": proposal.get("steps"),
                 "blocked_reasons": blocked,
                 "ungrounded_elements": proposal.get("ungrounded_elements") or [],
@@ -459,6 +523,123 @@ async def _reconcile_status(db: AsyncSession, run: StudioRun) -> None:
                 await db.flush()
 
 
+# ── Failure insights ─────────────────────────────────────────────────────────
+# Turns raw failure text into actionable, non-functional diagnostics the user
+# can act on (environment, infrastructure, auth, test data) — ordered: the
+# first matching rule wins, so put systemic/infrastructure causes before
+# generic timeouts.
+_INSIGHT_DEFINITIONS: list[dict] = [
+    {
+        "kind": "environment_unreachable",
+        "severity": "error",
+        "pattern": re.compile(r"ERR_NAME_NOT_RESOLVED|ERR_CONNECTION|ECONNREFUSED|ERR_CERT|net::ERR|ERR_TIMED_OUT", re.I),
+        "message": "The target application was unreachable from the test runner container(s).",
+        "action": (
+            "Verify the environment URL in Settings → Applications resolves from inside Docker "
+            "(DNS/proxy/VPN), or set AUTOMATION_DOCKER_NETWORK if the app runs inside the same "
+            "compose stack. Re-run once reachable — these are not script problems."
+        ),
+    },
+    {
+        "kind": "runner_infrastructure",
+        "severity": "error",
+        "pattern": re.compile(r"browserType\.launch|Executable doesn't exist|docker CLI not found|docker daemon not reachable|Could not start docker", re.I),
+        "message": "Test runner infrastructure problem — the browser or Docker runtime was unavailable.",
+        "action": (
+            "Rebuild the worker image (docker compose build worker && docker compose up -d) and "
+            "confirm /var/run/docker.sock is mounted, or switch the run to the Local runner in Step 1."
+        ),
+    },
+    {
+        "kind": "url_assertion_mismatch",
+        "severity": "warning",
+        "pattern": re.compile(r"waitForURL|toHaveURL", re.I),
+        "message": "URL checks never matched the page the app actually navigated to (usually an assumed route or pattern).",
+        "action": (
+            "Regenerate the scripts — entry routes and URL expectations are now grounded to the "
+            "pages the planner really explored, instead of LLM-guessed paths."
+        ),
+    },
+    {
+        "kind": "element_not_found",
+        "severity": "warning",
+        "pattern": re.compile(r"waiting for (getBy|locator)|toBeVisible|strict mode violation", re.I),
+        "message": (
+            "Elements never appeared on the page the test landed on — typically a wrong entry "
+            "route (now fixed by route grounding) or an area that requires sign-in, which Studio "
+            "runs don't have yet."
+        ),
+        "action": (
+            "Regenerate the scripts first. If the flow lives behind a login, exclude that area in "
+            "Step 1 (Excluded areas) until application credentials support is configured."
+        ),
+    },
+    {
+        "kind": "slow_or_stuck",
+        "severity": "info",
+        "pattern": re.compile(r"Test timeout of \d+ms exceeded", re.I),
+        "message": "Tests hit the per-test time budget without a more specific error.",
+        "action": (
+            "If the environment is genuinely slow, raise the per-script timeout in Step 1; "
+            "otherwise open the trace/video on the failed result to see where it stalled."
+        ),
+    },
+]
+
+
+def _derive_failure_insights(failed_rows: list) -> list[dict]:
+    """Aggregate failed ExecutionResults into ranked, deduplicated,
+    actionable diagnostics. Data-classification failures take priority over
+    text patterns — 'needs real test data' beats any timeout wording."""
+    buckets: dict[str, dict] = {}
+
+    def _bucket(kind: str, severity: str, message: str, action: str, test_name: str | None) -> None:
+        entry = buckets.setdefault(kind, {
+            "kind": kind, "severity": severity, "message": message,
+            "action": action, "count": 0, "examples": [],
+        })
+        entry["count"] += 1
+        if test_name and len(entry["examples"]) < 3 and test_name not in entry["examples"]:
+            entry["examples"].append(test_name)
+
+    for row in failed_rows:
+        text = f"{row.error_message or ''}\n{row.stack_trace or ''}"
+        classification = (
+            ((row.metadata_ or {}).get("failure_classification") or {}).get("classification")
+        )
+        if classification == "data_issue":
+            _bucket(
+                "test_data_required", "warning",
+                "Failures caused by missing/invalid test data (unique emails, registered accounts, valid credentials).",
+                "Provide real test data for these flows or exclude them — auto-heal never invents credentials.",
+                row.test_name,
+            )
+            continue
+        if classification == "environment_issue":
+            _bucket(
+                "environment_unreachable", "error",
+                _INSIGHT_DEFINITIONS[0]["message"], _INSIGHT_DEFINITIONS[0]["action"], row.test_name,
+            )
+            continue
+        for definition in _INSIGHT_DEFINITIONS:
+            if definition["pattern"].search(text):
+                _bucket(
+                    definition["kind"], definition["severity"],
+                    definition["message"], definition["action"], row.test_name,
+                )
+                break
+        else:
+            _bucket(
+                "unrecognized_failure", "info",
+                "Failures without a recognized non-functional cause — likely genuine application or script issues.",
+                "Open the failed results' logs/traces in Automation Execution to inspect them individually.",
+                row.test_name,
+            )
+
+    severity_rank = {"error": 0, "warning": 1, "info": 2}
+    return sorted(buckets.values(), key=lambda b: (severity_rank.get(b["severity"], 3), -b["count"]))
+
+
 def _script_summary(script: AutomationScript) -> dict:
     metadata = script.metadata_ or {}
     gate = script.static_gate_result or {}
@@ -510,6 +691,7 @@ async def get_run_detail(db: AsyncSession, run: StudioRun) -> dict:
         script_counts[s.status] = script_counts.get(s.status, 0) + 1
 
     executions = []
+    failure_insights: list[dict] = []
     exec_ids = run.execution_run_ids or []
     if exec_ids:
         result = await db.execute(select(ExecutionRun).where(ExecutionRun.id.in_(exec_ids)))
@@ -522,13 +704,22 @@ async def get_run_detail(db: AsyncSession, run: StudioRun) -> dict:
                 "passed": r.passed,
                 "failed": r.failed,
                 "skipped": r.skipped,
+                "auto_heal": (r.metadata_ or {}).get("auto_heal"),
             }
             for r in result.scalars().all()
         ]
+        failed_rows = await db.execute(
+            select(ExecutionResult).where(
+                ExecutionResult.execution_run_id.in_(exec_ids),
+                ExecutionResult.status == "fail",
+            )
+        )
+        failure_insights = _derive_failure_insights(list(failed_rows.scalars().all()))
 
     return {
         "agent_runs": agent_summaries,
         "scripts": [_script_summary(s) for s in scripts],
         "script_counts": script_counts,
         "executions": executions,
+        "failure_insights": failure_insights,
     }

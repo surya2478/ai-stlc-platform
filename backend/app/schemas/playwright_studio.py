@@ -19,6 +19,13 @@ class StudioRunCreate(BaseModel):
     browser: str = Field(default="chromium", max_length=30)
     max_pages: int = Field(default=10, ge=1, le=25)
     max_minutes: int = Field(default=20, ge=1, le=60)
+    # Optional hard cap on total proposed test cases across ALL explored
+    # pages. Each page proposes independently (2-8 per page, see
+    # planner_agent.MAX_PROPOSALS_PER_PAGE) with no built-in awareness of a
+    # global target, so this is enforced deterministically after collection
+    # (studio_service._apply_test_case_cap / planner_agent), never left to
+    # the LLM to self-limit across calls it can't coordinate.
+    target_test_case_count: int | None = Field(default=None, ge=1, le=200)
     framework: str = Field(default="playwright", pattern="^(playwright|pytest)$")
     runner_mode: str = Field(default="local", pattern="^(local|docker)$")
     parallelism: int = Field(default=4, ge=1, le=16)
@@ -78,6 +85,22 @@ class StudioExecutionSummary(BaseModel):
     passed: int
     failed: int
     skipped: int
+    # Auto-heal outcome for Studio batches: attempted / repaired /
+    # not_repairable / errors / new_script_ids / capped.
+    auto_heal: dict | None = None
+
+
+class StudioFailureInsight(BaseModel):
+    """Actionable, non-functional diagnostic derived from a run's failures
+    (environment unreachable, runner infrastructure, auth/route problems,
+    test data) so the user knows what to fix — distinct from per-test
+    functional verdicts."""
+    kind: str
+    severity: str  # error | warning | info
+    message: str
+    action: str
+    count: int
+    examples: list[str] = Field(default_factory=list)
 
 
 class StudioRunDetailOut(StudioRunOut):
@@ -87,6 +110,7 @@ class StudioRunDetailOut(StudioRunOut):
     scripts: list[StudioScriptSummary] = Field(default_factory=list)
     script_counts: dict[str, int] = Field(default_factory=dict)
     executions: list[StudioExecutionSummary] = Field(default_factory=list)
+    failure_insights: list[StudioFailureInsight] = Field(default_factory=list)
 
 
 class StudioStartResponse(BaseModel):

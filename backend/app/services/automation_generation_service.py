@@ -86,6 +86,14 @@ async def build_generation_payload(
             "priority": tc.priority,
             "application_id": application_id,
             "application_url": application_url,
+            # Studio-planned TCs record the live page their elements were
+            # captured on — generation grounds the entry route to it
+            # (automation_agent._ground_entry_route). None for regular TCs.
+            "page_url": (tc.metadata_ or {}).get("page_url"),
+            # Every page the planner explored for this application — grounds
+            # multi-hop wait_for_url/url-assertion targets the same way the
+            # element catalog grounds locators. Empty for regular TCs.
+            "explored_page_paths": (tc.metadata_ or {}).get("explored_page_paths") or [],
             **app_context,
         })
     return payload

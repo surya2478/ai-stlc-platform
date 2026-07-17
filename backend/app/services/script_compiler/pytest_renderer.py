@@ -7,6 +7,7 @@ test data literals, Arrange-Act-Assert-Evidence-Cleanup structure.
 from __future__ import annotations
 
 import json
+import re
 
 from app.agents.automation.generation_contract import (
     ApiValidation,
@@ -64,7 +65,14 @@ def _render_step_line(step: ContractStep) -> str:
         return f"expect({target_expr}).to_be_visible()"
     if step.action == "wait_for_url":
         pattern = step.value or ""
-        return f"page.wait_for_url(re.compile({py_string_literal(pattern)}))"
+        # pattern is a literal captured URL fragment (e.g.
+        # "/sign-up?role=candidate"), not a hand-written regex — re.escape
+        # here (compiler-side, at generation time) bakes an escaped literal
+        # into the generated file's re.compile(...) call. Without this the
+        # generated test's OWN re.compile() reinterprets '?'/'.' etc. as
+        # regex syntax instead of literal characters (same class of bug
+        # fixed in playwright_renderer._escape_regex_literal).
+        return f"page.wait_for_url(re.compile({py_string_literal(re.escape(pattern))}))"
     if step.action == "custom":
         return f"# TODO: {step.description or 'custom step not auto-rendered — implement manually'}"
     raise ValueError(f"Unhandled step action: {step.action}")
@@ -77,7 +85,8 @@ def _render_assertion_line(a: ContractAssertion) -> str:
     if a.type == "text":
         return f"expect({target_expr}).to_contain_text({py_string_literal(a.expected)})"
     if a.type == "url":
-        return f"expect(page).to_have_url(re.compile({py_string_literal(a.expected)}))"
+        # Same escaping requirement as wait_for_url above.
+        return f"expect(page).to_have_url(re.compile({py_string_literal(re.escape(a.expected))}))"
     if a.type == "value":
         return f"expect({target_expr}).to_have_value({py_string_literal(a.expected)})"
     if a.type == "count":

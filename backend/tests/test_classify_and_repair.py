@@ -206,6 +206,63 @@ def test_repairable_runs_repair_loop_and_persists_a_resolved_version(monkeypatch
     assert new_version.status == "dry_run_passed"
 
 
+def test_repairable_threads_studio_explored_page_paths_to_repair_loop(monkeypatch):
+    """A Studio-planned test case's explored_page_paths must reach the
+    repair loop — without this the repair loop can never correct a guessed
+    navigation target, exactly the live bug where 4/4 Studio failures went
+    through repair and 0 were fixed."""
+    script = AutomationScript(
+        id=5, project_id=8, test_case_id=20, created_by=1, script_id="AS-0005",
+        framework="playwright", code="old", version=1, status="dry_run_passed",
+        contract={"testCaseId": "TC-1"},
+    )
+    tc = TestCase(
+        id=20, project_id=8, created_by=1, test_case_id="TC-1", title="x",
+        application_id=7, test_phase="SIT",
+        metadata_={
+            "origin": "playwright_studio",
+            "explored_page_paths": ["https://sit.app.example.com/sign-up?role=candidate"],
+        },
+    )
+    application = ProjectApplication(
+        id=7, project_id=8, key="web", name="Web", is_default=True, is_active=True,
+        environment_urls={"SIT": "https://sit.app.example.com"},
+    )
+    result = _result(
+        error_message="TimeoutError: page.waitForURL: Timeout 30000ms exceeded.",
+        metadata_={"automation_script_id": 5},
+    )
+    db = _FakeDB(
+        responses=[[]],
+        get_results={
+            (AutomationScript, 5): script,
+            (TestCase, 20): tc,
+            (ProjectApplication, 7): application,
+        },
+    )
+
+    captured = {}
+
+    class _FakeRepairAgent:
+        async def run(self, *, scripts):
+            captured["scripts"] = scripts
+            return AgentRunResult(success=True, data={"repairs": [{
+                "script_id": 5, "resolved": False, "attempts": [],
+            }]}, logs=[])
+
+    import app.agents.automation.repair_agent as repair_agent_module
+    monkeypatch.setattr(repair_agent_module, "RepairLoopAgent", _FakeRepairAgent)
+
+    async def run():
+        return await automation_service.classify_and_repair(db, execution_result=result, triggered_by=3)
+
+    anyio.run(run)
+
+    assert captured["scripts"][0]["explored_page_paths"] == [
+        "https://sit.app.example.com/sign-up?role=candidate"
+    ]
+
+
 def test_repair_loop_failure_surfaces_as_error_not_a_crash(monkeypatch):
     script = AutomationScript(
         id=6, project_id=8, test_case_id=None, created_by=1, script_id="AS-0006",

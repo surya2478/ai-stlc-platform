@@ -94,6 +94,14 @@ export function PlanReview({
               {proposals.filter((p) => p.blocked_reasons.length > 0).length} blocked (OTP/CAPTCHA)
             </Badge>
           )}
+          {run.plan?.target_test_case_count != null && (
+            <Badge variant="purple">
+              Capped to your requested {run.plan.target_test_case_count}
+              {run.plan.total_proposed_before_cap
+                ? ` (from ${run.plan.total_proposed_before_cap} proposed across all pages)`
+                : ""}
+            </Badge>
+          )}
         </CardContent>
       </Card>
 

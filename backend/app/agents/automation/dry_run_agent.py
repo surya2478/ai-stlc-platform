@@ -12,6 +12,7 @@ only when every test in it passed.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -28,6 +29,12 @@ from app.services.automation_runner.workspace import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_DRY_RUN_TIMEOUT_SECONDS = 180
+# Bounded fan-out, same rationale and same value as
+# automation_agent.GENERATION_CONCURRENCY — a Studio wave can hand this
+# agent up to 25 scripts in one call, each a REAL subprocess (Node +
+# Chromium); sequential execution has the identical blow-through-the-agent-
+# timeout failure mode generation had, just one stage later in the chain.
+DRY_RUN_CONCURRENCY = 5
 
 
 class DryRunAgent(BaseAgent):
@@ -42,16 +49,20 @@ class DryRunAgent(BaseAgent):
         if not scripts:
             return AgentRunResult(success=False, error="No scripts provided", data={}, logs=self._logs)
 
-        dry_runs: list[dict] = []
-        errors: list[str] = []
+        semaphore = asyncio.Semaphore(DRY_RUN_CONCURRENCY)
 
-        for script_data in scripts:
+        async def _run_one(script_data: dict) -> dict | str:
             script_id = script_data.get("script_id")
-            try:
-                dry_runs.append(await self._dry_run_one(script_data))
-            except Exception as exc:
-                errors.append(f"Dry run crashed for script {script_id}: {exc}")
-                logger.exception("Dry run crashed for script %s", script_id)
+            async with semaphore:
+                try:
+                    return await self._dry_run_one(script_data)
+                except Exception as exc:
+                    logger.exception("Dry run crashed for script %s", script_id)
+                    return f"Dry run crashed for script {script_id}: {exc}"
+
+        raw_results = await asyncio.gather(*(_run_one(s) for s in scripts))
+        dry_runs: list[dict] = [r for r in raw_results if isinstance(r, dict)]
+        errors: list[str] = [r for r in raw_results if isinstance(r, str)]
 
         for e in errors:
             self.log("warning", "warning", e)

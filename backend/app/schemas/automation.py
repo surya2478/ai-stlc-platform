@@ -23,6 +23,7 @@ class AutomationScriptOut(BaseModel):
     status: str
     agent_run_id: int | None = None
     metadata_: dict[str, Any] | None = None
+    static_gate_result: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 

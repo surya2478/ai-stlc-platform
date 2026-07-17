@@ -23,6 +23,11 @@ export type InventoryItem = {
   automationReady: boolean;
   lastUpdated?: string | null;
   quality?: ScriptQualitySignals | null;
+  /** True when scriptStatus is "generated" and the Static Quality Gate
+   * blocked it — that script will never reach dry run on its own (see
+   * agent_tasks._build_dry_run_input, which only picks up "static_passed"
+   * scripts) and needs a human to regenerate it. */
+  staticGateFailed?: boolean;
 };
 
 /** A short, specific reason this script's quality is in question despite its
@@ -47,7 +52,16 @@ export type LifecycleFilter =
   | "in_review"
   | "approved"
   | "verified"
-  | "blocked";
+  | "blocked"
+  // Phase 2-4 grounded generation pipeline (ADR-001) statuses — see
+  // LifecycleStepper's GROUNDED_STEPS for the same vocabulary.
+  | "generated"
+  | "static_gate_failed"
+  | "static_gate_passed"
+  | "dry_run_passed"
+  | "reviewer_approved"
+  | "lead_approved"
+  | "ci_ready";
 
 export type FrameworkFilter = "all" | "playwright" | "pytest" | "external";
 
@@ -80,6 +94,19 @@ function statusBadge(item: InventoryItem) {
   if (s === "draft") return { label: "Draft", variant: "outline" as const };
   if (s === "rejected") return { label: "Rejected", variant: "destructive" as const };
   if (s === "deprecated") return { label: "Deprecated", variant: "secondary" as const };
+  // Phase 2-4 grounded generation pipeline (ADR-001: contract -> compiler ->
+  // static gate -> dry run -> staged human approval) — previously fell
+  // through to "Not created" below, hiding real progress on scripts that
+  // had actually compiled and run through the gate.
+  if (s === "generated") {
+    if (item.staticGateFailed) return { label: "Static gate failed", variant: "destructive" as const };
+    return { label: "Generated", variant: "purple" as const };
+  }
+  if (s === "static_passed") return { label: "Static gate passed", variant: "purple" as const };
+  if (s === "dry_run_passed") return { label: "Dry run passed", variant: "warning" as const };
+  if (s === "reviewer_approved") return { label: "Reviewer approved", variant: "warning" as const };
+  if (s === "lead_approved") return { label: "Lead approved", variant: "warning" as const };
+  if (s === "ci_ready") return { label: "CI ready", variant: "success" as const };
   return { label: "Not created", variant: "outline" as const };
 }
 
@@ -287,6 +314,13 @@ export function AutomationInventoryPanel({
                 ["in_review", "In review"],
                 ["approved", "Approved"],
                 ["verified", "Verified"],
+                ["generated", "Generated"],
+                ["static_gate_failed", "Static gate failed"],
+                ["static_gate_passed", "Static gate passed"],
+                ["dry_run_passed", "Dry run passed"],
+                ["reviewer_approved", "Reviewer approved"],
+                ["lead_approved", "Lead approved"],
+                ["ci_ready", "CI ready"],
               ]}
             />
             <FilterSelect

@@ -63,6 +63,56 @@ def test_rank_elements_lower_confidence_without_accessible_name():
     assert unnamed["confidence_score"] < 90
 
 
+# ── Duplicate accessible-name disambiguation ─────────────────────────────────
+# A live run failed with a Playwright "strict mode violation": two "Show
+# password" icon buttons (one next to Password, one next to Confirm
+# Password) collapsed to the SAME element_name, and the surviving
+# getByRole(role, {name}) locator matched both real elements at runtime.
+
+SIGNUP_SNAPSHOT_WITH_DUPLICATE_BUTTONS = """### Page
+- Page URL: http://app.example.com/sign-up
+- Page Title: Sign up
+### Snapshot
+```yaml
+- generic [ref=e1]:
+  - textbox "Password" [ref=e2]
+  - button "Show password" [ref=e3]
+  - textbox "Confirm password" [ref=e4]
+  - button "Show password" [ref=e5]
+  - button "Create account" [ref=e6]
+```
+"""
+
+
+def test_rank_elements_disambiguates_duplicate_accessible_names():
+    parsed = parse_snapshot(SIGNUP_SNAPSHOT_WITH_DUPLICATE_BUTTONS)
+    ranked = _rank_elements(parsed)
+    show_password_entries = [e for e in ranked if e["accessible_name"] == "Show password"]
+    assert len(show_password_entries) == 2
+
+    names = {e["element_name"] for e in show_password_entries}
+    assert names == {"button_show_password", "button_show_password_2"}
+
+    first = next(e for e in show_password_entries if e["element_name"] == "button_show_password")
+    second = next(e for e in show_password_entries if e["element_name"] == "button_show_password_2")
+    assert first["recommended_locator"] == (
+        "page.getByRole('button', { name: 'Show password', exact: true }).nth(0)"
+    )
+    assert second["recommended_locator"] == (
+        "page.getByRole('button', { name: 'Show password', exact: true }).nth(1)"
+    )
+
+
+def test_rank_elements_does_not_disambiguate_unique_names():
+    """Elements that already have a unique (role, name) pair on the page
+    must be left completely unchanged — no .nth() suffix, no renamed key."""
+    parsed = parse_snapshot(SIGNUP_SNAPSHOT_WITH_DUPLICATE_BUTTONS)
+    ranked = _rank_elements(parsed)
+    create_account = next(e for e in ranked if e["accessible_name"] == "Create account")
+    assert create_account["element_name"] == "button_create_account"
+    assert ".nth(" not in create_account["recommended_locator"]
+
+
 def test_relevant_links_matches_on_keyword_overlap():
     parsed = parse_snapshot(LOGIN_SNAPSHOT)
     test_cases = [{"title": "User visits help center", "steps": []}]

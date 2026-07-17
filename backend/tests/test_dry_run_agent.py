@@ -3,6 +3,9 @@ infrastructure (mocked here to avoid spawning subprocesses in unit tests;
 the runner itself is exercised for real in test_evidence_capture.py /
 test_script_compiler.py's underlying pipeline, and was smoke-tested live
 during development)."""
+import asyncio
+import time
+
 import anyio
 
 from app.agents.automation import dry_run_agent as mod
@@ -96,14 +99,12 @@ def test_dry_run_falls_back_to_single_file_materialization_without_bundle(monkey
 
 
 def test_dry_run_crash_for_one_script_does_not_block_others(monkeypatch, tmp_path):
-    def boom(_key):
-        raise RuntimeError("disk full")
-
-    call_count = {"n": 0}
-
+    # Keyed on the script id embedded in workspace_key (not call order —
+    # scripts now run concurrently, see DRY_RUN_CONCURRENCY, so which task's
+    # synchronous prefix happens to execute first is not something a test
+    # should depend on).
     def reset_workspace(key):
-        call_count["n"] += 1
-        if call_count["n"] == 1:
+        if key.startswith("dryrun-1-"):
             raise RuntimeError("disk full")
         return tmp_path
 
@@ -135,3 +136,74 @@ def test_dry_run_fails_cleanly_with_no_scripts():
 
     result = anyio.run(run)
     assert result.success is False
+
+
+# ── Concurrent wave dry-run (Playwright AI Studio) ───────────────────────────
+# Same rationale as automation_agent's wave-generation concurrency: a Studio
+# wave can hand this agent up to 25 scripts in one call, each a real
+# subprocess. Sequential execution has the identical failure mode
+# (blow through the agent's timeout) one stage later in the chain.
+
+def _slow_runner(delay: float, tracker: dict):
+    async def run_script_for_execution(**_kwargs):
+        tracker["in_flight"] = tracker.get("in_flight", 0) + 1
+        tracker["max_in_flight"] = max(tracker.get("max_in_flight", 0), tracker["in_flight"])
+        try:
+            await asyncio.sleep(delay)
+            return RunnerResult(
+                run_status="completed",
+                results=[PerTestResult(name="t1", status="pass", duration_ms=10)],
+                duration_seconds=delay, log_path=None,
+            )
+        finally:
+            tracker["in_flight"] -= 1
+    return run_script_for_execution
+
+
+def test_dry_run_wave_runs_concurrently_not_serially(monkeypatch, tmp_path):
+    tracker: dict = {}
+    monkeypatch.setattr(mod, "reset_workspace", lambda _key: tmp_path)
+    monkeypatch.setattr(mod, "write_playwright_config", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "materialize_bundle", lambda **k: None)
+    monkeypatch.setattr(mod, "run_script_for_execution", _slow_runner(0.1, tracker))
+
+    scripts = [
+        {"script_id": i, "framework": "playwright", "compiled_files": {"a.spec.ts": "x"}}
+        for i in range(1, 6)
+    ]
+    agent = DryRunAgent()
+
+    async def run():
+        return await agent.run(scripts=scripts)
+
+    start = time.monotonic()
+    result = anyio.run(run)
+    elapsed = time.monotonic() - start
+
+    assert len(result.data["dry_runs"]) == 5
+    # 5 sequential 0.1s runs would take >=0.5s; concurrent should be ~0.1s.
+    assert elapsed < 0.3
+    assert tracker["max_in_flight"] > 1
+
+
+def test_dry_run_wave_respects_concurrency_cap(monkeypatch, tmp_path):
+    tracker: dict = {}
+    monkeypatch.setattr(mod, "reset_workspace", lambda _key: tmp_path)
+    monkeypatch.setattr(mod, "write_playwright_config", lambda *a, **k: None)
+    monkeypatch.setattr(mod, "materialize_bundle", lambda **k: None)
+    monkeypatch.setattr(mod, "run_script_for_execution", _slow_runner(0.05, tracker))
+    monkeypatch.setattr(mod, "DRY_RUN_CONCURRENCY", 2)
+
+    scripts = [
+        {"script_id": i, "framework": "playwright", "compiled_files": {"a.spec.ts": "x"}}
+        for i in range(1, 7)
+    ]
+    agent = DryRunAgent()
+
+    async def run():
+        return await agent.run(scripts=scripts)
+
+    result = anyio.run(run)
+
+    assert len(result.data["dry_runs"]) == 6
+    assert tracker["max_in_flight"] == 2

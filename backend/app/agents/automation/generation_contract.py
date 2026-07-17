@@ -63,6 +63,13 @@ class PageElement(ContractBaseModel):
     # role_hint is only meaningful when locator_strategy == "role" (e.g. "button", "heading")
     role_hint: str | None = Field(default=None, alias="roleHint")
     business_meaning: str | None = Field(default=None, alias="businessMeaning")
+    # 0-based positional disambiguator (renders as a trailing .nth(N)) for
+    # when the SAME (role, accessible name) pair genuinely resolves to
+    # multiple real elements on one page — e.g. a "Show password" icon next
+    # to both the Password and Confirm Password fields. Optional/backward
+    # compatible: absent for the overwhelming majority of elements, which
+    # resolve uniquely without it.
+    nth: int | None = Field(default=None, ge=0)
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 

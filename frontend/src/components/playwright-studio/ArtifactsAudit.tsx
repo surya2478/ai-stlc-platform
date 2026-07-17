@@ -4,6 +4,7 @@ import { CheckCircle2, ExternalLink, FileText, ShieldCheck, XCircle } from "luci
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { StudioRunDetail } from "@/lib/api";
+import { FailureInsights } from "./FailureInsights";
 
 /** Step 5 — Artifacts & Audit. Merged outcome stats, links into the
  * execution pages for artifacts (logs/screenshots/traces per result), and
@@ -20,6 +21,8 @@ export function ArtifactsAudit({ run }: { run: StudioRunDetail }) {
   );
   const passRate = totals.total > 0 ? Math.round((totals.passed / totals.total) * 100) : 0;
   const approvedKeys = run.plan?.approved_keys ?? [];
+  const healed = run.executions.reduce((acc, e) => acc + (e.auto_heal?.repaired ?? 0), 0);
+  const healAttempted = run.executions.reduce((acc, e) => acc + (e.auto_heal?.attempted ?? 0), 0);
 
   const stats: Array<{ label: string; value: string; tone?: "good" | "bad" }> = [
     { label: "Pages explored", value: String(run.plan?.explored_page_count ?? 0) },
@@ -28,11 +31,12 @@ export function ArtifactsAudit({ run }: { run: StudioRunDetail }) {
     { label: "Tests executed", value: String(totals.total) },
     { label: "Pass rate", value: `${passRate}%`, tone: passRate >= 80 ? "good" : "bad" },
     { label: "Failures", value: String(totals.failed), tone: totals.failed === 0 ? "good" : "bad" },
+    { label: "Auto-healed", value: healAttempted > 0 ? `${healed}/${healAttempted}` : "—", tone: healed > 0 ? "good" : undefined },
   ];
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-7">
         {stats.map((stat) => (
           <Card key={stat.label}>
             <CardContent className="p-3">
@@ -52,6 +56,8 @@ export function ArtifactsAudit({ run }: { run: StudioRunDetail }) {
           </Card>
         ))}
       </div>
+
+      <FailureInsights insights={run.failure_insights ?? []} />
 
       <Card>
         <CardContent className="space-y-2 p-4 text-sm">
@@ -100,6 +106,13 @@ export function ArtifactsAudit({ run }: { run: StudioRunDetail }) {
               Bulk script approval recorded one audit entry per script; scripts with known issues required an
               override note.
             </li>
+            {healAttempted > 0 && (
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                Auto-heal repaired {healed} of {healAttempted} failed test(s); fixed scripts were
+                persisted as new versions (approve them and start a new run to re-execute).
+              </li>
+            )}
             <li className="flex items-center gap-2">
               {run.status === "completed" ? (
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />

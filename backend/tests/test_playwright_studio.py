@@ -238,6 +238,55 @@ def test_propose_for_page_coerces_and_grounds(monkeypatch):
     assert second.coverage_type == "positive"
 
 
+# ── Planner: deterministic proposal capping ──────────────────────────────────
+# Never trust the LLM to self-limit a GLOBAL total across independent
+# per-page calls it has no visibility into — enforced here instead.
+
+def _proposal(key, page_url, priority="Medium", title=None):
+    return planner_mod.ProposedTestCase(
+        key=key, title=title or key, page_url=page_url, priority=priority,
+        steps=[planner_mod.PlannedStep(action="custom", description="x")],
+    )
+
+
+def test_cap_proposals_returns_unchanged_when_under_target():
+    proposals = [_proposal("a", "/home"), _proposal("b", "/home")]
+    assert planner_mod._cap_proposals(proposals, 5) == proposals
+
+
+def test_cap_proposals_prefers_higher_priority_within_a_page():
+    proposals = [
+        _proposal("low", "/home", priority="Low"),
+        _proposal("high", "/home", priority="High"),
+        _proposal("medium", "/home", priority="Medium"),
+    ]
+    capped = planner_mod._cap_proposals(proposals, 2)
+    assert [p.key for p in capped] == ["high", "medium"]
+
+
+def test_cap_proposals_round_robins_across_pages_for_diversity():
+    """A small target must not drain page 1 entirely before touching page 2 —
+    exactly the live failure: 10 pages, only the first page's proposals
+    would matter if capping just truncated the flat list."""
+    proposals = (
+        [_proposal(f"home-{i}", "/home", priority="High") for i in range(5)]
+        + [_proposal(f"signup-{i}", "/signup", priority="High") for i in range(5)]
+        + [_proposal(f"profile-{i}", "/profile", priority="High") for i in range(5)]
+    )
+    capped = planner_mod._cap_proposals(proposals, 3)
+    pages = {p.page_url for p in capped}
+    assert pages == {"/home", "/signup", "/profile"}
+    assert len(capped) == 3
+
+
+def test_cap_proposals_exact_count_deterministic_and_reproducible():
+    proposals = [_proposal(f"p{i}", "/page", priority="Medium") for i in range(20)]
+    first = planner_mod._cap_proposals(proposals, 7)
+    second = planner_mod._cap_proposals(proposals, 7)
+    assert len(first) == 7
+    assert [p.key for p in first] == [p.key for p in second]
+
+
 # ── Planner: bounded exploration run ─────────────────────────────────────────
 
 class _FakeMCPSession:
@@ -304,6 +353,103 @@ def test_planner_run_explores_within_bounds(monkeypatch, tmp_path):
     proposals = result.data["proposed_test_cases"]
     assert len(proposals) == 2
     assert proposals[0]["key"].startswith("P001-")
+
+
+def test_planner_run_applies_target_test_case_count_end_to_end(monkeypatch, tmp_path):
+    """Reproduces the exact live bug: objective said 'generate 5 Test cases'
+    but 10 explored pages proposing independently produced 25. With
+    target_test_case_count threaded through, the final proposal count must
+    match the target regardless of how many pages were explored."""
+    site = {
+        f"https://sit.example.com/page{i}": _parsed_page(
+            f"https://sit.example.com/page{i}", f"Page {i}",
+            interactive=[("button", f"Action {i}")],
+        )
+        for i in range(10)
+    }
+    site["https://sit.example.com"] = _parsed_page(
+        "https://sit.example.com", "Home",
+        links=[(f"Page {i}", f"/page{i}") for i in range(10)],
+        interactive=[("button", "Home action")],
+    )
+
+    async def fake_readiness(_inputs):
+        return SimpleNamespace(ready=True, blockers=[])
+
+    monkeypatch.setattr(planner_mod, "check_readiness", fake_readiness)
+    monkeypatch.setattr(planner_mod, "workspace_root", lambda: tmp_path)
+    monkeypatch.setattr(planner_mod, "MCPSession", _FakeMCPSession)
+    monkeypatch.setattr(planner_mod, "parse_snapshot", lambda raw: site[raw])
+
+    agent = PlaywrightPlannerAgent(llm=_FakeLLM("unused"))
+
+    async def fake_propose(page, **_kwargs):
+        # Each page proposes independently — 2 each, matching the live
+        # planner's real per-page minimum, with zero cross-page awareness.
+        return [
+            planner_mod.ProposedTestCase(
+                title=f"Case {i} for {page['title']}", page_url=page["url"],
+                steps=[planner_mod.PlannedStep(action="click", description="do it")],
+            )
+            for i in range(2)
+        ]
+
+    monkeypatch.setattr(agent, "_propose_for_page", fake_propose)
+
+    async def run():
+        return await agent.run(
+            application_id=5, application_url="https://sit.example.com",
+            environment="SIT", max_pages=10, target_test_case_count=5,
+        )
+
+    result = anyio.run(run)
+
+    assert result.success is True
+    assert result.data["explored_page_count"] == 10
+    assert result.data["total_proposed_before_cap"] == 20  # 10 pages x 2 each
+    assert len(result.data["proposed_test_cases"]) == 5
+    assert result.data["target_test_case_count"] == 5
+    # Diversity: 5 selected across pages that independently proposed 20 —
+    # must not all come from a single page.
+    pages_represented = {tc["page_url"] for tc in result.data["proposed_test_cases"]}
+    assert len(pages_represented) > 1
+
+
+def test_planner_run_ignores_target_when_under_it(monkeypatch, tmp_path):
+    """A target larger than what was actually proposed must not force
+    fabricating more test cases — it's a ceiling, never a floor."""
+    site = {
+        "https://sit.example.com": _parsed_page(
+            "https://sit.example.com", "Home", interactive=[("button", "Go")],
+        ),
+    }
+
+    async def fake_readiness(_inputs):
+        return SimpleNamespace(ready=True, blockers=[])
+
+    monkeypatch.setattr(planner_mod, "check_readiness", fake_readiness)
+    monkeypatch.setattr(planner_mod, "workspace_root", lambda: tmp_path)
+    monkeypatch.setattr(planner_mod, "MCPSession", _FakeMCPSession)
+    monkeypatch.setattr(planner_mod, "parse_snapshot", lambda raw: site[raw])
+
+    agent = PlaywrightPlannerAgent(llm=_FakeLLM("unused"))
+
+    async def fake_propose(page, **_kwargs):
+        return [planner_mod.ProposedTestCase(
+            title="Only case", page_url=page["url"],
+            steps=[planner_mod.PlannedStep(action="click", description="do it")],
+        )]
+
+    monkeypatch.setattr(agent, "_propose_for_page", fake_propose)
+
+    async def run():
+        return await agent.run(
+            application_id=5, application_url="https://sit.example.com",
+            environment="SIT", max_pages=5, target_test_case_count=50,
+        )
+
+    result = anyio.run(run)
+    assert len(result.data["proposed_test_cases"]) == 1
 
 
 def test_planner_run_fails_when_environment_not_ready(monkeypatch):
@@ -496,6 +642,36 @@ def test_approve_plan_materializes_and_enqueues_waves(monkeypatch):
     assert enqueued[0]["input_data"]["studio_run_id"] == run_row.id
 
 
+def test_approve_plan_stores_explored_page_paths_from_every_planner_page(monkeypatch):
+    plan = _planner_output()
+    # The planner explored two pages; both must be available to ground
+    # multi-hop navigation, not just the proposal's own page_url.
+    plan["pages"].append({
+        "url": "https://sit.example.com/sign-up?role=candidate", "title": "Sign up", "elements": [], "blockers": [],
+    })
+    run_row = _studio_run(status="plan_ready", plan=plan)
+    db = _FakeDB()
+
+    async def fake_payload(db_, *, project_id, test_case_ids):
+        return GenerationPayload(test_cases=[{"id": i} for i in test_case_ids])
+
+    async def fake_enqueue(db_, **kwargs):
+        return SimpleNamespace(id=400), "task"
+
+    monkeypatch.setattr(studio_mod, "build_generation_payload", fake_payload)
+    monkeypatch.setattr(studio_mod, "enqueue_agent_run", fake_enqueue)
+
+    async def run():
+        return await studio_mod.approve_plan(db, run_row, user_id=1, included_keys=None, notes=None)
+
+    anyio.run(run)
+    tc = [o for o in db.added if isinstance(o, TestCase)][0]
+    assert tc.metadata_["explored_page_paths"] == [
+        "https://sit.example.com",
+        "https://sit.example.com/sign-up?role=candidate",
+    ]
+
+
 def test_approve_plan_explicit_keys_can_include_blocked(monkeypatch):
     run_row = _studio_run(status="plan_ready", plan=_planner_output())
     db = _FakeDB()
@@ -646,6 +822,205 @@ def test_reconcile_completes_executing_run():
 
     anyio.run(run)
     assert run_row.status == "completed"
+
+
+# ── Route grounding (automation_agent) ──────────────────────────────────────
+
+def _contract(steps):
+    from app.agents.automation.generation_contract import AutomationGenerationContract
+    return AutomationGenerationContract.model_validate({
+        "contractVersion": "1.0", "testCaseId": "TC-1", "testType": "functional",
+        "scriptType": "playwright-typescript", "environmentProfile": "SIT",
+        "businessFlow": "x", "preconditions": [], "testDataBindings": [],
+        "pageObjects": [], "steps": steps, "expectedResults": [], "assertions": [],
+        "apiValidations": [], "dbValidations": [], "cleanupActions": [], "evidenceRequired": [],
+    })
+
+
+def test_ground_entry_route_overrides_llm_guessed_route():
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([
+        {"phase": "arrange", "action": "navigate", "value": "/employer/signup"},
+        {"phase": "act", "action": "custom", "description": "fill the form"},
+    ])
+    changed = _ground_entry_route(
+        contract, "https://rankix.ai/sign-up?role=employer", "https://rankix.ai"
+    )
+    assert changed is True
+    assert contract.steps[0].value == "/sign-up?role=employer"
+    assert contract.steps[0].target is None
+
+
+def test_ground_entry_route_inserts_navigate_when_missing():
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([{"phase": "act", "action": "custom", "description": "do something"}])
+    changed = _ground_entry_route(contract, "https://rankix.ai/profile", "https://rankix.ai")
+    assert changed is True
+    assert contract.steps[0].action == "navigate"
+    assert contract.steps[0].value == "/profile"
+
+
+def test_ground_entry_route_skips_cross_host_and_missing_page():
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([{"phase": "arrange", "action": "navigate", "value": "/keep-me"}])
+    assert _ground_entry_route(contract, "https://other-host.com/x", "https://rankix.ai") is False
+    assert _ground_entry_route(contract, None, "https://rankix.ai") is False
+    assert contract.steps[0].value == "/keep-me"
+
+
+def test_approve_plan_prepends_grounded_navigation_step(monkeypatch):
+    plan = _planner_output()
+    plan["proposed_test_cases"][0]["page_url"] = "https://sit.example.com/sign-up?role=employer"
+    run_row = _studio_run(status="plan_ready", plan=plan)
+    db = _FakeDB()
+
+    async def fake_payload(db_, *, project_id, test_case_ids):
+        return GenerationPayload(test_cases=[{"id": i} for i in test_case_ids])
+
+    async def fake_enqueue(db_, **kwargs):
+        return SimpleNamespace(id=300), "task"
+
+    monkeypatch.setattr(studio_mod, "build_generation_payload", fake_payload)
+    monkeypatch.setattr(studio_mod, "enqueue_agent_run", fake_enqueue)
+
+    async def run():
+        return await studio_mod.approve_plan(db, run_row, user_id=1, included_keys=None, notes=None)
+
+    anyio.run(run)
+    tc = [o for o in db.added if isinstance(o, TestCase)][0]
+    assert tc.steps[0]["action"] == "Navigate to /sign-up?role=employer"
+    assert tc.metadata_["page_url"] == "https://sit.example.com/sign-up?role=employer"
+
+
+# ── Failure insights ─────────────────────────────────────────────────────────
+
+def _failed_row(error, name="t", classification=None, stack=""):
+    metadata = {"failure_classification": {"classification": classification}} if classification else {}
+    return SimpleNamespace(
+        error_message=error, stack_trace=stack, test_name=name, metadata_=metadata
+    )
+
+
+def test_failure_insights_bucket_and_rank():
+    rows = [
+        _failed_row("TimeoutError: locator.fill: Timeout 15000ms exceeded.\nwaiting for getByRole('textbox')", "signup email"),
+        _failed_row("TimeoutError: locator.click: Timeout 15000ms exceeded.\nwaiting for getByRole('link', { name: 'Dashboard' })", "menu links"),
+        _failed_row("TimeoutError: page.waitForURL: Timeout 30000ms exceeded.", "candidate link"),
+        _failed_row("net::ERR_NAME_NOT_RESOLVED at https://sit.example.com", "reset password"),
+        _failed_row("some assertion failed", "profile", classification="data_issue"),
+    ]
+    insights = studio_mod._derive_failure_insights(rows)
+    kinds = [i["kind"] for i in insights]
+    # error severity first (environment), then warnings, then info.
+    assert kinds[0] == "environment_unreachable"
+    assert "element_not_found" in kinds
+    assert "url_assertion_mismatch" in kinds
+    assert "test_data_required" in kinds
+    element = next(i for i in insights if i["kind"] == "element_not_found")
+    assert element["count"] == 2
+    assert "signup email" in element["examples"]
+    assert all(i["action"] for i in insights)
+
+
+def test_failure_insights_empty_for_no_failures():
+    assert studio_mod._derive_failure_insights([]) == []
+
+
+# ── Target test case count: natural-language fallback parsing ───────────────
+# Reproduces the exact live bug: objective said "generate 5 Test cases" but
+# the run produced 25 — each of 10 explored pages proposed independently
+# with no shared awareness of a global target.
+
+def test_parse_target_count_from_objective_matches_real_user_input():
+    assert studio_mod._parse_target_count_from_objective(
+        "Explore the Rankix application and generate 5 Test cases and perform testing"
+    ) == 5
+
+
+@pytest.mark.parametrize("objective,expected", [
+    ("Generate 12 TCs for checkout", 12),
+    ("Create 3 tests for login", 3),
+    ("only 7 test cases please", 7),
+    ("No number here at all", None),
+    ("", None),
+    (None, None),
+])
+def test_parse_target_count_from_objective_variants(objective, expected):
+    assert studio_mod._parse_target_count_from_objective(objective) == expected
+
+
+@pytest.mark.parametrize("objective", [
+    "Cover at least 5 test cases for checkout",
+    "We need a minimum of 10 test cases",
+    "Generate more than 3 test cases",
+])
+def test_parse_target_count_from_objective_ignores_floor_phrasing(objective):
+    """'At least N' / 'minimum of N' / 'more than N' state a floor, not a
+    ceiling — capping to them would do the opposite of what was asked."""
+    assert studio_mod._parse_target_count_from_objective(objective) is None
+
+
+def test_parse_target_count_from_objective_rejects_out_of_range():
+    assert studio_mod._parse_target_count_from_objective("Generate 0 test cases") is None
+    assert studio_mod._parse_target_count_from_objective("Generate 500 test cases") is None
+
+
+# ── create_run: explicit field takes precedence over the fallback ───────────
+
+def test_create_run_prefers_explicit_target_over_objective_parsing():
+    db = _FakeDB(get_map={(ProjectApplication, 5): _application()})
+    payload = _create_payload(objective="generate 5 test cases", target_test_case_count=10)
+
+    async def run():
+        return await studio_mod.create_run(db, project_id=1, user_id=1, data=payload)
+
+    run_row = anyio.run(run)
+    assert run_row.config["target_test_case_count"] == 10
+
+
+def test_create_run_falls_back_to_objective_parsing_when_field_unset():
+    db = _FakeDB(get_map={(ProjectApplication, 5): _application()})
+    payload = _create_payload(objective="generate 5 test cases")
+
+    async def run():
+        return await studio_mod.create_run(db, project_id=1, user_id=1, data=payload)
+
+    run_row = anyio.run(run)
+    assert run_row.config["target_test_case_count"] == 5
+
+
+def test_create_run_target_test_case_count_none_when_unspecified():
+    db = _FakeDB(get_map={(ProjectApplication, 5): _application()})
+    payload = _create_payload(objective="Explore the order flow")
+
+    async def run():
+        return await studio_mod.create_run(db, project_id=1, user_id=1, data=payload)
+
+    run_row = anyio.run(run)
+    assert run_row.config["target_test_case_count"] is None
+
+
+def test_start_exploration_forwards_target_test_case_count(monkeypatch):
+    captured = {}
+
+    async def fake_enqueue(db, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(id=77), "task-1"
+
+    monkeypatch.setattr(studio_mod, "enqueue_agent_run", fake_enqueue)
+    run_row = _studio_run(config={
+        **_studio_run().config, "target_test_case_count": 5,
+    })
+    db = _FakeDB()
+
+    async def run():
+        return await studio_mod.start_exploration(db, run_row, user_id=1)
+
+    anyio.run(run)
+    assert captured["input_data"]["target_test_case_count"] == 5
 
 
 # ── Persistence branch: playwright_planner ──────────────────────────────────

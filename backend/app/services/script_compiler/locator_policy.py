@@ -51,7 +51,9 @@ def _escape_py(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def render_locator_playwright(strategy: str, value: str, role_hint: str | None = None) -> str:
+def render_locator_playwright(
+    strategy: str, value: str, role_hint: str | None = None, nth: int | None = None
+) -> str:
     """Render a Playwright TypeScript locator expression for a given
     strategy/value — the one place that decides what `getByX(...)` looks
     like, so the compiler's output is deterministic for a given contract.
@@ -61,27 +63,37 @@ def render_locator_playwright(strategy: str, value: str, role_hint: str | None =
     from `[name='q']` attribute-selector syntax, terminated the string
     literal early) before this was fixed. CSS/xpath selectors routinely
     contain quotes; role names/labels/text can too.
+
+    `nth`, when given, appends `.nth(N)` — the positional disambiguator for
+    when the same (role, accessible name) pair genuinely resolves to
+    multiple real elements on one page (e.g. two identically-labelled
+    "Show password" icon buttons). Without it, the base locator alone
+    causes a Playwright "strict mode violation" at runtime (confirmed via a
+    live run) since it isn't unique on the real page.
     """
     value = _escape_js(value)
     if strategy == "role":
         role = _escape_js(role_hint or "button")
-        return f"page.getByRole('{role}', {{ name: '{value}', exact: true }})"
-    if strategy == "label":
-        return f"page.getByLabel('{value}')"
-    if strategy == "placeholder":
-        return f"page.getByPlaceholder('{value}')"
-    if strategy == "text":
-        return f"page.getByText('{value}')"
-    if strategy == "testid":
-        return f"page.getByTestId('{value}')"
-    if strategy == "css":
-        return f"page.locator('{value}')"
-    if strategy == "xpath":
-        return f"page.locator('xpath={value}')"
-    raise ValueError(f"Unknown locator strategy: {strategy}")
+        base = f"page.getByRole('{role}', {{ name: '{value}', exact: true }})"
+    elif strategy == "label":
+        base = f"page.getByLabel('{value}')"
+    elif strategy == "placeholder":
+        base = f"page.getByPlaceholder('{value}')"
+    elif strategy == "text":
+        base = f"page.getByText('{value}')"
+    elif strategy == "testid":
+        base = f"page.getByTestId('{value}')"
+    elif strategy == "css":
+        base = f"page.locator('{value}')"
+    elif strategy == "xpath":
+        base = f"page.locator('xpath={value}')"
+    else:
+        raise ValueError(f"Unknown locator strategy: {strategy}")
+    return f"{base}.nth({nth})" if nth is not None else base
 
 
 _QUOTED = r"((?:[^'\\]|\\.)*)"  # a single-quoted JS string body, escapes tolerated
+_NTH_SUFFIX = re.compile(r"^(.*)\.nth\((\d+)\)$")
 
 _PARSE_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
     ("role", re.compile(rf"^page\.getByRole\('{_QUOTED}',\s*\{{\s*name:\s*'{_QUOTED}'(?:,\s*exact:\s*(true|false))?\s*\}}\)$")),
@@ -112,9 +124,9 @@ def _unescape_js(value: str) -> str:
     return "".join(result)
 
 
-def parse_locator_playwright(rendered: str) -> tuple[str, str, str | None] | None:
+def parse_locator_playwright(rendered: str) -> tuple[str, str, str | None, int | None] | None:
     """Inverse of `render_locator_playwright` — recover (strategy, value,
-    role_hint) from an already-rendered locator expression.
+    role_hint, nth) from an already-rendered locator expression.
 
     Used to ground a contract element directly from a locator_map catalog
     entry's `recommended_locator` string when the LLM names an element after
@@ -129,17 +141,27 @@ def parse_locator_playwright(rendered: str) -> tuple[str, str, str | None] | Non
     this, a value containing a quote would come back from parsing still
     escaped (e.g. `input[name=\\'q\\']`), which then gets *re*-escaped on
     the next render, corrupting the locator further with each round-trip.
+
+    A trailing `.nth(N)` (see render_locator_playwright) is stripped first
+    and returned separately — the base-locator patterns below never need to
+    know about it.
     """
+    candidate = rendered.strip()
+    nth: int | None = None
+    nth_match = _NTH_SUFFIX.match(candidate)
+    if nth_match:
+        candidate = nth_match.group(1)
+        nth = int(nth_match.group(2))
     for kind, pattern in _PARSE_PATTERNS:
-        m = pattern.match(rendered.strip())
+        m = pattern.match(candidate)
         if not m:
             continue
         if kind == "role":
-            return "role", _unescape_js(m.group(2)), _unescape_js(m.group(1))
+            return "role", _unescape_js(m.group(2)), _unescape_js(m.group(1)), nth
         if kind == "role_no_name":
-            return "role", "", _unescape_js(m.group(1))
+            return "role", "", _unescape_js(m.group(1)), nth
         if kind in ("label", "placeholder", "text", "testid", "xpath", "css"):
-            return kind, _unescape_js(m.group(1)), None
+            return kind, _unescape_js(m.group(1)), None, nth
     return None
 
 
@@ -191,6 +213,66 @@ def filter_catalog_by_page(catalog: list[dict] | None, base_url: str | None) -> 
     return scoped or catalog
 
 
+def _explored_paths(explored_page_paths: list[str] | None) -> list[str]:
+    paths = []
+    for url in explored_page_paths or []:
+        parsed = urlparse(url)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        paths.append(path)
+    return paths
+
+
+def check_url_targets_grounded(
+    contract: "AutomationGenerationContract", explored_page_paths: list[str] | None
+) -> list[str]:
+    """The navigation counterpart of element grounding: verify every
+    wait_for_url step and url-type assertion targets a page the planner
+    actually captured, not an LLM-guessed pattern.
+
+    A multi-hop flow (click a link, land on a second page) needs its
+    destination checked against the FULL set of explored pages, not just
+    the test's own entry page — that's what explored_page_paths carries
+    (every page the planner's crawl visited for this application). Returns
+    descriptive refs for anything that doesn't match any explored path, in
+    the same shape as _check_grounding's ungrounded_elements — callers feed
+    both into the same retry/warning machinery.
+
+    Substring matching, not exact equality: a wait_for_url regex like
+    "role=candidate" is correctly grounded against the explored path
+    "/sign-up?role=candidate" without needing to reproduce it verbatim.
+    Only regex anchors (^ $) are stripped from the needle — NOT a leading
+    "/", which is semantically load-bearing (a bug caught by the very live
+    failure this function exists to catch: "/candidate" must NOT match
+    "/sign-up?role=candidate" just because "candidate" appears after "=" —
+    stripping the slash first would erase exactly the distinction that made
+    the real regex fail against the real URL). Skipped entirely when no
+    explored paths are known (regular, non-Studio test cases) — silence,
+    not a false positive, when there's nothing to check against.
+    """
+    paths = _explored_paths(explored_page_paths)
+    if not paths:
+        return []
+
+    def _grounded(value: str | None) -> bool:
+        if not value:
+            return True
+        needle = value.strip().strip("^$")
+        if not needle:
+            return True
+        return any(needle.lower() in path.lower() for path in paths)
+
+    ungrounded: list[str] = []
+    for step in contract.steps:
+        if step.action == "wait_for_url" and not _grounded(step.value):
+            ungrounded.append(f"wait_for_url:{step.value}")
+    for assertion in contract.assertions:
+        if assertion.type == "url" and not _grounded(assertion.expected):
+            ungrounded.append(f"url_assertion:{assertion.expected}")
+    return ungrounded
+
+
 _FILLABLE_ROLE_HINTS = frozenset({"textbox", "combobox", "searchbox", "search"})
 
 
@@ -198,10 +280,11 @@ def _apply_catalog_entry(element, entry: dict) -> bool:
     parsed = parse_locator_playwright(entry.get("recommended_locator") or "")
     if parsed is None:
         return False
-    strategy, value, role_hint = parsed
+    strategy, value, role_hint, nth = parsed
     element.locator_strategy = strategy
     element.locator_value = value
     element.role_hint = role_hint
+    element.nth = nth
     return True
 
 

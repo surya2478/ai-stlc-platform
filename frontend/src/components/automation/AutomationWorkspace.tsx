@@ -201,6 +201,7 @@ export function AutomationWorkspace({
           isExternal={isExternal}
           isGrounded={variant === "grounded"}
           stage={stage}
+          gateFailed={script?.status === "generated" && script?.static_gate_result?.passed === false}
           scriptStatus={script?.status ?? null}
           busyApprove={busyApprove}
           busyTransition={busyTransition}
@@ -312,6 +313,39 @@ function QualityBanner({ script, onGenerate }: { script: AutomationScript | null
     );
   }
 
+  // Phase 2.5's Static Quality Gate (see static_quality_gate.py) runs
+  // synchronously right after generation. A failing gate leaves status
+  // "generated" forever — the script is silently excluded from the
+  // automatic dry-run chain (agent_tasks._build_dry_run_input only picks up
+  // "static_passed") and never reaches the repair loop either, since that
+  // only triggers after a dry run. Regeneration is the only way forward.
+  if (script.status === "generated" && script.static_gate_result?.passed === false) {
+    const violations = script.static_gate_result.violations ?? [];
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-red-800">Static quality gate failed</p>
+          {violations.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-[11px] text-red-700">
+              {violations.map((v, i) => (
+                <li key={i}>• {v.message}</li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-1 text-[11px] text-red-700">
+            This script won&apos;t reach dry run or review on its own — regenerate it to clear
+            these violations.
+          </p>
+        </div>
+        <Button size="sm" onClick={onGenerate} className="shrink-0 gap-1.5 bg-red-600 text-white hover:bg-red-700">
+          <Sparkles className="h-3.5 w-3.5" />
+          Regenerate
+        </Button>
+      </div>
+    );
+  }
+
   if (quality.ungroundedElements.length > 0) {
     return (
       <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
@@ -404,6 +438,7 @@ function ActionBar({
   isExternal,
   isGrounded,
   stage,
+  gateFailed,
   scriptStatus,
   busyApprove,
   busyTransition,
@@ -419,6 +454,7 @@ function ActionBar({
   isExternal: boolean;
   isGrounded: boolean;
   stage: string;
+  gateFailed: boolean;
   scriptStatus: string | null;
   busyApprove: boolean;
   busyTransition: boolean;
@@ -452,7 +488,9 @@ function ActionBar({
   }
 
   if (isGrounded && hasScript) {
-    return <GroundedActionBar stage={stage} busy={busyLifecycle} onApprove={onLifecycleApprove} />;
+    return (
+      <GroundedActionBar stage={stage} gateFailed={gateFailed} busy={busyLifecycle} onApprove={onLifecycleApprove} />
+    );
   }
 
   // Mirror the backend transition map (automation_service.py _TRANSITIONS):
@@ -544,13 +582,24 @@ function ActionBar({
 // script has actually proven it runs.
 function GroundedActionBar({
   stage,
+  gateFailed,
   busy,
   onApprove,
 }: {
   stage: string;
+  gateFailed: boolean;
   busy: boolean;
   onApprove: (action: LifecycleApprovalAction) => Promise<void>;
 }) {
+  if (stage === "generated" && gateFailed) {
+    return (
+      <p className="text-[11px] text-slate-500">
+        The static quality gate failed — see the notice above to view the violations and
+        regenerate.
+      </p>
+    );
+  }
+
   if (stage === "generated" || stage === "static_passed") {
     return (
       <p className="text-[11px] text-slate-500">

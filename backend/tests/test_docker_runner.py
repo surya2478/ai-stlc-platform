@@ -243,6 +243,109 @@ def _placeholder(pk, script_id):
     )
 
 
+def test_execute_batch_studio_run_auto_heals_failures(monkeypatch, tmp_path):
+    """Studio batches (metadata carries studio_run_id) auto-heal every failed
+    result through classify_and_repair and record the summary; legacy batches
+    (no studio_run_id) never call it."""
+    monkeypatch.setattr(automation_tasks_module, "reset_workspace", lambda key: tmp_path / str(key))
+    monkeypatch.setattr(automation_tasks_module, "write_pytest_config", lambda workspace: None)
+    monkeypatch.setattr(
+        automation_tasks_module, "materialize_script",
+        lambda *, workspace, framework, code, suggested_file_path: "test_example.py",
+    )
+
+    async def failing_runner(**_kwargs):
+        return RunnerResult(
+            run_status="completed",
+            results=[PerTestResult(name="test_example", status="fail", duration_ms=10, error_message="Timeout")],
+            duration_seconds=0.01, log_path=None,
+        )
+
+    monkeypatch.setattr(automation_tasks_module, "run_script_for_execution", failing_runner)
+
+    async def fake_classify(_db, *, execution_run_id):
+        return 1
+
+    healed = []
+
+    async def fake_classify_and_repair(_db, *, execution_result, triggered_by):
+        healed.append((execution_result.id, triggered_by))
+        return {"repaired": True, "repairable": True, "new_script_id": 990 + execution_result.id}
+
+    monkeypatch.setattr(automation_tasks_module.automation_service, "classify_failed_results", fake_classify)
+    monkeypatch.setattr(automation_tasks_module.automation_service, "classify_and_repair", fake_classify_and_repair)
+
+    run = ExecutionRun(
+        id=99, project_id=1, created_by=7, execution_id="ER-0099", suite_name="Studio batch",
+        environment="SIT", status="queued", execution_type="automation",
+        source_type="automation_local_batch", total_tests=1, passed=0, failed=0,
+        skipped=0, execution_logs=[],
+        metadata_={
+            "source_type": "automation_local_batch",
+            "automation_script_ids": [1],
+            "studio_run_id": 30,
+        },
+    )
+    db = _TaskDB(run, {1: _script(1)}, [_placeholder(1, 1)])
+    monkeypatch.setattr(automation_tasks_module, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+
+    async def _go():
+        return await _execute_batch(99, 600)
+
+    anyio.run(_go)
+
+    assert healed == [(1, 7)]  # healed the failed result, attributed to the run creator
+    heal = run.metadata_["auto_heal"]
+    assert heal["attempted"] == 1
+    assert heal["repaired"] == 1
+    assert heal["new_script_ids"] == [991]
+    assert "healing" in [s["stage"] for s in run.metadata_["stages"]]
+
+
+def test_execute_batch_legacy_run_does_not_auto_heal(monkeypatch, tmp_path):
+    monkeypatch.setattr(automation_tasks_module, "reset_workspace", lambda key: tmp_path / str(key))
+    monkeypatch.setattr(automation_tasks_module, "write_pytest_config", lambda workspace: None)
+    monkeypatch.setattr(
+        automation_tasks_module, "materialize_script",
+        lambda *, workspace, framework, code, suggested_file_path: "test_example.py",
+    )
+
+    async def failing_runner(**_kwargs):
+        return RunnerResult(
+            run_status="completed",
+            results=[PerTestResult(name="test_example", status="fail", duration_ms=10, error_message="boom")],
+            duration_seconds=0.01, log_path=None,
+        )
+
+    monkeypatch.setattr(automation_tasks_module, "run_script_for_execution", failing_runner)
+
+    async def fake_classify(_db, *, execution_run_id):
+        return 1
+
+    async def fail_if_called(_db, **_kwargs):
+        raise AssertionError("classify_and_repair must not run for legacy batches")
+
+    monkeypatch.setattr(automation_tasks_module.automation_service, "classify_failed_results", fake_classify)
+    monkeypatch.setattr(automation_tasks_module.automation_service, "classify_and_repair", fail_if_called)
+
+    run = ExecutionRun(
+        id=99, project_id=1, created_by=7, execution_id="ER-0099", suite_name="Legacy batch",
+        environment="SIT", status="queued", execution_type="automation",
+        source_type="automation_local_batch", total_tests=1, passed=0, failed=0,
+        skipped=0, execution_logs=[],
+        metadata_={"source_type": "automation_local_batch", "automation_script_ids": [1]},
+    )
+    db = _TaskDB(run, {1: _script(1)}, [_placeholder(1, 1)])
+    monkeypatch.setattr(automation_tasks_module, "AsyncSessionLocal", lambda: _AsyncSessionFactory(db))
+
+    async def _go():
+        return await _execute_batch(99, 600)
+
+    anyio.run(_go)
+
+    assert "auto_heal" not in (run.metadata_ or {})
+
+
 def test_execute_batch_parallel_mode_passes_runner_mode_and_runs_all(monkeypatch, tmp_path):
     monkeypatch.setattr(automation_tasks_module, "reset_workspace", lambda key: tmp_path / str(key))
     monkeypatch.setattr(automation_tasks_module, "write_pytest_config", lambda workspace: None)

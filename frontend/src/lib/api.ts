@@ -1267,6 +1267,20 @@ export const testDataApi = {
 
 // ── Automation ────────────────────────────────────────────────────────────────
 
+export interface StaticGateViolation {
+  code: string;
+  message: string;
+  severity: "block" | "warn";
+}
+
+export interface StaticGateResult {
+  passed: boolean;
+  violations: StaticGateViolation[];
+  warnings: StaticGateViolation[];
+  syntax_check: "passed" | "failed" | "skipped";
+  syntax_check_detail?: string | null;
+}
+
 export interface AutomationScript {
   id: number;
   project_id: number;
@@ -1280,6 +1294,7 @@ export interface AutomationScript {
   status: string;
   agent_run_id?: number | null;
   metadata_?: Record<string, unknown> | null;
+  static_gate_result?: StaticGateResult | null;
   created_at: string;
   updated_at: string;
 }
@@ -1681,6 +1696,7 @@ export interface StudioRunConfig {
   browser?: string;
   max_pages?: number;
   max_minutes?: number;
+  target_test_case_count?: number | null;
   framework?: string;
   runner_mode?: "local" | "docker";
   parallelism?: number;
@@ -1725,6 +1741,11 @@ export interface StudioPlan {
   pages: Array<{ url: string; title?: string | null; element_count: number; blockers: string[] }>;
   proposed_test_cases: StudioProposal[];
   approved_keys?: string[];
+  // Present when a target_test_case_count was set and the plan was
+  // trimmed to it — total_proposed_before_cap is what every page proposed
+  // independently before the deterministic cap was applied.
+  total_proposed_before_cap?: number | null;
+  target_test_case_count?: number | null;
 }
 
 export interface StudioAgentRunSummary {
@@ -1747,6 +1768,15 @@ export interface StudioScriptSummary {
   last_dry_run?: Record<string, unknown> | null;
 }
 
+export interface StudioAutoHealSummary {
+  attempted: number;
+  repaired: number;
+  not_repairable: number;
+  errors: number;
+  new_script_ids: number[];
+  capped: boolean;
+}
+
 export interface StudioExecutionSummary {
   id: number;
   execution_id: string;
@@ -1755,6 +1785,16 @@ export interface StudioExecutionSummary {
   passed: number;
   failed: number;
   skipped: number;
+  auto_heal?: StudioAutoHealSummary | null;
+}
+
+export interface StudioFailureInsight {
+  kind: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  action: string;
+  count: number;
+  examples: string[];
 }
 
 export interface StudioRunDetail extends StudioRun {
@@ -1764,6 +1804,7 @@ export interface StudioRunDetail extends StudioRun {
   scripts: StudioScriptSummary[];
   script_counts: Record<string, number>;
   executions: StudioExecutionSummary[];
+  failure_insights: StudioFailureInsight[];
 }
 
 export interface StudioRunCreatePayload {
@@ -1777,6 +1818,7 @@ export interface StudioRunCreatePayload {
   browser?: string;
   max_pages?: number;
   max_minutes?: number;
+  target_test_case_count?: number;
   framework?: string;
   runner_mode?: "local" | "docker";
   parallelism?: number;

@@ -76,7 +76,41 @@ def _rank_elements(parsed: ParsedSnapshot) -> list[dict]:
             "confidence_score": confidence,
             "href": el.href,
         })
+    _disambiguate_duplicate_names(ranked)
     return ranked
+
+
+def _disambiguate_duplicate_names(ranked: list[dict]) -> None:
+    """Two elements can share an identical (role, accessible name) pair on
+    the same page — e.g. a "Show password" icon button next to BOTH the
+    Password and Confirm Password fields. Left alone, both collapse to the
+    same element_name, the locator_map upsert (keyed by application_id/
+    page/element_name) keeps only one, and the surviving
+    getByRole(role, {name}) locator matches BOTH real elements at runtime —
+    a Playwright "strict mode violation" (confirmed via a live run: exactly
+    this "Show password" case). Mutates `ranked` in place: every occurrence
+    after the first gets a distinct element_name (index suffix, so both
+    survive as separate locator_map rows instead of colliding) and a
+    `.nth(i)` appended to its locator — positional disambiguation being the
+    only signal an accessibility-tree snapshot actually offers for
+    otherwise-identical elements.
+    """
+    groups: dict[str, list[dict]] = {}
+    for entry in ranked:
+        if entry["accessible_name"]:  # only named elements go through render_locator_playwright
+            groups.setdefault(entry["element_name"], []).append(entry)
+    for base_name, group in groups.items():
+        if len(group) < 2:
+            continue
+        for index, entry in enumerate(group):
+            if index > 0:
+                # element_name elsewhere is always slugify()'d (underscore
+                # separator only) — matching that convention here keeps the
+                # suffix indistinguishable from a "real" slugified name.
+                entry["element_name"] = f"{base_name}_{index + 1}"
+            entry["recommended_locator"] = locator_policy.render_locator_playwright(
+                "role", entry["accessible_name"], entry["role"], nth=index
+            )
 
 
 def _step_text(test_cases: list[dict]) -> str:

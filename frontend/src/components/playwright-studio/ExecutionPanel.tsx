@@ -4,6 +4,7 @@ import { Container, Loader2, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { StudioRunDetail } from "@/lib/api";
+import { FailureInsights } from "./FailureInsights";
 
 function executionStatusVariant(status: string): "success" | "warning" | "destructive" | "outline" {
   if (status === "completed") return "success";
@@ -99,20 +100,55 @@ export function ExecutionPanel({ run }: { run: StudioRunDetail }) {
         </CardContent>
       </Card>
 
+      <FailureInsights insights={run.failure_insights ?? []} />
+
+      {run.executions.some((e) => e.auto_heal) && (
+        <Card>
+          <CardContent className="space-y-2 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Wrench className="h-4 w-4 text-violet-600" /> Auto-Heal Results
+            </div>
+            {run.executions.filter((e) => e.auto_heal).map((execution) => {
+              const heal = execution.auto_heal!;
+              return (
+                <div key={execution.id} className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-medium">{execution.execution_id}:</span>
+                  <Badge variant={heal.repaired > 0 ? "success" : "outline"}>
+                    {heal.repaired}/{heal.attempted} healed
+                  </Badge>
+                  {heal.not_repairable > 0 && (
+                    <Badge variant="warning">{heal.not_repairable} not auto-repairable</Badge>
+                  )}
+                  {heal.errors > 0 && <Badge variant="destructive">{heal.errors} heal error(s)</Badge>}
+                  {heal.new_script_ids.length > 0 && (
+                    <span className="text-muted-foreground">
+                      {heal.new_script_ids.length} fixed script version(s) created — approve them and
+                      start a new run to re-execute.
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="flex items-start gap-2 p-4 text-xs text-muted-foreground">
           <Wrench className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
           <span>
-            Failures are automatically classified (app defect / locator issue / data / environment /
-            API / timeout) as each batch finishes. Repairable failures (locator/timeout) can be
-            healed from the run detail in{" "}
+            When a batch finishes, every failure is classified (app defect / locator issue / data /
+            environment / API / timeout), and Studio batches then <b>auto-heal</b>: each repairable
+            failure (locator/timeout) gets a contract patch → compile → static gate → dry run cycle,
+            persisting fixed scripts as new versions with full rollback history. Non-repairable
+            classes (real defects, test data, environment) are routed to you — no LLM can fix a
+            wrong password. Per-result detail lives in{" "}
             <a
               className="text-violet-600 underline"
               href={`/execution/automation?project=${run.project_id}`}
             >
               Automation Execution
-            </a>{" "}
-            — each repair compiles a new script version with full rollback history.
+            </a>.
           </span>
         </CardContent>
       </Card>

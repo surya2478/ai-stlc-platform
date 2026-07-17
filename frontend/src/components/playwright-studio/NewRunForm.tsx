@@ -55,6 +55,7 @@ export function NewRunForm({
   const [excludedPaths, setExcludedPaths] = useState("");
   const [maxPages, setMaxPages] = useState(10);
   const [maxMinutes, setMaxMinutes] = useState(20);
+  const [targetTestCaseCount, setTargetTestCaseCount] = useState<string>("");
   const [runnerMode, setRunnerMode] = useState<"local" | "docker">("docker");
   const [parallelism, setParallelism] = useState(4);
   const [timeoutSeconds, setTimeoutSeconds] = useState(600);
@@ -110,6 +111,7 @@ export function NewRunForm({
           .filter(Boolean),
         max_pages: maxPages,
         max_minutes: maxMinutes,
+        target_test_case_count: targetTestCaseCount.trim() ? Number(targetTestCaseCount) : undefined,
         framework: "playwright",
         runner_mode: runnerMode,
         parallelism,
@@ -207,6 +209,10 @@ export function NewRunForm({
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
             />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Mentioning a count here (e.g. “generate 5 test cases”) is honored on a best-effort basis —
+              for a reliable cap, use “Target test case count” below instead.
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -252,6 +258,15 @@ export function NewRunForm({
                 type="number" min={1} max={60} className={inputClass}
                 value={maxMinutes}
                 onChange={(e) => setMaxMinutes(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Target test case count (optional)</label>
+              <input
+                type="number" min={1} max={200} className={inputClass}
+                placeholder="e.g. 5 — leave blank to let coverage decide"
+                value={targetTestCaseCount}
+                onChange={(e) => setTargetTestCaseCount(e.target.value)}
               />
             </div>
             <div>

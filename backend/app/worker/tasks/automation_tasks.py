@@ -403,6 +403,55 @@ def run_automation_script(self, execution_run_id: int, timeout_seconds: int = 60
         raise
 
 
+# Bounds LLM cost per batch: each heal is a classify + up to 3 full
+# patch->compile->gate->dry-run cycles. 25 covers any sane wave; a batch
+# with more failures than that has a systemic cause auto-healing can't fix.
+MAX_AUTO_HEAL_PER_BATCH = 25
+
+
+async def _auto_heal_studio_failures(db: AsyncSession, run: ExecutionRun) -> dict:
+    """Playwright AI Studio auto-heal: run the same classify→patch→compile→
+    gate→dry-run cycle the manual "Repair" button runs, for EVERY failed
+    result of a Studio batch — the Studio's premise is bulk execution
+    without per-item babysitting. Fixed scripts persist as NEW versions
+    (parent never mutated); non-repairable classifications (app defect /
+    data / environment / api) are counted and left for human routing.
+    Commits after each heal so pollers see live movement."""
+    failed = await db.execute(
+        select(ExecutionResult).where(
+            ExecutionResult.execution_run_id == run.id,
+            ExecutionResult.status == "fail",
+        )
+    )
+    failed_results = [r for r in failed.scalars().all() if r.status == "fail"]
+    summary: dict = {
+        "attempted": 0,
+        "repaired": 0,
+        "not_repairable": 0,
+        "errors": 0,
+        "new_script_ids": [],
+        "capped": len(failed_results) > MAX_AUTO_HEAL_PER_BATCH,
+    }
+    for result_row in failed_results[:MAX_AUTO_HEAL_PER_BATCH]:
+        summary["attempted"] += 1
+        try:
+            outcome = await automation_service.classify_and_repair(
+                db, execution_result=result_row, triggered_by=run.created_by
+            )
+        except Exception:
+            logger.exception("Auto-heal crashed for execution result %s", result_row.id)
+            summary["errors"] += 1
+            continue
+        if outcome.get("repaired"):
+            summary["repaired"] += 1
+            if outcome.get("new_script_id"):
+                summary["new_script_ids"].append(outcome["new_script_id"])
+        elif not outcome.get("repairable"):
+            summary["not_repairable"] += 1
+        await db.commit()
+    return summary
+
+
 async def _execute_batch(execution_run_id: int, timeout_seconds: int) -> dict:
     """Run every script listed in metadata_.automation_script_ids sequentially
     against ONE ExecutionRun ("Run All Eligible"). Progress is committed after
@@ -542,6 +591,14 @@ async def _execute_batch(execution_run_id: int, timeout_seconds: int) -> dict:
         # through the dry-run chain's failure_classification agent.
         if total_failed:
             await automation_service.classify_failed_results(db, execution_run_id=run.id)
+            # Studio batches heal automatically; legacy batches keep repair
+            # on-demand (the failure drawer's "Repair" button) — unchanged.
+            if (run.metadata_ or {}).get("studio_run_id"):
+                stages = _append_stage(run, "healing")
+                run.metadata_ = {**(run.metadata_ or {}), "stages": stages}
+                await db.commit()
+                heal_summary = await _auto_heal_studio_failures(db, run)
+                run.metadata_ = {**(run.metadata_ or {}), "auto_heal": heal_summary}
 
         run.status = "completed" if any_completed else "failed"
         run.total_tests = total_passed + total_failed + total_skipped
