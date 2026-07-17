@@ -40,6 +40,7 @@ langchain==0.2.1
 langchain-community==0.2.1
 langgraph==0.1.4
 langchain-openai==0.1.8
+gTTS==2.5.1
 
 # ── Browser Automation (GAP-2: portal URL analysis) ──────────────────────────
 playwright==1.44.0

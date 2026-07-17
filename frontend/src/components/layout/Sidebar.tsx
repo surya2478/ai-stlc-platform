@@ -8,7 +8,7 @@ import {
   TestTube2, Play, Bug, BarChart3, Settings,
   Bot, ChevronRight, ChevronDown, Users, Database,
   ChevronLeft, Brain, BookOpen,
-  Hand, Cpu, Sparkles, Gauge, Table2,
+  Hand, Cpu, Sparkles, Gauge, Table2, Video,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -75,6 +75,7 @@ const NAV_ITEMS: NavGroup[] = [
     items: [
       { label: "Project Settings", href: "/settings", icon: Settings },
       { label: "Users & Roles", href: "/users", icon: Users },
+      { label: "AI Video Maker", href: "/video_generator.html", icon: Video },
     ],
   },
 ];

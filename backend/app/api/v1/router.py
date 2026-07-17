@@ -8,7 +8,7 @@ from app.api.v1.endpoints import (
     requirements, test_plans, test_cases, test_suites,
     test_data, automation, execution, defects,
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
-    applications, reviews, playwright_studio, mcp_connections,
+    applications, reviews, playwright_studio, mcp_connections, video,
 )
 
 api_router = APIRouter()
@@ -39,4 +39,5 @@ api_router.include_router(resource_ops.router, prefix="/resource-operations", ta
 api_router.include_router(reviews.router, prefix="/reviews", tags=["Reviews"])
 api_router.include_router(playwright_studio.router, prefix="/playwright-studio", tags=["Playwright AI Studio"])
 api_router.include_router(mcp_connections.router, prefix="/mcp-connections", tags=["MCP Connections"])
+api_router.include_router(video.router, prefix="/video", tags=["Video"])
 
