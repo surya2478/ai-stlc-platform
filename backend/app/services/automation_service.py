@@ -354,6 +354,8 @@ async def create_new_version(
     compiled_files: dict | None = None,
     contract: dict | None = None,
     status: str = "generated",
+    file_path: str | None = None,
+    execution_command: str | None = None,
 ) -> AutomationScript:
     """Create a new AutomationScript version superseding `parent` (Phase 2,
     ADR-001 rollback guarantee). The parent row is never mutated or
@@ -361,6 +363,13 @@ async def create_new_version(
     the caller has confirmed the new version is promoted; this helper does
     not do that itself, since "promoted" is a later-phase (repair loop /
     healing) decision, not a generic versioning concern.
+
+    file_path/execution_command default to the parent's values, but callers
+    that recompiled the contract (e.g. the repair loop) must pass the fresh
+    values through explicitly — the compiler derives the spec file name from
+    contract.business_flow, which a repair patch can reword, so blindly
+    inheriting the parent's file_path can point execution_command at a file
+    that was never written to disk under the new compiled_files.
     """
     child = AutomationScript(
         project_id=parent.project_id,
@@ -368,10 +377,10 @@ async def create_new_version(
         created_by=parent.created_by,
         script_id=temporary_id("AS"),
         framework=parent.framework,
-        file_path=parent.file_path,
+        file_path=file_path or parent.file_path,
         code=code,
         setup_required=parent.setup_required,
-        execution_command=parent.execution_command,
+        execution_command=execution_command or parent.execution_command,
         version=parent.version + 1,
         parent_script_id=parent.id,
         compiled_files=compiled_files,
@@ -431,6 +440,8 @@ async def persist_repair_outcome(
             compiled_files=attempt["compiled_files"],
             contract=attempt["contract"],
             status=status,
+            file_path=attempt["file_path"],
+            execution_command=attempt.get("execution_command"),
         )
         new_version.static_gate_result = attempt.get("static_gate_result")
         new_version.metadata_ = {
@@ -493,6 +504,22 @@ async def persist_repair_outcome(
 
     if last_version is not None and not repair.get("resolved"):
         last_version.metadata_ = {**(last_version.metadata_ or {}), "repair_loop_exhausted": True}
+    elif last_version is None and repair.get("attempts"):
+        # Every attempt failed before producing anything compilable (all
+        # llm_patch_failed / compile_failed / url_not_grounded) — there's no
+        # new version to attach the failure detail to, but the original
+        # script must not look like self-heal was never attempted. Record
+        # what was tried and why it didn't converge directly on the parent
+        # row, since that's the only row left to attach it to.
+        current_parent.metadata_ = {
+            **(current_parent.metadata_ or {}),
+            "repair_loop_exhausted": True,
+            "repair_attempts": [
+                {"attempt": a.get("attempt"), "outcome": a.get("outcome"), "detail": a.get("detail")}
+                for a in repair.get("attempts", [])
+            ],
+        }
+        await db.flush()
 
     return last_version
 
@@ -573,9 +600,17 @@ async def classify_and_repair(
     application_url = None
     environment = "QA"
     catalog: list[dict] = []
+    explored_page_paths: list[str] = []
     tc = await db.get(TestCase, script.test_case_id) if script.test_case_id else None
     if tc:
         environment = tc.test_phase or "QA"
+        # Studio-planned test cases carry the full set of pages the planner
+        # crawled — without this the repair loop can only tweak locators
+        # and waits, never a wrong navigation target, so a whole class of
+        # failures (guessed wait_for_url/url-assertion patterns) survives
+        # every repair attempt (observed live 2026-07-12: attempted=4,
+        # repaired=0 for exactly this reason).
+        explored_page_paths = (tc.metadata_ or {}).get("explored_page_paths") or []
         application = await db.get(ProjectApplication, tc.application_id) if tc.application_id else None
         if application is None:
             application = await resolve_default_application(db, script.project_id)
@@ -600,6 +635,7 @@ async def classify_and_repair(
         "application_url": application_url,
         "environment": environment,
         "locator_catalog": catalog,
+        "explored_page_paths": explored_page_paths,
         "failure": {
             "classification": classification_info.get("classification"),
             "error_message": execution_result.error_message,

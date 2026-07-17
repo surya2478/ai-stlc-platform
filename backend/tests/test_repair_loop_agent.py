@@ -57,7 +57,7 @@ def _script_data(**overrides):
 
 
 def test_repair_succeeds_on_first_attempt(monkeypatch):
-    monkeypatch.setattr(mod, "get_llm", lambda *_a, **_k: _FakeLLM(json.dumps(FIXED_CONTRACT)))
+    monkeypatch.setattr(mod, "get_llm_for_role", lambda *_a, **_k: _FakeLLM(json.dumps(FIXED_CONTRACT)))
 
     async def fake_dry_run(self, scripts):
         return AgentRunResult(success=True, data={"dry_runs": [{
@@ -82,7 +82,7 @@ def test_repair_succeeds_on_first_attempt(monkeypatch):
 
 
 def test_repair_exhausts_after_max_attempts_when_never_passing(monkeypatch):
-    monkeypatch.setattr(mod, "get_llm", lambda *_a, **_k: _FakeLLM(json.dumps(FIXED_CONTRACT)))
+    monkeypatch.setattr(mod, "get_llm_for_role", lambda *_a, **_k: _FakeLLM(json.dumps(FIXED_CONTRACT)))
 
     async def fake_dry_run(self, scripts):
         return AgentRunResult(success=True, data={"dry_runs": [{
@@ -108,7 +108,7 @@ def test_repair_exhausts_after_max_attempts_when_never_passing(monkeypatch):
 
 
 def test_repair_exits_early_when_new_failure_is_not_repairable(monkeypatch):
-    monkeypatch.setattr(mod, "get_llm", lambda *_a, **_k: _FakeLLM(json.dumps(FIXED_CONTRACT)))
+    monkeypatch.setattr(mod, "get_llm_for_role", lambda *_a, **_k: _FakeLLM(json.dumps(FIXED_CONTRACT)))
 
     async def fake_dry_run(self, scripts):
         return AgentRunResult(success=True, data={"dry_runs": [{
@@ -135,7 +135,7 @@ def test_repair_exits_early_when_new_failure_is_not_repairable(monkeypatch):
 
 
 def test_repair_stops_when_llm_returns_unparseable_response(monkeypatch):
-    monkeypatch.setattr(mod, "get_llm", lambda *_a, **_k: _FakeLLM("not json at all"))
+    monkeypatch.setattr(mod, "get_llm_for_role", lambda *_a, **_k: _FakeLLM("not json at all"))
 
     agent = RepairLoopAgent()
 
@@ -151,7 +151,7 @@ def test_repair_stops_when_llm_returns_unparseable_response(monkeypatch):
 
 def test_repair_stops_when_patched_contract_is_invalid(monkeypatch):
     invalid_contract = {**ORIGINAL_CONTRACT, "steps": [{"phase": "act", "action": "not_a_real_action"}]}
-    monkeypatch.setattr(mod, "get_llm", lambda *_a, **_k: _FakeLLM(json.dumps(invalid_contract)))
+    monkeypatch.setattr(mod, "get_llm_for_role", lambda *_a, **_k: _FakeLLM(json.dumps(invalid_contract)))
 
     agent = RepairLoopAgent()
 
@@ -176,7 +176,7 @@ def test_repair_loop_fails_cleanly_with_no_scripts():
 
 
 def test_one_script_crashing_does_not_block_others(monkeypatch):
-    monkeypatch.setattr(mod, "get_llm", lambda *_a, **_k: _FakeLLM(json.dumps(FIXED_CONTRACT)))
+    monkeypatch.setattr(mod, "get_llm_for_role", lambda *_a, **_k: _FakeLLM(json.dumps(FIXED_CONTRACT)))
 
     async def fake_dry_run(self, scripts):
         return AgentRunResult(success=True, data={"dry_runs": [{

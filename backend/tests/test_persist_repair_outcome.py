@@ -35,7 +35,86 @@ def _parent(**overrides) -> AutomationScript:
     return AutomationScript(**data)
 
 
+def test_new_version_uses_the_attempts_own_file_path_and_execution_command():
+    # The compiler derives the spec file name from contract.business_flow, so
+    # a repair patch that rewords business_flow produces a different
+    # compiled_files key than the parent's file_path. If create_new_version
+    # blindly inherited the parent's file_path/execution_command, the
+    # persisted version would reference a spec file that was never written
+    # (Playwright: "No tests found" at execution time) — see the real
+    # tc_0008 incident this regression test is modeled on.
+    db = _FakeDB()
+    parent = _parent(
+        file_path="specs/tc_0008_old_business_flow_wording.spec.ts",
+        execution_command="npx playwright test specs/tc_0008_old_business_flow_wording.spec.ts",
+    )
+    repair = {
+        "resolved": True,
+        "attempts": [{
+            "attempt": 1,
+            "contract": {"testCaseId": "TC-8"},
+            "compiled_files": {"specs/tc_0008_new_business_flow_wording.spec.ts": "attempt code"},
+            "file_path": "specs/tc_0008_new_business_flow_wording.spec.ts",
+            "execution_command": "npx playwright test specs/tc_0008_new_business_flow_wording.spec.ts",
+            "static_gate_passed": True,
+            "dry_run_passed": True,
+            "dry_run_result": {"run_status": "completed", "results": [{"name": "t1", "status": "pass"}]},
+            "outcome": "passed",
+        }],
+    }
+
+    async def run():
+        return await persist_repair_outcome(
+            db, project_id=8, triggered_by=1, agent_run_id=None,
+            parent_script=parent, repair=repair,
+        )
+
+    version = anyio.run(run)
+
+    assert version.file_path == "specs/tc_0008_new_business_flow_wording.spec.ts"
+    assert version.execution_command == "npx playwright test specs/tc_0008_new_business_flow_wording.spec.ts"
+    # The persisted file_path must actually be a key in compiled_files —
+    # that's the invariant the runner depends on.
+    assert version.file_path in version.compiled_files
+
+
 def test_returns_none_when_no_attempt_ever_compiled():
+    # Real incident this is modeled on (TC-0009): a static-gate "missing
+    # assertion" violation chained into the repair loop, the LLM was
+    # reachable and responded three times, but every attempt failed before
+    # producing anything compilable. persist_repair_outcome silently
+    # discarded the entire attempt history — the script sat at its original
+    # "generated" status with zero trace that self-heal had even run,
+    # indistinguishable from never having been attempted at all.
+    db = _FakeDB()
+    parent = _parent()
+    repair = {
+        "resolved": False,
+        "attempts": [
+            {"attempt": 1, "outcome": "llm_patch_failed", "detail": "APIConnectionError: Connection error."},
+            {"attempt": 2, "outcome": "compile_failed", "detail": "1 validation error for AutomationGenerationContract"},
+            {"attempt": 3, "outcome": "compile_failed", "detail": "1 validation error for AutomationGenerationContract"},
+        ],
+    }
+
+    async def run():
+        return await persist_repair_outcome(
+            db, project_id=8, triggered_by=1, agent_run_id=None,
+            parent_script=parent, repair=repair,
+        )
+
+    version = anyio.run(run)
+
+    assert version is None  # no new AutomationScript row — nothing compiled, nothing to version
+    assert parent.metadata_["repair_loop_exhausted"] is True
+    assert parent.metadata_["repair_attempts"] == [
+        {"attempt": 1, "outcome": "llm_patch_failed", "detail": "APIConnectionError: Connection error."},
+        {"attempt": 2, "outcome": "compile_failed", "detail": "1 validation error for AutomationGenerationContract"},
+        {"attempt": 3, "outcome": "compile_failed", "detail": "1 validation error for AutomationGenerationContract"},
+    ]
+
+
+def test_returns_none_when_no_attempt_ever_compiled_legacy_shape():
     db = _FakeDB()
     repair = {"resolved": False, "attempts": [{"attempt": 1, "outcome": "llm_patch_failed"}]}
 

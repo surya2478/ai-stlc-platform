@@ -16,6 +16,7 @@ import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.config import get_settings
 
@@ -126,6 +127,12 @@ export default defineConfig({{
   fullyParallel: false,
   retries: 0,
   workers: 1,
+  // Playwright's default per-test timeout is 30s — empirically too tight for
+  // LLM-authored multi-step flows against slow SIT environments plus
+  // cold-start Docker runner containers (every non-locator Studio batch
+  // failure observed live on 2026-07-11 was "Test timeout of 30000ms
+  // exceeded"). The runner's own subprocess hard cap still bounds the run.
+  timeout: 90_000,
   reporter: [
     ['list'],
     ['json', {{ outputFile: 'results.json' }}],
@@ -135,12 +142,42 @@ export default defineConfig({{
     locale: 'en-US',
     timezoneId: 'America/New_York',
     storageState: 'storageState.json',
+    actionTimeout: 15_000,
+    navigationTimeout: 30_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   }},
+  expect: {{ timeout: 10_000 }},
 }});
 """
+
+
+def google_locale_cookie(target_url: str | None) -> dict | None:
+    """PREF=hl=en forces Google's UI to render in English regardless of the
+    request's geographic locale (e.g. google.ae defaults to Arabic without
+    it) — locators grounded against an English-rendered page become
+    unreliable otherwise. Only applies when target_url's host actually is a
+    google.<tld> domain, matched dynamically instead of a hardcoded
+    .google.com, so it also covers google.ae, google.co.uk, etc. Shared by
+    both the crawler (planner_agent) and the test runner (this module) so
+    the locale forced during discovery matches what's forced at execution.
+    """
+    host = (urlparse(target_url).hostname or "").lower() if target_url else ""
+    labels = host.split(".")
+    if "google" not in labels:
+        return None
+    registrable_domain = ".".join(labels[labels.index("google"):])
+    return {
+        "name": "PREF",
+        "value": "hl=en",
+        "domain": f".{registrable_domain}",
+        "path": "/",
+        "expires": 1800000000,
+        "httpOnly": False,
+        "secure": True,
+        "sameSite": "Lax",
+    }
 
 
 def _render_playwright_config(base_url: str | None, test_dir: str) -> str:
@@ -173,19 +210,9 @@ def write_playwright_config(workspace: Path, base_url: str | None = None, test_d
     (workspace / "package.json").write_text(
         json.dumps(PLAYWRIGHT_PACKAGE_JSON, indent=2), encoding="utf-8"
     )
+    cookie = google_locale_cookie(base_url)
     storage_state = {
-        "cookies": [
-            {
-                "name": "PREF",
-                "value": "hl=en",
-                "domain": ".google.com",
-                "path": "/",
-                "expires": 1800000000,
-                "httpOnly": False,
-                "secure": True,
-                "sameSite": "Lax"
-            }
-        ],
+        "cookies": [cookie] if cookie else [],
         "origins": []
     }
     (workspace / "storageState.json").write_text(

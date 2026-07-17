@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession, require_entity_permission, require_entity_project_access, require_permission, require_project_access
 from app.config import get_settings
+from app.models.agent import AgentLog
 from app.models.automation_script import AutomationScript
 from app.models.execution import ExecutionResult, ExecutionRun
 from app.models.project_application import ProjectApplication
@@ -47,7 +48,7 @@ from app.schemas.automation import (
 from app.services import automation_confidence_service, automation_intelligence
 from app.schemas.execution import ExecutionResultOut
 from app.schemas.requirement import ApprovalRequest
-from app.services import agent_run_service, approval_service, automation_execution_service, automation_service, traceability_service
+from app.services import agent_run_service, approval_service, automation_execution_service, automation_service
 from app.services.agent_dispatch_service import enqueue_agent_run
 from app.services.automation_generation_service import build_generation_payload
 from app.services.automation_runner import runtime_status
@@ -64,8 +65,7 @@ from app.services.rbac_service import (
     EXECUTE_TESTS,
     GENERATE_AUTOMATION,
 )
-from app.agents.automation.automation_agent import AutomationScriptAgent
-from app.integrations.automation.framework_adapters import framework_language
+from app.worker.tasks.agent_tasks import _run_agent_task
 
 router = APIRouter()
 settings = get_settings()
@@ -608,133 +608,73 @@ async def trigger_automation_agent(
             )
         raise HTTPException(status_code=422, detail="No valid test cases found")
 
+    input_data = {
+        "test_cases": test_cases,
+        "framework": body.framework,
+        "locator_map": locator_map_by_application,
+    }
+    run_metadata = {"approved_test_case_ids": [tc["id"] for tc in test_cases]}
+
     if not _run_agents_synchronously():
         agent_run, task_id = await enqueue_agent_run(
             db,
             project_id=body.project_id,
             user_id=current_user.id,
             agent_name="automation_script",
-            input_data={
-                "test_cases": test_cases,
-                "framework": body.framework,
-                "locator_map": locator_map_by_application,
-            },
-            metadata={"approved_test_case_ids": [tc["id"] for tc in test_cases]},
+            input_data=input_data,
+            metadata=run_metadata,
         )
         return JSONResponse(
             status_code=202,
             content={"message": "Automation script generation queued", "agent_run_id": agent_run.id, "task_id": task_id},
         )
 
-    user_id = current_user.id
+    # Synchronous mode: delegate to the exact same per-agent pipeline the
+    # Celery worker uses for the queued path (_run_agent_task), just awaited
+    # in-process instead of dispatched through the broker. This used to
+    # reimplement script persistence inline here, which had silently
+    # drifted from the real pipeline: it never ran the static quality gate,
+    # never linked coverage_matrix, and — because it called
+    # AutomationScriptAgent() directly instead of going through
+    # _run_agent_task — never fired chain_on_success, so generated scripts
+    # skipped dry-run/self-heal entirely and sat at status "ai_draft"
+    # forever. It also never passed locator_map_by_application to the
+    # agent, so live-DOM grounding silently never applied in this (default)
+    # synchronous mode regardless of whether discovery had run.
     agent_run = await agent_run_service.start_agent_run(
         db,
         project_id=body.project_id,
-        user_id=user_id,
+        user_id=current_user.id,
         agent_name="automation_script",
-        input_data=body.model_dump(mode="json"),
-        metadata={"approved_test_case_ids": [tc["id"] for tc in test_cases]},
+        input_data=input_data,
+        metadata=run_metadata,
     )
 
-    agent = AutomationScriptAgent()
-    agent_result = await agent.run(test_cases=test_cases, framework=body.framework)
-
-    if not agent_result.success:
-        await agent_run_service.fail_agent_run(
-            db,
-            agent_run,
-            error_message=agent_result.error or "Agent failed",
-            agent_result=agent_result,
-        )
-        await db.commit()
-        raise HTTPException(status_code=500, detail=agent_result.error or "Agent failed")
-
-    # Map test_case_id string back to DB id
-    tc_map = {tc["test_case_id"]: tc["id"] for tc in test_cases}
-
-    scripts_data = agent_result.data.get("scripts", [])
-    agent_errors = [log["message"] for log in (agent_result.logs or []) if log.get("level") == "warning"]
-    if not scripts_data:
-        detail = "; ".join(agent_errors) if agent_errors else "LLM returned no parseable scripts"
-        await agent_run_service.fail_agent_run(
-            db,
-            agent_run,
-            error_message=f"Agent generated 0 scripts: {detail}",
-            agent_result=agent_result,
-        )
-        await db.commit()
-        raise HTTPException(status_code=500, detail=f"Agent generated 0 scripts: {detail}")
-
-    def _to_str(val) -> str:
-        """Coerce LLM value to string if needed (handles list/dict returns)."""
-        if val is None:
-            return ""
-        if isinstance(val, str):
-            return val
-        import json as _json
-        return _json.dumps(val)
-
-    def _to_str_list(val) -> list[str] | None:
-        if val is None:
-            return None
-        if isinstance(val, list):
-            return [_to_str(item) for item in val]
-        return [_to_str(val)]
-
-    created_ids = []
-    for i, sc_data in enumerate(scripts_data):
-        tc_id_str = sc_data.get("test_case_id")
-        db_tc_id = tc_map.get(tc_id_str)
-
-        script = AutomationScript(
-            project_id=body.project_id,
-            test_case_id=db_tc_id,
-            created_by=user_id,
-            script_id=temporary_id("AS"),
-            framework=body.framework,
-            file_path=_to_str(sc_data.get("file_path")) or None,
-            code=_to_str(sc_data.get("code")),
-            setup_required=_to_str_list(sc_data.get("setup_required")),
-            execution_command=_to_str(sc_data.get("execution_command")) or None,
-            status="ai_draft",
-            agent_run_id=agent_run.id,
-            metadata_={
-                "language": framework_language(body.framework),
-                "repository": "Connected repository pending",
-                "branch": "codex/automation-drafts",
-                "coverage_hint": "Generated from approved test case",
-                "suite": "Generated Drafts",
-                "review_state": "pending_human_review",
-                "source": "ai_generation",
-            },
-        )
-        db.add(script)
-        await db.flush()
-        script.script_id = display_id("AS", script.id)
-        await db.flush()
-        if db_tc_id is not None:
-            await traceability_service.create_lineage(
-                db,
-                project_id=body.project_id,
-                parent_type="test_case",
-                parent_id=db_tc_id,
-                child_type="automation_script",
-                child_id=script.id,
-                agent_run_id=agent_run.id,
-            )
-        created_ids.append(script.id)
-
-    await agent_run_service.complete_agent_run(
-        db,
-        agent_run,
-        agent_result=agent_result,
-        output_data={"script_ids": created_ids, "count": len(created_ids)},
+    task_result = await _run_agent_task(
+        f"sync-{agent_run.id}", agent_run.id, "automation_script", input_data
     )
-    await db.commit()
+    await db.refresh(agent_run)
+
+    if task_result.get("status") != "completed":
+        detail = task_result.get("error") or agent_run.error_message or "Agent failed"
+        raise HTTPException(status_code=500, detail=detail)
+
+    script_ids = (agent_run.output_data or {}).get("script_ids", [])
+    if not script_ids:
+        raise HTTPException(status_code=500, detail="Agent generated 0 scripts")
+
+    logs_result = await db.execute(
+        select(AgentLog).where(AgentLog.agent_run_id == agent_run.id).order_by(AgentLog.id)
+    )
+    agent_logs = [
+        {"level": log.level, "step": log.step, "message": log.message, "data": log.data}
+        for log in logs_result.scalars().all()
+    ]
+
     return {
-        "message": f"Generated {len(created_ids)} automation scripts",
-        "script_ids": created_ids,
-        "agent_logs": agent_result.logs,
+        "message": f"Generated {len(script_ids)} automation scripts",
+        "script_ids": script_ids,
+        "agent_logs": agent_logs,
         "agent_run_id": agent_run.id,
     }
 

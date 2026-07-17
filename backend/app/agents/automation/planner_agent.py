@@ -41,7 +41,7 @@ from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.config import get_settings
 from app.llm.provider import get_llm
 from app.services.automation_runner.readiness import ReadinessInputs, check_readiness
-from app.services.automation_runner.workspace import workspace_root
+from app.services.automation_runner.workspace import google_locale_cookie, workspace_root
 from app.services.script_compiler.naming import slugify
 
 logger = logging.getLogger(__name__)
@@ -133,6 +133,53 @@ def _in_scope_links(parsed, base_url: str, *, allowed_host: str, excluded_paths:
     return links
 
 
+_PRIORITY_RANK = {"High": 0, "Medium": 1, "Low": 2}
+
+
+def _cap_proposals(proposals: list[ProposedTestCase], target: int) -> list[ProposedTestCase]:
+    """Deterministically trim to `target` total proposals.
+
+    Each explored page proposes independently (see _propose_for_page) with
+    no visibility into what other pages already proposed, so a
+    per-page-only cap can't produce a correct GLOBAL total — the LLM has no
+    mechanism to coordinate across calls it doesn't know exist. Enforced
+    here instead, after collection, the same "never trust the LLM to
+    self-limit what a deterministic step can guarantee" principle used
+    throughout the compiler/grounding pipeline.
+
+    Round-robins across pages (in first-seen order) rather than draining
+    page 1 first, so a small target still samples multiple pages; within
+    each page, higher-priority proposals are taken first.
+    """
+    by_page: dict[str, list[ProposedTestCase]] = {}
+    page_order: list[str] = []
+    for proposal in proposals:
+        key = proposal.page_url or ""
+        if key not in by_page:
+            by_page[key] = []
+            page_order.append(key)
+        by_page[key].append(proposal)
+    for queue in by_page.values():
+        queue.sort(key=lambda p: _PRIORITY_RANK.get(p.priority, 1))
+
+    selected: list[ProposedTestCase] = []
+    cursors = {key: 0 for key in page_order}
+    while len(selected) < target:
+        progressed = False
+        for key in page_order:
+            if len(selected) >= target:
+                break
+            cursor = cursors[key]
+            queue = by_page[key]
+            if cursor < len(queue):
+                selected.append(queue[cursor])
+                cursors[key] = cursor + 1
+                progressed = True
+        if not progressed:
+            break
+    return selected
+
+
 class PlaywrightPlannerAgent(BaseAgent):
     """Explores a live application and proposes grounded test cases."""
 
@@ -149,12 +196,18 @@ class PlaywrightPlannerAgent(BaseAgent):
         excluded_paths: list[str] | None = None,
         max_pages: int = DEFAULT_MAX_PAGES,
         max_minutes: int = DEFAULT_MAX_MINUTES,
+        target_test_case_count: int | None = None,
     ) -> AgentRunResult:
         self._logs.clear()
         coverage_types = [c for c in (coverage_types or ["positive", "negative"]) if c]
         excluded_paths = excluded_paths or []
         max_pages = max(1, min(int(max_pages or DEFAULT_MAX_PAGES), HARD_MAX_PAGES))
         deadline = time.monotonic() + max(1, int(max_minutes or DEFAULT_MAX_MINUTES)) * 60
+        if target_test_case_count is not None:
+            try:
+                target_test_case_count = max(1, min(int(target_test_case_count), 200))
+            except (TypeError, ValueError):
+                target_test_case_count = None
 
         if not application_url:
             return AgentRunResult(success=False, error="No application URL provided", data={}, logs=self._logs)
@@ -178,19 +231,9 @@ class PlaywrightPlannerAgent(BaseAgent):
         output_dir = workspace_root() / "studio_planner" / uuid.uuid4().hex
         output_dir.mkdir(parents=True, exist_ok=True)
         state_file = output_dir / "storageState.json"
+        cookie = google_locale_cookie(application_url)
         state_file.write_text(json.dumps({
-            "cookies": [
-                {
-                    "name": "PREF",
-                    "value": "hl=en",
-                    "domain": ".google.com",
-                    "path": "/",
-                    "expires": 1800000000,
-                    "httpOnly": False,
-                    "secure": True,
-                    "sameSite": "Lax"
-                }
-            ],
+            "cookies": [cookie] if cookie else [],
             "origins": []
         }), encoding="utf-8")
         config = MCPSessionConfig(
@@ -259,6 +302,15 @@ class PlaywrightPlannerAgent(BaseAgent):
             )
             proposals.extend(page_proposals)
 
+        total_proposed = len(proposals)
+        if target_test_case_count is not None and total_proposed > target_test_case_count:
+            proposals = _cap_proposals(proposals, target_test_case_count)
+            self.log(
+                "info", "capped",
+                f"Trimmed {total_proposed} proposal(s) down to the requested {target_test_case_count} "
+                "(each page proposes independently, so the total is capped after collection).",
+            )
+
         for idx, proposal in enumerate(proposals, start=1):
             proposal.key = f"P{idx:03d}-{slugify(proposal.title)[:60]}"
 
@@ -275,6 +327,8 @@ class PlaywrightPlannerAgent(BaseAgent):
                 "pages": pages,
                 "proposed_test_cases": [p.model_dump() for p in proposals],
                 "explored_page_count": len(pages),
+                "total_proposed_before_cap": total_proposed,
+                "target_test_case_count": target_test_case_count,
             },
             logs=self._logs,
         )
@@ -353,5 +407,6 @@ class PlaywrightPlannerAgent(BaseAgent):
             excluded_paths=input_data.get("excluded_paths"),
             max_pages=input_data.get("max_pages", DEFAULT_MAX_PAGES),
             max_minutes=input_data.get("max_minutes", DEFAULT_MAX_MINUTES),
+            target_test_case_count=input_data.get("target_test_case_count"),
         )
         return result.data
