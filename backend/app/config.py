@@ -50,6 +50,7 @@ class Settings(BaseSettings):
         "together",
         "cerebras",
         "mistral",
+        "ai_gateway",
     ] = "ollama"
     default_llm_model: str = "llama3.1"
 
@@ -57,6 +58,17 @@ class Settings(BaseSettings):
     # Ollama: a multimodal model such as "llava" or "qwen2.5vl" (must be pulled).
     # OpenAI-compatible: any vision-capable model (e.g. "gpt-4o-mini").
     default_vision_model: str = "llava"
+
+    # ── AI Gateway: 3-model role routing ────────────────────────────────────
+    # Single OpenAI-compatible gateway (one base URL + one API key) fronting
+    # three role-specific models. When disabled, legacy DEFAULT_LLM_* /
+    # DEFAULT_VISION_MODEL behavior applies unchanged.
+    ai_gateway_enabled: bool = False
+    ai_gateway_base_url: str = ""
+    ai_gateway_api_key: str = ""
+    llm_coding_model: str = "qwen3-coder-next"
+    llm_vision_model: str = "qwen3-vl-8b"
+    llm_reasoning_model: str = "gpt-oss-20b"
 
     # Ollama
     ollama_base_url: str = "http://ollama:11434"

@@ -20,7 +20,7 @@ import logging
 
 from app.agents.structured_schemas import AiAssistSuggestion
 from app.config import get_settings
-from app.llm.provider import LLMCircuitOpenError, get_llm, validate_vision_configuration
+from app.llm.provider import LLMCircuitOpenError, get_llm_for_role, validate_vision_configuration
 from app.llm.structured import parse_and_validate_llm_output
 from app.models.execution import ManualStepResult
 
@@ -122,11 +122,11 @@ async def suggest_step_outcome(
         has_screenshot=use_vision,
     )
 
-    llm = get_llm(settings.default_llm_provider, settings.default_llm_model)
+    llm = get_llm_for_role("reasoning")
 
     try:
         if use_vision:
-            vision_llm = get_llm(settings.default_llm_provider, settings.default_vision_model)
+            vision_llm = get_llm_for_role("vision")
             b64 = base64.b64encode(screenshot_bytes).decode("ascii")
             response_text = await vision_llm.generate_vision(
                 system=_SYSTEM_PROMPT,

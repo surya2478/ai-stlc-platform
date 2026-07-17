@@ -47,17 +47,25 @@ from app.models.requirement_review import RequirementQualityReview
 from app.models.test_case import TestCase
 from app.models.test_plan import TestPlan
 from app.models.test_scenario import TestScenario
-from app.llm.provider import LLMRouteOverride, reset_llm_route_override, set_llm_route_override
+from app.llm.provider import (
+    LLMRouteOverride,
+    reset_llm_role_route_overrides,
+    reset_llm_route_override,
+    set_llm_role_route_overrides,
+    set_llm_route_override,
+)
+from app.llm.roles import role_for_scope
 from app.services import agent_run_service
 from app.services import artifact_review_service
 from app.services import automation_service
 from app.services import coverage_matrix_service
 from app.services import locator_map_service
 from app.services import static_quality_gate
+from app.services.script_compiler import locator_policy
 from app.services import requirement_service
 from app.services.display_id_service import display_id, temporary_id
 from app.services.project_application_service import resolve_default_application, resolve_environment_url
-from app.services.project_llm_settings_service import resolve_project_llm_routes
+from app.services.project_llm_settings_service import list_settings, resolve_project_llm_routes
 from app.services import traceability_service
 from app.worker.celery_app import celery_app
 
@@ -172,6 +180,7 @@ async def _playwright_planner(input_data: dict[str, Any]) -> Any:
         excluded_paths=input_data.get("excluded_paths"),
         max_pages=input_data.get("max_pages", 10),
         max_minutes=input_data.get("max_minutes", 20),
+        target_test_case_count=input_data.get("target_test_case_count"),
     )
 
 
@@ -263,9 +272,19 @@ class AgentSpec:
     retry_policy: str = "default"  # default | none | aggressive
     chain_on_success: tuple[str, ...] = ()
     module_scope: str | None = None
+    # Explicit LLM role pin. Only needed when an agent's module_scope maps to
+    # the "wrong" role via SCOPE_ROLE_MAP (e.g. test_planning's own scope is
+    # shared with the coding-role scenario/test-case agents, but planning
+    # itself is a reasoning task). Leave unset to inherit from module_scope.
+    llm_role: str | None = None
 
 
 DEFAULT_AGENT_SPEC = AgentSpec()
+
+
+def agent_role(agent_name: str) -> str:
+    spec = get_agent_spec(agent_name)
+    return spec.llm_role or role_for_scope(spec.module_scope)
 
 # Timeouts reflect real observed cost: LLM-only generators stay near the
 # original 120s default; multi-call graphs (URL/code analysis crawl multiple
@@ -279,7 +298,10 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     "ui_image_analysis": AgentSpec(timeout_seconds=180.0, module_scope="requirement"),
     "url_analysis": AgentSpec(timeout_seconds=240.0, module_scope="requirement"),
     "code_analysis": AgentSpec(timeout_seconds=240.0, module_scope="requirement"),
-    "test_planning": AgentSpec(timeout_seconds=180.0, module_scope="test_planning"),
+    # Explicit reasoning pin: module_scope="test_planning" is shared with the
+    # scenario/test-case generator agents below (which correctly inherit
+    # "coding" from SCOPE_ROLE_MAP), but planning itself is a reasoning task.
+    "test_planning": AgentSpec(timeout_seconds=180.0, module_scope="test_planning", llm_role="reasoning"),
     "test_scenario": AgentSpec(
         timeout_seconds=180.0, module_scope="test_planning", chain_on_success=("scenario_review",)
     ),
@@ -309,13 +331,28 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     # its output is a *proposal* that must pass the bulk plan-approval gate
     # (studio_service.approve_plan) before anything else runs.
     "playwright_planner": AgentSpec(timeout_seconds=1800.0, module_scope="playwright_studio"),
+    # 240s was sized for a human generating scripts for a handful of
+    # approved test cases; Playwright AI Studio submits waves of up to 25 at
+    # once. AutomationScriptAgent now fans generation out with bounded
+    # concurrency (automation_agent.GENERATION_CONCURRENCY=5) instead of
+    # running test cases one at a time, but 900s stays as a real ceiling —
+    # concurrency shrinks wall-clock time, it doesn't guarantee a hard cap
+    # when every LLM call in a wave needs multiple corrective retries.
+    # Fans out to both: automation_dry_run only picks up scripts the static
+    # gate passed ("static_passed"); automation_repair_loop only picks up
+    # scripts the gate blocked ("generated" + a failed static_gate_result) —
+    # see _build_dry_run_input and _build_gate_repair_input. Disjoint sets,
+    # so every generated script reaches exactly one of the two.
     "automation_script": AgentSpec(
-        timeout_seconds=240.0, module_scope="automation", chain_on_success=("automation_dry_run",)
+        timeout_seconds=900.0, module_scope="automation",
+        chain_on_success=("automation_dry_run", "automation_repair_loop"),
     ),
-    # Real subprocess per script (dry run) — a real, if generous, execution
-    # budget, distinct from the LLM-call-bounded generator above it.
+    # Same wave-sizing rationale as automation_script — DryRunAgent also
+    # fans out with bounded concurrency (DRY_RUN_CONCURRENCY=5) now, but
+    # each dry run is a real subprocess (Node+Chromium), so the ceiling
+    # stays generous.
     "automation_dry_run": AgentSpec(
-        timeout_seconds=450.0, module_scope="automation_dry_run",
+        timeout_seconds=900.0, module_scope="automation_dry_run",
         # Failed dry-runs go to classification/repair; passed ones (the only
         # scripts the plan allows reviewers to see) go straight to review.
         chain_on_success=("failure_classification", "automation_script_review"),
@@ -325,9 +362,13 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         chain_on_success=("automation_repair_loop",),
     ),
     # Up to MAX_REPAIR_ATTEMPTS (3) full patch->compile->gate->dry-run
-    # cycles per script — generous budget to match.
+    # cycles per script — and Studio batches hand it SEVERAL failing scripts
+    # in one run (observed live 2026-07-11: 600s expired mid-loop on a
+    # 6-script Studio batch, killing repairs that were converging). Budget
+    # scales with the worst case: ~3 attempts x ~60-90s dry run x several
+    # scripts.
     "automation_repair_loop": AgentSpec(
-        timeout_seconds=600.0, module_scope="automation_repair_loop",
+        timeout_seconds=1800.0, module_scope="automation_repair_loop",
         chain_on_success=("automation_script_review",),
     ),
     "automation_script_review": AgentSpec(timeout_seconds=180.0, module_scope="automation_script_review"),
@@ -516,7 +557,7 @@ async def _build_failure_classification_input(
     return {"results": results}
 
 
-async def _build_repair_loop_input(
+async def _build_repair_loop_input_from_classification(
     db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
 ) -> dict[str, Any] | None:
     classified_ids = output_data.get("classified_result_ids") or []
@@ -576,6 +617,83 @@ async def _build_repair_loop_input(
     if not scripts:
         return None
     return {"scripts": scripts}
+
+
+# Codes the Static Quality Gate stamps deterministically for any valid
+# contract the Script Compiler actually ran (see static_quality_gate.py's
+# _check_generation_header / _check_tc_req_mapping). If either is missing,
+# the contract isn't the problem -- no LLM-proposed patch changes that --
+# so these are left for manual regeneration instead of burning a repair
+# attempt on them.
+_GATE_CODES_NOT_REPAIRABLE = {"missing_generation_header", "missing_tc_req_mapping"}
+
+
+async def _build_gate_repair_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Static-gate failures never produce a dry run (_build_dry_run_input
+    only picks up status == "static_passed") and so never reach
+    failure_classification either -- without this, a script whose gate
+    failed right after generation just sat at status "generated" forever
+    with no automatic next step. Feeds the gate's own violations to
+    RepairLoopAgent as the failure evidence, the same contract-patch loop a
+    dry-run failure already uses."""
+    script_ids = output_data.get("script_ids") or []
+    if not script_ids:
+        return None
+    result = await db.execute(select(AutomationScript).where(AutomationScript.id.in_(script_ids)))
+    tc_by_db_id = {tc.get("id"): tc for tc in input_data.get("test_cases", [])}
+    locator_map = input_data.get("locator_map") or {}
+
+    scripts = []
+    for script in result.scalars().all():
+        if script.status != "generated" or script.project_id != run.project_id or not script.contract:
+            continue
+        gate = script.static_gate_result or {}
+        if gate.get("passed") is not False:
+            continue  # only scripts the static gate actually blocked
+        violations = gate.get("violations") or []
+        fixable_codes = {v.get("code") for v in violations} - _GATE_CODES_NOT_REPAIRABLE
+        if not fixable_codes:
+            continue
+
+        tc = tc_by_db_id.get(script.test_case_id) or {}
+        raw_catalog = locator_map.get(str(tc.get("application_id"))) if tc.get("application_id") is not None else None
+        catalog = locator_policy.filter_catalog_by_page(raw_catalog or [], tc.get("application_url")) or []
+
+        scripts.append({
+            "script_id": script.id,
+            "contract": script.contract,
+            "framework": script.framework,
+            "application_url": tc.get("application_url"),
+            "environment": tc.get("test_phase") or tc.get("test_environment") or "QA",
+            "locator_catalog": catalog,
+            "failure": {
+                "classification": "static_gate_violation",
+                "error_message": "; ".join(v.get("message", "") for v in violations) or "Static quality gate failed.",
+                "stack_trace": None,
+            },
+        })
+
+    if not scripts:
+        return None
+    return {"scripts": scripts}
+
+
+async def _build_repair_loop_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Dispatches to whichever of the two repair-loop producers actually
+    fired: failure_classification (a real dry-run failure classified as
+    repairable) or automation_script (a static gate failure right after
+    generation). Both name "automation_repair_loop" in chain_on_success, so
+    the input builder — looked up by child agent name only, not by parent —
+    must tell them apart from output_data's shape instead."""
+    if "classified_result_ids" in output_data:
+        return await _build_repair_loop_input_from_classification(db, run, input_data, output_data)
+    if "script_ids" in output_data:
+        return await _build_gate_repair_input(db, run, input_data, output_data)
+    return None
 
 
 async def _build_script_review_input(
@@ -1872,67 +1990,101 @@ async def _run_agent_with_project_llm_routes(
     agent_func: AgentCallable,
     input_data: dict[str, Any],
 ) -> Any:
+    role = agent_role(agent_name)
+    # Fetched once and shared with the vision lookup below — both are
+    # in-memory filters over the same project settings rows, so this keeps
+    # the DB round-trip count the same as before role routing existed.
+    settings_rows = await list_settings(db, run.project_id)
     routes = await resolve_project_llm_routes(
         db,
         project_id=run.project_id,
         module_scope=input_data.get("module_scope") or get_agent_spec(agent_name).module_scope,
+        role=role,
+        rows=settings_rows,
     )
-    last_result: Any = None
-    last_error: Exception | None = None
-    for index, route in enumerate(routes):
-        token = set_llm_route_override(
-            LLMRouteOverride(
-                provider=route.provider_key,
-                model=route.model_name,
-                temperature=route.temperature,
-                max_tokens=route.max_tokens,
-                timeout_seconds=route.timeout_seconds,
-            )
-        )
-        try:
-            await agent_run_service.add_log(
-                db,
-                run,
-                level="info",
-                step="llm_route",
-                message=f"Using LLM provider {route.provider_name} ({route.model_name}) from {route.source}",
-            )
-            await db.commit()
-            result = await agent_func(input_data or {})
-            if _is_success(result):
-                return result
-            last_result = result
-            if index < len(routes) - 1:
-                await agent_run_service.add_log(
-                    db,
-                    run,
-                    level="warning",
-                    step="llm_fallback",
-                    message=f"LLM provider {route.provider_name} failed; trying fallback provider",
-                )
-                await db.commit()
-                continue
-            return result
-        except Exception as exc:
-            last_error = exc
-            if index < len(routes) - 1:
-                await agent_run_service.add_log(
-                    db,
-                    run,
-                    level="warning",
-                    step="llm_fallback",
-                    message=f"LLM provider {route.provider_name} errored; trying fallback provider",
-                    data={"error_type": type(exc).__name__},
-                )
-                await db.commit()
-                continue
-            raise
-        finally:
-            reset_llm_route_override(token)
 
-    if last_error is not None:
-        raise last_error
-    return last_result
+    # Pin the project's vision route for the whole run (not per fallback
+    # attempt) so nested get_vision_llm() calls inside this agent — e.g. UI
+    # screenshot analysis called from a reasoning/coding agent — resolve the
+    # vision role correctly instead of collapsing onto whichever text route
+    # is active in the loop below.
+    vision_routes = await resolve_project_llm_routes(db, project_id=run.project_id, role="vision", rows=settings_rows)
+    vision_top = vision_routes[0] if vision_routes else None
+    vision_token = set_llm_role_route_overrides(
+        {
+            "vision": LLMRouteOverride(
+                provider=vision_top.provider_key,
+                model=vision_top.model_name,
+                temperature=vision_top.temperature,
+                max_tokens=vision_top.max_tokens,
+                timeout_seconds=vision_top.timeout_seconds,
+                role="vision",
+            )
+        }
+        if vision_top is not None
+        else {}
+    )
+
+    try:
+        last_result: Any = None
+        last_error: Exception | None = None
+        for index, route in enumerate(routes):
+            token = set_llm_route_override(
+                LLMRouteOverride(
+                    provider=route.provider_key,
+                    model=route.model_name,
+                    temperature=route.temperature,
+                    max_tokens=route.max_tokens,
+                    timeout_seconds=route.timeout_seconds,
+                    role=role,
+                )
+            )
+            try:
+                await agent_run_service.add_log(
+                    db,
+                    run,
+                    level="info",
+                    step="llm_route",
+                    message=f"Using LLM provider {route.provider_name} ({route.model_name}) from {route.source} for role {role}",
+                )
+                await db.commit()
+                result = await agent_func(input_data or {})
+                if _is_success(result):
+                    return result
+                last_result = result
+                if index < len(routes) - 1:
+                    await agent_run_service.add_log(
+                        db,
+                        run,
+                        level="warning",
+                        step="llm_fallback",
+                        message=f"LLM provider {route.provider_name} failed; trying fallback provider",
+                    )
+                    await db.commit()
+                    continue
+                return result
+            except Exception as exc:
+                last_error = exc
+                if index < len(routes) - 1:
+                    await agent_run_service.add_log(
+                        db,
+                        run,
+                        level="warning",
+                        step="llm_fallback",
+                        message=f"LLM provider {route.provider_name} errored; trying fallback provider",
+                        data={"error_type": type(exc).__name__},
+                    )
+                    await db.commit()
+                    continue
+                raise
+            finally:
+                reset_llm_route_override(token)
+
+        if last_error is not None:
+            raise last_error
+        return last_result
+    finally:
+        reset_llm_role_route_overrides(vision_token)
 
 
 async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, input_data: dict[str, Any]) -> dict[str, Any]:

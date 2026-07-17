@@ -8,7 +8,7 @@ from langgraph.graph import StateGraph, END
 
 from app.agents.base.base_agent import BaseAgent
 from app.config import get_settings
-from app.llm.provider import get_llm
+from app.llm.provider import get_llm_for_role
 from app.security.prompt_guard import detect_prompt_injection
 from app.models.assistant import (
     AssistantConversation,
@@ -390,7 +390,7 @@ async def classify_scope_node(state: AssistantState) -> AssistantState:
     scope = None
     # 2. Scope classification via LLM
     try:
-        llm = get_llm()
+        llm = get_llm_for_role("reasoning")
         resp = await llm.achat(
             messages=[
                 {"role": "system", "content": SCOPE_CLASSIFICATION_SYSTEM},
@@ -533,7 +533,7 @@ Retrieved Context and Tool Data:
 {state["retrieved_context"] or "No relevant documentation or live project records found."}
 """
     try:
-        llm = get_llm()
+        llm = get_llm_for_role("reasoning")
         answer = await llm.achat(
             messages=[
                 {"role": "system", "content": ASSISTANT_SYSTEM_PROMPT},

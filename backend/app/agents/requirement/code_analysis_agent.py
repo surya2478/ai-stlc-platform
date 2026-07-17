@@ -34,7 +34,7 @@ import tempfile
 from pathlib import Path
 
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
-from app.llm.provider import get_llm
+from app.llm.provider import get_llm_for_role
 from app.llm.structured import validate_structured_output
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -346,7 +346,7 @@ class CodeAnalysisAgent(BaseAgent):
             self.log("info", "chunk", f"Split into {len(chunks)} LLM chunks")
 
             # ── 4. LLM derivation per chunk ───────────────────────────────────
-            llm = get_llm()
+            llm = get_llm_for_role("reasoning")
             all_requirements: list[dict] = []
             repo_display = github_url or str(local_path)
             if github_url and github_subpath:

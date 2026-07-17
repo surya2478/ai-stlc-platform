@@ -14,7 +14,7 @@ async def test_code_analysis_agent_fails_when_no_requirements_are_derived(monkey
     monkeypatch.setattr(code_analysis_agent, "_repo_size_bytes", lambda _root: 1024)
     monkeypatch.setattr(code_analysis_agent, "_collect_files", lambda _root, _languages: ["fake.py"])
     monkeypatch.setattr(code_analysis_agent, "_chunk_files", lambda _files, _root: ["# File: fake.py\ndef useful_feature(): pass"])
-    monkeypatch.setattr(code_analysis_agent, "get_llm", lambda: EmptyRequirementsLLM())
+    monkeypatch.setattr(code_analysis_agent, "get_llm_for_role", lambda _role: EmptyRequirementsLLM())
 
     result = await CodeAnalysisAgent().run(
         source="local",

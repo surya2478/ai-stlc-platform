@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from app.models.resource_ops import AIEstimate, DailyWorkPlan
-from app.llm.provider import get_llm
+from app.llm.provider import get_llm_for_role
 from app.llm.structured import parse_and_validate_llm_output
+from app.services.project_llm_settings_service import project_llm_role_context
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +79,6 @@ class AIEstimateService:
             historical_hours_adj = (float(avg_past_actual) - baseline_hours) * 0.3
 
         # 3. LLM reasoning layer
-        from app.config import get_settings
-        settings = get_settings()
-        llm = get_llm(settings.default_llm_provider, settings.default_llm_model)
         system_prompt = (
             "You are nxtQA Estimate Intelligence, an AI module designed to estimate Software Quality QA task efforts.\n"
             "Analyze the inputs and provide a JSON response mapping strictly to the schema properties:\n"
@@ -106,7 +104,9 @@ class AIEstimateService:
         )
 
         try:
-            llm_text = await llm.generate(system=system_prompt, user=user_prompt)
+            async with project_llm_role_context(self.db, project_id):
+                llm = get_llm_for_role("reasoning")
+                llm_text = await llm.generate(system=system_prompt, user=user_prompt)
             parsed = parse_and_validate_llm_output(llm_text, AIEstimateLLMResponse)
         except Exception as exc:
             logger.warning("LLM estimation failed or returned invalid schema, falling back: %s", exc)

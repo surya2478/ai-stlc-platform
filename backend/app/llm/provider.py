@@ -19,6 +19,7 @@ from functools import lru_cache
 from typing import Any, Awaitable, Callable, Protocol, TypeVar
 
 from app.config import get_settings
+from app.llm.roles import role_default_route
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -59,11 +60,15 @@ class LLMRouteOverride:
     temperature: float | None = None
     max_tokens: int | None = None
     timeout_seconds: int | None = None
+    role: str | None = None
 
 
 _circuits: dict[str, _CircuitState] = {}
 _latest_rate_limits: dict[str, _RateLimitSnapshot] = {}
 _route_override: ContextVar[LLMRouteOverride | None] = ContextVar("llm_route_override", default=None)
+_role_route_overrides: ContextVar[dict[str, LLMRouteOverride] | None] = ContextVar(
+    "llm_role_route_overrides", default=None
+)
 
 
 def set_llm_route_override(route: LLMRouteOverride | None) -> Token:
@@ -72,6 +77,14 @@ def set_llm_route_override(route: LLMRouteOverride | None) -> Token:
 
 def reset_llm_route_override(token: Token) -> None:
     _route_override.reset(token)
+
+
+def set_llm_role_route_overrides(overrides: dict[str, LLMRouteOverride] | None) -> Token:
+    return _role_route_overrides.set(overrides)
+
+
+def reset_llm_role_route_overrides(token: Token) -> None:
+    _role_route_overrides.reset(token)
 
 
 def _get_circuit(key: str) -> _CircuitState:
@@ -161,8 +174,13 @@ def get_latest_rate_limit_snapshot(provider: str, base_url: str, model: str) -> 
 
 def validate_vision_configuration(provider: str | None = None, model: str | None = None) -> str | None:
     """Return a user-facing validation error when UI vision analysis is not runnable."""
-    resolved_provider = (provider or settings.default_llm_provider).lower()
-    resolved_model = (model or settings.default_vision_model).strip()
+    if provider is None and model is None:
+        resolved_provider, resolved_model = role_default_route("vision")
+        resolved_provider = resolved_provider.lower()
+        resolved_model = resolved_model.strip()
+    else:
+        resolved_provider = (provider or settings.default_llm_provider).lower()
+        resolved_model = (model or settings.default_vision_model).strip()
 
     if not resolved_model:
         return (
@@ -171,6 +189,14 @@ def validate_vision_configuration(provider: str | None = None, model: str | None
         )
 
     if resolved_provider == "ollama":
+        return None
+
+    if resolved_provider == "ai_gateway":
+        if not (settings.ai_gateway_base_url and settings.ai_gateway_api_key):
+            return (
+                "UI image analysis is not configured because the AI Gateway is missing a base URL or API key. "
+                "Set AI_GATEWAY_BASE_URL and AI_GATEWAY_API_KEY, or set AI_GATEWAY_ENABLED=false to use legacy providers."
+            )
         return None
 
     if resolved_provider == "openai":
@@ -738,7 +764,19 @@ def _build_llm(
             default_options=default_options,
             timeout_seconds=timeout_seconds,
         )
-    raise ValueError("Unknown LLM provider: '%s'. Valid values: ollama, openai, groq, google_gemini, openrouter, huggingface, together, cerebras, mistral" % provider)
+    if provider == "ai_gateway":
+        if not settings.ai_gateway_api_key:
+            logger.warning("AI_GATEWAY_API_KEY is not set - AI Gateway calls will fail")
+        # Caller's model always wins — unlike the openai branch above, the
+        # gateway routes purely on the model field of each request.
+        return OpenAICompatibleProvider(
+            api_key=settings.ai_gateway_api_key,
+            base_url=settings.ai_gateway_base_url,
+            model=model,
+            default_options=default_options,
+            timeout_seconds=timeout_seconds,
+        )
+    raise ValueError("Unknown LLM provider: '%s'. Valid values: ollama, openai, groq, google_gemini, openrouter, huggingface, together, cerebras, mistral, ai_gateway" % provider)
 
 
 @lru_cache
@@ -872,14 +910,56 @@ async def get_llm_with_automatic_fallback(
     )
 
 
-@lru_cache
+def get_llm_for_role(role: str) -> LLMProvider:
+    """Resolve an LLM provider for a role ("coding" | "vision" | "reasoning").
+
+    Precedence:
+      1. Role-keyed override (worker pins one route per role for a run).
+      2. Legacy generic route override — non-vision roles only, so a plain
+         project/agent override never silently swallows the vision route.
+      3. The role's system default (AI Gateway model, or legacy
+         DEFAULT_LLM_MODEL / DEFAULT_VISION_MODEL when the gateway is off).
+
+    Not cached: overrides are ContextVar-scoped per request/task, so caching
+    across calls would leak one caller's route into another's context.
+    """
+    role_overrides = _role_route_overrides.get()
+    if role_overrides and role in role_overrides:
+        route = role_overrides[role]
+        return _build_llm(
+            route.provider.lower(),
+            route.model,
+            default_options=_default_options_from_route(route),
+            timeout_seconds=route.timeout_seconds or 120,
+        )
+
+    if role != "vision":
+        route = _route_override.get()
+        if route is not None:
+            return _build_llm(
+                route.provider.lower(),
+                route.model,
+                default_options=_default_options_from_route(route),
+                timeout_seconds=route.timeout_seconds or 120,
+            )
+
+    provider, model = role_default_route(role)
+    logger.info("LLM role: %s  provider: %s  model: %s", role, provider, model)
+    return _get_cached_llm(provider, model)
+
+
 def get_vision_llm(provider: str | None = None, model: str | None = None) -> LLMProvider:
     """Return an LLM provider configured with a vision-capable model (GAP-1).
 
-    Uses DEFAULT_LLM_PROVIDER with DEFAULT_VISION_MODEL unless overridden.
-    Built directly (not via get_llm) so the vision model is honoured even for
-    the OpenAI-compatible provider, whose get_llm() path pins openai_model.
+    Called with no arguments (the normal case), this delegates to
+    get_llm_for_role("vision") so vision correctly resolves the vision role
+    default/override instead of collapsing onto a generic text override.
+    Explicit provider/model args (used by tests and any caller pinning a
+    specific vision model) keep the original direct-build behavior.
     """
+    if provider is None and model is None:
+        return get_llm_for_role("vision")
+
     route = _route_override.get()
     if route is not None and (
         provider is None

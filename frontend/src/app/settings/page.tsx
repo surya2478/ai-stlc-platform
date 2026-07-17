@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   Activity,
@@ -8,9 +9,11 @@ import {
   Bot,
   Database,
   FileSliders,
+  FolderKanban,
   Globe2,
   Loader2,
   Network,
+  Plus,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -41,8 +44,27 @@ const IMPLEMENTED_TABS = new Set(["LLM Providers", "Applications & Environments"
 
 function SettingsContent() {
   const searchParams = useSearchParams();
-  const projectId = Number(searchParams.get("project") || 8);
+  const projectParam = searchParams.get("project");
+  const projectId = projectParam ? Number(projectParam) : null;
   const [activeTab, setActiveTab] = useState<string>("LLM Providers");
+
+  if (!projectId) {
+    return (
+      <div className="mx-auto max-w-7xl pb-8">
+        <div className="rounded-2xl border border-dashed p-12 text-center text-muted-foreground">
+          <FolderKanban className="mx-auto h-10 w-10 mb-3 opacity-40" />
+          <p className="font-semibold text-slate-800">No project selected</p>
+          <p className="text-sm mt-1">Create a project or pick one from the project selector above to manage its settings.</p>
+          <Link
+            href="/projects/new"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1b59f8] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />New Project
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-7xl gap-6 pb-8">

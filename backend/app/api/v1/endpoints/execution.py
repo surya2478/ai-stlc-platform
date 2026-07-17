@@ -42,6 +42,7 @@ from app.services import (
 from app.core import audit_logger
 from app.services.agent_dispatch_service import enqueue_agent_run
 from app.services.display_id_service import display_id, temporary_id
+from app.services.project_llm_settings_service import project_llm_role_context
 from app.services.rbac_service import EXECUTE_TESTS
 from app.agents.execution.execution_agent import TestExecutionAgent
 
@@ -632,6 +633,7 @@ async def update_manual_step(
         comments=body.comments,
     )
     await db.commit()
+    await db.refresh(updated)
     return ManualStepResultOut.model_validate(manual_execution_service.serialize_step(updated))
 
 
@@ -651,6 +653,7 @@ async def upload_manual_evidence(
         db, step=step, run=run, user_id=current_user.id, file=file
     )
     await db.commit()
+    await db.refresh(step)
     return ManualStepResultOut.model_validate(manual_execution_service.serialize_step(step))
 
 
@@ -698,6 +701,7 @@ async def delete_manual_evidence(
     if not removed:
         raise HTTPException(status_code=404, detail="Evidence not found on step")
     await db.commit()
+    await db.refresh(step)
     return ManualStepResultOut.model_validate(manual_execution_service.serialize_step(step))
 
 
@@ -767,12 +771,13 @@ async def ai_assist_manual_step(
             screenshot_bytes = None
 
     try:
-        suggestion = await ai_assist_service.suggest_step_outcome(
-            step,
-            actual_result_override=actual_result,
-            comments_override=comments,
-            screenshot_bytes=screenshot_bytes,
-        )
+        async with project_llm_role_context(db, run.project_id):
+            suggestion = await ai_assist_service.suggest_step_outcome(
+                step,
+                actual_result_override=actual_result,
+                comments_override=comments,
+                screenshot_bytes=screenshot_bytes,
+            )
     except ai_assist_service.AiAssistUnavailable as exc:
         # Don't 500 the user when the LLM is down — return a graceful
         # "blocked + decide manually" response so the UI can surface a

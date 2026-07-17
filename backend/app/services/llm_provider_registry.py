@@ -152,6 +152,18 @@ PROVIDERS: tuple[LLMProviderMetadata, ...] = (
         enabled_for_selection=True,
         default_model="gpt-4o-mini",
     ),
+    LLMProviderMetadata(
+        provider_name="AI Gateway",
+        provider_key="ai_gateway",
+        description="Single OpenAI-compatible gateway routing to role-specific models (coding, vision, reasoning).",
+        logo_icon="route",
+        available_models=("configurable",),
+        api_key_required=True,
+        supports_local_execution=False,
+        supports_fallback_usage=True,
+        enabled_for_selection=True,
+        default_model=settings.llm_reasoning_model,
+    ),
 )
 
 
@@ -182,6 +194,8 @@ def provider_api_key(provider_key: str) -> str:
         return settings.cerebras_api_key
     if normalized == "mistral":
         return settings.mistral_api_key
+    if normalized == "ai_gateway":
+        return settings.ai_gateway_api_key
     return ""
 
 

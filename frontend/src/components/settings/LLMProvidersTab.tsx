@@ -53,6 +53,10 @@ type ProviderMeta = {
   default_model: string;
 };
 
+type LLMRole = "coding" | "vision" | "reasoning";
+const LLM_ROLES: LLMRole[] = ["coding", "vision", "reasoning"];
+const ROLE_LABELS: Record<LLMRole, string> = { coding: "Coding", vision: "Vision", reasoning: "Reasoning" };
+
 type ProjectLLMSetting = {
   id?: number | null;
   project_id: number;
@@ -67,12 +71,15 @@ type ProjectLLMSetting = {
   max_tokens: number;
   timeout_seconds: number;
   module_scope: string[];
+  llm_role: LLMRole | null;
   config_status: string;
   created_by?: number | null;
   updated_by?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
+
+type RoleRoute = { provider_key: string; provider_name?: string; model_name: string; source?: string };
 
 type ProjectLLMSettingsResponse = {
   project_id: number;
@@ -84,6 +91,8 @@ type ProjectLLMSettingsResponse = {
   system_default_provider: string;
   system_default_model: string;
   uses_system_default: boolean;
+  role_defaults: Record<LLMRole, RoleRoute>;
+  active_by_role: Record<LLMRole, RoleRoute>;
   last_updated: string | null;
   updated_by: number | null;
   security_status: "Secure";
@@ -105,7 +114,7 @@ function providerIcon(icon: string) {
   return <Bot className={cn(className, "text-[#1b59f8]")} />;
 }
 
-function emptySetting(projectId: number, provider: ProviderMeta): ProjectLLMSetting {
+function emptySetting(projectId: number, provider: ProviderMeta, llmRole: LLMRole | null = null): ProjectLLMSetting {
   return {
     id: null,
     project_id: projectId,
@@ -120,6 +129,7 @@ function emptySetting(projectId: number, provider: ProviderMeta): ProjectLLMSett
     max_tokens: 4000,
     timeout_seconds: 120,
     module_scope: [],
+    llm_role: llmRole,
     config_status: "disabled",
   };
 }
@@ -166,10 +176,14 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedProviderKey, setSelectedProviderKey] = useState<string | null>(null);
+  const [selectedRowKey, setSelectedRowKey] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState<ProjectLLMSetting | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [confirmActive, setConfirmActive] = useState<ProjectLLMSetting | null>(null);
+
+  function rowKey(providerKey: string, llmRole: LLMRole | null) {
+    return `${providerKey}::${llmRole ?? ""}`;
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -177,7 +191,8 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
       .then((response) => {
         setData(response.data);
         const active = response.data.active_provider?.provider_key;
-        setSelectedProviderKey(active || response.data.settings[0]?.provider_key || response.data.providers[0]?.provider_key || null);
+        const key = active || response.data.settings[0]?.provider_key || response.data.providers[0]?.provider_key || null;
+        setSelectedRowKey(key ? rowKey(key, null) : null);
       })
       .catch(() => setError("Could not load project LLM settings."))
       .finally(() => setLoading(false));
@@ -189,39 +204,51 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
     return () => window.clearTimeout(id);
   }, [toast]);
 
+  // One row per provider (generic, llm_role=null) plus one extra row for
+  // each role that provider has an explicit override configured for — so a
+  // project with no role routing still sees exactly the original 1-row-per-
+  // provider list, and role-specific rows only appear once someone adds one.
   const rows = useMemo(() => {
     if (!data) return [];
-    const byProvider = new Map(data.settings.map((setting) => [setting.provider_key, setting]));
-    return data.providers.map((provider) => ({
-      provider,
-      setting: byProvider.get(provider.provider_key) || emptySetting(data.project_id, provider),
-    }));
+    const byKey = new Map(data.settings.map((setting) => [rowKey(setting.provider_key, setting.llm_role), setting]));
+    const result: { provider: ProviderMeta; setting: ProjectLLMSetting }[] = [];
+    for (const provider of data.providers) {
+      result.push({
+        provider,
+        setting: byKey.get(rowKey(provider.provider_key, null)) || emptySetting(data.project_id, provider),
+      });
+      for (const role of LLM_ROLES) {
+        const existing = byKey.get(rowKey(provider.provider_key, role));
+        if (existing) result.push({ provider, setting: existing });
+      }
+    }
+    return result;
   }, [data]);
 
   const activeCount = rows.filter(({ setting }) => setting.is_enabled && setting.is_primary).length;
   const enabledCount = rows.filter(({ setting }) => setting.is_enabled && !setting.is_primary).length;
-  const selectedRow = rows.find(({ provider }) => provider.provider_key === selectedProviderKey);
+  const selectedRow = rows.find(({ provider, setting }) => rowKey(provider.provider_key, setting.llm_role) === selectedRowKey);
 
   function showToast(next: ToastState) {
     setToast(next);
   }
 
-  function allSettingsWith(updated: ProjectLLMSetting) {
+  function allSettingsWith(original: ProjectLLMSetting, updated: ProjectLLMSetting) {
     return rows.map(({ setting }) => {
-      if (setting.provider_key === updated.provider_key) return updated;
-      if (updated.is_primary) {
+      if (setting === original) return updated;
+      if (updated.is_primary && (setting.llm_role ?? null) === (updated.llm_role ?? null)) {
         return { ...setting, is_primary: false, config_status: setting.is_enabled ? "enabled" : "disabled" };
       }
       return setting;
     });
   }
 
-  async function persist(updated: ProjectLLMSetting, reason: string) {
+  async function persist(original: ProjectLLMSetting, updated: ProjectLLMSetting, reason: string) {
     if (!data) return;
     setSaving(true);
     try {
       const response = await api.put<ProjectLLMSettingsResponse>(`/projects/${projectId}/llm-settings`, {
-        settings: allSettingsWith(updated).map((setting) => ({
+        settings: allSettingsWith(original, updated).map((setting) => ({
           provider_key: setting.provider_key,
           model_name: setting.model_name,
           is_enabled: setting.is_enabled,
@@ -232,6 +259,7 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
           max_tokens: setting.max_tokens,
           timeout_seconds: setting.timeout_seconds,
           module_scope: setting.module_scope,
+          llm_role: setting.llm_role,
         })),
         change_reason: reason,
       });
@@ -262,7 +290,7 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
       is_fallback: setting.is_enabled ? false : setting.is_fallback,
       fallback_priority: setting.is_enabled ? null : setting.fallback_priority,
     };
-    persist(next, next.is_enabled ? "Provider enabled from settings UI" : "Provider disabled from settings UI");
+    persist(setting, next, next.is_enabled ? "Provider enabled from settings UI" : "Provider disabled from settings UI");
   }
 
   async function testConnection(setting: ProjectLLMSetting) {
@@ -354,11 +382,12 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
             <div className="divide-y divide-slate-100">
               {rows.map(({ provider, setting }) => {
                 const status = statusFor(provider, setting);
-                const selected = selectedProviderKey === provider.provider_key;
+                const key = rowKey(provider.provider_key, setting.llm_role);
+                const selected = selectedRowKey === key;
                 return (
                   <div
-                    key={provider.provider_key}
-                    onClick={() => setSelectedProviderKey(provider.provider_key)}
+                    key={key}
+                    onClick={() => setSelectedRowKey(key)}
                     className={cn(
                       "grid cursor-pointer grid-cols-1 gap-4 px-4 py-4 transition-colors xl:grid-cols-[64px_minmax(0,1fr)_auto]",
                       selected ? "bg-blue-50/35" : "bg-white hover:bg-slate-50/60"
@@ -370,6 +399,7 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="font-bold text-slate-900">{provider.provider_name}</h4>
+                        {setting.llm_role && <Badge variant="info" className="text-[10px]">{ROLE_LABELS[setting.llm_role]}</Badge>}
                         {setting.is_primary && <Badge variant="success" className="text-[10px]">Active</Badge>}
                       </div>
                       <p className="mt-1 text-sm leading-6 text-slate-500">{provider.description}</p>
@@ -429,6 +459,31 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
           </div>
 
           <div className="mt-5 rounded-xl border border-slate-200">
+            <div className="border-b border-slate-100 px-4 py-3">
+              <h3 className="font-bold text-slate-900">Role Routing</h3>
+              <p className="mt-1 text-xs text-slate-500">Which provider and model each AI role uses for this project.</p>
+            </div>
+            <div className="grid gap-3 p-4 sm:grid-cols-3">
+              {LLM_ROLES.map((role) => {
+                const route = data.active_by_role?.[role] ?? data.role_defaults?.[role];
+                const isOverride = route?.source === "project" || route?.source === "project_fallback";
+                return (
+                  <div key={role} className="rounded-lg border border-slate-200 p-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{ROLE_LABELS[role]}</p>
+                      <Badge variant={isOverride ? "success" : "secondary"} className="text-[10px]">
+                        {isOverride ? "Project override" : "System default"}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm font-semibold text-slate-800">{route?.provider_name || route?.provider_key || "—"}</p>
+                    <p className="font-mono text-xs text-slate-500">{route?.model_name || "—"}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-xl border border-slate-200">
             <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
               <h3 className="font-bold text-slate-900">Project LLM Settings Summary</h3>
               <Badge variant="success" className="text-[10px]">{data.security_status}</Badge>
@@ -456,7 +511,7 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
           saving={saving}
           onClose={() => setConfiguring(null)}
           onTest={testConnection}
-          onSave={(next) => persist(next, "Provider configured from settings UI")}
+          onSave={(next) => persist(configuring, next, "Provider configured from settings UI")}
         />
       )}
 
@@ -474,7 +529,7 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
                 onClick={() => {
                   const next = { ...confirmActive, is_enabled: true, is_primary: true, is_fallback: false, fallback_priority: null };
                   setConfirmActive(null);
-                  persist(next, "Active provider changed from settings UI");
+                  persist(confirmActive, next, "Active provider changed from settings UI");
                 }}
               >
                 Continue
@@ -555,6 +610,20 @@ function ConfigureModal({
         </div>
 
         <div className="space-y-5 p-5">
+          <label className="block space-y-2 text-sm font-semibold text-slate-700">
+            Applies To Role
+            <select
+              value={draft.llm_role ?? ""}
+              onChange={(event) => setDraft({ ...draft, llm_role: (event.target.value || null) as LLMRole | null })}
+              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="">All roles (default)</option>
+              <option value="coding">Coding — test case & automation script generation</option>
+              <option value="vision">Vision — screenshots, OCR, PDFs, UI analysis</option>
+              <option value="reasoning">Reasoning — planning, agents, review, chat, reporting</option>
+            </select>
+          </label>
+
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm font-semibold text-slate-700">
               Model

@@ -95,3 +95,28 @@ def test_structured_list_validation_returns_json_safe_dicts():
     )
 
     assert parsed[0]["test_case_id"] == "TC-1"
+
+
+def test_build_llm_ai_gateway_returns_openai_compatible_provider(monkeypatch):
+    monkeypatch.setattr(provider.settings, "ai_gateway_base_url", "http://ai-gateway:4000/v1")
+    monkeypatch.setattr(provider.settings, "ai_gateway_api_key", "gw-secret")
+
+    llm = provider._build_llm("ai_gateway", "qwen3-coder-next")
+
+    assert isinstance(llm, provider.OpenAICompatibleProvider)
+    assert llm.base_url == "http://ai-gateway:4000/v1"
+    assert llm.model == "qwen3-coder-next"
+
+
+def test_build_llm_ai_gateway_does_not_pin_model_like_openai_branch(monkeypatch):
+    # Unlike the "openai" branch (which pins settings.openai_model), the
+    # gateway must always honor the caller's model — that's the whole point
+    # of a single endpoint routing by model name.
+    monkeypatch.setattr(provider.settings, "ai_gateway_base_url", "http://ai-gateway:4000/v1")
+    monkeypatch.setattr(provider.settings, "ai_gateway_api_key", "gw-secret")
+
+    coding = provider._build_llm("ai_gateway", "qwen3-coder-next")
+    vision = provider._build_llm("ai_gateway", "qwen3-vl-8b")
+
+    assert coding.model == "qwen3-coder-next"
+    assert vision.model == "qwen3-vl-8b"

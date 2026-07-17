@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 from fastapi import HTTPException
 
@@ -34,6 +36,12 @@ class _FakeDB:
 
     def add(self, item):
         if isinstance(item, ProjectLLMSetting):
+            # Mirrors TimestampMixin's server_default=func.now(): a real
+            # session always has created_at populated after flush, so
+            # build_project_settings_response's max(...) never compares
+            # two Nones.
+            if item.created_at is None:
+                item.created_at = datetime.now(timezone.utc)
             self.rows.append(item)
         elif isinstance(item, ProjectSettingAuditLog):
             self.audit_logs.append(item)
@@ -129,3 +137,132 @@ async def test_project_route_resolves_to_system_default_when_not_configured():
 
     assert routes[0].source == "system_default"
     assert routes[0].provider_key == svc.settings.default_llm_provider
+
+
+@pytest.mark.anyio
+async def test_role_specific_and_generic_primaries_both_accepted(monkeypatch):
+    monkeypatch.setattr(svc.settings, "groq_api_key", "test-key")
+    db = _FakeDB()
+    payload = ProjectLLMSettingsUpdateRequest(
+        settings=[
+            ProjectLLMSettingUpdate(provider_key="ollama", model_name="llama3.1", is_enabled=True, is_primary=True),
+            ProjectLLMSettingUpdate(
+                provider_key="groq", model_name="llama-3.3-70b-versatile",
+                is_enabled=True, is_primary=True, llm_role="coding",
+            ),
+        ],
+    )
+
+    await svc.update_project_llm_settings(db, project_id=8, payload=payload, user_id=42)
+
+    primaries = {(row.provider_key, row.llm_role) for row in db.rows if row.is_primary}
+    assert primaries == {("ollama", None), ("groq", "coding")}
+
+
+@pytest.mark.anyio
+async def test_same_role_duplicate_primaries_are_rejected(monkeypatch):
+    monkeypatch.setattr(svc.settings, "groq_api_key", "test-key")
+    db = _FakeDB()
+    payload = ProjectLLMSettingsUpdateRequest(
+        settings=[
+            ProjectLLMSettingUpdate(
+                provider_key="ollama", model_name="llama3.1",
+                is_enabled=True, is_primary=True, llm_role="coding",
+            ),
+            ProjectLLMSettingUpdate(
+                provider_key="groq", model_name="llama-3.3-70b-versatile",
+                is_enabled=True, is_primary=True, llm_role="coding",
+            ),
+        ],
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.update_project_llm_settings(db, project_id=8, payload=payload, user_id=42)
+
+    assert exc.value.status_code == 400
+    assert "role 'coding'" in exc.value.detail
+
+
+@pytest.mark.anyio
+async def test_invalid_llm_role_is_rejected():
+    db = _FakeDB()
+    payload = ProjectLLMSettingsUpdateRequest(
+        settings=[
+            ProjectLLMSettingUpdate(provider_key="ollama", model_name="llama3.1", is_enabled=True),
+        ],
+    )
+    # llm_role is validated server-side against the ROLES tuple even though
+    # the pydantic Literal already narrows it — belt-and-suspenders since
+    # ROLES is the single source of truth shared with roles.py.
+    payload.settings[0].llm_role = "not-a-real-role"  # type: ignore[assignment]
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.update_project_llm_settings(db, project_id=8, payload=payload, user_id=42)
+
+    assert exc.value.status_code == 422
+    assert "Invalid llm_role" in exc.value.detail
+
+
+@pytest.mark.anyio
+async def test_resolve_project_llm_routes_role_specific_primary_beats_generic():
+    generic_primary = ProjectLLMSetting(
+        project_id=8, provider_key="ollama", provider_name="Ollama", model_name="llama3.1",
+        is_enabled=True, is_primary=True, llm_role=None, module_scope=[],
+    )
+    coding_primary = ProjectLLMSetting(
+        project_id=8, provider_key="groq", provider_name="Groq", model_name="llama-3.3-70b-versatile",
+        is_enabled=True, is_primary=True, llm_role="coding", module_scope=[],
+    )
+    db = _FakeDB(rows=[generic_primary, coding_primary])
+
+    coding_routes = await svc.resolve_project_llm_routes(db, project_id=8, role="coding")
+    reasoning_routes = await svc.resolve_project_llm_routes(db, project_id=8, role="reasoning")
+
+    assert coding_routes[0].provider_key == "groq"
+    assert coding_routes[0].source == "project"
+    # No reasoning-specific row exists, so the generic primary applies.
+    assert reasoning_routes[0].provider_key == "ollama"
+
+
+@pytest.mark.anyio
+async def test_resolve_project_llm_routes_system_tier_uses_role_default(monkeypatch):
+    monkeypatch.setattr(svc.settings, "ai_gateway_enabled", True)
+    monkeypatch.setattr(svc.settings, "llm_coding_model", "qwen3-coder-next")
+    db = _FakeDB()
+
+    routes = await svc.resolve_project_llm_routes(db, project_id=8, role="coding")
+
+    assert routes[-1].source == "system_default"
+    assert routes[-1].provider_key == "ai_gateway"
+    assert routes[-1].model_name == "qwen3-coder-next"
+
+
+@pytest.mark.anyio
+async def test_setting_snapshot_includes_llm_role():
+    row = ProjectLLMSetting(
+        project_id=8, provider_key="groq", provider_name="Groq", model_name="llama-3.3-70b-versatile",
+        is_enabled=True, is_primary=True, llm_role="vision", module_scope=[],
+    )
+
+    snapshot = svc._setting_snapshot(row)
+
+    assert snapshot["llm_role"] == "vision"
+
+
+@pytest.mark.anyio
+async def test_resolve_project_llm_routes_scope_label_matching_works():
+    # The row is scoped via the UI's label ("Requirement Analysis"); agents
+    # pass the slug ("requirement") — this must now match (previously dead
+    # code compared the slug against label strings and never matched).
+    row = ProjectLLMSetting(
+        project_id=8, provider_key="ollama", provider_name="Ollama", model_name="llama3.1",
+        is_enabled=True, is_primary=True, llm_role=None, module_scope=["Requirement Analysis"],
+    )
+    db = _FakeDB(rows=[row])
+
+    matching = await svc.resolve_project_llm_routes(db, project_id=8, module_scope="requirement")
+    non_matching = await svc.resolve_project_llm_routes(db, project_id=8, module_scope="defect")
+
+    assert matching[0].provider_key == "ollama"
+    assert matching[0].source == "project"
+    assert non_matching[0].source == "system_default"

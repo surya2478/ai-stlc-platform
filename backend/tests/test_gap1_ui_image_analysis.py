@@ -80,7 +80,6 @@ def test_openai_vision_message_shape(monkeypatch):
 
 
 def test_get_vision_llm_uses_vision_model():
-    llm_provider.get_vision_llm.cache_clear()
     llm = llm_provider.get_vision_llm(provider="ollama", model="qwen2.5vl")
     assert llm.model == "qwen2.5vl"
 

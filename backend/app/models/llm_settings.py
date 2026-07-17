@@ -1,15 +1,23 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.base import TimestampMixin
 
+LLM_ROLES = ("coding", "vision", "reasoning")
+
 
 class ProjectLLMSetting(TimestampMixin, Base):
     __tablename__ = "project_llm_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "llm_role IS NULL OR llm_role IN ('" + "','".join(LLM_ROLES) + "')",
+            name="ck_project_llm_settings_role",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -24,6 +32,9 @@ class ProjectLLMSetting(TimestampMixin, Base):
     max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=4000)
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
     module_scope: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    # Role this setting applies to ("coding" | "vision" | "reasoning"), or
+    # NULL for a generic setting that applies to all roles (legacy behavior).
+    llm_role: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     config_status: Mapped[str] = mapped_column(String(50), nullable=False, default="disabled")
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -53,22 +64,28 @@ class ProjectSettingAuditLog(Base):
     project: Mapped["Project"] = relationship("Project", back_populates="setting_audit_logs")
 
 
+# Role-aware unique indexes: a NULL llm_role (generic, applies to every
+# role) is coalesced to the sentinel '__all__' so it participates in
+# uniqueness as its own group, same as a real role would.
 Index(
-    "uq_project_llm_provider",
+    "uq_project_llm_provider_role",
     ProjectLLMSetting.project_id,
     ProjectLLMSetting.provider_key,
+    func.coalesce(ProjectLLMSetting.llm_role, "__all__"),
     unique=True,
 )
 Index(
-    "uq_project_primary_llm",
+    "uq_project_primary_llm_role",
     ProjectLLMSetting.project_id,
+    func.coalesce(ProjectLLMSetting.llm_role, "__all__"),
     unique=True,
     postgresql_where=ProjectLLMSetting.is_primary.is_(True),
 )
 Index(
-    "uq_project_fallback_priority",
+    "uq_project_fallback_priority_role",
     ProjectLLMSetting.project_id,
     ProjectLLMSetting.fallback_priority,
+    func.coalesce(ProjectLLMSetting.llm_role, "__all__"),
     unique=True,
     postgresql_where=ProjectLLMSetting.is_fallback.is_(True),
 )

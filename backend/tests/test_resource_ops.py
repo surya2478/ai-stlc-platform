@@ -131,7 +131,7 @@ async def test_ai_estimation_service_llm_fallback():
     mock_llm.generate.side_effect = Exception("LLM connection timed out")
     
     from unittest.mock import patch
-    with patch("app.services.ai_estimate_service.get_llm", return_value=mock_llm):
+    with patch("app.services.ai_estimate_service.get_llm_for_role", return_value=mock_llm):
         service = AIEstimateService(mock_db)
         
         # Request estimation
