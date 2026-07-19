@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>nxtQA — AI Video Creator & compiler</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #020617;
+      --bg-sidebar: #091225;
+      --border-color: #13223f;
+      --accent-cyan: #0ea5e9;
+      --accent-indigo: #6366f1;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --bg-card: #0f172a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      overflow-hidden: true;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header {
+      background-color: var(--bg-sidebar);
+      border-b: 1px solid var(--border-color);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      shrink: 0;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-icon {
+      height: 32px;
+      width: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: white;
+      box-shadow: 0 4px 10px rgba(14, 165, 233, 0.25);
+    }
+
+    .logo-text {
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.5px;
+    }
+
+    .header-tag {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent-cyan);
+      background-color: rgba(14, 165, 233, 0.1);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    /* Main Layout */
+    .app-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar: Slides List */
+    .sidebar-left {
+      width: 280px;
+      background-color: var(--bg-sidebar);
+      border-right: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      shrink: 0;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sidebar-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    .btn-add {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+      border: none;
+      color: white;
+      font-weight: 600;
+      font-size: 11px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: opacity 0.15s;
+    }
+
+    .btn-add:hover {
+      opacity: 0.9;
+    }
+
+    .slides-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Custom scrollbar */
+    .slides-list::-webkit-scrollbar, .panel-right::-webkit-scrollbar {
+      width: 6px;
+    }
+    .slides-list::-webkit-scrollbar-thumb, .panel-right::-webkit-scrollbar-thumb {
+      background-color: #1e293b;
+      border-radius: 3px;
+    }
+
+    .slide-item {
+      display: flex;
+      gap: 10px;
+      padding: 8px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s ease;
+    }
+
+    .slide-item.active {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 1px var(--accent-cyan);
+    }
+
+    .slide-item:hover:not(.active) {
+      border-color: #334155;
+    }
+
+    .slide-thumb {
+      width: 72px;
+      height: 45px;
+      background-color: #020617;
+      border-radius: 4px;
+      object-fit: cover;
+      border: 1px solid #1e293b;
+    }
+
+    .slide-details {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .slide-number {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--accent-cyan);
+      margin-bottom: 2px;
+    }
+
+    .slide-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .slide-actions {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .action-icon {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px;
+      border-radius: 4px;
+    }
+
+    .action-icon:hover {
+      color: #ef4444;
+      background-color: rgba(239, 68, 68, 0.1);
+    }
+
+    .order-btn {
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 10px;
+    }
+    .order-btn:hover {
+      color: var(--accent-cyan);
+    }
+
+    /* Middle: Canvas & Playback Controls */
+    .panel-center {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background-color: var(--bg-main);
+      overflow: hidden;
+    }
+
+    .canvas-wrapper {
+      position: relative;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+      background-color: #000;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .playback-toolbar {
+      width: 100%;
+      max-width: 800px;
+      margin-top: 16px;
+      background-color: var(--bg-sidebar);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-text {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--accent-cyan);
+    }
+
+    .progress-text {
+      font-size: 12px;
+      font-family: monospace;
+      color: var(--text-muted);
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      border: 1px solid var(--border-color);
+      background-color: #0f172a;
+      color: var(--text-main);
+    }
+
+    .btn:hover:not(:disabled) {
+      background-color: #1e293b;
+      border-color: #334155;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo));
+      border: none;
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+
+    .btn-record {
+      background-color: #ef4444;
+      border: none;
+      color: white;
+    }
+
+    .btn-record:hover:not(:disabled) {
+      background-color: #dc2626;
+    }
+
+    /* Right: Slide Settings & Project settings */
+    .panel-right {
+      width: 320px;
+      background-color: var(--bg-sidebar);
+      border-left: 1px solid var(--border-color);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      shrink: 0;
+      padding: 20px;
+      gap: 20px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.75px;
+      color: var(--accent-cyan);
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 6px;
+      margin-bottom: 12px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    input[type="text"], textarea, select {
+      width: 100%;
+      background-color: #0f172a;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    input[type="text"]:focus, textarea:focus, select:focus {
+      border-color: var(--accent-cyan);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      overflow: hidden;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .btn-upload {
+      border: 1px dashed #334155;
+      background-color: rgba(15, 23, 42, 0.5);
+      padding: 10px;
+      text-align: center;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+
+    .btn-upload:hover {
+      border-color: var(--accent-cyan);
+      color: var(--text-main);
+    }
+
+    .file-input-wrapper input[type="file"] {
+      font-size: 100px;
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .badge-status {
+      display: inline-block;
+      font-size: 9px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-top: 4px;
+      align-self: flex-start;
+    }
+
+    .badge-ready {
+      background-color: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+    }
+
+    .badge-pending {
+      background-color: rgba(245, 158, 11, 0.15);
+      color: #f59e0b;
+    }
+
+    .btn-action-full {
+      width: 100%;
+      justify-content: center;
+      margin-top: 8px;
+    }
+
+    .project-card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .project-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Modal loading state */
+    .loader-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(2, 6, 23, 0.85);
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .loader-overlay.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid var(--border-color);
+      border-top-color: var(--accent-cyan);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="logo-container">
+      <div class="logo-icon">Q</div>
+      <span class="logo-text">nxtQA <span style="font-weight:300; color:var(--text-muted);">AI Video Creator</span></span>
+    </div>
+    <div style="display:flex; gap: 8px; align-items:center;">
+      <span class="header-tag">Dynamic Sandbox</span>
+    </div>
+  </header>
+
+  <!-- Workspace Layout -->
+  <div class="app-container">
+    
+    <!-- Left Panel: Slides list -->
+    <div class="sidebar-left">
+      <div class="sidebar-header">
+        <span class="sidebar-title">Scenes List</span>
+        <button class="btn-add" id="btnAddSlide">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Add
+        </button>
+      </div>
+      <div class="slides-list" id="slidesList"></div>
+    </div>
+
+    <!-- Center Panel: Canvas & Player -->
+    <div class="panel-center">
+      <div class="canvas-wrapper">
+        <canvas id="videoCanvas" width="1280" height="720" style="width: 800px; height: 450px;"></canvas>
+      </div>
+
+      <div class="playback-toolbar">
+        <div class="status-row">
+          <div class="status-text" id="statusLabel">Ready</div>
+          <div class="progress-text" id="progressLabel">Time: 0.0s / 0.0s</div>
+        </div>
+
+        <div class="control-row">
+          <div class="btn-group">
+            <button class="btn btn-primary" id="btnPreview">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              Preview
+            </button>
+            <button class="btn" id="btnStop" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+              Stop
+            </button>
+          </div>
+
+          <div class="btn-group">
+            <button class="btn btn-record" id="btnRecord">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"></circle></svg>
+              Record & Download WebM
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Settings -->
+    <div class="panel-right">
+      
+      <!-- Slide settings -->
+      <div>
+        <h4 class="section-title">Active Scene Editor</h4>
+        
+        <div class="form-group">
+          <label>Slide Title</label>
+          <input type="text" id="editTitle" placeholder="e.g. 1. Dashboard View">
+        </div>
+
+        <div class="form-group">
+          <label>Narration (AI Spoken Text)</label>
+          <textarea id="editDesc" placeholder="Enter what the AI voiceover should read..."></textarea>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="badge-status badge-pending" id="audioStatusBadge">Voiceover: Outdated</div>
+            <button class="btn" style="padding: 4px 8px; font-size:10px;" id="btnGenVoice">Gen Audio</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Slide Visual / Screenshot</label>
+          <select id="editDefaultImage" style="margin-bottom:6px;">
+            <option value="">-- Choose default screen --</option>
+            <option value="dashboard.png">1. Dashboard</option>
+            <option value="requirements.png">2. Requirements Command Center</option>
+            <option value="test_planning.png">3. Test Planning</option>
+            <option value="test_cases.png">4. Test Scenario Mappings</option>
+            <option value="test_data.png">5. Test Data Management</option>
+            <option value="ai_automation_studio.png">6. AI Automation Studio</option>
+            <option value="playwright_ai_studio_2.png">7. Playwright AI Studio</option>
+            <option value="execution.png">8. Live Test Executions</option>
+            <option value="defects.png">9. Defect Triage & Jira Sync</option>
+            <option value="reports_1.png">10. Executive Reports</option>
+            <option value="ai_agents.png">11. AI Agents Pipeline</option>
+            <option value="resource_intelligence.png">12. Resource Intelligence</option>
+            <option value="project_settings.png">13. Project Settings</option>
+            <option value="users_and_roles.png">14. Users and Roles</option>
+          </select>
+          
+          <div class="file-input-wrapper">
+            <div class="btn-upload" id="uploadLabel">📂 Upload Custom Image...</div>
+            <input type="file" id="editCustomImage" accept="image/*">
+          </div>
+        </div>
+      </div>
+
+      <!-- Global Settings -->
+      <div>
+        <h4 class="section-title">Global Settings</h4>
+        
+        <div class="form-group">
+          <label>Voice Accent Accent (Indian English Sweet-Spot)</label>
+          <select id="globalAccent">
+            <option value="co.in">India Accent (tld: co.in)</option>
+            <option value="com">US Accent (tld: com)</option>
+            <option value="co.uk">UK Accent (tld: co.uk)</option>
+            <option value="com.au">Australia Accent (tld: com.au)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Voice Speed</label>
+          <select id="globalSpeed">
+            <option value="1.0">Normal Speed (1.0x)</option>
+            <option value="1.25" selected>Fast Pitch (1.25x)</option>
+            <option value="1.5">Hyper Speed (1.5x)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Project Import / Export -->
+      <div>
+        <h4 class="section-title">Campaign Project Profile</h4>
+        <div class="project-card">
+          <div style="font-size:10px; color:var(--text-muted);">
+            Save your customized slides, scripts, and audio parameters to disk.
+          </div>
+          <div class="project-actions">
+            <button class="btn" style="flex:1; font-size:10px; justify-content:center;" id="btnExport">📥 Save Project</button>
+            <button class="btn" style="flex:1; font-size:10px; justify-content:center;" id="btnImportTrigger">📤 Load Project</button>
+            <input type="file" id="projectFileInput" accept=".json" style="display:none;">
+          </div>
+          <button class="btn btn-record" style="font-size:10px; justify-content:center; width:100%; border:none; background-color:rgba(239,68,68,0.1); color:#ef4444;" id="btnResetDefault">Reset to Defaults</button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Loading Overlay -->
+  <div class="loader-overlay" id="loaderOverlay">
+    <div class="spinner"></div>
+    <div style="font-weight: 500;" id="loaderLabel">Synthesizing AI Voiceover...</div>
+  </div>
+
+  <script>
+    // Default system scenes configuration
+    const DEFAULT_SCENES = [
+      { img: "dashboard.png", isCustomImage: false, title: "1. QA Command Center Dashboard", desc: "Welcome to the AI STLC Command Center—the autonomous cockpit for QA teams. The entire lifecycle flows seamlessly from requirements gathering to execution reports, where the output of each agent automatically feeds as the input for the next, orchestrating a fully closed-loop software testing lifecycle.", audio_base64: "", defaultAudio: "scene_0.mp3" },
+      { img: "requirements.png", isCustomImage: false, title: "2. Requirements Intake & Quality Gate", desc: "Ingest requirements instantly. The AI Quality review agent scans for ambiguity and rates readiness.", audio_base64: "", defaultAudio: "scene_1.mp3" },
+      { img: "test_planning.png", isCustomImage: false, title: "3. Test Planning & Architecture", desc: "Autonomous planning agents design complete test structures tailored to your domain.", audio_base64: "", defaultAudio: "scene_2.mp3" },
+      { img: "test_cases.png", isCustomImage: false, title: "4. Test Scenario Mappings", desc: "Drill down into detailed test scenarios generated automatically from specifications.", audio_base64: "", defaultAudio: "scene_3.mp3" },
+      { img: "test_data.png", isCustomImage: false, title: "5. Test Data Management", desc: "Create synthetic and production-like test data dynamically for your test cases.", audio_base64: "", defaultAudio: "scene_4.mp3" },
+      { img: "ai_automation_studio.png", isCustomImage: false, title: "6. AI Automation Studio", desc: "Generate modular, clean test automation scripts in seconds.", audio_base64: "", defaultAudio: "scene_5.mp3" },
+      { img: "playwright_ai_studio_2.png", isCustomImage: false, title: "7. Playwright AI Studio", desc: "Write, compile, and refine Playwright automation code autonomously.", audio_base64: "", defaultAudio: "scene_6.mp3" },
+      { img: "execution.png", isCustomImage: false, title: "8. Live Test Executions", desc: "Monitor execution runs live. The platform runs scripts and collects logs.", audio_base64: "", defaultAudio: "scene_7.mp3" },
+      { img: "defects.png", isCustomImage: false, title: "9. Defect Triage & Jira Sync", desc: "Autonomous defect triage analyzes failures, identifies root causes, and files tickets to Jira.", audio_base64: "", defaultAudio: "scene_8.mp3" },
+      { img: "reports_1.png", isCustomImage: false, title: "10. Executive Summaries & Reports", desc: "Compile comprehensive executive reports summarizing test outcomes automatically.", audio_base64: "", defaultAudio: "scene_9.mp3" },
+      { img: "ai_agents.png", isCustomImage: false, title: "11. Autonomous AI Agents Manager", desc: "Orchestrate your team of 9 autonomous agents, monitoring their tasks and activity.", audio_base64: "", defaultAudio: "scene_10.mp3" },
+      { img: "resource_intelligence.png", isCustomImage: false, title: "12. Token & Resource Intelligence", desc: "Gain complete visibility into Resource utilization and on how they are performing on their daily tasks with complete visibility.", audio_base64: "", defaultAudio: "scene_11.mp3" },
+      { img: "project_settings.png", isCustomImage: false, title: "13. Platform Project Settings", desc: "Manage project configuration, environments, and LLM integrations seamlessly.", audio_base64: "", defaultAudio: "scene_12.mp3" },
+      { img: "users_and_roles.png", isCustomImage: false, title: "14. Enterprise Users & RBAC", desc: "Enforce enterprise RBAC, assigning specialized roles across your engineering team.", audio_base64: "", defaultAudio: "scene_13.mp3" }
+    ];
+
+    let currentProject = {
+      accent: "co.in",
+      speed: "1.25",
+      slides: JSON.parse(JSON.stringify(DEFAULT_SCENES))
+    };
+
+    const canvas = document.getElementById("videoCanvas");
+    const ctx = canvas.getContext("2d");
+    
+    // UI elements
+    const slidesListEl = document.getElementById("slidesList");
+    const btnAddSlide = document.getElementById("btnAddSlide");
+    const btnPreview = document.getElementById("btnPreview");
+    const btnStop = document.getElementById("btnStop");
+    const btnRecord = document.getElementById("btnRecord");
+    
+    const editTitle = document.getElementById("editTitle");
+    const editDesc = document.getElementById("editDesc");
+    const editDefaultImage = document.getElementById("editDefaultImage");
+    const editCustomImage = document.getElementById("editCustomImage");
+    const uploadLabel = document.getElementById("uploadLabel");
+    
+    const globalAccent = document.getElementById("globalAccent");
+    const globalSpeed = document.getElementById("globalSpeed");
+    
+    const statusLabel = document.getElementById("statusLabel");
+    const progressLabel = document.getElementById("progressLabel");
+    const audioStatusBadge = document.getElementById("audioStatusBadge");
+    const btnGenVoice = document.getElementById("btnGenVoice");
+    
+    const loaderOverlay = document.getElementById("loaderOverlay");
+    const loaderLabel = document.getElementById("loaderLabel");
+    
+    const btnExport = document.getElementById("btnExport");
+    const btnImportTrigger = document.getElementById("btnImportTrigger");
+    const projectFileInput = document.getElementById("projectFileInput");
+    const btnResetDefault = document.getElementById("btnResetDefault");
+
+    // Audio & State
+    let activeSlideIndex = 0;
+    let audioElements = [];
+    let imageCache = {};
+    let isPlaying = false;
+    let isRecording = false;
+    let currentSceneIndex = 0;
+    let requestID = null;
+    let totalVideoDuration = 0;
+    let recordedChunks = [];
+    let mediaRecorder = null;
+    
+    let audioCtx = null;
+    let audioDest = null;
+
+    // Initialize Local Storage
+    function loadFromLocalStorage() {
+      const saved = localStorage.getItem("nxtqa_video_project");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed.slides && parsed.slides.length > 0) {
+            currentProject = parsed;
+            globalAccent.value = currentProject.accent || "co.in";
+            globalSpeed.value = currentProject.speed || "1.25";
+          }
+        } catch (e) {
+          console.error("Failed to parse local storage project:", e);
+        }
+      }
+    }
+
+    function saveToLocalStorage() {
+      try {
+        currentProject.accent = globalAccent.value;
+        currentProject.speed = globalSpeed.value;
+        localStorage.setItem("nxtqa_video_project", JSON.stringify(currentProject));
+      } catch (e) {
+        // QuotaExceededError is common if user uploads many large custom images
+        console.warn("Local storage quota exceeded. Saving to local storage bypassed.", e);
+      }
+    }
+
+    // Load Images Helper
+    function preloadSlideImages(callback) {
+      let loaded = 0;
+      const slides = currentProject.slides;
+      if (slides.length === 0) return callback();
+      
+      slides.forEach((slide, idx) => {
+        const key = slide.img;
+        if (imageCache[key]) {
+          loaded++;
+          if (loaded === slides.length) callback();
+          return;
+        }
+
+        const img = new Image();
+        img.onload = () => {
+          imageCache[key] = img;
+          loaded++;
+          if (loaded === slides.length) callback();
+        };
+        img.onerror = () => {
+          console.error(`Failed to load slide image: ${key}`);
+          // Load a fallback empty canvas image
+          const fallback = new Image();
+          fallback.src = "data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='1280' height='720'><rect width='100%' height='100%' fill='%230f172a'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='32' fill='%2364748b'>Visual Asset Missing</text></svg>";
+          fallback.onload = () => {
+            imageCache[key] = fallback;
+            loaded++;
+            if (loaded === slides.length) callback();
+          };
+        };
+        img.src = slide.isCustomImage ? slide.img : slide.img;
+      });
+    }
+
+    // Draw frame on canvas
+    function drawFrame(sceneIndex, sceneProgress) {
+      const slide = currentProject.slides[sceneIndex];
+      if (!slide) return;
+      
+      const img = imageCache[slide.img];
+      if (!img) return;
+
+      // Clear
+      ctx.fillStyle = "#020617";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Zoom effect
+      const zoomScale = 1.0 + (sceneProgress * 0.05);
+      
+      const imgRatio = img.width / img.height;
+      const canvasRatio = canvas.width / canvas.height;
+      
+      let drawW, drawH;
+      if (imgRatio > canvasRatio) {
+        drawW = canvas.width;
+        drawH = canvas.width / imgRatio;
+      } else {
+        drawH = canvas.height;
+        drawW = canvas.height * imgRatio;
+      }
+
+      const x = (canvas.width - drawW) / 2;
+      const y = (canvas.height - drawH) / 2;
+
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.scale(zoomScale, zoomScale);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      ctx.drawImage(img, x, y, drawW, drawH);
+      ctx.restore();
+    }
+
+    // Refresh slides list in Sidebar
+    function renderSlidesList() {
+      slidesListEl.innerHTML = "";
+      currentProject.slides.forEach((slide, idx) => {
+        const item = document.createElement("div");
+        item.className = `slide-item ${idx === activeSlideIndex ? "active" : ""}`;
+        item.id = `slideItem-${idx}`;
+        
+        // Thumbnail source
+        let thumbSrc = "data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90'><rect width='100%' height='100%' fill='%23020617'/></svg>";
+        if (!slide.isCustomImage) {
+          thumbSrc = slide.img;
+        } else if (slide.img.startsWith("data:image")) {
+          thumbSrc = slide.img;
+        }
+
+        item.innerHTML = `
+          <img class="slide-thumb" src="${thumbSrc}" alt="thumb">
+          <div class="slide-details">
+            <span class="slide-number">SCENE ${idx + 1}</span>
+            <span class="slide-title">${slide.title || "Untitled Scene"}</span>
+          </div>
+          <div class="slide-actions">
+            <button class="action-icon btnDelete" data-index="${idx}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+            <div style="display:flex; gap: 4px;">
+              <button class="order-btn btnMoveUp" data-index="${idx}">▲</button>
+              <button class="order-btn btnMoveDown" data-index="${idx}">▼</button>
+            </div>
+          </div>
+        `;
+
+        item.addEventListener("click", (e) => {
+          if (e.target.closest(".action-icon") || e.target.closest(".order-btn")) return;
+          selectSlide(idx);
+        });
+
+        slidesListEl.appendChild(item);
+      });
+      
+      // Hook actions
+      document.querySelectorAll(".btnDelete").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.index);
+          deleteSlide(idx);
+        });
+      });
+
+      document.querySelectorAll(".btnMoveUp").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.index);
+          moveSlide(idx, -1);
+        });
+      });
+
+      document.querySelectorAll(".btnMoveDown").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.index);
+          moveSlide(idx, 1);
+        });
+      });
+    }
+
+    function selectSlide(index) {
+      if (isPlaying || isRecording) return;
+      activeSlideIndex = index;
+      renderSlidesList();
+      
+      const slide = currentProject.slides[index];
+      editTitle.value = slide.title || "";
+      editDesc.value = slide.desc || "";
+      
+      if (slide.isCustomImage) {
+        editDefaultImage.value = "";
+        uploadLabel.innerText = "Custom File Uploaded";
+      } else {
+        editDefaultImage.value = slide.img;
+        uploadLabel.innerText = "📂 Upload Custom Image...";
+      }
+
+      // Update voiceover badge status
+      if (slide.audio_base64 || (!slide.audio_base64 && slide.defaultAudio && !slide.desc_modified)) {
+        audioStatusBadge.innerText = "Voiceover: Ready";
+        audioStatusBadge.className = "badge-status badge-ready";
+      } else {
+        audioStatusBadge.innerText = "Voiceover: Needs Audio Generation";
+        audioStatusBadge.className = "badge-status badge-pending";
+      }
+
+      preloadSlideImages(() => {
+        drawFrame(index, 0);
+      });
+    }
+
+    function deleteSlide(idx) {
+      if (currentProject.slides.length <= 1) {
+        alert("You must have at least 1 scene in the storyboard.");
+        return;
+      }
+      currentProject.slides.splice(idx, 1);
+      if (activeSlideIndex >= currentProject.slides.length) {
+        activeSlideIndex = currentProject.slides.length - 1;
+      }
+      saveToLocalStorage();
+      renderSlidesList();
+      selectSlide(activeSlideIndex);
+    }
+
+    function moveSlide(idx, dir) {
+      const targetIdx = idx + dir;
+      if (targetIdx < 0 || targetIdx >= currentProject.slides.length) return;
+      
+      const temp = currentProject.slides[idx];
+      currentProject.slides[idx] = currentProject.slides[targetIdx];
+      currentProject.slides[targetIdx] = temp;
+      
+      activeSlideIndex = targetIdx;
+      saveToLocalStorage();
+      renderSlidesList();
+      selectSlide(activeSlideIndex);
+    }
+
+    // Add Slide
+    btnAddSlide.addEventListener("click", () => {
+      const newSlide = {
+        img: "dashboard.png",
+        isCustomImage: false,
+        title: `Scene ${currentProject.slides.length + 1}`,
+        desc: "Add a voiceover script for this new scene.",
+        audio_base64: "",
+        defaultAudio: ""
+      };
+      currentProject.slides.push(newSlide);
+      activeSlideIndex = currentProject.slides.length - 1;
+      saveToLocalStorage();
+      renderSlidesList();
+      selectSlide(activeSlideIndex);
+    });
+
+    // Form inputs listening
+    editTitle.addEventListener("input", () => {
+      currentProject.slides[activeSlideIndex].title = editTitle.value;
+      const titleEl = document.querySelector(`#slideItem-${activeSlideIndex} .slide-title`);
+      if (titleEl) titleEl.innerText = editTitle.value;
+      saveToLocalStorage();
+    });
+
+    editDesc.addEventListener("input", () => {
+      const slide = currentProject.slides[activeSlideIndex];
+      slide.desc = editDesc.value;
+      slide.desc_modified = true;
+      slide.audio_base64 = ""; // Invalidate audio on text edit
+      audioStatusBadge.innerText = "Voiceover: Needs Audio Generation";
+      audioStatusBadge.className = "badge-status badge-pending";
+      saveToLocalStorage();
+    });
+
+    editDefaultImage.addEventListener("change", () => {
+      const val = editDefaultImage.value;
+      if (val) {
+        const slide = currentProject.slides[activeSlideIndex];
+        slide.img = val;
+        slide.isCustomImage = false;
+        
+        saveToLocalStorage();
+        preloadSlideImages(() => {
+          selectSlide(activeSlideIndex);
+        });
+      }
+    });
+
+    editCustomImage.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const slide = currentProject.slides[activeSlideIndex];
+        slide.img = event.target.result;
+        slide.isCustomImage = true;
+        
+        saveToLocalStorage();
+        preloadSlideImages(() => {
+          selectSlide(activeSlideIndex);
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Generate Dynamic Voiceover via API
+    async function generateVoiceoverForSlide(idx) {
+      const slide = currentProject.slides[idx];
+      const accent = globalAccent.value;
+      
+      loaderLabel.innerText = `Synthesizing Audio for Scene ${idx + 1}...`;
+      loaderOverlay.classList.add("active");
+      
+      try {
+        const response = await fetch("/api/v1/video/generate-voiceover", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            text: slide.desc,
+            lang: "en",
+            tld: accent
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error("API call failed.");
+        }
+
+        const data = await response.json();
+        slide.audio_base64 = data.audio_base64;
+        slide.desc_modified = false;
+        
+        if (idx === activeSlideIndex) {
+          audioStatusBadge.innerText = "Voiceover: Ready";
+          audioStatusBadge.className = "badge-status badge-ready";
+        }
+        saveToLocalStorage();
+      } catch (err) {
+        console.error(err);
+        alert(`Failed to generate voiceover for Scene ${idx + 1}. Check server logs.`);
+      } finally {
+        loaderOverlay.classList.remove("active");
+      }
+    }
+
+    btnGenVoice.addEventListener("click", async () => {
+      await generateVoiceoverForSlide(activeSlideIndex);
+    });
+
+    // Initialize Web Audio API nodes
+    function initAudioContext() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioDest = audioCtx.createMediaStreamDestination();
+    }
+
+    // Build the collection of audio files
+    async function loadAudioAssets() {
+      statusLabel.innerText = "Loading Audio elements...";
+      audioElements = [];
+      
+      for (let i = 0; i < currentProject.slides.length; i++) {
+        const slide = currentProject.slides[i];
+        
+        // Auto-generate missing voiceover audio dynamically if modified or empty
+        if (!slide.audio_base64 && (!slide.defaultAudio || slide.desc_modified)) {
+          await generateVoiceoverForSlide(i);
+        }
+
+        const audio = new Audio();
+        audio.crossOrigin = "anonymous";
+        audio.src = slide.audio_base64 || slide.defaultAudio;
+        
+        // Wait for metadata to know duration
+        await new Promise((resolve) => {
+          audio.onloadedmetadata = resolve;
+          audio.onerror = () => {
+            console.error(`Error loading audio index ${i}`);
+            resolve(); // proceed anyway
+          };
+        });
+
+        audioElements.push(audio);
+      }
+    }
+
+    // Playback loop
+    function renderLoop() {
+      if (!isPlaying && !isRecording) return;
+      
+      const audio = audioElements[currentSceneIndex];
+      const speed = parseFloat(globalSpeed.value);
+      
+      if (!audio) {
+        stopPlayOrRecord();
+        return;
+      }
+      
+      // Calculate elapsed time
+      let elapsedSeconds = 0;
+      for (let i = 0; i < currentSceneIndex; i++) {
+        elapsedSeconds += audioElements[i].duration || 0;
+      }
+      elapsedSeconds += audio.currentTime;
+      elapsedSeconds = elapsedSeconds / speed;
+      
+      progressLabel.innerText = `Time: ${elapsedSeconds.toFixed(1)}s / ${totalVideoDuration.toFixed(1)}s`;
+      
+      // Auto transition when audio ends
+      if (audio.ended || audio.currentTime >= audio.duration) {
+        audio.pause();
+        audio.currentTime = 0;
+        
+        currentSceneIndex++;
+        if (currentSceneIndex >= currentProject.slides.length) {
+          stopPlayOrRecord();
+          return;
+        } else {
+          playScene(currentSceneIndex);
+        }
+      }
+      
+      // Highlight scene
+      document.querySelectorAll(".slide-item").forEach((item, idx) => {
+        if (idx === currentSceneIndex) {
+          item.classList.add("active");
+          item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+          item.classList.remove("active");
+        }
+      });
+      
+      const sceneProgress = audio.currentTime / (audio.duration || 1);
+      drawFrame(currentSceneIndex, sceneProgress);
+      
+      requestID = requestAnimationFrame(renderLoop);
+    }
+
+    function playScene(index) {
+      currentSceneIndex = index;
+      const audio = audioElements[index];
+      const speed = parseFloat(globalSpeed.value);
+      
+      if (audio) {
+        audio.currentTime = 0;
+        audio.playbackRate = speed;
+        
+        // Connect to destination stream if Web Audio context is initialized
+        if (audioCtx) {
+          // Connect on the fly when playing
+          try {
+            const source = audioCtx.createMediaElementSource(audio);
+            source.connect(audioDest);
+            source.connect(audioCtx.destination);
+          } catch(e) {
+            // Already connected, ignore error
+          }
+        }
+        
+        audio.play().catch(e => console.error("Audio playback error:", e));
+      }
+    }
+
+    async function startPlay(recordMode = false) {
+      btnPreview.disabled = true;
+      btnRecord.disabled = true;
+      btnStop.disabled = false;
+      
+      // 1. Prepare and synthesize all dynamic audio
+      await loadAudioAssets();
+
+      // 2. Setup Audio routing
+      initAudioContext();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      // 3. Compute duration
+      const speed = parseFloat(globalSpeed.value);
+      let total = 0;
+      audioElements.forEach(audio => {
+        total += audio.duration || 0;
+      });
+      totalVideoDuration = total / speed;
+
+      // 4. Preload and cache all slide images
+      await new Promise(resolve => preloadSlideImages(resolve));
+
+      isPlaying = !recordMode;
+      isRecording = recordMode;
+      currentSceneIndex = 0;
+      recordedChunks = [];
+
+      playScene(0);
+
+      if (recordMode) {
+        statusLabel.innerText = "Recording WebM video with mixed voiceover...";
+        statusLabel.style.color = "#EF4444";
+        
+        const videoStream = canvas.captureStream(30);
+        const audioStream = audioDest.stream;
+        
+        const combinedStream = new MediaStream([
+          ...videoStream.getVideoTracks(),
+          ...audioStream.getAudioTracks()
+        ]);
+        
+        let options = { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 5000000 };
+        try {
+          mediaRecorder = new MediaRecorder(combinedStream, options);
+        } catch (e) {
+          options = { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 3000000 };
+          try {
+            mediaRecorder = new MediaRecorder(combinedStream, options);
+          } catch (e2) {
+            mediaRecorder = new MediaRecorder(combinedStream);
+          }
+        }
+        
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+        
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = 'stlc_platform_promo_campaign.webm';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+          }, 100);
+          
+          statusLabel.innerText = "Download complete!";
+          statusLabel.style.color = "#10B981";
+        };
+        
+        mediaRecorder.start();
+      } else {
+        statusLabel.innerText = "Playing slide show preview...";
+        statusLabel.style.color = "#0ea5e9";
+      }
+
+      renderLoop();
+    }
+
+    function stopPlayOrRecord() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      
+      // Stop all audios
+      audioElements.forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+
+      isPlaying = false;
+      isRecording = false;
+      cancelAnimationFrame(requestID);
+      
+      btnPreview.disabled = false;
+      btnRecord.disabled = false;
+      btnStop.disabled = true;
+      
+      statusLabel.innerText = "Ready";
+      statusLabel.style.color = "var(--accent-cyan)";
+      
+      // Select original active slide
+      selectSlide(activeSlideIndex);
+    }
+
+    btnPreview.addEventListener("click", () => startPlay(false));
+    btnRecord.addEventListener("click", () => startPlay(true));
+    btnStop.addEventListener("click", stopPlayOrRecord);
+
+    // Project profile export/import
+    btnExport.addEventListener("click", () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentProject, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "nxtqa_video_campaign_profile.json");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    });
+
+    btnImportTrigger.addEventListener("click", () => {
+      projectFileInput.click();
+    });
+
+    projectFileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const parsed = JSON.parse(event.target.result);
+          if (parsed.slides && parsed.slides.length > 0) {
+            currentProject = parsed;
+            globalAccent.value = currentProject.accent || "co.in";
+            globalSpeed.value = currentProject.speed || "1.25";
+            
+            activeSlideIndex = 0;
+            saveToLocalStorage();
+            renderSlidesList();
+            selectSlide(0);
+            alert("Project loaded successfully!");
+          } else {
+            alert("Invalid project format.");
+          }
+        } catch (err) {
+          alert("Failed to parse JSON file.");
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    btnResetDefault.addEventListener("click", () => {
+      if (confirm("Are you sure you want to reset all modifications back to factory defaults? Your unsaved customizations will be deleted.")) {
+        localStorage.removeItem("nxtqa_video_project");
+        currentProject = {
+          accent: "co.in",
+          speed: "1.25",
+          slides: JSON.parse(JSON.stringify(DEFAULT_SCENES))
+        };
+        globalAccent.value = "co.in";
+        globalSpeed.value = "1.25";
+        activeSlideIndex = 0;
+        renderSlidesList();
+        selectSlide(0);
+      }
+    });
+
+    // App Initialization
+    loadFromLocalStorage();
+    renderSlidesList();
+    selectSlide(0);
+  </script>
+</body>
+</html>
