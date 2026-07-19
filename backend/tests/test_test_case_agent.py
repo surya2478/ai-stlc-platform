@@ -4,6 +4,15 @@ from app.agents.test_planning import test_case_agent
 from app.agents.test_planning.test_case_agent import TestCaseDevelopmentAgent
 
 
+@pytest.fixture
+def anyio_backend():
+    # TestCaseDevelopmentAgent runs on a langgraph StateGraph, which is not
+    # trio-compatible (it calls asyncio internals directly). Production only
+    # ever runs under asyncio (uvicorn), so pin this module to asyncio rather
+    # than testing an execution mode the app never uses.
+    return "asyncio"
+
+
 class FailingLLM:
     async def generate(self, **kwargs):
         raise RuntimeError("provider rate limit")

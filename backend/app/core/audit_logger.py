@@ -34,11 +34,11 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _emit(event_type: str, **fields: Any) -> None:
+def _emit(_event: str, **fields: Any) -> None:
     """Write one structured audit event as a JSON log line at INFO level."""
     record = {
         "ts": _now(),
-        "event": event_type,
+        "event": _event,
         **{k: v for k, v in fields.items() if v is not None},
     }
     _audit_logger.info(json.dumps(record, default=str))

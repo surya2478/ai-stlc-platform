@@ -124,7 +124,7 @@ def test_patch_update_persists_fields_and_creates_history():
         (TestCaseUpdate(status="unknown"), "Invalid status"),
         (TestCaseUpdate(mode="manual", automation_status="automated", external_tc_id="EXT-1"), "Manual test cases"),
         (TestCaseUpdate(automation_eligible="no", automation_status="automated", external_tc_id="EXT-1"), "Automation-ineligible"),
-        (TestCaseUpdate(mode="automated", automation_eligible="yes", automation_status="automated"), "requires external_tc_id"),
+        (TestCaseUpdate(mode="automated", automation_eligible="yes", automation_status="automated"), "needs an external_tc_id"),
     ],
 )
 def test_patch_rejects_invalid_metadata_transitions(updates, detail):

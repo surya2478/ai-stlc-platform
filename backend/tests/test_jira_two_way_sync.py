@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
 import json
+import logging
 from typing import Any
 
 import anyio
@@ -253,7 +254,7 @@ def test_conflict_detection_triggers_on_concurrent_modification():
     assert db.requirements[(1, "STLC-1")].title == "Local edit"
 
 
-def test_inbound_failure_persists_failed_history_and_error_status():
+def test_inbound_failure_persists_failed_history_and_error_status(caplog):
     async def run():
         db = _JiraSyncDB()
         client = httpx.AsyncClient(
@@ -264,11 +265,17 @@ def test_inbound_failure_persists_failed_history_and_error_status():
         await client.aclose()
         return db
 
-    db = anyio.run(run)
+    with caplog.at_level(logging.WARNING):
+        db = anyio.run(run)
     history = next(iter(db.histories.values()))
 
     assert history.status == "failed"
-    assert "boom" in history.error_message
+    # SEC-051: raw upstream error detail ("boom") must never be persisted or
+    # shown to the client — only a sanitized, generic message. The raw
+    # detail is still logged server-side for diagnostics.
+    assert "boom" not in history.error_message
+    assert "Jira service error" in history.error_message
+    assert any("boom" in record.message for record in caplog.records)
     assert db.connection.status == "error"
 
 

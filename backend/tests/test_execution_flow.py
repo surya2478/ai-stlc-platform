@@ -35,6 +35,21 @@ class _ExecutionDB:
             return self.test_case
         return None
 
+    async def execute(self, stmt):
+        # Execution flow queries CoverageMatrixEntry (seeding, via
+        # scalar_one_or_none) and, for AI runs, ExecutionResult (completion
+        # evaluation, via scalars().all()). This fake has no real table, so
+        # coverage lookups report "not found" and ExecutionResult lookups
+        # return whatever was tracked in self.added so far.
+        try:
+            entity = stmt.column_descriptions[0]["entity"]
+        except Exception:
+            entity = None
+        if entity is ExecutionResult:
+            matches = [obj for obj in self.added if isinstance(obj, ExecutionResult)]
+            return _ExecuteResult(matches)
+        return _ExecuteResult(None)
+
 
 class _ExecuteResult:
     def __init__(self, value=None):
@@ -42,6 +57,10 @@ class _ExecuteResult:
 
     def scalar_one_or_none(self):
         return self.value
+
+    def scalars(self):
+        rows = self.value if isinstance(self.value, list) else [self.value]
+        return SimpleNamespace(all=lambda: rows)
 
 
 class _EndpointDB:

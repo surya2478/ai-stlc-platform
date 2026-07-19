@@ -23,6 +23,14 @@ class FakeResult:
     def scalars(self):
         return FakeScalars(self.val if isinstance(self.val, list) else [self.val])
 
+    def all(self):
+        # Recent-activity queries select (Entity, user_name) tuples; every
+        # _lookup branch already returns a list of single mock rows, so pair
+        # each with a mock user_name to satisfy `for row, user_name in ...`.
+        if isinstance(self.val, list):
+            return [(item, "Mock User") for item in self.val]
+        return []
+
 
 class SmartFakeSession:
     def __init__(self, behavior="normal"):
