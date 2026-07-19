@@ -8,7 +8,7 @@ import {
   TestTube2, Play, Bug, BarChart3, Settings,
   Bot, ChevronRight, ChevronDown, Users, Database,
   ChevronLeft, Brain, BookOpen,
-  Hand, Cpu, Sparkles, Gauge, Table2, Video,
+  Hand, Cpu, Sparkles, Gauge, Table2, Video, Target,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,7 @@ const NAV_ITEMS: NavGroup[] = [
       { label: "Test Data", href: "/test-data", icon: Database },
       { label: "AI Automation Studio", href: "/automation", icon: Sparkles },
       { label: "Playwright AI Studio", href: "/playwright-studio", icon: Bot },
+      { label: "Grounded Automation (PoC)", href: "/grounded-automation", icon: Target },
       {
         label: "Execution",
         href: "/execution",

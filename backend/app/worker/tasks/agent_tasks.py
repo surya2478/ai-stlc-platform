@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.agents.automation.automation_agent import AutomationScriptAgent
 from app.agents.automation.dry_run_agent import DryRunAgent
 from app.agents.automation.eligibility_agent import AutomationEligibilityAgent
+from app.agents.automation.grounded_capture_agent import GroundedCaptureAgent
 from app.agents.automation.mcp_discovery_agent import PlaywrightMCPDiscoveryAgent
 from app.agents.automation.planner_agent import PlaywrightPlannerAgent
 from app.agents.execution.failure_classification_agent import FailureClassificationAgent
@@ -184,6 +185,18 @@ async def _playwright_planner(input_data: dict[str, Any]) -> Any:
     )
 
 
+async def _grounded_capture(input_data: dict[str, Any]) -> Any:
+    return await GroundedCaptureAgent().run(
+        test_case=input_data.get("test_case") or {},
+        application_url=input_data.get("application_url", ""),
+        application_id=input_data.get("application_id"),
+        environment=input_data.get("environment"),
+        capture_mode=input_data.get("capture_mode", "automated"),
+        routing=input_data.get("routing"),
+        confirmed_actions=input_data.get("confirmed_actions"),
+    )
+
+
 async def _automation_script(input_data: dict[str, Any]) -> Any:
     return await AutomationScriptAgent().run(
         test_cases=input_data["test_cases"],
@@ -247,6 +260,7 @@ AGENT_REGISTRY: dict[str, AgentCallable] = {
     "automation_eligibility": _automation_eligibility,
     "playwright_mcp_discovery": _playwright_mcp_discovery,
     "playwright_planner": _playwright_planner,
+    "grounded_capture": _grounded_capture,
     "automation_script": _automation_script,
     "automation_dry_run": _automation_dry_run,
     "failure_classification": _failure_classification,
@@ -331,6 +345,13 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     # its output is a *proposal* that must pass the bulk plan-approval gate
     # (studio_service.approve_plan) before anything else runs.
     "playwright_planner": AgentSpec(timeout_seconds=1800.0, module_scope="playwright_studio"),
+    # Grounded Automation PoC: a TC-guided browser walk — no LLM calls in
+    # the walk itself, but real page loads against a live environment, so
+    # the timeout matches the agent's own max_minutes budget (20m) + slack.
+    # Deliberately NOT chained: its output must pass the deterministic
+    # coverage gate and an explicit user Generate action before anything
+    # else runs (grounded_poc_service.start_generation).
+    "grounded_capture": AgentSpec(timeout_seconds=1500.0, module_scope="grounded_poc"),
     # 240s was sized for a human generating scripts for a handful of
     # approved test cases; Playwright AI Studio submits waves of up to 25 at
     # once. AutomationScriptAgent now fans generation out with bounded
@@ -1565,6 +1586,21 @@ async def _persist_agent_artifacts(
             "proposed_test_case_count": len(data.get("proposed_test_cases", [])),
             "studio_run_id": studio_run_id,
         }
+
+    if agent_name == "grounded_capture":
+        # Grounded Automation PoC: persist Application State Evidence
+        # Packages and run the four-dimension coverage gate (or pause for
+        # assisted-mode confirmation). Everything lives in poc_* tables —
+        # no locator_map writes, no TestCase mutation.
+        from app.services import grounded_poc_service
+
+        grounding_run_id = input_data.get("grounding_run_id")
+        if not grounding_run_id:
+            logger.warning("grounded_capture output without grounding_run_id; dropping")
+            return {"dropped": True}
+        return await grounded_poc_service.apply_capture_output(
+            db, grounding_run_id=grounding_run_id, agent_run=run, output=data
+        )
 
     if agent_name == "automation_script":
         # Phase 2 (ADR-001): script_data.code is compiler output, not

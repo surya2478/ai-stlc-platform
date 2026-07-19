@@ -197,6 +197,18 @@ class Settings(BaseSettings):
     # Max concurrently running script containers per batch run.
     studio_max_parallel: int = 4
 
+    # ── Grounded Automation (PoC) ────────────────────────────────────────────
+    # Evidence-first script generation: launch the target application, walk
+    # the test case's journey capturing Application State Evidence Packages,
+    # run a deterministic coverage gate, and only then generate — with the
+    # LLM restricted to captured evidence. Entirely additive: OFF by default,
+    # own /api/v1/poc/grounded-automation namespace, own poc_* tables, and
+    # zero behavior change to the existing Automation Studios when disabled.
+    grounded_automation_enabled: bool = False
+    # Hard bounds on one capture walk (defense against runaway sessions).
+    grounded_capture_max_steps: int = 30
+    grounded_capture_max_minutes: int = 20
+
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days
     retention_rag_events_days: int = 180      # purge RAG retrieval audit events older than N days

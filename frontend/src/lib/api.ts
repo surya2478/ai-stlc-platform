@@ -2672,3 +2672,154 @@ export const reviewsApi = {
   coverageMatrix: (projectId: number, params?: { requirement_id?: number; scenario_id?: number }) =>
     api.get<CoverageMatrixEntry[]>(`/reviews/coverage-matrix/project/${projectId}`, { params }),
 };
+
+// ── Grounded Automation PoC ───────────────────────────────────────────────────
+// Evidence-first script generation (feature-flagged; /api/v1/poc namespace).
+
+export interface PocRoute {
+  type: string;
+  adapter: string;
+  implemented: boolean;
+  target_phase: string;
+  tools?: string;
+  matched_indicators?: string[];
+}
+
+export interface PocStepRoute {
+  index: number;
+  action_text: string;
+  expected_text: string;
+  action_route: PocRoute;
+  action_confidence: number;
+  assertion_route: PocRoute;
+  assertion_confidence: number;
+  mutating: boolean;
+  requires_cleanup: boolean;
+}
+
+export interface PocRouting {
+  overall: PocRoute;
+  overall_confidence: number;
+  is_hybrid: boolean;
+  type_counts: Record<string, number>;
+  steps: PocStepRoute[];
+  unimplemented_adapters: string[];
+  manual_review_recommended: boolean;
+}
+
+export interface PocCoverageStep {
+  step: number;
+  action_text: string;
+  action_evidence: Record<string, unknown> | null;
+  data_evidence: Record<string, unknown> | null;
+  assertion_evidence: Record<string, unknown> | null;
+  cleanup_evidence: Record<string, unknown> | null;
+  gaps: string[];
+  status: "covered" | "gap";
+}
+
+export interface PocCoverage {
+  testCaseId?: string;
+  overallCoverage: number;
+  coveredSteps: number;
+  totalSteps: number;
+  steps: PocCoverageStep[];
+  unsupportedReferences: string[];
+  liveBlockers: string[];
+  warnings: string[];
+  evidencePackageCount: number;
+  generationAllowed: boolean;
+}
+
+export interface PocEvidenceSummary {
+  id: number;
+  sequence: number;
+  state_fingerprint: string;
+  url?: string | null;
+  title?: string | null;
+  element_count: number;
+  blockers: string[];
+  produced_by_step?: number | null;
+  has_screenshot: boolean;
+}
+
+export interface PocEvidenceDetail extends PocEvidenceSummary {
+  environment?: string | null;
+  elements: Array<Record<string, unknown>>;
+  snapshot_text?: string | null;
+  console_evidence: string[];
+  prev_evidence_id?: number | null;
+}
+
+export interface PocAgentRunSummary {
+  id: number;
+  status: string;
+  progress_percent: number;
+  progress_message?: string | null;
+  error_message?: string | null;
+}
+
+export interface PocGroundingRun {
+  id: number;
+  project_id: number;
+  created_by: number;
+  test_case_id: number;
+  application_id?: number | null;
+  status: string;
+  capture_mode: "automated" | "assisted" | "manual_guided";
+  config: {
+    environment?: string;
+    target_url?: string;
+    application_name?: string | null;
+    test_case_display_id?: string;
+    test_case_title?: string;
+    confirmed_actions?: Record<string, string>;
+  };
+  error?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PocGroundingRunDetail extends PocGroundingRun {
+  routing?: PocRouting | null;
+  coverage?: PocCoverage | null;
+  pending_confirmation?: {
+    step_index: number;
+    action_text: string;
+    candidates: Array<{ element_name: string; role: string; accessible_name?: string | null; match_score: number }>;
+    reason?: string;
+  } | null;
+  script_ids?: number[] | null;
+  evidence: PocEvidenceSummary[];
+  agent_runs: { capture?: PocAgentRunSummary | null; generation?: PocAgentRunSummary | null };
+  scripts: Array<{ id: number; script_id: string; status: string; version: number; framework?: string | null }>;
+  step_trace: Array<Record<string, unknown>>;
+}
+
+export interface PocActionResponse {
+  grounding_run_id: number;
+  status: string;
+  agent_run_id?: number | null;
+  task_id?: string | null;
+  message: string;
+}
+
+export const groundedPocApi = {
+  status: () => api.get<{ enabled: boolean; message: string }>("/poc/grounded-automation/status"),
+  listRuns: (projectId: number) =>
+    api.get<PocGroundingRun[]>("/poc/grounded-automation/runs", { params: { project_id: projectId } }),
+  getRun: (runId: number) =>
+    api.get<PocGroundingRunDetail>(`/poc/grounded-automation/runs/${runId}`),
+  createRun: (payload: { project_id: number; test_case_id: number; environment: string; capture_mode?: string }) =>
+    api.post<PocGroundingRun>("/poc/grounded-automation/runs", payload),
+  getEvidence: (runId: number, evidenceId: number) =>
+    api.get<PocEvidenceDetail>(`/poc/grounded-automation/runs/${runId}/evidence/${evidenceId}`),
+  startCapture: (runId: number) =>
+    api.post<PocActionResponse>(`/poc/grounded-automation/runs/${runId}/start-capture`),
+  confirmStep: (runId: number, payload: { step_index: number; element_name: string }) =>
+    api.post<PocActionResponse>(`/poc/grounded-automation/runs/${runId}/confirm-step`, payload),
+  generate: (runId: number) =>
+    api.post<PocActionResponse>(`/poc/grounded-automation/runs/${runId}/generate`),
+  cancelRun: (runId: number) =>
+    api.post<PocActionResponse>(`/poc/grounded-automation/runs/${runId}/cancel`),
+};
