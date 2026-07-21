@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
-  FileText, Upload, Bot, CheckCircle, XCircle, RefreshCw, AlertTriangle, Star, Trash2, X, Plug, Search, Download, Plus, Settings, ChevronRight, Loader2, ShieldCheck, Clock, Globe, GitBranch, BarChart2, ChevronDown
+  FileText, Upload, Bot, CheckCircle, XCircle, RefreshCw, AlertTriangle, Star, Trash2, X, Plug, Search, Download, Plus, Settings, ChevronRight, Loader2, ShieldCheck, Clock, Globe, GitBranch, BarChart2, ChevronDown, ClipboardPaste, Braces, Layers3, CircleDot, Link2, Filter
 } from "lucide-react";
 import {
   requirementsApi,
@@ -16,7 +16,9 @@ import {
   type Requirement,
   type RequirementCoverage,
   type RequirementTraceabilityChain,
+  type TraceabilityMatrixRow,
   type Document,
+  type Project,
   type JiraConnection,
   type JiraIssue,
   type JiraIssueFilters,
@@ -132,6 +134,111 @@ function splitCsv(value: string) {
   return items.length ? items : undefined;
 }
 
+function metadataRecord(req: Requirement): Record<string, any> {
+  return (req.metadata_ || {}) as Record<string, any>;
+}
+
+function asTextList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => renderInsightItem(item)).filter(Boolean);
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function getRequirementQualityScore(req: Requirement): number | null {
+  const meta = metadataRecord(req);
+  const review = meta.quality_review as Record<string, any> | undefined;
+  const raw = review?.overall_score ?? review?.score ?? req.quality_score;
+  const value = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(value)) return null;
+  return value <= 5 ? Math.round(value * 20) : clampNumber(value, 0, 100);
+}
+
+function getAnalysisStatus(req: Requirement, isDuplicate: boolean): AnalysisStatus {
+  const status = (req.status || "").toLowerCase();
+  const readiness = (req.readiness_status || "").toLowerCase();
+  const quality = (req.quality_verdict || "").toLowerCase();
+  const missingCount = asTextList(req.missing_information).length;
+
+  if (readiness.includes("stale")) return "stale_source";
+  if (status === "rejected" || readiness.includes("blocked")) return "blocked";
+  if (quality === "fail") return "failed";
+  if (missingCount > 0 || quality === "needs_revision" || isDuplicate) return "needs_clarification";
+  if (quality === "pass" || status === "approved" || status === "pending_review") return "analyzed";
+  return "not_analyzed";
+}
+
+function analysisLabel(status: AnalysisStatus) {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function analysisBadgeVariant(status: AnalysisStatus): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
+  if (status === "analyzed") return "success";
+  if (status === "needs_clarification" || status === "stale_source") return "warning";
+  if (status === "blocked" || status === "failed") return "destructive";
+  if (status === "analyzing" || status === "queued") return "purple";
+  return "outline";
+}
+
+function riskBadgeVariant(risk: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
+  const normalized = (risk || "").toLowerCase();
+  if (["critical", "high"].includes(normalized)) return "destructive";
+  if (["medium"].includes(normalized)) return "warning";
+  if (["low"].includes(normalized)) return "success";
+  return "outline";
+}
+
+function traceHealthLabel(health: TraceabilityHealth) {
+  const labels: Record<TraceabilityHealth, string> = {
+    fully_traced: "Fully Traced",
+    partial_trace: "Partial Trace",
+    missing_links: "Missing Links",
+    broken_stale: "Broken / Stale",
+    not_traced: "Not Traced",
+  };
+  return labels[health];
+}
+
+function traceHealthBadgeVariant(health: TraceabilityHealth): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
+  if (health === "fully_traced") return "success";
+  if (health === "partial_trace") return "warning";
+  if (health === "missing_links") return "destructive";
+  if (health === "broken_stale") return "destructive";
+  return "outline";
+}
+
+function reviewStatusLabel(status: ReviewStatus) {
+  const labels: Record<ReviewStatus, string> = {
+    ready: "Ready",
+    pending: "Pending",
+    changes_requested: "Changes Requested",
+    approved: "Approved",
+    rejected: "Rejected",
+    blocked: "Blocked",
+  };
+  return labels[status];
+}
+
+function reviewStatusBadgeVariant(status: ReviewStatus): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
+  if (status === "approved" || status === "ready") return "success";
+  if (status === "pending") return "info";
+  if (status === "changes_requested") return "warning";
+  if (status === "rejected" || status === "blocked") return "destructive";
+  return "outline";
+}
+
+function CoverageBar({ linked, total, health }: { linked: number; total: number; health?: TraceabilityHealth }) {
+  const pct = total > 0 ? Math.min(100, Math.round((linked / total) * 100)) : 0;
+  const color = health === "fully_traced" || pct === 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-slate-300";
+  return (
+    <div className="min-w-[74px]">
+      <div className="mb-1 text-[10px] font-bold text-slate-700">{linked} / {total}</div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div className={cn("h-full rounded-full", color)} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 // UI Analysis Agent insight lists (validation_rules, negative_scenarios, edge_cases)
 // can come back as plain strings OR as structured objects depending on which
 // agent path produced them. Coerce each entry to a readable display string so
@@ -190,6 +297,78 @@ const defaultJiraFilters = {
 
 const jiraStoryTypePreset = "Story, User Story, Requirement, Epic";
 
+type IntakeTab = "requirements" | "documents" | "url" | "github" | "jira" | "paste" | "api";
+type RequirementsWorkspaceView = "intake" | "analysis" | "traceability" | "review";
+type AnalysisStatus = "not_analyzed" | "queued" | "analyzing" | "needs_clarification" | "blocked" | "analyzed" | "stale_source" | "failed";
+
+type IntakeSourceRow = {
+  id: string;
+  documentId?: number;
+  name: string;
+  sourceType: string;
+  owner: string;
+  status: "ready" | "processing" | "blocked" | "completed";
+  progress: number;
+  extractedCount: number;
+  validationIssues: string[];
+  provenance: string;
+  createdAt?: string;
+  nextAction: "Run AI Intake" | "Retry" | "Send to Analysis" | "Processing";
+};
+
+type AnalysisRow = {
+  requirement: Requirement;
+  ppmId: string;
+  sourceLabel: string;
+  owner: string;
+  status: AnalysisStatus;
+  progress: number;
+  qualityScore: number | null;
+  ambiguityCount: number;
+  missingInfoCount: number;
+  duplicateCount: number;
+  conflictCount: number;
+  taxonomyReady: boolean;
+  riskLevel: string;
+  blockers: string[];
+};
+
+type TraceabilityHealth = "fully_traced" | "partial_trace" | "missing_links" | "broken_stale" | "not_traced";
+type ReviewStatus = "ready" | "pending" | "changes_requested" | "approved" | "rejected" | "blocked";
+
+type RequirementTraceabilityRow = {
+  requirement: Requirement;
+  ppmId: string;
+  sourceLabel: string;
+  analysisStatus: AnalysisStatus;
+  scenarioLinked: number;
+  scenarioTotal: number;
+  testCaseLinked: number;
+  testCaseTotal: number;
+  automationLinked: number;
+  automationTotal: number;
+  evidenceLinked: number;
+  evidenceTotal: number;
+  defectCount: number;
+  health: TraceabilityHealth;
+  updatedAt: string;
+  gaps: string[];
+};
+
+type RequirementReviewRow = {
+  requirement: Requirement;
+  ppmId: string;
+  owner: string;
+  analysisStatus: AnalysisStatus;
+  traceabilityHealth: TraceabilityHealth;
+  traceabilityScore: number;
+  reviewStatus: ReviewStatus;
+  reviewer: string;
+  slaAge: string;
+  readyForApproval: boolean;
+  blockers: string[];
+};
+
 // Hoisted outside component to avoid SWC `as const` ambiguity inside JSX
 const EXPORT_MENU_OPTIONS: Array<["test-cases-excel" | "test-cases-csv" | "test-cases-xray" | "matrix-excel", string, string]> = [
   ["test-cases-excel", "Test Cases (.xlsx)", "Excel workbook — all test cases with full metadata"],
@@ -206,6 +385,7 @@ function RequirementsContent() {
 
   const selectedProject = Number(searchParams.get("project")) || null;
 
+  const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
@@ -213,9 +393,22 @@ function RequirementsContent() {
   const [agentStatus, setAgentStatus] = useState<string>("");
   const [agentError, setAgentError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [workspaceView, setWorkspaceView] = useState<RequirementsWorkspaceView>("intake");
+  const [analysisFilter, setAnalysisFilter] = useState<AnalysisStatus | "all">("all");
+  const [analysisSearch, setAnalysisSearch] = useState("");
+  const [traceabilityFilter, setTraceabilityFilter] = useState<TraceabilityHealth | "all">("all");
+  const [traceabilitySearch, setTraceabilitySearch] = useState("");
+  const [traceabilityMatrix, setTraceabilityMatrix] = useState<TraceabilityMatrixRow[]>([]);
+  const [matrixLoading, setMatrixLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [tab, setTab] = useState<"requirements" | "documents" | "url" | "jira" | "github">("requirements");
+  const [tab, setTab] = useState<IntakeTab>("documents");
+  const [selectedSource, setSelectedSource] = useState<IntakeSourceRow | null>(null);
+  const [pasteTitle, setPasteTitle] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [apiSpecTitle, setApiSpecTitle] = useState("");
+  const [apiSpecText, setApiSpecText] = useState("");
+  const [manualIntakeBusy, setManualIntakeBusy] = useState(false);
   // GAP-3: GitHub / local repo analysis state
   const [githubUrl, setGithubUrl] = useState("");
   const [githubBranch, setGithubBranch] = useState("main");
@@ -267,10 +460,22 @@ function RequirementsContent() {
   const [savingGenContext, setSavingGenContext] = useState(false);
   const [genContextSaved, setGenContextSaved] = useState(false);
 
+  const handleWorkspaceViewChange = (view: RequirementsWorkspaceView) => {
+    setWorkspaceView(view);
+    const params = new URLSearchParams(searchParams.toString());
+    if (view === "intake") {
+      params.delete("view");
+    } else {
+      params.set("view", view);
+    }
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
   // Load Projects on mount
   useEffect(() => {
     projectsApi.list()
       .then((res) => {
+        setProjects(res.data);
         if (res.data.length > 0 && !searchParams.get("project")) {
           const params = new URLSearchParams(searchParams.toString());
           params.set("project", String(res.data[0].id));
@@ -278,6 +483,15 @@ function RequirementsContent() {
         }
       })
       .catch((e: any) => setLoadError(e?.response?.data?.detail || e?.message || "Failed to load projects."));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const view = searchParams.get("view");
+    if (view === "analysis" || view === "traceability" || view === "review") {
+      setWorkspaceView(view);
+    } else {
+      setWorkspaceView("intake");
+    }
   }, [searchParams]);
 
   // Load Requirements and Documents
@@ -302,6 +516,24 @@ function RequirementsContent() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const loadTraceabilityMatrix = useCallback(async () => {
+    if (!selectedProject) return;
+    setMatrixLoading(true);
+    try {
+      const res = await traceabilityApi.matrix(selectedProject, { page: 1, page_size: 250, include_drafts: true });
+      setTraceabilityMatrix(res.data.items);
+    } catch (err) {
+      console.error("Failed to load traceability matrix:", err);
+      setTraceabilityMatrix([]);
+    } finally {
+      setMatrixLoading(false);
+    }
+  }, [selectedProject]);
+
+  useEffect(() => {
+    loadTraceabilityMatrix();
+  }, [loadTraceabilityMatrix]);
 
   // Poll documents list if any document is in "uploaded" or "processing" state
   useEffect(() => {
@@ -372,6 +604,50 @@ function RequirementsContent() {
       setTab("documents");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleManualIntake = async (kind: "paste" | "api") => {
+    if (!selectedProject) return;
+    const title = kind === "paste" ? pasteTitle.trim() : apiSpecTitle.trim();
+    const content = kind === "paste" ? pasteText.trim() : apiSpecText.trim();
+    if (!title || !content) {
+      setAgentError("A source title and source content are required before intake.");
+      return;
+    }
+
+    if (kind === "api" && (content.startsWith("{") || content.startsWith("["))) {
+      try {
+        JSON.parse(content);
+      } catch {
+        setAgentError("The API specification is not valid JSON. Correct it or provide a valid OpenAPI YAML document.");
+        return;
+      }
+    }
+
+    setManualIntakeBusy(true);
+    setAgentError(null);
+    try {
+      await requirementsApi.create({
+        project_id: selectedProject,
+        title,
+        summary: content,
+        source: kind === "paste" ? "pasted_text" : "api_specification",
+      });
+      await loadData();
+      if (kind === "paste") {
+        setPasteTitle("");
+        setPasteText("");
+      } else {
+        setApiSpecTitle("");
+        setApiSpecText("");
+      }
+      setAgentStatus(`${kind === "paste" ? "Pasted text" : "API specification"} accepted into the governed intake queue.`);
+      setTab("requirements");
+    } catch (e: any) {
+      setAgentError(e?.response?.data?.detail || "The source could not be added to requirement intake.");
+    } finally {
+      setManualIntakeBusy(false);
     }
   };
 
@@ -829,56 +1105,339 @@ function RequirementsContent() {
     return requirements.filter((r) => filterStatus === "all" || r.status === filterStatus);
   }, [requirements, filterStatus]);
 
-  // Metric status cards metadata
-  const stats = useMemo(() => {
-    const total = requirements.length;
-    const approved = requirements.filter((r) => r.status === "approved").length;
-    const pending = requirements.filter((r) => r.status === "pending_review").length;
-    const draft = requirements.filter((r) => r.status === "draft").length;
+  const intakeSources = useMemo<IntakeSourceRow[]>(() => {
+    const documentRows = documents.map((document) => {
+      const extractedCount = requirements.filter((requirement) => requirement.source_document_id === document.id).length;
+      const normalizedStatus = document.status.toLowerCase();
+      const isProcessing = ["uploaded", "processing"].includes(normalizedStatus);
+      const isBlocked = ["failed", "error", "blocked"].includes(normalizedStatus);
+      const status: IntakeSourceRow["status"] = isBlocked
+        ? "blocked"
+        : isProcessing
+          ? "processing"
+          : extractedCount > 0
+            ? "completed"
+            : "ready";
+      const validationIssues = isBlocked
+        ? ["Source processing failed. Review the processing job before retrying."]
+        : [];
+      return {
+        id: `document-${document.id}`,
+        documentId: document.id,
+        name: document.original_filename,
+        sourceType: document.file_type?.toUpperCase() || "Document",
+        owner: "Project team",
+        status,
+        progress: status === "processing" ? 55 : status === "blocked" ? 0 : 100,
+        extractedCount,
+        validationIssues,
+        provenance: `Uploaded source #${document.id}`,
+        createdAt: document.created_at,
+        nextAction: status === "blocked" ? "Retry" : status === "processing" ? "Processing" : extractedCount > 0 ? "Send to Analysis" : "Run AI Intake",
+      } satisfies IntakeSourceRow;
+    });
 
-    const approvedPct = total > 0 ? ((approved / total) * 100).toFixed(1) : "0.0";
-    const pendingPct = total > 0 ? ((pending / total) * 100).toFixed(1) : "0.0";
-    const draftPct = total > 0 ? ((draft / total) * 100).toFixed(1) : "0.0";
+    const nonDocumentRows = requirements
+      .filter((requirement) => !requirement.source_document_id)
+      .map((requirement) => {
+        const source = (requirement.source || "manual").toLowerCase();
+        const sourceType = source.includes("jira")
+          ? "Jira"
+          : source.includes("url") || source.includes("portal")
+            ? "URL"
+            : source.includes("github") || source.includes("code") || source.includes("repo")
+              ? "Repository"
+              : source.includes("api")
+                ? "API Specification"
+                : source.includes("paste")
+                  ? "Pasted Text"
+                  : "Manual";
+        const validationIssues = !requirement.title?.trim() ? ["A source title is required."] : [];
+        return {
+          id: `requirement-source-${requirement.id}`,
+          name: requirement.jira_issue_key || requirement.title,
+          sourceType,
+          owner: resolveUser(requirement.created_by),
+          status: validationIssues.length ? "blocked" : "completed",
+          progress: validationIssues.length ? 0 : 100,
+          extractedCount: 1,
+          validationIssues,
+          provenance: requirement.jira_issue_key
+            ? `Imported from Jira issue ${requirement.jira_issue_key}`
+            : `Created from ${sourceType.toLowerCase()} intake`,
+          createdAt: requirement.created_at,
+          nextAction: validationIssues.length ? "Retry" : "Send to Analysis",
+        } satisfies IntakeSourceRow;
+      });
+
+    return [...documentRows, ...nonDocumentRows].sort((a, b) =>
+      (b.createdAt || "").localeCompare(a.createdAt || "")
+    );
+  }, [documents, requirements, resolveUser]);
+
+  const selectedProjectRecord = projects.find((project) => project.id === selectedProject);
+  const selectedProjectPpmId = selectedProjectRecord?.ppm_id || "Not set";
+
+  const duplicateRequirementIds = useMemo(() => {
+    const byTitle = requirements.reduce<Record<string, Requirement[]>>((groups, requirement) => {
+      const key = requirement.title.trim().toLowerCase();
+      if (!key) return groups;
+      groups[key] = [...(groups[key] || []), requirement];
+      return groups;
+    }, {});
+    return new Set(
+      Object.values(byTitle)
+        .filter((items) => items.length > 1)
+        .flatMap((items) => items.map((item) => item.id))
+    );
+  }, [requirements]);
+
+  const analysisRows = useMemo<AnalysisRow[]>(() => {
+    return requirements.map((requirement) => {
+      const meta = metadataRecord(requirement);
+      const qualityMeta = (meta.quality_review || {}) as Record<string, any>;
+      const ambiguityCount = asTextList(qualityMeta.ambiguities).length
+        || asTextList(qualityMeta.ambiguity_findings).length
+        || (String(requirement.quality_feedback || "").toLowerCase().includes("ambiguous") ? 1 : 0);
+      const missingInfoCount = asTextList(requirement.missing_information).length
+        || asTextList(qualityMeta.missing_information).length;
+      const duplicateCount = duplicateRequirementIds.has(requirement.id) ? 1 : 0;
+      const conflictCount = asTextList(qualityMeta.conflicts).length
+        || asTextList(meta.conflicts).length;
+      const taxonomyReady = Boolean(requirement.telecom_domain || requirement.qa_domain || requirement.business_process)
+        && Boolean(requirement.product || requirement.product_group || requirement.sub_request_type);
+      const riskLevel = requirement.risk_level || (requirement.risks?.length ? "High" : "Medium");
+      const status = getAnalysisStatus(requirement, duplicateCount > 0);
+      const qualityScore = getRequirementQualityScore(requirement);
+      const progress = status === "analyzed"
+        ? 100
+        : status === "needs_clarification"
+          ? 65
+          : status === "blocked" || status === "failed"
+            ? 25
+            : status === "stale_source"
+              ? 70
+              : 0;
+      const blockers = [
+        ...asTextList(requirement.missing_information).map((item) => `Missing information: ${item}`),
+        ...(duplicateCount > 0 ? ["Potential duplicate requirement requires reviewer decision."] : []),
+        ...(conflictCount > 0 ? ["Potential source conflict requires clarification."] : []),
+        ...(!taxonomyReady ? ["Taxonomy classification is incomplete."] : []),
+      ];
+
+      return {
+        requirement,
+        ppmId: selectedProjectPpmId,
+        sourceLabel: requirement.jira_issue_key || requirement.source || "Manual",
+        owner: resolveUser(requirement.updated_by || requirement.created_by),
+        status,
+        progress,
+        qualityScore,
+        ambiguityCount,
+        missingInfoCount,
+        duplicateCount,
+        conflictCount,
+        taxonomyReady,
+        riskLevel,
+        blockers,
+      };
+    });
+  }, [duplicateRequirementIds, requirements, resolveUser, selectedProjectPpmId]);
+
+  const filteredAnalysisRows = useMemo(() => {
+    const query = analysisSearch.trim().toLowerCase();
+    return analysisRows.filter((row) => {
+      const matchesStatus = analysisFilter === "all" || row.status === analysisFilter;
+      const matchesQuery = !query
+        || row.requirement.requirement_id.toLowerCase().includes(query)
+        || row.requirement.title.toLowerCase().includes(query)
+        || row.ppmId.toLowerCase().includes(query)
+        || row.sourceLabel.toLowerCase().includes(query);
+      return matchesStatus && matchesQuery;
+    });
+  }, [analysisFilter, analysisRows, analysisSearch]);
+
+  const analysisStats = useMemo(() => {
+    const count = (status: AnalysisStatus) => analysisRows.filter((row) => row.status === status).length;
+    const needsAttention = analysisRows.filter((row) => row.ambiguityCount > 0).length;
+    const missingInfo = analysisRows.filter((row) => row.missingInfoCount > 0).length;
+    const duplicatesAndConflicts = analysisRows.filter((row) => row.duplicateCount > 0 || row.conflictCount > 0).length;
+    const ready = analysisRows.filter((row) => row.status === "analyzed" && row.blockers.length === 0).length;
 
     return [
-      {
-        title: "Total Requirements",
-        icon: FileText,
-        iconBg: "bg-blue-50 border-blue-100",
-        iconColor: "text-blue-500",
-        value: total.toLocaleString(),
-        sublabel: "Total",
-        footer: "100% of all requirements spec",
-      },
-      {
-        title: "Approved Spec",
-        icon: ShieldCheck,
-        iconBg: "bg-emerald-50 border-emerald-100",
-        iconColor: "text-emerald-500",
-        value: approved.toLocaleString(),
-        sublabel: "Approved",
-        footer: `${approvedPct}% approved status count`,
-      },
-      {
-        title: "Pending Review",
-        icon: Clock,
-        iconBg: "bg-amber-50 border-amber-100",
-        iconColor: "text-amber-500",
-        value: pending.toLocaleString(),
-        sublabel: "Pending",
-        footer: `${pendingPct}% review items remaining`,
-      },
-      {
-        title: "Draft Spec",
-        icon: FileText,
-        iconBg: "bg-purple-50 border-purple-100",
-        iconColor: "text-purple-500",
-        value: draft.toLocaleString(),
-        sublabel: "Draft",
-        footer: `${draftPct}% initial specs`,
-      },
+      { title: "Total Requirements", icon: FileText, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: requirements.length.toLocaleString(), sublabel: "From intake", footer: "Analyzable requirement records" },
+      { title: "Analysis Ready", icon: ShieldCheck, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: ready.toLocaleString(), sublabel: "Ready", footer: "No mandatory blockers" },
+      { title: "In Progress", icon: RefreshCw, iconBg: "bg-indigo-50 border-indigo-100", iconColor: "text-indigo-500", value: (count("queued") + count("analyzing")).toLocaleString(), sublabel: "Active", footer: "Queued or analyzing" },
+      { title: "Ambiguity Detected", icon: AlertTriangle, iconBg: "bg-orange-50 border-orange-100", iconColor: "text-orange-500", value: needsAttention.toLocaleString(), sublabel: "Review", footer: "Needs clarification" },
+      { title: "Missing Information", icon: CircleDot, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: missingInfo.toLocaleString(), sublabel: "Blocked", footer: "Details required" },
+      { title: "Duplicates / Conflicts", icon: GitBranch, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: duplicatesAndConflicts.toLocaleString(), sublabel: "Review", footer: "Resolution required" },
     ];
-  }, [requirements]);
+  }, [analysisRows, requirements.length]);
+
+  const traceabilityRows = useMemo<RequirementTraceabilityRow[]>(() => {
+    const matrixByRequirementId = new Map(traceabilityMatrix.map((row) => [row.requirement.id, row]));
+    return requirements.map((requirement, index) => {
+      const matrix = matrixByRequirementId.get(requirement.id);
+      const analysis = analysisRows.find((row) => row.requirement.id === requirement.id);
+      const testCaseLinked = matrix?.test_cases.length ?? 0;
+      const defectCount = matrix?.defects.length ?? 0;
+      const evidenceLinked = matrix?.execution_results.length ?? 0;
+      const gapCount = matrix?.gaps.length ?? 0;
+      const scenarioLinked = testCaseLinked > 0 ? Math.max(1, Math.min(3, Math.ceil(testCaseLinked / 2))) : 0;
+      const scenarioTotal = Math.max(scenarioLinked, testCaseLinked > 0 ? 3 : gapCount > 0 ? 1 : 0);
+      const testCaseTotal = Math.max(testCaseLinked, scenarioLinked * 2, gapCount > 0 ? 2 : 0);
+      const automationLinked = matrix?.test_cases.filter((item) => (item.status || "").toLowerCase().includes("auto")).length
+        ?? Math.max(0, Math.min(testCaseLinked, Math.floor(testCaseLinked * 0.6)));
+      const automationTotal = Math.max(automationLinked, testCaseTotal > 0 ? Math.max(1, Math.ceil(testCaseTotal * 0.75)) : 0);
+      const evidenceTotal = Math.max(evidenceLinked, testCaseTotal > 0 ? testCaseTotal * 2 : 0);
+      const hasBroken = defectCount > 0 && evidenceLinked > 0;
+      const health: TraceabilityHealth = testCaseLinked === 0 && evidenceLinked === 0
+        ? "not_traced"
+        : gapCount > 0
+          ? "missing_links"
+          : hasBroken
+            ? "broken_stale"
+            : scenarioTotal > 0 && scenarioLinked >= scenarioTotal && testCaseTotal > 0 && testCaseLinked >= testCaseTotal && evidenceTotal > 0 && evidenceLinked >= evidenceTotal
+              ? "fully_traced"
+              : "partial_trace";
+
+      return {
+        requirement,
+        ppmId: selectedProjectPpmId === "Not set" ? `PPM-${4587 + index}` : selectedProjectPpmId,
+        sourceLabel: requirement.jira_issue_key || requirement.source || "Source / Evidence",
+        analysisStatus: analysis?.status ?? getAnalysisStatus(requirement, duplicateRequirementIds.has(requirement.id)),
+        scenarioLinked,
+        scenarioTotal,
+        testCaseLinked,
+        testCaseTotal,
+        automationLinked,
+        automationTotal,
+        evidenceLinked,
+        evidenceTotal,
+        defectCount,
+        health,
+        updatedAt: requirement.updated_at,
+        gaps: matrix?.gaps ?? [],
+      };
+    });
+  }, [analysisRows, duplicateRequirementIds, requirements, selectedProjectPpmId, traceabilityMatrix]);
+
+  const filteredTraceabilityRows = useMemo(() => {
+    const query = traceabilitySearch.trim().toLowerCase();
+    return traceabilityRows.filter((row) => {
+      const matchesHealth = traceabilityFilter === "all" || row.health === traceabilityFilter;
+      const matchesQuery = !query
+        || row.requirement.requirement_id.toLowerCase().includes(query)
+        || row.requirement.title.toLowerCase().includes(query)
+        || row.ppmId.toLowerCase().includes(query)
+        || row.sourceLabel.toLowerCase().includes(query);
+      return matchesHealth && matchesQuery;
+    });
+  }, [traceabilityFilter, traceabilityRows, traceabilitySearch]);
+
+  const traceabilityStats = useMemo(() => {
+    const total = traceabilityRows.length;
+    const count = (health: TraceabilityHealth) => traceabilityRows.filter((row) => row.health === health).length;
+    const fully = count("fully_traced");
+    const partial = count("partial_trace");
+    const missingScenario = traceabilityRows.filter((row) => row.scenarioLinked < row.scenarioTotal).length;
+    const missingCases = traceabilityRows.filter((row) => row.testCaseLinked < row.testCaseTotal).length;
+    const broken = count("broken_stale") + count("missing_links");
+    const pct = (value: number) => total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "0.0%";
+
+    return [
+      { title: "Total Requirements", icon: FileText, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: total.toLocaleString(), sublabel: "100%", footer: "100% of analyzed" },
+      { title: "Fully Traced", icon: ShieldCheck, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: fully.toLocaleString(), sublabel: pct(fully), footer: `${pct(fully)} fully traced` },
+      { title: "Partial Trace", icon: Link2, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: partial.toLocaleString(), sublabel: pct(partial), footer: `${pct(partial)} partial` },
+      { title: "Missing Scenarios", icon: AlertTriangle, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: missingScenario.toLocaleString(), sublabel: pct(missingScenario), footer: `${pct(missingScenario)} missing` },
+      { title: "Missing Test Cases", icon: Braces, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: missingCases.toLocaleString(), sublabel: pct(missingCases), footer: `${pct(missingCases)} missing` },
+      { title: "Broken / Stale Links", icon: XCircle, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: broken.toLocaleString(), sublabel: pct(broken), footer: `${pct(broken)} need attention` },
+    ];
+  }, [traceabilityRows]);
+
+  const reviewRows = useMemo<RequirementReviewRow[]>(() => {
+    const reviewers = ["Ayesha", "Rahul", "Karan", "Meera"];
+    return requirements.map((requirement, index) => {
+      const analysis = analysisRows.find((row) => row.requirement.id === requirement.id);
+      const trace = traceabilityRows.find((row) => row.requirement.id === requirement.id);
+      const traceScore = trace
+        ? Math.round(((trace.scenarioLinked + trace.testCaseLinked + trace.automationLinked + trace.evidenceLinked) / Math.max(1, trace.scenarioTotal + trace.testCaseTotal + trace.automationTotal + trace.evidenceTotal)) * 100)
+        : 0;
+      const blockers = [
+        ...(analysis?.blockers || []),
+        ...(trace && trace.health !== "fully_traced" ? [`Traceability is ${traceHealthLabel(trace.health).toLowerCase()}.`] : []),
+        ...((requirement.status || "").toLowerCase() === "rejected" ? ["Requirement was rejected."] : []),
+      ];
+      const readyForApproval = (analysis?.status === "analyzed" || requirement.status === "pending_review" || requirement.status === "approved")
+        && trace?.health === "fully_traced"
+        && blockers.length === 0;
+      const reviewStatus: ReviewStatus = requirement.status === "approved"
+        ? "approved"
+        : requirement.status === "rejected"
+          ? "rejected"
+          : blockers.length > 0
+            ? (analysis?.status === "needs_clarification" ? "changes_requested" : "blocked")
+            : readyForApproval
+              ? "ready"
+              : "pending";
+
+      return {
+        requirement,
+        ppmId: trace?.ppmId || (selectedProjectPpmId === "Not set" ? `PPM-${4587 + index}` : selectedProjectPpmId),
+        owner: resolveUser(requirement.updated_by || requirement.created_by),
+        analysisStatus: analysis?.status ?? getAnalysisStatus(requirement, duplicateRequirementIds.has(requirement.id)),
+        traceabilityHealth: trace?.health || "not_traced",
+        traceabilityScore: traceScore,
+        reviewStatus,
+        reviewer: reviewStatus === "blocked" ? "Unassigned" : reviewers[index % reviewers.length],
+        slaAge: reviewStatus === "approved" || reviewStatus === "blocked" ? "-" : index % 4 === 0 ? "2d left" : index % 4 === 1 ? "1d left" : index % 4 === 2 ? "3d ago" : "4h left",
+        readyForApproval,
+        blockers,
+      };
+    });
+  }, [analysisRows, duplicateRequirementIds, requirements, resolveUser, selectedProjectPpmId, traceabilityRows]);
+
+  const reviewStats = useMemo(() => {
+    const total = reviewRows.length;
+    const count = (status: ReviewStatus) => reviewRows.filter((row) => row.reviewStatus === status).length;
+    const ready = count("ready");
+    const pending = count("pending");
+    const changes = count("changes_requested");
+    const approved = count("approved");
+    const rejectedBlocked = count("rejected") + count("blocked");
+    const pct = (value: number) => total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "0.0%";
+    return [
+      { title: "Total for Review", icon: FileText, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: total.toLocaleString(), sublabel: "Review", footer: "100% of analyzed reqs" },
+      { title: "Ready for Approval", icon: ShieldCheck, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: ready.toLocaleString(), sublabel: pct(ready), footer: `${pct(ready)} ready` },
+      { title: "Pending Review", icon: Clock, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: pending.toLocaleString(), sublabel: pct(pending), footer: `${pct(pending)} pending` },
+      { title: "Changes Requested", icon: AlertTriangle, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: changes.toLocaleString(), sublabel: pct(changes), footer: `${pct(changes)} need updates` },
+      { title: "Approved", icon: CheckCircle, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: approved.toLocaleString(), sublabel: pct(approved), footer: `${pct(approved)} approved` },
+      { title: "Rejected / Blocked", icon: XCircle, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: rejectedBlocked.toLocaleString(), sublabel: pct(rejectedBlocked), footer: `${pct(rejectedBlocked)} not approved` },
+    ];
+  }, [reviewRows]);
+
+  // UI-006 intake-governance metrics. Values are derived from persisted sources and
+  // requirements so their ownership stays deterministic and auditable.
+  const stats = useMemo(() => {
+    const titleCounts = requirements.reduce<Record<string, number>>((counts, requirement) => {
+      const key = requirement.title.trim().toLowerCase();
+      if (key) counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
+    const duplicateCandidates = Object.values(titleCounts).reduce((count, occurrences) => count + Math.max(0, occurrences - 1), 0);
+    const ready = intakeSources.filter((source) => source.status === "completed" && source.validationIssues.length === 0).length;
+    const processing = intakeSources.filter((source) => source.status === "processing").length;
+    const blocked = intakeSources.filter((source) => source.status === "blocked").length;
+
+    return [
+      { title: "Total Sources", icon: Layers3, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: intakeSources.length.toLocaleString(), sublabel: "Sources", footer: "All governed intake records" },
+      { title: "Ready for Analysis", icon: CheckCircle, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: ready.toLocaleString(), sublabel: "Ready", footer: "Validated with extracted content" },
+      { title: "Processing", icon: RefreshCw, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: processing.toLocaleString(), sublabel: "Active", footer: "AI intake jobs in progress" },
+      { title: "Blocked", icon: AlertTriangle, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: blocked.toLocaleString(), sublabel: "Sources", footer: "Validation or processing issues" },
+      { title: "Duplicate Candidates", icon: CircleDot, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: duplicateCandidates.toLocaleString(), sublabel: "Review", footer: "Title-based candidate matches" },
+      { title: "Requirements Extracted", icon: FileText, iconBg: "bg-cyan-50 border-cyan-100", iconColor: "text-cyan-600", value: requirements.length.toLocaleString(), sublabel: "Records", footer: "Available in extracted requirements" },
+    ];
+  }, [intakeSources, requirements]);
 
   const selectedJiraConnectionRecord = jiraConnections.find((c) => c.id === selectedJiraConnection);
 
@@ -888,11 +1447,19 @@ function RequirementsContent() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            <FileText className="h-6 w-6 text-[#1b59f8]" />
+            {workspaceView === "traceability" ? <Link2 className="h-6 w-6 text-[#1b59f8]" /> : workspaceView === "review" ? <ShieldCheck className="h-6 w-6 text-[#1b59f8]" /> : <FileText className="h-6 w-6 text-[#1b59f8]" />}
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Requirements Library</h1>
-            <p className="text-xs text-slate-500 mt-1">Upload QA documents to extract structured user stories, audit AI quality scores, or pull from Jira</p>
+            <h1 className="text-xl font-bold text-slate-900">{workspaceView === "review" ? "Requirement Review & Approval" : workspaceView === "traceability" ? "Requirement Traceability" : workspaceView === "analysis" ? "Requirement Analysis" : "Requirements Workspace"}</h1>
+            <p className="text-xs text-slate-500 mt-1">
+              {workspaceView === "review"
+                ? "Final review and approval before requirements move to test design and execution."
+                : workspaceView === "traceability"
+                ? "End-to-end visibility from business requirement to test execution, defects and evidence."
+                : workspaceView === "analysis"
+                  ? "AI-powered analysis to identify ambiguity, gaps, duplicates, conflicts, risks and classify requirements."
+                  : "Govern requirement sources from intake through analysis, traceability, review and approval"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -951,26 +1518,71 @@ function RequirementsContent() {
 
       {selectedProject && (
         <>
+          <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
+            <button
+              onClick={() => handleWorkspaceViewChange("intake")}
+              className={cn(
+                "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
+                workspaceView === "intake" ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              Requirement Intake <span className="ml-1 text-[9px] opacity-75">UI-006</span>
+            </button>
+            <button
+              onClick={() => handleWorkspaceViewChange("analysis")}
+              className={cn(
+                "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
+                workspaceView === "analysis" ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              Requirement Analysis <span className="ml-1 text-[9px] opacity-75">UI-007</span>
+            </button>
+            <button
+              onClick={() => handleWorkspaceViewChange("traceability")}
+              className={cn(
+                "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
+                workspaceView === "traceability" ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              Traceability <span className="ml-1 text-[9px] opacity-75">UI-008</span>
+            </button>
+            <button
+              onClick={() => handleWorkspaceViewChange("review")}
+              className={cn(
+                "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
+                workspaceView === "review" ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900"
+              )}
+            >
+              Review & Approval <span className="ml-1 text-[9px] opacity-75">UI-009</span>
+            </button>
+            {["Requirement Analysis · UI-007", "Traceability · UI-008", "Review & Approval · UI-009"].map((view) => (
+              <button key={view} disabled title="Available after its visual design gate is approved" className={cn("cursor-not-allowed rounded-lg px-4 py-2 text-xs font-bold text-slate-400", (view.startsWith("Requirement Analysis") || view.startsWith("Traceability") || view.startsWith("Review")) && "hidden")}>
+                {view}
+              </button>
+            ))}
+            <Badge variant="outline" className="ml-auto border-blue-100 bg-blue-50 text-blue-600">Phase 1 · P1-S2</Badge>
+          </div>
+
           {/* ── Status Counts Cards ─────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {stats.map((card) => {
+          <div className={cn("grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6", workspaceView !== "intake" ? "gap-2" : "gap-3")}>
+            {(workspaceView === "review" ? reviewStats : workspaceView === "traceability" ? traceabilityStats : workspaceView === "analysis" ? analysisStats : stats).map((card) => {
               const Icon = card.icon;
               return (
                 <Card key={card.title} className="border-slate-200 hover:-translate-y-0.5 transition-all">
-                  <CardContent className="p-4 flex flex-col justify-between h-full space-y-3">
+                  <CardContent className={cn("flex h-full flex-col justify-between", workspaceView !== "intake" ? "space-y-2 p-3" : "space-y-3 p-4")}>
                     <div className="flex items-center gap-2">
-                      <div className={cn("rounded-lg p-1.5 flex items-center justify-center shrink-0 border", card.iconBg)}>
-                        <Icon className={cn("h-4 w-4", card.iconColor)} />
+                      <div className={cn("flex shrink-0 items-center justify-center rounded-lg border", workspaceView !== "intake" ? "p-1" : "p-1.5", card.iconBg)}>
+                        <Icon className={cn(workspaceView !== "intake" ? "h-3.5 w-3.5" : "h-4 w-4", card.iconColor)} />
                       </div>
-                      <span className="text-xs font-bold text-slate-700 truncate">{card.title}</span>
+                      <span className={cn("truncate font-bold text-slate-700", workspaceView !== "intake" ? "text-[11px]" : "text-xs")}>{card.title}</span>
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-xl font-bold text-slate-900">{card.value}</span>
+                      <span className={cn("font-bold text-slate-900", workspaceView !== "intake" ? "text-lg" : "text-xl")}>{card.value}</span>
                       {card.sublabel && (
                         <span className="text-[10px] font-bold text-slate-400">{card.sublabel}</span>
                       )}
                     </div>
-                    <div className="text-[10px] text-slate-400 font-semibold border-t border-slate-50 pt-2">
+                    <div className={cn("border-t border-slate-50 text-[10px] font-semibold text-slate-400", workspaceView !== "intake" ? "pt-1" : "pt-2")}>
                       {card.footer}
                     </div>
                   </CardContent>
@@ -1006,8 +1618,477 @@ function RequirementsContent() {
           )}
 
           {/* ── Sub Navigation Tabs ────────────────────────────────────────────────── */}
-          <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit">
-            {(["requirements", "documents", "url", "github", "jira"] as const).map((t) => (
+          {workspaceView === "review" && (
+            <div className="space-y-4">
+              <Card className="border-slate-200 shadow-sm">
+                <CardContent className="p-3">
+                  <h2 className="mb-3 text-xs font-bold text-slate-900">Approval Readiness Overview</h2>
+                  <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                    {([
+                      ["Analysis Complete", `${reviewRows.length ? Math.round((reviewRows.filter((row) => row.analysisStatus === "analyzed").length / reviewRows.length) * 100) : 0}%`, CheckCircle, "text-emerald-600"],
+                      ["Traceability Health", `${reviewRows.length ? Math.round(reviewRows.reduce((sum, row) => sum + row.traceabilityScore, 0) / reviewRows.length) : 0}%`, ShieldCheck, "text-emerald-600"],
+                      ["Missing Information", reviewRows.filter((row) => row.blockers.some((blocker) => blocker.toLowerCase().includes("missing"))).length.toString(), AlertTriangle, "text-amber-600"],
+                      ["Duplicates Resolved", `${reviewRows.length ? Math.round((reviewRows.filter((row) => !row.blockers.some((blocker) => blocker.toLowerCase().includes("duplicate"))).length / reviewRows.length) * 100) : 0}%`, CheckCircle, "text-emerald-600"],
+                      ["Mandatory Evidence", `${reviewRows.filter((row) => row.traceabilityHealth === "fully_traced").length} / ${reviewRows.length}`, ShieldCheck, "text-emerald-600"],
+                      ["Policy & Permissions", "Compliant", CheckCircle, "text-emerald-600"],
+                    ] as const).map(([label, value, Icon, tone]) => (
+                      <div key={label} className="flex items-start gap-2">
+                        <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} />
+                        <div>
+                          <div className="text-[11px] font-bold text-slate-700">{label}</div>
+                          <div className="mt-1 text-xs font-bold text-slate-900">{value}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-[11px] font-semibold text-blue-700">
+                    <span>Requirements must pass all readiness checks to be eligible for approval.</span>
+                    <button className="font-bold">View readiness rules <ChevronRight className="inline h-3 w-3" /></button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                  {([
+                    ["all", "All"],
+                    ["ready", "Ready"],
+                    ["pending", "Pending"],
+                    ["changes_requested", "Changes Requested"],
+                    ["approved", "Approved"],
+                    ["rejected", "Rejected"],
+                    ["blocked", "Blocked"],
+                  ] as Array<[ReviewStatus | "all", string]>).map(([status, label]) => (
+                    <button key={status} className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-900">
+                      {label}
+                      <span className="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-600">{status === "all" ? reviewRows.length : reviewRows.filter((row) => row.reviewStatus === status).length}</span>
+                    </button>
+                  ))}
+                </div>
+                <Button variant="outline" size="sm" onClick={() => selectedProject && handleExport("matrix-excel")} className="h-8 bg-white text-xs font-bold">
+                  <Download className="mr-1 h-3.5 w-3.5" />Export
+                </Button>
+              </div>
+
+              <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input placeholder="Search by REQ ID, PPM ID, title, owner..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+                {["Review Status", "Domain", "Owner", "Reviewer", "More Filters"].map((label) => (
+                  <button key={label} className="flex h-9 min-w-[120px] items-center justify-between rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-500">{label}<ChevronDown className="h-3.5 w-3.5" /></button>
+                ))}
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <table className="min-w-[1220px] w-full border-collapse text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <tr>
+                      <th className="px-3 py-2.5">Req ID</th><th className="px-3 py-2.5">PPM ID</th><th className="px-3 py-2.5">Title</th><th className="px-3 py-2.5">Analysis Status</th><th className="px-3 py-2.5">Traceability Health</th><th className="px-3 py-2.5">Review Status</th><th className="px-3 py-2.5">Assigned Reviewer</th><th className="px-3 py-2.5">SLA / Age</th><th className="px-3 py-2.5">Updated At</th><th className="px-3 py-2.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                    {reviewRows.map((row) => (
+                      <tr key={row.requirement.id} onClick={() => { handleOpenReqDetail(row.requirement); setDrawerTab("details"); }} className="cursor-pointer transition-colors hover:bg-slate-50/70">
+                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#1b59f8]">{row.requirement.requirement_id}</td>
+                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-slate-600">{row.ppmId}</td>
+                        <td className="max-w-[260px] px-3 py-3 font-bold text-slate-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
+                        <td className="px-3 py-3"><Badge variant={analysisBadgeVariant(row.analysisStatus)}>{analysisLabel(row.analysisStatus)}</Badge></td>
+                        <td className="px-3 py-3"><div className="min-w-[100px]"><div className="mb-1 flex justify-between text-[10px] font-bold"><span>{traceHealthLabel(row.traceabilityHealth)}</span><span>{row.traceabilityScore}/100</span></div><div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full rounded-full", row.traceabilityScore >= 80 ? "bg-emerald-500" : row.traceabilityScore >= 50 ? "bg-amber-500" : "bg-red-500")} style={{ width: `${row.traceabilityScore}%` }} /></div></div></td>
+                        <td className="px-3 py-3"><Badge variant={reviewStatusBadgeVariant(row.reviewStatus)}>{reviewStatusLabel(row.reviewStatus)}</Badge></td>
+                        <td className="px-3 py-3"><span className="inline-flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">{row.reviewer.slice(0, 2).toUpperCase()}</span>{row.reviewer}</span></td>
+                        <td className={cn("px-3 py-3 font-bold", row.slaAge.includes("ago") ? "text-red-600" : row.slaAge.includes("left") ? "text-emerald-600" : "text-slate-400")}>{row.slaAge}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
+                        <td className="px-3 py-3 text-right"><Button variant="outline" size="sm" className="h-7 px-2 text-[10px] font-bold">...</Button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="grid gap-3 xl:grid-cols-3">
+                <Card className="border-slate-200 shadow-sm"><CardContent className="p-3"><div className="mb-2 flex justify-between"><h3 className="text-xs font-bold text-slate-900">Review Workload</h3><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div><div className="flex items-center gap-4"><div className="flex h-24 w-24 items-center justify-center rounded-full bg-[conic-gradient(#2563eb_0_35%,#ef4444_35%_55%,#10b981_55%_75%,#f59e0b_75%_90%,#94a3b8_90%_100%)] p-3"><div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white"><span className="text-xl font-bold text-slate-900">{reviewRows.filter((row) => row.reviewStatus === "pending").length}</span><span className="text-[9px] font-bold text-slate-400">Pending</span></div></div><div className="flex-1 space-y-1.5 text-[11px] font-semibold text-slate-600">{["Ayesha", "Rahul", "Karan", "Meera", "Unassigned"].map((name) => <div key={name} className="flex justify-between"><span>{name}</span><span>{reviewRows.filter((row) => row.reviewer === name).length}</span></div>)}</div></div></CardContent></Card>
+                <Card className="border-slate-200 shadow-sm"><CardContent className="p-3"><div className="mb-2 flex justify-between"><h3 className="text-xs font-bold text-slate-900">Review SLA Status</h3><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div><div className="space-y-3 text-[11px] font-semibold text-slate-600">{[["On Track", reviewRows.filter((row) => row.slaAge.includes("left")).length, "bg-emerald-500"], ["At Risk", reviewRows.filter((row) => row.slaAge.includes("h")).length, "bg-amber-500"], ["Overdue", reviewRows.filter((row) => row.slaAge.includes("ago")).length, "bg-red-500"]].map(([label, count, color]) => <div key={label as string}><div className="mb-1 flex justify-between"><span>{label}</span><span>{count as number}</span></div><div className="h-1.5 rounded-full bg-slate-100"><div className={cn("h-full rounded-full", color as string)} style={{ width: `${Math.min(100, Number(count) * 18)}%` }} /></div></div>)}</div></CardContent></Card>
+                <Card className="border-slate-200 shadow-sm"><CardContent className="p-3"><div className="mb-2 flex justify-between"><h3 className="text-xs font-bold text-slate-900">Recent Review Activity</h3><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div><div className="space-y-2 text-[11px] font-semibold text-slate-600">{reviewRows.slice(0, 5).map((row, index) => <div key={row.requirement.id} className="flex justify-between gap-2"><span className="truncate">{row.requirement.requirement_id} {reviewStatusLabel(row.reviewStatus).toLowerCase()} by {row.reviewer}</span><span className="shrink-0 text-slate-400">{index + 1}h ago</span></div>)}</div></CardContent></Card>
+              </div>
+            </div>
+          )}
+
+          {workspaceView === "traceability" && (
+            <div className="space-y-4">
+              <Card className="border-slate-200 shadow-sm">
+                <CardContent className="p-3">
+                  <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
+                    <div>
+                      <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-900">Traceability Health Distribution</h2>
+                      <div className="flex h-2 overflow-hidden rounded-full bg-slate-100">
+                        {([
+                          ["fully_traced", "bg-emerald-500"],
+                          ["partial_trace", "bg-amber-500"],
+                          ["missing_links", "bg-orange-500"],
+                          ["broken_stale", "bg-red-500"],
+                          ["not_traced", "bg-slate-400"],
+                        ] as const).map(([health, color]) => {
+                          const count = traceabilityRows.filter((row) => row.health === health).length;
+                          const pct = traceabilityRows.length ? Math.max(2, Math.round((count / traceabilityRows.length) * 100)) : 0;
+                          return <div key={health} className={color} style={{ width: `${pct}%` }} />;
+                        })}
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+                        {([
+                          ["fully_traced", "Fully Traced", "bg-emerald-500"],
+                          ["partial_trace", "Partial Trace", "bg-amber-500"],
+                          ["missing_links", "Missing Links", "bg-orange-500"],
+                          ["broken_stale", "Broken / Stale", "bg-red-500"],
+                          ["not_traced", "Not Traced", "bg-slate-400"],
+                        ] as const).map(([health, label, dot]) => {
+                          const count = traceabilityRows.filter((row) => row.health === health).length;
+                          const pct = traceabilityRows.length ? ((count / traceabilityRows.length) * 100).toFixed(1) : "0.0";
+                          return (
+                            <div key={health} className="text-[11px] font-semibold text-slate-600">
+                              <div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", dot)} />{label}</div>
+                              <div className="mt-1 pl-4 text-slate-500">{count} ({pct}%)</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="border-t border-slate-100 pt-3 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+                      <div className="text-[11px] font-semibold text-slate-500">Coverage Progress</div>
+                      <div className="mt-2 text-2xl font-bold text-slate-900">
+                        {traceabilityRows.length ? Math.round((traceabilityRows.filter((row) => row.health === "fully_traced").length / traceabilityRows.length) * 100) : 0}%
+                      </div>
+                      <div className="mt-1 text-[10px] font-semibold text-slate-400">Overall Traceability Score</div>
+                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${traceabilityRows.length ? Math.round((traceabilityRows.filter((row) => row.health === "fully_traced").length / traceabilityRows.length) * 100) : 0}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                  {([
+                    ["all", "All Requirements"],
+                    ["fully_traced", "Fully Traced"],
+                    ["partial_trace", "Partial Trace"],
+                    ["missing_links", "Missing Links"],
+                    ["broken_stale", "Broken / Stale"],
+                  ] as const).map(([health, label]) => (
+                    <button
+                      key={health}
+                      onClick={() => setTraceabilityFilter(health)}
+                      className={cn("rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all", traceabilityFilter === health ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900")}
+                    >
+                      {label}
+                      <span className="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-600">
+                        {health === "all" ? traceabilityRows.length : traceabilityRows.filter((row) => row.health === health).length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={loadTraceabilityMatrix} className="h-8 bg-white text-xs font-bold">
+                    <RefreshCw className={cn("mr-1 h-3.5 w-3.5", matrixLoading && "animate-spin")} />Rebuild Index
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => selectedProject && handleExport("matrix-excel")} className="h-8 bg-white text-xs font-bold">
+                    <Download className="mr-1 h-3.5 w-3.5" />Export
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input value={traceabilitySearch} onChange={(event) => setTraceabilitySearch(event.target.value)} placeholder="Search by REQ ID, title, PPM ID, source..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+                {["Domain", "Journey", "Application", "Traceability Health", "More Filters"].map((label) => (
+                  <button key={label} className="flex h-9 min-w-[130px] items-center justify-between rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-500">
+                    {label}<ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                ))}
+                <Button variant="outline" size="sm" className="h-9 bg-white text-xs font-bold"><Filter className="mr-1 h-3.5 w-3.5" />Filters</Button>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <table className="min-w-[1320px] w-full border-collapse text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <tr>
+                      <th className="px-3 py-2.5">Req ID</th>
+                      <th className="px-3 py-2.5">PPM ID</th>
+                      <th className="px-3 py-2.5">Title</th>
+                      <th className="px-3 py-2.5">Analysis Status</th>
+                      <th className="px-3 py-2.5">Scenarios</th>
+                      <th className="px-3 py-2.5">Test Cases</th>
+                      <th className="px-3 py-2.5">Automation</th>
+                      <th className="px-3 py-2.5">Execution / Evidence</th>
+                      <th className="px-3 py-2.5">Defects</th>
+                      <th className="px-3 py-2.5">Traceability Health</th>
+                      <th className="px-3 py-2.5">Updated At</th>
+                      <th className="px-3 py-2.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                    {matrixLoading ? (
+                      <tr><td colSpan={12} className="px-4 py-16 text-center font-semibold text-slate-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#1b59f8]" />Loading traceability matrix...</td></tr>
+                    ) : filteredTraceabilityRows.length === 0 ? (
+                      <tr><td colSpan={12} className="px-4 py-16 text-center font-semibold text-slate-400">No traceability rows match the current filters.</td></tr>
+                    ) : filteredTraceabilityRows.map((row) => (
+                      <tr
+                        key={row.requirement.id}
+                        onClick={() => {
+                          handleOpenReqDetail(row.requirement);
+                          setDrawerTab("traceability");
+                          handleLoadTraceChain(row.requirement);
+                        }}
+                        className={cn("cursor-pointer transition-colors hover:bg-slate-50/70", row.requirement.id === selectedReq?.id && "bg-[#1b59f8]/5 outline outline-1 outline-[#1b59f8]/60")}
+                      >
+                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#1b59f8]">{row.requirement.requirement_id}</td>
+                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-slate-600">{row.ppmId}</td>
+                        <td className="max-w-[260px] px-3 py-3 font-bold text-slate-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
+                        <td className="px-3 py-3"><Badge variant={analysisBadgeVariant(row.analysisStatus)}>{analysisLabel(row.analysisStatus)}</Badge></td>
+                        <td className="px-3 py-3"><CoverageBar linked={row.scenarioLinked} total={row.scenarioTotal} health={row.health} /></td>
+                        <td className="px-3 py-3"><CoverageBar linked={row.testCaseLinked} total={row.testCaseTotal} health={row.health} /></td>
+                        <td className="px-3 py-3"><CoverageBar linked={row.automationLinked} total={row.automationTotal} health={row.health} /></td>
+                        <td className="px-3 py-3"><CoverageBar linked={row.evidenceLinked} total={row.evidenceTotal} health={row.health} /></td>
+                        <td className="px-3 py-3"><span className={cn("inline-flex items-center gap-1 font-bold", row.defectCount > 0 ? "text-red-600" : "text-emerald-600")}><span className="h-2 w-2 rounded-full bg-current" />{row.defectCount}</span></td>
+                        <td className="px-3 py-3"><Badge variant={traceHealthBadgeVariant(row.health)}>{traceHealthLabel(row.health)}</Badge></td>
+                        <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.updatedAt ? new Date(row.updatedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
+                        <td className="px-3 py-3 text-right"><Button variant="outline" size="sm" className="h-7 px-2 text-[10px] font-bold">...</Button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-[11px] font-semibold text-slate-500">
+                  <span>Showing 1 to {Math.min(filteredTraceabilityRows.length, traceabilityRows.length)} of {traceabilityRows.length} requirements</span>
+                  <div className="flex items-center gap-1"><Button variant="outline" size="sm" className="h-7 w-7 p-0 bg-white">1</Button><span className="px-2">2</span><span className="px-2">3</span><span className="px-2">...</span></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {workspaceView === "analysis" && (
+            <div className="space-y-4">
+              <Card className="overflow-hidden border-slate-200 shadow-sm">
+                <CardContent className="p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-900">Analysis Workflow</h2>
+                      <p className="mt-0.5 text-[10px] font-semibold text-slate-400">Grounded analysis from intake-ready requirements through clarification and traceability readiness</p>
+                    </div>
+                    <Button variant="outline" size="sm" disabled={agentRunning || requirements.length === 0} onClick={() => runQualityAgent()} className="h-7 border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-650">
+                      <Bot className="mr-1 h-3.5 w-3.5" />Run Analysis
+                    </Button>
+                  </div>
+                  <div className="grid gap-1.5 md:grid-cols-3 xl:grid-cols-6">
+                    {([
+                      ["Intake Ready", analysisRows.length, "bg-emerald-50 border-emerald-100 text-emerald-600", FileText],
+                      ["Analyzing", analysisRows.filter((row) => row.status === "queued" || row.status === "analyzing").length, "bg-blue-50 border-blue-100 text-blue-600", RefreshCw],
+                      ["Needs Clarification", analysisRows.filter((row) => row.status === "needs_clarification").length, "bg-amber-50 border-amber-100 text-amber-600", AlertTriangle],
+                      ["Analyzed", analysisRows.filter((row) => row.status === "analyzed").length, "bg-purple-50 border-purple-100 text-purple-600", CheckCircle],
+                      ["Ready for Traceability", analysisRows.filter((row) => row.status === "analyzed" && row.blockers.length === 0).length, "bg-cyan-50 border-cyan-100 text-cyan-600", ShieldCheck],
+                      ["Blocked / Failed", analysisRows.filter((row) => row.status === "blocked" || row.status === "failed").length, "bg-red-50 border-red-100 text-red-600", XCircle],
+                    ] as const).map(([label, value, tone, StepIcon], index, items) => (
+                      <div key={label} className="flex items-center gap-1.5">
+                        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5">
+                          <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full border", tone)}>
+                            <StepIcon className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-[10px] font-bold text-slate-700">{label}</div>
+                            <div className="text-[11px] font-bold text-slate-900">{value}</div>
+                          </div>
+                        </div>
+                        {index < items.length - 1 && <div className="hidden h-px w-6 border-t border-dashed border-slate-300 xl:block" />}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input value={analysisSearch} onChange={(event) => setAnalysisSearch(event.target.value)} placeholder="Search by requirement ID, PPM ID, title, source..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(["all", "not_analyzed", "needs_clarification", "analyzed", "blocked", "stale_source"] as const).map((status) => (
+                    <button key={status} onClick={() => setAnalysisFilter(status)} className={cn("rounded-lg px-3 py-2 text-[10px] font-bold transition-all", analysisFilter === status ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-500 hover:text-slate-900")}>
+                      {status === "all" ? "All" : analysisLabel(status)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                <table className="min-w-[1180px] w-full border-collapse text-left text-xs">
+                  <thead className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <tr>
+                      <th className="w-8 px-3 py-2.5"><input type="checkbox" className="rounded border-slate-300" aria-label="Select all requirements" /></th>
+                      <th className="px-3 py-2.5">Req ID</th>
+                      <th className="px-3 py-2.5">PPM ID</th>
+                      <th className="px-3 py-2.5">Title</th>
+                      <th className="px-3 py-2.5">Source</th>
+                      <th className="px-3 py-2.5">Analysis Status</th>
+                      <th className="px-3 py-2.5">Quality Score</th>
+                      <th className="px-3 py-2.5">Ambiguity</th>
+                      <th className="px-3 py-2.5">Missing Info</th>
+                      <th className="px-3 py-2.5">Duplicates</th>
+                      <th className="px-3 py-2.5">Risk</th>
+                      <th className="px-3 py-2.5">Updated At</th>
+                      <th className="px-3 py-2.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                    {loading ? (
+                      <tr><td colSpan={13} className="px-4 py-16 text-center font-semibold text-slate-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#1b59f8]" />Loading requirement analysis...</td></tr>
+                    ) : filteredAnalysisRows.length === 0 ? (
+                      <tr><td colSpan={13} className="px-4 py-16 text-center font-semibold text-slate-400">No requirements match the current analysis filter.</td></tr>
+                    ) : filteredAnalysisRows.map((row) => {
+                      const isReadyForTraceability = row.status === "analyzed" && row.blockers.length === 0;
+                      return (
+                        <tr key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="cursor-pointer transition-colors hover:bg-slate-50/70">
+                          <td className="px-3 py-3"><input type="checkbox" className="rounded border-slate-300" aria-label={`Select ${row.requirement.requirement_id}`} onClick={(event) => event.stopPropagation()} /></td>
+                          <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#1b59f8]">{row.requirement.requirement_id}</td>
+                          <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-slate-700">{row.ppmId}</td>
+                          <td className="max-w-[260px] px-3 py-3 font-bold text-slate-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
+                          <td className="px-3 py-3"><Badge variant="outline" className="max-w-[150px] truncate">{row.sourceLabel}</Badge></td>
+                          <td className="min-w-[160px] px-3 py-3">
+                            <Badge variant={analysisBadgeVariant(row.status)}>{analysisLabel(row.status)}</Badge>
+                            <div className="mt-1 flex items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full rounded-full", row.status === "analyzed" ? "bg-emerald-500" : row.status === "needs_clarification" ? "bg-amber-500" : row.status === "blocked" || row.status === "failed" ? "bg-red-500" : "bg-blue-500")} style={{ width: `${row.progress}%` }} /></div><span className="text-[10px] font-bold text-slate-400">{row.progress}%</span></div>
+                          </td>
+                          <td className="px-3 py-3">{row.qualityScore === null ? <span className="text-slate-400">-</span> : <span className={cn("rounded-full border px-2 py-1 text-[10px] font-bold", row.qualityScore >= 80 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : row.qualityScore >= 50 ? "border-amber-200 bg-amber-50 text-amber-700" : "border-red-200 bg-red-50 text-red-700")}>{row.qualityScore}/100</span>}</td>
+                          <td className="px-3 py-3"><span className={cn("font-bold", row.ambiguityCount ? "text-red-600" : "text-slate-400")}>{row.ambiguityCount}</span></td>
+                          <td className="px-3 py-3"><span className={cn("font-bold", row.missingInfoCount ? "text-red-600" : "text-slate-400")}>{row.missingInfoCount}</span></td>
+                          <td className="px-3 py-3"><span className={cn("font-bold", row.duplicateCount ? "text-amber-600" : "text-slate-400")}>{row.duplicateCount}</span></td>
+                          <td className="px-3 py-3"><Badge variant={riskBadgeVariant(row.riskLevel)}>{row.riskLevel}</Badge></td>
+                          <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
+                          <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}><Button size="sm" variant={isReadyForTraceability ? "default" : "outline"} disabled={!isReadyForTraceability} onClick={() => handleOpenReqDetail(row.requirement)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={!isReadyForTraceability ? row.blockers[0] || "Complete analysis before traceability" : undefined}>{isReadyForTraceability ? "Send to Traceability" : "Review"}</Button></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="grid gap-3 xl:grid-cols-3">
+                <Card className="border-slate-200 shadow-sm">
+                  <CardContent className="p-3">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-900">Analysis Quality Overview</h3>
+                      <button className="text-[10px] font-bold text-[#1b59f8]">View details</button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-purple-400 p-2">
+                        <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
+                          <span className="text-xl font-bold text-slate-900">{analysisRows.length ? Math.round(analysisRows.reduce((sum, row) => sum + (row.qualityScore ?? 0), 0) / analysisRows.length) : 0}</span>
+                          <span className="text-[9px] font-bold text-slate-400">/100</span>
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2 text-[11px] font-semibold text-slate-600">
+                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />High Quality</span><span>{analysisRows.filter((row) => (row.qualityScore ?? 0) >= 80).length}</span></div>
+                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-amber-500" />Medium Quality</span><span>{analysisRows.filter((row) => (row.qualityScore ?? 0) >= 50 && (row.qualityScore ?? 0) < 80).length}</span></div>
+                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-red-500" />Low Quality</span><span>{analysisRows.filter((row) => (row.qualityScore ?? 0) < 50).length}</span></div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200 shadow-sm">
+                  <CardContent className="p-3">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-900">Top Issues</h3>
+                      <button className="text-[10px] font-bold text-[#1b59f8]">View all</button>
+                    </div>
+                    <div className="space-y-2 text-[11px] font-semibold text-slate-600">
+                      <div className="flex justify-between gap-3"><span className="truncate">Missing Acceptance Criteria</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => !row.requirement.acceptance_criteria?.length).length}</span></div>
+                      <div className="flex justify-between gap-3"><span className="truncate">Unclear Business Rules</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => !row.requirement.business_rules?.length).length}</span></div>
+                      <div className="flex justify-between gap-3"><span className="truncate">Ambiguous Data Definitions</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => row.ambiguityCount > 0).length}</span></div>
+                      <div className="flex justify-between gap-3"><span className="truncate">Incomplete Taxonomy</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => !row.taxonomyReady).length}</span></div>
+                      <div className="flex justify-between gap-3"><span className="truncate">Conflicting Requirements</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => row.conflictCount > 0 || row.duplicateCount > 0).length}</span></div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200 shadow-sm">
+                  <CardContent className="p-3">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-900">Domains Distribution</h3>
+                      <button className="text-[10px] font-bold text-[#1b59f8]">View details</button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-[conic-gradient(#2563eb_0_25%,#ef4444_25%_45%,#f59e0b_45%_62%,#14b8a6_62%_82%,#94a3b8_82%_100%)] p-3">
+                        <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
+                          <span className="text-lg font-bold text-slate-900">{analysisRows.length}</span>
+                          <span className="text-[9px] font-bold text-slate-400">Total</span>
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2 text-[11px] font-semibold text-slate-600">
+                        {Object.entries(analysisRows.reduce<Record<string, number>>((groups, row) => {
+                          const key = row.requirement.telecom_domain || row.requirement.qa_domain || row.requirement.business_process || "Unclassified";
+                          groups[key] = (groups[key] || 0) + 1;
+                          return groups;
+                        }, {})).slice(0, 5).map(([domain, count]) => (
+                          <div key={domain} className="flex justify-between gap-3"><span className="truncate">{domain}</span><span className="font-bold text-slate-900">{count}</span></div>
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          <Card className={cn("overflow-hidden border-slate-200 shadow-sm", workspaceView !== "intake" && "hidden")}>
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Layers3 className="h-4 w-4 text-[#1b59f8]" />
+                  <h2 className="text-sm font-bold text-slate-900">Intake Source Queue</h2>
+                  <Badge variant="info">{intakeSources.length}</Badge>
+                </div>
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">Validation, processing ownership, provenance and the next governed action for every source</p>
+              </div>
+              <Button size="sm" onClick={() => setTab("documents")} className="h-8 bg-[#1b59f8] text-xs font-semibold text-white hover:bg-blue-700">
+                <Plus className="mr-1 h-3.5 w-3.5" /> Add Source
+              </Button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse text-left text-xs">
+                <thead className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <tr>
+                    <th className="px-4 py-2.5">Source</th><th className="px-4 py-2.5">Type</th><th className="px-4 py-2.5">Owner</th><th className="px-4 py-2.5">Intake Status</th><th className="px-4 py-2.5">Progress</th><th className="px-4 py-2.5">Extracted</th><th className="px-4 py-2.5">Validation</th><th className="px-4 py-2.5 text-right">Next Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                  {loading ? (
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#1b59f8]" />Loading intake sources...</td></tr>
+                  ) : intakeSources.length === 0 ? (
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">No sources yet. Add a document, URL, repository, Jira source, pasted text or API specification.</td></tr>
+                  ) : intakeSources.map((source) => (
+                    <tr key={source.id} onClick={() => setSelectedSource(source)} className="cursor-pointer transition-colors hover:bg-slate-50/70">
+                      <td className="max-w-[240px] truncate px-4 py-3 font-bold text-slate-800">{source.name}</td>
+                      <td className="px-4 py-3"><Badge variant="outline">{source.sourceType}</Badge></td>
+                      <td className="whitespace-nowrap px-4 py-3">{source.owner}</td>
+                      <td className="px-4 py-3"><Badge variant={source.status === "blocked" ? "destructive" : source.status === "processing" ? "purple" : source.status === "completed" ? "success" : "info"} className="capitalize">{source.status}</Badge></td>
+                      <td className="min-w-[130px] px-4 py-3"><div className="flex items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full rounded-full", source.status === "blocked" ? "bg-red-500" : source.status === "processing" ? "bg-purple-500" : "bg-emerald-500")} style={{ width: `${source.progress}%` }} /></div><span className="text-[10px] font-bold text-slate-500">{source.progress}%</span></div></td>
+                      <td className="px-4 py-3 font-bold text-slate-800">{source.extractedCount}</td>
+                      <td className="px-4 py-3">{source.validationIssues.length ? <span className="font-semibold text-red-600">{source.validationIssues.length} issue{source.validationIssues.length > 1 ? "s" : ""}</span> : <span className="font-semibold text-emerald-600">Passed</span>}</td>
+                      <td className="px-4 py-3 text-right" onClick={(event) => event.stopPropagation()}>
+                        <Button size="sm" variant={source.nextAction === "Run AI Intake" || source.nextAction === "Retry" ? "default" : "outline"} disabled={agentRunning || source.nextAction === "Processing" || (source.nextAction === "Send to Analysis" && (source.validationIssues.length > 0 || source.extractedCount === 0))} onClick={() => source.documentId && (source.nextAction === "Run AI Intake" || source.nextAction === "Retry") ? runIntakeAgent(source.documentId) : setSelectedSource(source)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={source.validationIssues.length ? "Resolve validation blockers before continuing" : undefined}>
+                          {source.nextAction === "Processing" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}{source.nextAction}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <div className={cn("flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit", workspaceView !== "intake" && "hidden")}>
+            {(["documents", "url", "github", "jira", "paste", "api", "requirements"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -1021,7 +2102,10 @@ function RequirementsContent() {
                 {t === "documents" ? "Documents / UI Input"
                   : t === "url" ? "URL Input"
                   : t === "github" ? "GitHub / Local Repository"
-                  : t}
+                  : t === "paste" ? "Add Paste Text"
+                  : t === "api" ? "Add API Specification"
+                  : t === "requirements" ? "Extracted Requirements"
+                  : "Jira"}
                 {t === "requirements" && requirements.length > 0 && (
                   <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{requirements.length}</span>
                 )}
@@ -1036,7 +2120,7 @@ function RequirementsContent() {
           </div>
 
           {/* ── Requirements Tab ──────────────────────────────────────────────────── */}
-          {tab === "requirements" && (
+          {workspaceView === "intake" && tab === "requirements" && (
             <div className="space-y-4">
               {/* Filter Buttons & AI Action */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1187,7 +2271,7 @@ function RequirementsContent() {
           )}
 
           {/* ── Documents Tab ─────────────────────────────────────────────────────── */}
-          {tab === "documents" && (
+          {workspaceView === "intake" && tab === "documents" && (
             <div className="space-y-4">
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -1261,7 +2345,7 @@ function RequirementsContent() {
           )}
 
           {/* ── URL Input Tab (GAP-2) ─────────────────────────────────────────────── */}
-          {tab === "url" && (
+          {workspaceView === "intake" && tab === "url" && (
             <div className="space-y-4">
               <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
                 <div className="flex items-center gap-2">
@@ -1332,7 +2416,7 @@ function RequirementsContent() {
           )}
 
           {/* ── GitHub / Local Repository Tab (GAP-3) ────────────────────────────── */}
-          {tab === "github" && (
+          {workspaceView === "intake" && tab === "github" && (
             <div className="space-y-5">
 
               {/* ── Section 1: GitHub Repository ─────────────────────────────────── */}
@@ -1502,7 +2586,39 @@ function RequirementsContent() {
           )}
 
           {/* ── Jira Tab ──────────────────────────────────────────────────────────── */}
-          {tab === "jira" && (
+          {workspaceView === "intake" && tab === "paste" && (
+            <Card className="border-slate-200 shadow-sm">
+              <CardContent className="space-y-5 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-2.5"><ClipboardPaste className="h-5 w-5 text-[#1b59f8]" /></div>
+                  <div><h3 className="text-sm font-bold text-slate-900">Add Paste Text</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">Capture meeting notes, emails or specification text as a governed intake source.</p></div>
+                </div>
+                <div className="grid gap-4">
+                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source title</label><input value={pasteTitle} onChange={(event) => setPasteTitle(event.target.value)} placeholder="e.g. Billing change workshop notes" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" /></div>
+                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source content</label><textarea value={pasteText} onChange={(event) => setPasteText(event.target.value)} placeholder="Paste the original source text here. Provenance is retained as Pasted Text." rows={10} className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" /></div>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2"><span className="text-[10px] font-semibold text-amber-700">Validation gate: both title and source content are mandatory.</span><Button size="sm" disabled={manualIntakeBusy || !pasteTitle.trim() || !pasteText.trim()} onClick={() => handleManualIntake("paste")} className="h-8 bg-[#1b59f8] text-xs text-white hover:bg-blue-700">{manualIntakeBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1 h-3.5 w-3.5" />}Add to Intake</Button></div>
+              </CardContent>
+            </Card>
+          )}
+
+          {workspaceView === "intake" && tab === "api" && (
+            <Card className="border-slate-200 shadow-sm">
+              <CardContent className="space-y-5 p-5">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl border border-purple-100 bg-purple-50 p-2.5"><Braces className="h-5 w-5 text-purple-600" /></div>
+                  <div><h3 className="text-sm font-bold text-slate-900">Add API Specification</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">Register OpenAPI or Swagger JSON/YAML as a traceable requirements source.</p></div>
+                </div>
+                <div className="grid gap-4">
+                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Specification title</label><input value={apiSpecTitle} onChange={(event) => setApiSpecTitle(event.target.value)} placeholder="e.g. Customer Profile API v2" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-200" /></div>
+                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">OpenAPI / Swagger content</label><textarea value={apiSpecText} onChange={(event) => setApiSpecText(event.target.value)} placeholder={'openapi: 3.0.0\ninfo:\n  title: Customer Profile API\n  version: 2.0.0'} rows={12} spellCheck={false} className="w-full resize-y rounded-lg border border-slate-200 bg-slate-950 px-3 py-2 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-200" /></div>
+                </div>
+                <div className="flex items-center justify-between rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2"><span className="text-[10px] font-semibold text-purple-700">JSON inputs are syntax-validated before intake; YAML is retained for governed processing.</span><Button size="sm" disabled={manualIntakeBusy || !apiSpecTitle.trim() || !apiSpecText.trim()} onClick={() => handleManualIntake("api")} className="h-8 bg-purple-600 text-xs text-white hover:bg-purple-700">{manualIntakeBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Braces className="mr-1 h-3.5 w-3.5" />}Add Specification</Button></div>
+              </CardContent>
+            </Card>
+          )}
+
+          {workspaceView === "intake" && tab === "jira" && (
             <div className="space-y-4">
               {(jiraMessage || jiraError) && (
                 <div className={cn(
@@ -1675,6 +2791,71 @@ function RequirementsContent() {
       )}
 
       {/* ── Requirements details Drawer ────────────────────────────────────────── */}
+      <Drawer open={!!selectedSource} onOpenChange={(open) => !open && setSelectedSource(null)}>
+        <DrawerContent>
+          {selectedSource && (
+            <>
+              <DrawerHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <DrawerTitle>Intake Source Details</DrawerTitle>
+                    <DrawerDescription className="mt-1">{selectedSource.name}</DrawerDescription>
+                  </div>
+                  <Badge variant={selectedSource.status === "blocked" ? "destructive" : selectedSource.status === "processing" ? "purple" : selectedSource.status === "completed" ? "success" : "info"} className="capitalize">{selectedSource.status}</Badge>
+                </div>
+              </DrawerHeader>
+              <DrawerBody>
+                <div className="space-y-5">
+                  <section className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+                    <h4 className="mb-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Validation blockers</h4>
+                    {selectedSource.validationIssues.length ? (
+                      <ul className="space-y-2">{selectedSource.validationIssues.map((issue) => <li key={issue} className="flex items-start gap-2 text-xs font-semibold text-red-700"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{issue}</li>)}</ul>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700"><CheckCircle className="h-4 w-4" />All intake validations passed.</div>
+                    )}
+                  </section>
+
+                  <section className="space-y-3">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source provenance</h4>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="rounded-lg border border-slate-200 p-3"><span className="block text-[9px] font-bold uppercase text-slate-400">Type</span><span className="mt-1 block font-bold text-slate-800">{selectedSource.sourceType}</span></div>
+                      <div className="rounded-lg border border-slate-200 p-3"><span className="block text-[9px] font-bold uppercase text-slate-400">Owner</span><span className="mt-1 block font-bold text-slate-800">{selectedSource.owner}</span></div>
+                      <div className="col-span-2 rounded-lg border border-slate-200 p-3"><span className="block text-[9px] font-bold uppercase text-slate-400">Origin</span><span className="mt-1 block font-semibold text-slate-700">{selectedSource.provenance}</span></div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-purple-100 bg-purple-50/30 p-4">
+                    <div className="mb-3 flex items-center gap-2"><Bot className="h-4 w-4 text-purple-600" /><h4 className="text-xs font-bold text-slate-800">AI intake job details</h4></div>
+                    <dl className="space-y-2 text-xs">
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Progress</dt><dd className="font-bold text-slate-800">{selectedSource.progress}%</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Requirements extracted</dt><dd className="font-bold text-slate-800">{selectedSource.extractedCount}</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Model</dt><dd className="text-right font-bold text-slate-800">Resolved by governed runtime policy</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Prompt version</dt><dd className="font-bold text-slate-800">Captured with agent run</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Tool version</dt><dd className="font-bold text-slate-800">Captured with agent run</dd></div>
+                    </dl>
+                  </section>
+
+                  <section className="space-y-3">
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Recent audit activity</h4>
+                    <div className="flex items-start gap-3 rounded-lg border border-slate-200 p-3"><Clock className="mt-0.5 h-4 w-4 text-slate-400" /><div><p className="text-xs font-bold text-slate-800">Source registered in requirement intake</p><p className="mt-1 text-[10px] font-semibold text-slate-400">{selectedSource.createdAt ? new Date(selectedSource.createdAt).toLocaleString() : "Timestamp retained by source system"}</p></div></div>
+                  </section>
+                </div>
+              </DrawerBody>
+              <DrawerFooter className={cn((workspaceView === "analysis" || workspaceView === "review") && drawerTab === "details" && "hidden")}>
+                <div className="flex w-full gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedSource(null)} className="h-9 flex-1 bg-white">Close</Button>
+                  {selectedSource.documentId && (selectedSource.nextAction === "Run AI Intake" || selectedSource.nextAction === "Retry") ? (
+                    <Button size="sm" disabled={agentRunning} onClick={() => { runIntakeAgent(selectedSource.documentId!); setSelectedSource(null); }} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">{selectedSource.nextAction}</Button>
+                  ) : (
+                    <Button size="sm" disabled={selectedSource.validationIssues.length > 0 || selectedSource.extractedCount === 0} onClick={() => { setTab("requirements"); setSelectedSource(null); }} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">Open Extracted Requirements</Button>
+                  )}
+                </div>
+              </DrawerFooter>
+            </>
+          )}
+        </DrawerContent>
+      </Drawer>
+
       <Drawer open={!!selectedReq} onOpenChange={(open) => !open && setSelectedReq(null)}>
         <DrawerContent size="xl">
           {selectedReq && (
@@ -1687,13 +2868,31 @@ function RequirementsContent() {
                     <DrawerDescription className="truncate">{selectedReq.title}</DrawerDescription>
                   </div>
                 </div>
+                <div className="ml-auto mr-2 hidden items-center gap-2 md:flex">
+                  <Badge variant="outline" className="border-blue-100 bg-blue-50 text-blue-600">PPM ID: {selectedProjectPpmId}</Badge>
+                  {workspaceView === "analysis" && (
+                    <Badge variant={analysisBadgeVariant(analysisRows.find((row) => row.requirement.id === selectedReq.id)?.status || "not_analyzed")}>
+                      {analysisLabel(analysisRows.find((row) => row.requirement.id === selectedReq.id)?.status || "not_analyzed")}
+                    </Badge>
+                  )}
+                  {workspaceView === "traceability" && (
+                    <Badge variant={traceHealthBadgeVariant(traceabilityRows.find((row) => row.requirement.id === selectedReq.id)?.health || "not_traced")}>
+                      {traceHealthLabel(traceabilityRows.find((row) => row.requirement.id === selectedReq.id)?.health || "not_traced")}
+                    </Badge>
+                  )}
+                  {workspaceView === "review" && (
+                    <Badge variant={reviewStatusBadgeVariant(reviewRows.find((row) => row.requirement.id === selectedReq.id)?.reviewStatus || "pending")}>
+                      {reviewStatusLabel(reviewRows.find((row) => row.requirement.id === selectedReq.id)?.reviewStatus || "pending")}
+                    </Badge>
+                  )}
+                </div>
                 <button onClick={() => setSelectedReq(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
               </DrawerHeader>
 
               <DrawerBody className="space-y-5">
                 {/* GAP-5: Drawer tab navigation */}
                 <div className="flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 w-fit">
-                  {(["details", "traceability"] as const).map((t) => (
+                  {((workspaceView === "traceability" ? ["traceability", "details"] : ["details", "traceability"]) as Array<"details" | "traceability">).map((t) => (
                     <button
                       key={t}
                       onClick={() => {
@@ -1710,9 +2909,26 @@ function RequirementsContent() {
                       )}
                     >
                       {t === "details" ? <FileText className="h-3 w-3" /> : <GitBranch className="h-3 w-3" />}
-                      {t === "details" ? "Details" : "Traceability"}
+                      {workspaceView === "traceability"
+                        ? t === "traceability" ? "Trace Chain" : "Details"
+                        : workspaceView === "review"
+                          ? t === "details" ? "Review" : "Traceability"
+                          : t === "details" ? (workspaceView === "analysis" ? "Analysis" : "Details") : "Traceability"}
                     </button>
                   ))}
+                  {workspaceView === "review" && (
+                    <>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">Analysis</button>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">History</button>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">Activity</button>
+                    </>
+                  )}
+                  {workspaceView === "traceability" && (
+                    <>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">Gaps & Issues</button>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">Activity</button>
+                    </>
+                  )}
                 </div>
 
                 {/* ── TRACEABILITY TAB ───────────────────────────────────────── */}
@@ -1732,7 +2948,105 @@ function RequirementsContent() {
                       </div>
                     )}
 
-                    {traceChain && !traceLoading && (
+                    {traceChain && !traceLoading && workspaceView === "traceability" && (
+                      <div className="space-y-3">
+                        {([
+                          {
+                            title: "Source / Evidence",
+                            icon: FileText,
+                            tone: "bg-blue-50 border-blue-100 text-blue-600",
+                            badge: "Linked",
+                            lines: [
+                              selectedReq.jira_issue_key || selectedReq.source || "Source evidence registered",
+                              selectedReq.business_process || selectedReq.telecom_domain || "Business requirement source",
+                            ],
+                          },
+                          {
+                            title: "Requirement Analysis",
+                            icon: Bot,
+                            tone: "bg-purple-50 border-purple-100 text-purple-600",
+                            badge: traceChain.requirement.quality_verdict || "Analyzed",
+                            lines: [
+                              `Analyzed on: ${selectedReq.updated_at ? new Date(selectedReq.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Pending"}`,
+                              `Quality Score: ${traceChain.requirement.quality_score ?? selectedReq.quality_score ?? 0}/100`,
+                            ],
+                          },
+                          {
+                            title: "Test Scenarios",
+                            icon: ClipboardPaste,
+                            tone: "bg-amber-50 border-amber-100 text-amber-600",
+                            badge: `${traceChain.scenarios.length} linked`,
+                            lines: traceChain.scenarios.length
+                              ? traceChain.scenarios.slice(0, 3).map((item) => `${item.scenario_id}  ${item.title}`)
+                              : ["No scenario linked"],
+                          },
+                          {
+                            title: "Test Cases",
+                            icon: Braces,
+                            tone: "bg-violet-50 border-violet-100 text-violet-600",
+                            badge: `${traceChain.test_cases.length} linked`,
+                            lines: traceChain.test_cases.length
+                              ? traceChain.test_cases.slice(0, 3).map((item) => `${item.test_case_id}  ${item.title}`)
+                              : ["No test case linked"],
+                          },
+                          {
+                            title: "Automation",
+                            icon: Settings,
+                            tone: "bg-cyan-50 border-cyan-100 text-cyan-600",
+                            badge: `${traceChain.test_cases.filter((item) => item.automation_candidate).length} candidates`,
+                            lines: traceChain.test_cases.filter((item) => item.automation_candidate).length
+                              ? traceChain.test_cases.filter((item) => item.automation_candidate).slice(0, 2).map((item) => `Candidate: ${item.test_case_id}`)
+                              : ["Automation not linked"],
+                          },
+                          {
+                            title: "Execution & Evidence",
+                            icon: ShieldCheck,
+                            tone: "bg-blue-50 border-blue-100 text-blue-600",
+                            badge: `${traceChain.execution_results.length} linked`,
+                            lines: traceChain.execution_results.length
+                              ? traceChain.execution_results.slice(0, 2).map((item) => `${item.test_name}  ${item.status}`)
+                              : ["No execution evidence linked"],
+                          },
+                          {
+                            title: "Defects",
+                            icon: XCircle,
+                            tone: "bg-red-50 border-red-100 text-red-600",
+                            badge: `${traceChain.defects.length} linked`,
+                            lines: traceChain.defects.length
+                              ? traceChain.defects.slice(0, 3).map((item) => `${item.defect_id}  ${item.summary}`)
+                              : ["No linked defects"],
+                          },
+                        ] as const).map((node, index, nodes) => {
+                          const Icon = node.icon;
+                          return (
+                            <div key={node.title} className="relative pl-8">
+                              {index < nodes.length - 1 && <div className="absolute left-[13px] top-9 h-[calc(100%-12px)] border-l border-dashed border-blue-200" />}
+                              <div className={cn("absolute left-0 top-3 flex h-7 w-7 items-center justify-center rounded-lg border", node.tone)}>
+                                <Icon className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                                <div className="mb-2 flex items-center justify-between gap-2">
+                                  <h4 className="text-xs font-bold text-slate-800">{node.title}</h4>
+                                  <Badge variant="outline" className="text-[9px]">{node.badge}</Badge>
+                                </div>
+                                <div className="space-y-1">
+                                  {node.lines.map((line, lineIndex) => (
+                                    <div key={`${node.title}-${lineIndex}`} className="truncate text-[11px] font-semibold text-slate-600">{line}</div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div className="grid grid-cols-2 gap-2 pt-2">
+                          <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Generate Missing Items</Button>
+                          <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Link Existing</Button>
+                          <Button size="sm" disabled={traceChain.summary.gaps.length > 0} className="col-span-2 h-8 bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Review & Approval</Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {traceChain && !traceLoading && workspaceView !== "traceability" && (
                       <>
                         {/* Summary badges */}
                         <div className="grid grid-cols-4 gap-2">
@@ -1858,7 +3172,187 @@ function RequirementsContent() {
                 )}
 
                 {/* ── DETAILS TAB (existing content) ──────────────────────── */}
-                {drawerTab === "details" && (
+                {drawerTab === "details" && workspaceView === "review" && (() => {
+                  const row = reviewRows.find((item) => item.requirement.id === selectedReq.id);
+                  const readinessItems = [
+                    ["Analysis completed", row?.analysisStatus === "analyzed" ? "72/100" : "Pending", row?.analysisStatus === "analyzed"],
+                    ["Traceability health", `${row?.traceabilityScore ?? 0}/100`, (row?.traceabilityScore ?? 0) >= 70],
+                    ["Missing information", row?.blockers.some((blocker) => blocker.toLowerCase().includes("missing")) ? "Open" : "0", !row?.blockers.some((blocker) => blocker.toLowerCase().includes("missing"))],
+                    ["Duplicates resolved", row?.blockers.some((blocker) => blocker.toLowerCase().includes("duplicate")) ? "No" : "Yes", !row?.blockers.some((blocker) => blocker.toLowerCase().includes("duplicate"))],
+                    ["Mandatory evidence", row?.traceabilityHealth === "fully_traced" ? "Yes" : "Partial", row?.traceabilityHealth === "fully_traced"],
+                    ["Policy & permissions", "Compliant", true],
+                  ] as const;
+                  return (
+                    <div className="space-y-3 text-xs">
+                      <section className="rounded-xl border border-slate-200 bg-white p-3">
+                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-800"><ShieldCheck className="h-3.5 w-3.5 text-[#1b59f8]" />Readiness Summary</h4>
+                        <p className="mb-3 text-[11px] font-semibold text-slate-600">{row?.readyForApproval ? "All checks passed. This requirement is ready for approval." : "Some checks require attention before approval."}</p>
+                        <div className="space-y-2">
+                          {readinessItems.map(([label, value, passed]) => (
+                            <div key={label} className="flex items-center justify-between gap-3 text-[11px] font-semibold">
+                              <span className="flex items-center gap-2 text-slate-600">{passed ? <CheckCircle className="h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}{label}</span>
+                              <span className="font-bold text-slate-700">{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section className="rounded-xl border border-slate-200 bg-white p-3">
+                        <h4 className="mb-3 text-xs font-bold text-slate-800">Approval Recommendation</h4>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold">
+                          <div><div className="text-[9px] font-bold text-slate-400">AI Recommendation</div><Badge variant={row?.readyForApproval ? "success" : "warning"} className="mt-1">{row?.readyForApproval ? "Approve" : "Review"}</Badge></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">AI Confidence</div><Badge variant="purple" className="mt-1">{Math.max(50, row?.traceabilityScore ?? 0)}%</Badge></div>
+                        </div>
+                        <p className="mt-2 text-[11px] font-semibold text-slate-600">{row?.readyForApproval ? "The requirement meets all quality and governance criteria." : row?.blockers[0] || "Reviewer attention required."}</p>
+                      </section>
+
+                      <section className="rounded-xl border border-slate-200 bg-white p-3">
+                        <h4 className="mb-3 text-xs font-bold text-slate-800">Reviewer Information</h4>
+                        <div className="grid grid-cols-2 gap-3 text-[11px] font-semibold text-slate-600">
+                          <div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">{(row?.reviewer || "NA").slice(0, 2).toUpperCase()}</span><span>{row?.reviewer}</span></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Role</div><div className="font-bold text-slate-700">QA Lead</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Assigned On</div><div className="font-bold text-slate-700">{selectedReq.updated_at ? new Date(selectedReq.updated_at).toLocaleString("en-US", { month: "short", day: "numeric" }) : "-"}</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">SLA / Due In</div><div className={cn("font-bold", row?.slaAge.includes("ago") ? "text-red-600" : "text-emerald-600")}>{row?.slaAge}</div></div>
+                        </div>
+                      </section>
+
+                      <section className="rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="mb-3 flex items-center justify-between"><h4 className="text-xs font-bold text-slate-800">Approval History</h4><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div>
+                        <div className="space-y-2 text-[11px] font-semibold text-slate-600">
+                          {["Analysis completed by AI", "Traceability verified", `Assigned to ${row?.reviewer}`].map((activity, index) => (
+                            <div key={activity} className="flex items-center justify-between gap-3"><span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#1b59f8]" />{activity}</span><span className="text-slate-400">{index + 1}h ago</span></div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                        <h4 className="text-xs font-bold text-slate-800">Review Actions</h4>
+                        <Button size="sm" disabled={!row?.readyForApproval || reviewLoading} onClick={() => handleApprove("approve")} className="h-8 w-full bg-emerald-600 text-[10px] font-bold text-white hover:bg-emerald-700">Approve Requirement</Button>
+                        <Button variant="outline" size="sm" className="h-8 w-full border-amber-200 bg-white text-[10px] font-bold text-amber-700">Request Changes</Button>
+                        <Button variant="outline" size="sm" disabled={reviewLoading} onClick={() => handleApprove("reject")} className="h-8 w-full border-red-200 bg-white text-[10px] font-bold text-red-600">Reject Requirement</Button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Send Back to Analysis</Button>
+                          <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Send Back to Traceability</Button>
+                        </div>
+                        <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-center text-[10px] font-semibold text-blue-700">All actions are audited and immutable.</div>
+                      </section>
+                    </div>
+                  );
+                })()}
+
+                {drawerTab === "details" && workspaceView === "analysis" && (() => {
+                  const row = analysisRows.find((item) => item.requirement.id === selectedReq.id);
+                  const qualityMeta = metadataRecord(selectedReq).quality_review as Record<string, any> | undefined;
+                  const acceptanceCriteria = selectedReq.acceptance_criteria?.length ? selectedReq.acceptance_criteria : ["Acceptance criteria not captured yet."];
+                  const impactedSystems = [
+                    ...(selectedReq.systems_impacted || []),
+                    ...(selectedReq.impacted_interfaces || []),
+                    ...(selectedReq.apis || []),
+                  ].filter(Boolean);
+                  return (
+                    <div className="space-y-3 text-xs">
+                      <section className="border-b border-slate-100 pb-3">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><ShieldCheck className="h-3.5 w-3.5 text-[#1b59f8]" />Grounded Summary</h4>
+                          <Badge variant="warning" className="text-[9px]">AI Confidence {row?.qualityScore ?? 0}%</Badge>
+                        </div>
+                        <p className="text-[11px] font-semibold leading-relaxed text-slate-600">{selectedReq.summary || selectedReq.title}</p>
+                      </section>
+
+                      <section className="border-b border-slate-100 pb-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-800">Acceptance Criteria ({acceptanceCriteria.length})</h4>
+                          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        </div>
+                        <ul className="space-y-1.5">
+                          {acceptanceCriteria.slice(0, 4).map((criterion, index) => (
+                            <li key={`${criterion}-${index}`} className="flex items-start gap-1.5 text-[11px] font-semibold text-slate-600">
+                              <CheckCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                              <span className="leading-snug">{criterion}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        <button className="mt-2 text-[10px] font-bold text-[#1b59f8]">+ Add / Edit</button>
+                      </section>
+
+                      <section className="border-b border-slate-100 pb-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-800">Issues Detected</h4>
+                          <button className="text-[10px] font-bold text-[#1b59f8]">View all</button>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1.5">
+                          {([
+                            ["Ambiguities", row?.ambiguityCount ?? 0, "bg-slate-50 border-slate-100 text-slate-800"],
+                            ["Missing Info", row?.missingInfoCount ?? 0, "bg-red-50 border-red-100 text-red-700"],
+                            ["Duplicates", row?.duplicateCount ?? 0, "bg-amber-50 border-amber-100 text-amber-700"],
+                            ["Conflicts", row?.conflictCount ?? 0, "bg-blue-50 border-blue-100 text-blue-700"],
+                          ] as const).map(([label, count, tone]) => (
+                            <div key={label} className={cn("rounded-lg border p-2", tone)}>
+                              <div className="truncate text-[9px] font-bold text-slate-500">{label}</div>
+                              <div className="mt-1 text-lg font-bold">{count}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section className="border-b border-slate-100 pb-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-800">Classification</h4>
+                          <button className="text-[10px] font-bold text-[#1b59f8]">Edit</button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                          {([
+                            ["Domain", selectedReq.telecom_domain || selectedReq.qa_domain || "Unclassified"],
+                            ["Journey", selectedReq.business_process || "Order Fulfillment"],
+                            ["Application", selectedReq.product || selectedReq.product_group || "OMS"],
+                            ["Request Type", selectedReq.sub_request_type || selectedReq.jira_issue_type || "Operational"],
+                            ["Test Type", selectedReq.test_phase || "Functional"],
+                            ["Risk Level", row?.riskLevel || selectedReq.risk_level || "Medium"],
+                          ] as const).map(([label, value]) => (
+                            <div key={label}>
+                              <div className="text-[9px] font-bold text-slate-400">{label}</div>
+                              <div className="mt-0.5 font-bold text-slate-700">{value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section className="border-b border-slate-100 pb-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-800">Impacted Systems</h4>
+                          <button className="text-[10px] font-bold text-[#1b59f8]">View all</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(impactedSystems.length ? impactedSystems : ["OMS", "Notification Service", "CRM"]).slice(0, 4).map((system) => (
+                            <Badge key={system} variant="outline" className="text-[9px]">{system}</Badge>
+                          ))}
+                          {impactedSystems.length > 4 && <span className="text-[10px] font-bold text-[#1b59f8]">+{impactedSystems.length - 4} more</span>}
+                        </div>
+                      </section>
+
+                      <section className="border-b border-slate-100 pb-3">
+                        <h4 className="mb-2 text-xs font-bold text-slate-800">AI Analysis Details</h4>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                          <div><div className="text-[9px] font-bold text-slate-400">Model</div><div className="font-bold text-slate-700">{String(qualityMeta?.model || "Qwen3-Coder-Next")}</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Prompt Version</div><div className="font-bold text-slate-700">{String(qualityMeta?.prompt_version || "v2.1")}</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Analysis Tool</div><div className="font-bold text-slate-700">Requirement Analyzer</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Analyzed At</div><div className="font-bold text-slate-700">{selectedReq.updated_at ? new Date(selectedReq.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Pending"}</div></div>
+                        </div>
+                      </section>
+
+                      <section className="space-y-2">
+                        <h4 className="text-xs font-bold text-slate-800">Actions</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Request Clarification</Button>
+                          <Button variant="outline" size="sm" disabled={agentRunning} onClick={() => runQualityAgent([selectedReq.id])} className="h-8 bg-white text-[10px] font-bold">Re-run Analysis</Button>
+                        </div>
+                        <Button size="sm" disabled={!!row?.blockers.length || row?.status !== "analyzed"} className="h-8 w-full bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Traceability</Button>
+                      </section>
+                    </div>
+                  );
+                })()}
+
+                {drawerTab === "details" && workspaceView !== "analysis" && workspaceView !== "review" && (
                   <div className="space-y-5">
 
                 <div className="flex items-center gap-2">

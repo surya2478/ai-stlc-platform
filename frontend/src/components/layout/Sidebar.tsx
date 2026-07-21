@@ -7,8 +7,9 @@ import {
   LayoutDashboard, FileText, ClipboardList,
   TestTube2, Play, Bug, BarChart3, Settings,
   Bot, ChevronRight, ChevronDown, Users, Database,
-  ChevronLeft, Brain, BookOpen,
+  ChevronLeft, Brain, BookOpen, ShieldCheck,
   Hand, Cpu, Sparkles, Gauge, Table2, Video, Target,
+  Radar,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,14 +31,24 @@ const NAV_ITEMS: NavGroup[] = [
     group: "Overview",
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { label: "Command Centre", href: "/autonomous-lab/missions", icon: Radar },
     ],
   },
   {
     group: "STLC Pipeline",
     items: [
       { label: "Requirements", href: "/requirements", icon: FileText },
-      { label: "Test Planning", href: "/test-planning", icon: ClipboardList },
-      { label: "Test Cases", href: "/test-cases", icon: TestTube2 },
+      {
+        label: "Test Planning",
+        href: "/test-planning",
+        icon: ClipboardList,
+        children: [
+          { label: "Test Planning Dashboard", href: "/test-planning", icon: ClipboardList },
+          { label: "Generated Test Cases", href: "/test-cases?view=generated", icon: TestTube2 },
+          { label: "Test Case Editor", href: "/test-cases?view=editor", icon: TestTube2 },
+          { label: "Test Case Approval", href: "/test-cases?view=approval", icon: ShieldCheck },
+        ],
+      },
       { label: "Test Data", href: "/test-data", icon: Database },
       { label: "AI Automation Studio", href: "/automation", icon: Sparkles },
       { label: "Playwright AI Studio", href: "/playwright-studio", icon: Bot },
@@ -84,25 +95,42 @@ const NAV_ITEMS: NavGroup[] = [
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-items";
 
 function withProject(href: string, projectId: string | null): string {
-  return projectId ? `${href}?project=${projectId}` : href;
+  if (!projectId) return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}project=${projectId}`;
 }
 
-function isActiveHref(pathname: string, href: string): boolean {
-  if (href === "/agents") {
+function parseHref(href: string) {
+  const [path, query = ""] = href.split("?");
+  return { path, params: new URLSearchParams(query) };
+}
+
+function isActiveHref(pathname: string, currentQuery: string, href: string): boolean {
+  const { path, params } = parseHref(href);
+  if (path === "/agents") {
     return pathname === "/agents";
   }
-  return pathname === href || pathname.startsWith(href + "/");
+  const pathActive = pathname === path || pathname.startsWith(path + "/");
+  if (!pathActive) return false;
+  const currentParams = new URLSearchParams(currentQuery);
+  const expectedView = params.get("view");
+  if (expectedView) {
+    const currentView = currentParams.get("view") || (path === "/test-cases" ? "generated" : null);
+    return currentView === expectedView;
+  }
+  return true;
 }
 
-function isParentActive(pathname: string, item: NavItem): boolean {
-  if (isActiveHref(pathname, item.href)) return true;
-  return Boolean(item.children?.some((c) => isActiveHref(pathname, c.href)));
+function isParentActive(pathname: string, currentQuery: string, item: NavItem): boolean {
+  if (isActiveHref(pathname, currentQuery, item.href)) return true;
+  return Boolean(item.children?.some((c) => isActiveHref(pathname, currentQuery, c.href)));
 }
 
 function SidebarContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("project");
+  const currentQuery = searchParams.toString();
 
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -130,7 +158,7 @@ function SidebarContent() {
       let changed = false;
       for (const group of NAV_ITEMS) {
         for (const item of group.items) {
-          if (item.children && isParentActive(pathname, item) && !next[item.href]) {
+          if (item.children && isParentActive(pathname, currentQuery, item) && !next[item.href]) {
             next[item.href] = true;
             changed = true;
           }
@@ -141,7 +169,7 @@ function SidebarContent() {
       }
       return changed ? next : prev;
     });
-  }, [pathname, mounted]);
+  }, [pathname, currentQuery, mounted]);
 
   const toggleCollapse = () => {
     const nextState = !collapsed;
@@ -204,6 +232,7 @@ function SidebarContent() {
                       key={item.href}
                       item={item}
                       pathname={pathname}
+                      currentQuery={currentQuery}
                       projectId={projectId}
                       collapsed={collapsed}
                       expanded={Boolean(expanded[item.href])}
@@ -216,6 +245,7 @@ function SidebarContent() {
                     key={item.href}
                     item={item}
                     pathname={pathname}
+                    currentQuery={currentQuery}
                     projectId={projectId}
                     collapsed={collapsed}
                   />
@@ -246,13 +276,14 @@ function SidebarContent() {
 type LeafProps = {
   item: NavItem;
   pathname: string;
+  currentQuery: string;
   projectId: string | null;
   collapsed: boolean;
   nested?: boolean;
 };
 
-function LeafItem({ item, pathname, projectId, collapsed, nested }: LeafProps) {
-  const active = isActiveHref(pathname, item.href);
+function LeafItem({ item, pathname, currentQuery, projectId, collapsed, nested }: LeafProps) {
+  const active = isActiveHref(pathname, currentQuery, item.href);
   const href = withProject(item.href, projectId);
   return (
     <Link
@@ -276,15 +307,16 @@ function LeafItem({ item, pathname, projectId, collapsed, nested }: LeafProps) {
 type ParentProps = {
   item: NavItem;
   pathname: string;
+  currentQuery: string;
   projectId: string | null;
   collapsed: boolean;
   expanded: boolean;
   onToggle: () => void;
 };
 
-function ParentItem({ item, pathname, projectId, collapsed, expanded, onToggle }: ParentProps) {
-  const parentActive = isParentActive(pathname, item);
-  const directHrefActive = isActiveHref(pathname, item.href);
+function ParentItem({ item, pathname, currentQuery, projectId, collapsed, expanded, onToggle }: ParentProps) {
+  const parentActive = isParentActive(pathname, currentQuery, item);
+  const directHrefActive = isActiveHref(pathname, currentQuery, item.href);
 
   if (collapsed) {
     // In collapsed mode, render parent icon only — tapping it navigates to its default child
@@ -339,6 +371,7 @@ function ParentItem({ item, pathname, projectId, collapsed, expanded, onToggle }
               key={child.href}
               item={child}
               pathname={pathname}
+              currentQuery={currentQuery}
               projectId={projectId}
               collapsed={false}
               nested
