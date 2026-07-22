@@ -47,7 +47,6 @@ import { TestCaseApprovalView } from "./TestCaseApprovalView";
 type DrawerTab = "overview" | "cases" | "coverage" | "ai" | "activity";
 type Tone = "blue" | "emerald" | "red" | "purple" | "amber" | "slate";
 
-const LAST_REFRESHED = "Jul 21, 2026, 01:02 PM";
 
 const TABS = [
   { key: "all", label: "All Generated" },
@@ -288,6 +287,152 @@ function ReadinessItem({
         <p className="text-xs font-bold text-slate-800">{label}</p>
         <p className="mt-0.5 text-sm font-extrabold leading-none text-slate-950">{value}</p>
       </div>
+    </div>
+  );
+}
+
+type SummaryItem = { label: string; value: number | string; tone: Tone; subtitle?: string };
+
+function SummaryStrip({ items }: { items: SummaryItem[] }) {
+  const toneMap: Record<Tone, string> = {
+    blue: "text-blue-700",
+    emerald: "text-emerald-700",
+    red: "text-red-700",
+    purple: "text-purple-700",
+    amber: "text-amber-700",
+    slate: "text-slate-700",
+  };
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap divide-x divide-slate-100">
+        {items.map((item) => (
+          <div key={item.label} className="flex-1 min-w-[120px] px-4 py-3">
+            <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500">{item.label}</p>
+            <p className={cn("mt-1 text-xl font-extrabold leading-none", toneMap[item.tone])}>{item.value}</p>
+            {item.subtitle && <p className="mt-1 text-[10px] font-semibold text-slate-400">{item.subtitle}</p>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ScenarioSelectionPanel({
+  scenarios,
+  requirementsById,
+  selectedScenarioIds,
+  setSelectedScenarioIds,
+  generating,
+  onGenerate,
+  onRegenerate,
+}: {
+  scenarios: TestScenario[];
+  requirementsById: Map<number, Requirement>;
+  selectedScenarioIds: number[];
+  setSelectedScenarioIds: (updater: (prev: number[]) => number[]) => void;
+  generating: boolean;
+  onGenerate: () => void;
+  onRegenerate: () => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const selectedSet = useMemo(() => new Set(selectedScenarioIds), [selectedScenarioIds]);
+  const allSelected = scenarios.length > 0 && selectedScenarioIds.length === scenarios.length;
+  const someSelected = selectedScenarioIds.length > 0 && !allSelected;
+
+  const toggleAll = () => {
+    if (allSelected) setSelectedScenarioIds(() => []);
+    else setSelectedScenarioIds(() => scenarios.map((s) => s.id));
+  };
+
+  const toggleOne = (id: number) => {
+    setSelectedScenarioIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <button onClick={() => setExpanded((v) => !v)} className="flex items-center gap-2 text-left">
+          <ChevronDown className={cn("h-4 w-4 text-slate-400 transition", !expanded && "-rotate-90")} />
+          <span className="text-xs font-extrabold uppercase tracking-wide text-slate-800">Select Scenarios to Generate From</span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+            {selectedScenarioIds.length} / {scenarios.length} selected
+          </span>
+        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ai"
+            size="sm"
+            onClick={onGenerate}
+            disabled={generating || selectedScenarioIds.length === 0}
+            className="h-9 gap-2 text-xs font-bold"
+          >
+            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            Generate Test Cases
+            {selectedScenarioIds.length > 0 && <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[10px]">{selectedScenarioIds.length}</span>}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRegenerate}
+            disabled={generating || selectedScenarioIds.length === 0}
+            className="h-9 gap-2 border-slate-200 text-xs font-bold"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Re-generate
+          </Button>
+        </div>
+      </div>
+      {expanded && (
+        <div className="max-h-64 overflow-y-auto">
+          {scenarios.length === 0 ? (
+            <p className="px-4 py-6 text-center text-xs font-semibold text-slate-400">
+              No approved scenarios available. Approve scenarios in Test Planning before generating test cases.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/50 px-4 py-2">
+                <input
+                  type="checkbox"
+                  aria-label="Select all scenarios"
+                  checked={allSelected}
+                  ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                  onChange={toggleAll}
+                  className="h-3.5 w-3.5 rounded border-slate-300 accent-[#1b59f8]"
+                />
+                <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                  {allSelected ? "Deselect all" : "Select all"}
+                </span>
+              </div>
+              <ul className="divide-y divide-slate-50">
+                {scenarios.map((scenario) => {
+                  const req = scenario.requirement_id ? requirementsById.get(scenario.requirement_id) : undefined;
+                  const checked = selectedSet.has(scenario.id);
+                  return (
+                    <li key={scenario.id}>
+                      <label className={cn("flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-slate-50", checked && "bg-blue-50/30")}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleOne(scenario.id)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 accent-[#1b59f8]"
+                        />
+                        <span className="w-24 shrink-0 font-mono text-[11px] font-bold text-[#1b59f8]">{scenario.scenario_id}</span>
+                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{scenario.title}</span>
+                        {req && (
+                          <span className="shrink-0 text-[10px] font-bold text-slate-500">
+                            {req.requirement_id}
+                          </span>
+                        )}
+                        <span className={cn("shrink-0", badgeClass(priorityTone(scenario.priority)))}>{scenario.priority}</span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -638,7 +783,6 @@ function TestCasesContent() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-[11px] font-semibold text-slate-500">Last refreshed: {LAST_REFRESHED}</span>
             <Button variant="outline" size="sm" onClick={() => exportToCSV(filtered, requirementsByKey, requirementsById)} className="h-9 gap-2 border-slate-200 text-xs font-bold">
               <Download className="h-4 w-4" />
               Export
@@ -646,14 +790,17 @@ function TestCasesContent() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-6">
-          <StatCard title="Requirements Selected" value={kpiValues.requirementsSelected} subtitle="Approved requirements" icon={FileText} tone="blue" />
-          <StatCard title="Test Cases Generated" value={kpiValues.totalGenerated} subtitle="Total generated" icon={ShieldCheck} tone="emerald" />
-          <StatCard title="Positive Cases" value={kpiValues.positive} subtitle={pct(kpiValues.positive, kpiValues.totalGenerated)} icon={TestTube2} tone="blue" />
-          <StatCard title="Negative Cases" value={kpiValues.negative} subtitle={pct(kpiValues.negative, kpiValues.totalGenerated)} icon={AlertTriangle} tone="red" />
-          <StatCard title="Edge / Boundary Cases" value={kpiValues.edge} subtitle={pct(kpiValues.edge, kpiValues.totalGenerated)} icon={Layers} tone="purple" />
-          <StatCard title="Gaps / Blocked" value={kpiValues.gaps} subtitle={kpiValues.gaps === 1 ? "requirement without a case" : "requirements without a case"} icon={Zap} tone="amber" />
-        </div>
+        <SummaryStrip
+          items={[
+            { label: "Approved Requirements", value: requirements.length, tone: "blue" },
+            { label: "Approved Scenarios", value: scenarios.length, tone: "blue" },
+            { label: "Test Cases Generated", value: kpiValues.totalGenerated, tone: "emerald" },
+            { label: "Positive", value: kpiValues.positive, tone: "emerald", subtitle: pct(kpiValues.positive, kpiValues.totalGenerated) },
+            { label: "Negative", value: kpiValues.negative, tone: "red", subtitle: pct(kpiValues.negative, kpiValues.totalGenerated) },
+            { label: "Edge / Boundary", value: kpiValues.edge, tone: "purple", subtitle: pct(kpiValues.edge, kpiValues.totalGenerated) },
+            { label: "Requirements Without a Case", value: kpiValues.gaps, tone: "amber" },
+          ]}
+        />
 
         {(error || notice) && (
           <div className={cn(
@@ -668,31 +815,15 @@ function TestCasesContent() {
           </div>
         )}
 
-        <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="mb-5 text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Generation Readiness</p>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-5 xl:grid-cols-4">
-            <ReadinessItem
-              label="Approved Requirements"
-              value={String(requirements.length)}
-              tone={requirements.length ? "emerald" : "amber"}
-            />
-            <ReadinessItem
-              label="Approved Scenarios"
-              value={String(scenarios.length)}
-              tone={scenarios.length ? "emerald" : "amber"}
-            />
-            <ReadinessItem
-              label="Scenarios Selected"
-              value={String(selectedScenarioIds.length)}
-              tone={selectedScenarioIds.length ? "emerald" : "amber"}
-            />
-            <ReadinessItem
-              label="Test Cases Generated"
-              value={String(testCases.length)}
-              tone={testCases.length ? "emerald" : "amber"}
-            />
-          </div>
-        </div>
+        <ScenarioSelectionPanel
+          scenarios={scenarios}
+          requirementsById={requirementsById}
+          selectedScenarioIds={selectedScenarioIds}
+          setSelectedScenarioIds={setSelectedScenarioIds}
+          generating={generating}
+          onGenerate={() => generateCases()}
+          onRegenerate={() => generateCases(true)}
+        />
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-1">
@@ -720,20 +851,6 @@ function TestCasesContent() {
                 </button>
               );
             })}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ai" size="sm" onClick={() => generateCases()} disabled={generating || scenarios.length === 0} className="h-9 gap-2 text-xs font-bold">
-              {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Generate Test Cases
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => generateCases(true)} disabled={generating} className="h-9 gap-2 border-slate-200 text-xs font-bold">
-              <RefreshCw className="h-4 w-4" />
-              Re-generate
-              <ChevronDown className="h-3.5 w-3.5" />
-            </Button>
-            <Button variant="outline" size="sm" className="h-9 w-9 border-slate-200 p-0">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
           </div>
         </div>
 
