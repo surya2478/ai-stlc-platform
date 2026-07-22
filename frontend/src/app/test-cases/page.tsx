@@ -38,6 +38,7 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { JourneyGraphView } from "./JourneyGraphView";
 
 type DrawerTab = "overview" | "cases" | "coverage" | "ai" | "activity";
 type Tone = "blue" | "emerald" | "red" | "purple" | "amber" | "slate";
@@ -462,6 +463,10 @@ function TestCasesContent() {
     } finally {
       setGenerating(false);
     }
+  }
+
+  if (view === "journey-graph") {
+    return <JourneyGraphView projectId={selectedProject} />;
   }
 
   if (view === "editor") {

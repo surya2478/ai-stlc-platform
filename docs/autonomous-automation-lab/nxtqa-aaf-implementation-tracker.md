@@ -139,7 +139,7 @@ No UI-only placeholder counts as an implemented screen.
 | 0 | P0-S5 | Verification baseline | 0 | `ACCEPTED` |
 | 1 | P1-S1 | Command Centre Foundation | 1 | `VERIFYING` |
 | 1 | P1-S2 | Requirement Intelligence Core | 3 | `NOT_STARTED` |
-| 1 | P1-S3 | Test Design and Approval | 4 | `NOT_STARTED` |
+| 1 | P1-S3 | Test Design and Approval | 4 | `IN_PROGRESS` |
 | 1 | P1-S4 | Application Discovery | 4 | `NOT_STARTED` |
 | 1 | P1-S5 | Automation Studio Core | 5 | `NOT_STARTED` |
 | 1 | P1-S6 | Test Data Selection | 1 | `NOT_STARTED` |
@@ -538,7 +538,7 @@ Use `-` for not applicable and add approval/evidence links when work starts.
 | UI-009 | 2 | P2-S2 | Requirement Review and Approval | [x] | [ ] | [x] | [ ] | [x] | [x] | [ ] |
 | UI-010 | 1 | P1-S3 | Generated Test Cases | [ ] | [ ] | [x] | [ ] | [ ] | [ ] | [ ] |
 | UI-011 | 1 | P1-S3 | Test Case Editor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| UI-012 | 1 | P1-S3 | Journey Graph | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| UI-012 | 1 | P1-S3 | Journey Graph | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-013 | 1 | P1-S3 | Test Case Approval | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-014 | 1 | P1-S4 | Application Registry | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-015 | 1 | P1-S4 | Live Discovery Session | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |

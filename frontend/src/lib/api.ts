@@ -518,10 +518,44 @@ export interface TestCase {
   last_status_updated_by?: number | null;
   last_status_updated_at?: string | null;
   status: string;
+  metadata_?: Record<string, unknown>;
   scenario_id?: number;
   requirement_id?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProjectApplication {
+  id?: number | null;
+  project_id: number;
+  key: string;
+  name: string;
+  description?: string | null;
+  is_default: boolean;
+  environment_urls: Record<string, string>;
+  is_active: boolean;
+  created_by?: number | null;
+  updated_by?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ProjectApplicationsResponse {
+  project_id: number;
+  applications: ProjectApplication[];
+  external_dependencies: Array<{
+    id?: number | null;
+    project_id: number;
+    application_id?: number | null;
+    service_name: string;
+    note?: string | null;
+    sandbox_url?: string | null;
+    mock_strategy: string;
+    is_active: boolean;
+  }>;
+  available_environments: string[];
+  last_updated?: string | null;
+  updated_by?: number | null;
 }
 
 export interface TestCaseSummary {
@@ -841,6 +875,11 @@ export const projectsApi = {
     api.delete(`/projects/${projectId}/memberships/${membershipId}`),
 };
 
+export const applicationsApi = {
+  getForProject: (projectId: number) =>
+    api.get<ProjectApplicationsResponse>(`/projects/${projectId}/applications`),
+};
+
 export const usersApi = {
   list: (params?: { search?: string; skip?: number; limit?: number; project_id?: number }) =>
     api.get<UserAccount[]>("/users/", { params }),
@@ -1035,7 +1074,7 @@ export const testCasesApi = {
   summary: (projectId: number) =>
     api.get<TestCaseSummary>(`/test-cases/projects/${projectId}/summary`),
   get: (id: number) => api.get<TestCase>(`/test-cases/${id}`),
-  update: (id: number, data: Partial<TestCase>) =>
+  update: (id: number, data: Partial<TestCase> & { comment?: string }) =>
     api.patch<TestCase>(`/test-cases/${id}`, data),
   approve: (id: number, action: "approve" | "reject", notes?: string, overrideReviewGate = false) =>
     api.post<TestCase>(`/test-plans/cases/${id}/approve`, {

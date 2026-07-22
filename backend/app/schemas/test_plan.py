@@ -152,6 +152,8 @@ class TestCaseOut(BaseModel):
 
 
 class TestCaseUpdate(BaseModel):
+    requirement_id: int | None = None
+    scenario_id: int | None = None
     title: str | None = None
     preconditions: list | None = None
     test_data: dict | None = None
@@ -190,6 +192,7 @@ class TestCaseUpdate(BaseModel):
     jira_test_key: str | None = None
     status: str | None = None
     approval_status: str | None = None
+    metadata_: dict[str, Any] | None = None
     comment: str | None = None
 
 

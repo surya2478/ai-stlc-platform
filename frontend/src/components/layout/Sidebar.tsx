@@ -10,6 +10,7 @@ import {
   ChevronLeft, Brain, BookOpen, ShieldCheck,
   Hand, Cpu, Sparkles, Gauge, Table2, Video, Target,
   Radar,
+  GitBranch,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ const NAV_ITEMS: NavGroup[] = [
           { label: "Test Planning Dashboard", href: "/test-planning", icon: ClipboardList },
           { label: "Generated Test Cases", href: "/test-cases?view=generated", icon: TestTube2 },
           { label: "Test Case Editor", href: "/test-cases?view=editor", icon: TestTube2 },
+          { label: "Journey Graph", href: "/test-cases?view=journey-graph", icon: GitBranch },
           { label: "Test Case Approval", href: "/test-cases?view=approval", icon: ShieldCheck },
         ],
       },

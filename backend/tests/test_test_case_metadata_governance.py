@@ -36,12 +36,13 @@ class _ListResult:
 
 
 class _FakeDB:
-    def __init__(self, *, duplicate_external=False, mappings=None):
+    def __init__(self, *, duplicate_external=False, mappings=None, entities=None):
         self.duplicate_external = duplicate_external
         self.mappings = mappings or []
         self.execute_calls = 0
         self.added = []
         self.statements = []
+        self.entities = entities or {}
 
     async def execute(self, _stmt):
         self.execute_calls += 1
@@ -57,6 +58,9 @@ class _FakeDB:
 
     def add(self, obj):
         self.added.append(obj)
+
+    async def get(self, model, entity_id):
+        return self.entities.get((model, entity_id))
 
     async def flush(self):
         return None
@@ -116,6 +120,107 @@ def test_patch_update_persists_fields_and_creates_history():
     assert updated.jira_final_status == "passed"
     history_fields = {row.field_name for row in db.added if isinstance(row, TestCaseHistory)}
     assert {"priority", "execution_mode", "automation_status", "external_tc_id", "jira_final_status"} <= history_fields
+
+
+def test_journey_graph_metadata_is_persisted_and_audited():
+    async def run():
+        db = _FakeDB()
+        tc = _case(metadata_={"source": "generator"})
+        updated = await test_plan_service.update_test_case(
+            db,
+            tc,
+            TestCaseUpdate(
+                metadata_={
+                    "source": "generator",
+                    "evidence_requirements": ["Screenshot and structured log"],
+                    "journey_reviewed_gaps": [{"gap_id": "missing-evidence"}],
+                },
+                comment="Journey graph governance update",
+            ),
+            user_id=7,
+        )
+        return db, updated
+
+    import anyio
+
+    db, updated = anyio.run(run)
+
+    assert updated.metadata_["evidence_requirements"] == ["Screenshot and structured log"]
+    metadata_history = [row for row in db.added if isinstance(row, TestCaseHistory) and row.field_name == "metadata_"]
+    assert len(metadata_history) == 1
+    assert metadata_history[0].comment == "Journey graph governance update"
+
+
+def test_journey_graph_application_mapping_is_project_scoped_and_audited():
+    from app.models.project_application import ProjectApplication
+
+    async def run():
+        application = ProjectApplication(id=22, project_id=1, key="portal", name="Portal", is_active=True)
+        db = _FakeDB(entities={(ProjectApplication, 22): application})
+        updated = await test_plan_service.update_test_case(
+            db,
+            _case(application_id=None),
+            TestCaseUpdate(application_id=22, comment="Resolved from Journey Graph"),
+            user_id=7,
+        )
+        return db, updated
+
+    import anyio
+
+    db, updated = anyio.run(run)
+
+    assert updated.application_id == 22
+    mapping_history = [row for row in db.added if isinstance(row, TestCaseHistory) and row.field_name == "application_id"]
+    assert len(mapping_history) == 1
+    assert mapping_history[0].comment == "Resolved from Journey Graph"
+
+
+def test_journey_graph_rejects_cross_project_application_mapping():
+    from app.models.project_application import ProjectApplication
+
+    async def run():
+        application = ProjectApplication(id=22, project_id=2, key="other", name="Other", is_active=True)
+        with pytest.raises(HTTPException) as exc:
+            await test_plan_service.update_test_case(
+                _FakeDB(entities={(ProjectApplication, 22): application}),
+                _case(application_id=None),
+                TestCaseUpdate(application_id=22),
+                user_id=7,
+            )
+        return exc.value
+
+    import anyio
+
+    exc = anyio.run(run)
+    assert exc.status_code == 422
+    assert "Active application not found" in exc.detail
+
+
+def test_journey_graph_links_existing_case_to_same_project_requirement_and_scenario():
+    from types import SimpleNamespace
+    from app.models.requirement import Requirement
+    from app.models.test_scenario import TestScenario
+
+    async def run():
+        requirement = SimpleNamespace(id=3, project_id=1)
+        scenario = SimpleNamespace(id=4, project_id=1, requirement_id=3)
+        db = _FakeDB(entities={(Requirement, 3): requirement, (TestScenario, 4): scenario})
+        updated = await test_plan_service.update_test_case(
+            db,
+            _case(requirement_id=None, scenario_id=None),
+            TestCaseUpdate(requirement_id=3, scenario_id=4, comment="Linked from Journey Graph"),
+            user_id=7,
+        )
+        return db, updated
+
+    import anyio
+
+    db, updated = anyio.run(run)
+
+    assert updated.requirement_id == 3
+    assert updated.scenario_id == 4
+    history_fields = {row.field_name for row in db.added if isinstance(row, TestCaseHistory)}
+    assert {"requirement_id", "scenario_id"} <= history_fields
 
 
 @pytest.mark.parametrize(

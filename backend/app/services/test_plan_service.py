@@ -17,6 +17,8 @@ from app.models.jira_sync import JiraSyncHistory
 from app.models.test_plan import TestPlan
 from app.models.test_scenario import TestScenario
 from app.models.test_case import TestCase, TestCaseHistory
+from app.models.project_application import ProjectApplication
+from app.models.requirement import Requirement
 from app.models.test_suite import TestSuite
 from app.models.artifact_lineage import ArtifactLineage
 from app.models.agent import AgentRun
@@ -66,6 +68,10 @@ AUDITED_FIELDS = {
     "preconditions",
     "steps",
     "expected_result",
+    "application_id",
+    "metadata_",
+    "requirement_id",
+    "scenario_id",
 }
 
 
@@ -299,6 +305,24 @@ async def _validate_test_case_update(db: AsyncSession, tc: TestCase, data: dict[
         suite = suite_result.scalar_one_or_none()
         if suite is None or suite.project_id != tc.project_id:
             raise HTTPException(status_code=422, detail="Test suite not found in this project")
+
+    if "application_id" in data and data["application_id"] is not None:
+        application = await db.get(ProjectApplication, data["application_id"])
+        if application is None or application.project_id != tc.project_id or not application.is_active:
+            raise HTTPException(status_code=422, detail="Active application not found in this project")
+
+    if "requirement_id" in data and data["requirement_id"] is not None:
+        requirement = await db.get(Requirement, data["requirement_id"])
+        if requirement is None or requirement.project_id != tc.project_id:
+            raise HTTPException(status_code=422, detail="Requirement not found in this project")
+
+    if "scenario_id" in data and data["scenario_id"] is not None:
+        scenario = await db.get(TestScenario, data["scenario_id"])
+        if scenario is None or scenario.project_id != tc.project_id:
+            raise HTTPException(status_code=422, detail="Scenario not found in this project")
+        requested_requirement_id = data.get("requirement_id", tc.requirement_id)
+        if scenario.requirement_id is not None and requested_requirement_id != scenario.requirement_id:
+            raise HTTPException(status_code=422, detail="Scenario is not linked to the selected requirement")
 
     mode = data.get("execution_mode", tc.execution_mode)
     eligible = data.get("automation_eligible", tc.automation_eligible)
