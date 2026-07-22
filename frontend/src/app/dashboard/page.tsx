@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import ExecutiveOverviewPage from "../autonomous-lab/missions/page";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function timestampFromDate(dateString?: string | null): number {
@@ -1273,8 +1274,6 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-semibold">Loading Command Center...</div>}>
-      <DashboardContent />
-    </Suspense>
+    <ExecutiveOverviewPage />
   );
 }
