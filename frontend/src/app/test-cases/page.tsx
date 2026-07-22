@@ -93,6 +93,32 @@ function messageFromError(error: unknown, fallback: string) {
   return candidate.message || fallback;
 }
 
+function splitLines(value: string): string[] {
+  return value.split("\n").map((line) => line.trim()).filter(Boolean);
+}
+
+type EditorDraft = {
+  title: string;
+  priority: string;
+  testType: string;
+  automationCandidate: boolean;
+  preconditionsText: string;
+  steps: Array<{ step_number: number; action: string; expected_result: string }>;
+  expectedResult: string;
+};
+
+function draftFromCase(t: TestCase | null): EditorDraft {
+  return {
+    title: t?.title ?? "",
+    priority: t?.priority ?? "",
+    testType: t?.test_type ?? "",
+    automationCandidate: !!t?.automation_candidate,
+    preconditionsText: (t?.preconditions ?? []).join("\n"),
+    steps: (t?.steps ?? []).map((s) => ({ ...s })),
+    expectedResult: t?.expected_result ?? "",
+  };
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1278,6 +1304,36 @@ function TestCaseEditorView({
   const [showMore, setShowMore] = useState(false);
   const [history, setHistory] = useState<TestCaseHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [draft, setDraft] = useState<EditorDraft>(() => draftFromCase(tc));
+
+  useEffect(() => {
+    setDraft(draftFromCase(tc));
+  }, [tc?.id]);
+
+  const savedDraft = useMemo(() => draftFromCase(tc), [tc]);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
+
+  const priorityOptions = useMemo(() => {
+    const set = new Set(["Critical", "High", "Medium", "Low"]);
+    testCases.forEach((row) => row.priority && set.add(row.priority));
+    if (draft.priority) set.add(draft.priority);
+    return Array.from(set);
+  }, [testCases, draft.priority]);
+
+  const testTypeOptions = useMemo(() => {
+    const set = new Set(["functional", "integration", "regression", "performance", "security", "ui", "positive", "negative", "edge"]);
+    testCases.forEach((row) => row.test_type && set.add(row.test_type));
+    if (draft.testType) set.add(draft.testType);
+    return Array.from(set).sort();
+  }, [testCases, draft.testType]);
+
+  const loadHistory = useCallback((caseId: number) => {
+    setHistoryLoading(true);
+    return testCasesApi.history(caseId)
+      .then((res) => setHistory(res.data))
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, []);
 
   useEffect(() => {
     if (!tc) {
@@ -1298,14 +1354,59 @@ function TestCaseEditorView({
     setUiNotice(message);
   };
 
+  function updateDraft<K extends keyof EditorDraft>(key: K, value: EditorDraft[K]) {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function updateStep(index: number, field: "action" | "expected_result", value: string) {
+    setDraft((prev) => ({
+      ...prev,
+      steps: prev.steps.map((step, i) => i === index ? { ...step, [field]: value } : step),
+    }));
+  }
+
+  function addStep() {
+    setDraft((prev) => ({
+      ...prev,
+      steps: [...prev.steps, { step_number: prev.steps.length + 1, action: "", expected_result: "" }],
+    }));
+  }
+
+  function removeStep(index: number) {
+    setDraft((prev) => ({
+      ...prev,
+      steps: prev.steps.filter((_, i) => i !== index).map((step, i) => ({ ...step, step_number: i + 1 })),
+    }));
+  }
+
+  function revertChanges() {
+    setDraft(draftFromCase(tc));
+    notify("Unsaved changes reverted to the last saved values.");
+  }
+
   async function saveDraft() {
     if (!tc) return;
     setBusyAction("save");
     setUiError("");
     try {
-      await testCasesApi.update(tc.id, { status: "draft" });
+      // Only send fields that actually changed. The backend locks title
+      // edits once execution results exist (409 "Cannot change title after
+      // execution results exist") based on the field's mere presence in the
+      // payload, not whether its value differs — so an unchanged title must
+      // never ride along with an unrelated edit (e.g. priority).
+      const payload: Partial<TestCase> & { comment?: string; status: string } = { status: "draft" };
+      if (draft.title !== savedDraft.title) payload.title = draft.title;
+      if (draft.priority !== savedDraft.priority) payload.priority = draft.priority;
+      if (draft.testType !== savedDraft.testType) payload.test_type = draft.testType;
+      if (draft.automationCandidate !== savedDraft.automationCandidate) payload.automation_candidate = draft.automationCandidate;
+      if (draft.preconditionsText !== savedDraft.preconditionsText) payload.preconditions = splitLines(draft.preconditionsText);
+      if (JSON.stringify(draft.steps) !== JSON.stringify(savedDraft.steps)) payload.steps = draft.steps;
+      if (draft.expectedResult !== savedDraft.expectedResult) payload.expected_result = draft.expectedResult;
+
+      const res = await testCasesApi.update(tc.id, payload);
+      setDraft(draftFromCase(res.data));
       notify(`${tc.test_case_id} saved as draft.`);
-      await onReload();
+      await Promise.all([onReload(), loadHistory(tc.id)]);
     } catch (error) {
       setUiError(messageFromError(error, "Could not save draft."));
     } finally {
@@ -1326,14 +1427,25 @@ function TestCaseEditorView({
     notify(`Latest coverage review for ${tc.test_case_id}: ${review.verdict.replace(/_/g, " ")}${score}.`);
   }
 
+  // Contract gate: title, preconditions, steps and expected result must be
+  // present before a test case can move to approval.
+  const approvalBlockers: string[] = [];
+  if (dirty) approvalBlockers.push("Save your changes before sending to approval.");
+  if (!draft.title.trim()) approvalBlockers.push("Title is required.");
+  if (!splitLines(draft.preconditionsText).length) approvalBlockers.push("At least one precondition is required.");
+  if (!draft.steps.length || draft.steps.some((s) => !s.action.trim() || !s.expected_result.trim())) {
+    approvalBlockers.push("Every test step needs an action and expected result.");
+  }
+  if (!draft.expectedResult.trim()) approvalBlockers.push("Overall expected result is required.");
+
   async function sendToApproval() {
-    if (!tc) return;
+    if (!tc || approvalBlockers.length) return;
     setBusyAction("approval");
     setUiError("");
     try {
       await testCasesApi.update(tc.id, { status: "pending_approval" });
       notify(`${tc.test_case_id} sent to approval.`);
-      await onReload();
+      await Promise.all([onReload(), loadHistory(tc.id)]);
     } catch (error) {
       setUiError(messageFromError(error, "Could not send test case to approval."));
     } finally {
@@ -1375,15 +1487,28 @@ function TestCaseEditorView({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={saveDraft} disabled={!tc || busyAction !== null} className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
+            {tc && dirty && (
+              <Button variant="outline" size="sm" onClick={revertChanges} disabled={busyAction !== null} className="h-9 gap-2 border-slate-200 text-xs font-bold text-slate-600">
+                Revert
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={saveDraft} disabled={!tc || busyAction !== null || !dirty} className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
               {busyAction === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
               Save Draft
+              {tc && dirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
             </Button>
             <Button variant="outline" size="sm" onClick={validateCase} disabled={!tc || busyAction !== null} className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
               {busyAction === "validate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               Validate
             </Button>
-            <Button variant="default" size="sm" onClick={sendToApproval} disabled={!tc || busyAction !== null} className="h-9 gap-2 bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={sendToApproval}
+              disabled={!tc || busyAction !== null || approvalBlockers.length > 0}
+              title={approvalBlockers.length ? approvalBlockers.join(" ") : undefined}
+              className="h-9 gap-2 bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]"
+            >
               {busyAction === "approval" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
               Send to Approval
             </Button>
@@ -1551,8 +1676,12 @@ function TestCaseEditorView({
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-extrabold text-slate-950">{tc.test_case_id}</h2>
-                    <span className={badgeClass("slate")}>{tc.status.replace(/_/g, " ")}</span>
-                    {tc.updated_at && <span className="text-[10px] font-bold text-slate-400">Updated {relativeTime(tc.updated_at)}</span>}
+                    <span className={badgeClass(dirty ? "purple" : "slate")}>{dirty ? "Editing" : tc.status.replace(/_/g, " ")}</span>
+                    {dirty ? (
+                      <span className="text-[10px] font-bold text-amber-600">Unsaved changes</span>
+                    ) : tc.updated_at && (
+                      <span className="text-[10px] font-bold text-slate-400">Updated {relativeTime(tc.updated_at)}</span>
+                    )}
                   </div>
                   <div className="flex gap-2 text-slate-500">
                     <button aria-label="Close" onClick={() => setSelectedTestCase(null)}><X className="h-4 w-4" /></button>
@@ -1565,45 +1694,68 @@ function TestCaseEditorView({
                   {(tc.linked_requirement_id ?? req?.id) && <button onClick={viewRequirement} className="font-bold text-[#1b59f8]">View</button>}
                 </div>
                 <div className="grid grid-cols-4 gap-3">
-                  <EditorField label="Test Type" value={tc.test_type || testType(tc)} />
+                  <EditorField label="Test Type" value={draft.testType} onChange={(v) => updateDraft("testType", v)} select options={testTypeOptions} />
                   <EditorField label="Scenario Class" value={scenarioClass(tc)} />
-                  <EditorField label="Priority" value={tc.priority || "—"} />
-                  <EditorField label="Automation Candidate" value={tc.automation_candidate ? "Yes" : "No"} />
+                  <EditorField label="Priority" value={draft.priority} onChange={(v) => updateDraft("priority", v)} select options={priorityOptions} />
+                  <EditorField label="Automation Candidate" value={draft.automationCandidate ? "Yes" : "No"} onChange={(v) => updateDraft("automationCandidate", v === "Yes")} select options={["Yes", "No"]} />
                 </div>
                 <div className="mt-3 grid grid-cols-[minmax(0,1fr)_120px_120px] gap-3">
-                  <EditorField label="Title" value={tc.title} />
+                  <EditorField label="Title" value={draft.title} onChange={(v) => updateDraft("title", v)} />
                   <EditorField label="Test Case ID" value={tc.test_case_id} muted />
                   <EditorField label="Status" value={tc.status.replace(/_/g, " ")} muted />
                 </div>
                 <EditorSection title="Preconditions">
-                  {preconditions.length ? (
-                    <ul className="list-disc space-y-1 pl-5 text-xs font-semibold leading-5 text-slate-700">
-                      {preconditions.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
-                    </ul>
-                  ) : (
-                    <p className="text-xs font-semibold text-slate-400">No preconditions recorded.</p>
-                  )}
+                  <textarea
+                    aria-label="Preconditions"
+                    value={draft.preconditionsText}
+                    onChange={(event) => updateDraft("preconditionsText", event.target.value)}
+                    rows={3}
+                    placeholder="One precondition per line"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  />
                 </EditorSection>
-                <EditorSection title="Test Steps">
-                  {steps.length ? (
+                <EditorSection title="Test Steps" action="+ Add Step" onAction={addStep}>
+                  {draft.steps.length ? (
                     <div className="overflow-hidden rounded-lg border border-slate-200">
-                      <div className="grid grid-cols-[56px_minmax(180px,1fr)_minmax(180px,1fr)] bg-slate-50 px-3 py-2 text-[10px] font-extrabold uppercase text-slate-500">
-                        <span>Step #</span><span>Action</span><span>Expected Result</span>
+                      <div className="grid grid-cols-[40px_minmax(160px,1fr)_minmax(160px,1fr)_32px] bg-slate-50 px-3 py-2 text-[10px] font-extrabold uppercase text-slate-500">
+                        <span>#</span><span>Action</span><span>Expected Result</span><span></span>
                       </div>
-                      {steps.map((step) => (
-                        <div key={step.step_number} className="grid grid-cols-[56px_minmax(180px,1fr)_minmax(180px,1fr)] border-t border-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
-                          <span className="text-slate-500">{step.step_number}</span>
-                          <span>{step.action}</span>
-                          <span className="text-slate-600">{step.expected_result}</span>
+                      {draft.steps.map((step, index) => (
+                        <div key={index} className="grid grid-cols-[40px_minmax(160px,1fr)_minmax(160px,1fr)_32px] items-start gap-2 border-t border-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                          <span className="mt-2 text-slate-500">{step.step_number}</span>
+                          <textarea
+                            aria-label={`Step ${step.step_number} action`}
+                            value={step.action}
+                            onChange={(event) => updateStep(index, "action", event.target.value)}
+                            rows={2}
+                            className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                          />
+                          <textarea
+                            aria-label={`Step ${step.step_number} expected result`}
+                            value={step.expected_result}
+                            onChange={(event) => updateStep(index, "expected_result", event.target.value)}
+                            rows={2}
+                            className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                          />
+                          <button aria-label={`Remove step ${step.step_number}`} onClick={() => removeStep(index)} className="mt-1.5 text-slate-400 hover:text-red-600">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs font-semibold text-slate-400">No test steps recorded.</p>
+                    <p className="text-xs font-semibold text-slate-400">No test steps recorded. Use + Add Step to create one.</p>
                   )}
                 </EditorSection>
                 <EditorSection title="Expected Result (Overall)">
-                  <p className="text-xs font-semibold text-slate-700">{tc.expected_result || <span className="text-slate-400">Not set.</span>}</p>
+                  <textarea
+                    aria-label="Overall expected result"
+                    value={draft.expectedResult}
+                    onChange={(event) => updateDraft("expectedResult", event.target.value)}
+                    rows={3}
+                    placeholder="Describe the overall expected outcome"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  />
                 </EditorSection>
                 <EditorSection title="Test Data Dependency">
                   {tc.test_data && Object.keys(tc.test_data).length ? (
@@ -1686,34 +1838,76 @@ function TestCaseEditorView({
         </InspectorCard>
         <div className="space-y-3 pt-1">
           <p className="text-xs font-extrabold text-slate-800">Actions</p>
-          <Button onClick={saveDraft} disabled={!tc || busyAction !== null} className="h-10 w-full bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]">Save Draft</Button>
+          <Button onClick={saveDraft} disabled={!tc || busyAction !== null || !dirty} className="h-10 w-full bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]">Save Draft</Button>
           <Button onClick={validateCase} disabled={!tc || busyAction !== null} variant="outline" className="h-10 w-full border-emerald-300 text-xs font-bold text-emerald-700">Check Coverage Review</Button>
-          <Button onClick={sendToApproval} disabled={!tc || busyAction !== null} variant="outline" className="h-10 w-full border-blue-300 text-xs font-bold text-[#1b59f8]">Send to Approval</Button>
+          <Button
+            onClick={sendToApproval}
+            disabled={!tc || busyAction !== null || approvalBlockers.length > 0}
+            title={approvalBlockers.length ? approvalBlockers.join(" ") : undefined}
+            variant="outline"
+            className="h-10 w-full border-blue-300 text-xs font-bold text-[#1b59f8]"
+          >
+            Send to Approval
+          </Button>
+          {tc && approvalBlockers.length > 0 && (
+            <p className="flex items-start gap-1.5 text-[10px] font-semibold leading-snug text-amber-700">
+              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+              <span>{approvalBlockers[0]}</span>
+            </p>
+          )}
         </div>
       </aside>
     </div>
   );
 }
 
-// Read-only field display. The editor surfaces persisted values; inline
-// field editing is not wired to a persistence path, so we do not present
-// fake-editable inputs.
+// Editable when onChange is supplied (writes into the editor draft, saved
+// via Save Draft — see saveDraft). Falls back to a read-only display for
+// derived fields (Scenario Class) and identifiers (Test Case ID, Status).
 function EditorField({
   label,
   value,
+  onChange,
+  select,
+  options,
   muted,
 }: {
   label: string;
   value: string;
+  onChange?: (value: string) => void;
+  select?: boolean;
+  options?: string[];
   muted?: boolean;
 }) {
-  return (
-    <div className="block">
-      <span className="mb-1.5 block text-[10px] font-extrabold text-slate-500">{label}</span>
-      <div className={cn("flex h-10 w-full items-center truncate rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800", muted ? "bg-slate-50" : "bg-white")}>
-        {value}
+  if (!onChange) {
+    return (
+      <div className="block">
+        <span className="mb-1.5 block text-[10px] font-extrabold text-slate-500">{label}</span>
+        <div className={cn("flex h-10 w-full items-center truncate rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800", muted ? "bg-slate-50" : "bg-white")}>
+          {value}
+        </div>
       </div>
-    </div>
+    );
+  }
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[10px] font-extrabold text-slate-500">{label}</span>
+      {select ? (
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+        >
+          {(options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+      ) : (
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+        />
+      )}
+    </label>
   );
 }
 
