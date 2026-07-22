@@ -520,6 +520,7 @@ export interface TestCase {
   last_status_updated_at?: string | null;
   status: string;
   metadata_?: Record<string, unknown>;
+  agent_run_id?: number | null;
   scenario_id?: number;
   requirement_id?: number;
   created_at: string;

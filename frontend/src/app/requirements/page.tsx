@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   FileText, Upload, Bot, CheckCircle, XCircle, RefreshCw, AlertTriangle, Star, Trash2, X, Plug, Search, Download, Plus, Settings, ChevronRight, Loader2, ShieldCheck, Clock, Globe, GitBranch, BarChart2, ChevronDown, ClipboardPaste, Braces, Layers3, CircleDot, Link2, Filter
@@ -160,6 +161,22 @@ function getRequirementWorkflowStage(req: Requirement): "intake" | "analysis" | 
   return "intake";
 }
 
+function getRequirementWorkflowStageLabel(req: Requirement): string {
+  const stage = getRequirementWorkflowStage(req);
+  if (stage === "intake") return "Requirement Intake";
+  if (stage === "analysis") return "Requirement Analysis";
+  if (stage === "traceability") return "Traceability";
+  return "Review & Approval";
+}
+
+function getRequirementWorkflowStageVariant(req: Requirement): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
+  const stage = getRequirementWorkflowStage(req);
+  if (stage === "intake") return "info";
+  if (stage === "analysis") return "purple";
+  if (stage === "traceability") return "warning";
+  return "success";
+}
+
 function asTextList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => renderInsightItem(item)).filter(Boolean);
   if (typeof value === "string" && value.trim()) return [value.trim()];
@@ -184,8 +201,14 @@ function getAnalysisStatus(req: Requirement, isDuplicate: boolean): AnalysisStat
   if (status === "approved") return "analyzed";
   if (readiness.includes("stale")) return "stale_source";
   if (status === "rejected" || readiness.includes("blocked")) return "blocked";
+  if (readiness === "analysis_pending") return "queued";
   if (quality === "fail") return "failed";
-  if (missingCount > 0 || quality === "needs_revision" || isDuplicate) return "needs_clarification";
+  // An outstanding clarification request or unresolved missing information is a
+  // human-input gate. A "needs_revision" verdict with no missing information is
+  // a quality-revision signal, not a clarification loop — keep them distinct so
+  // a re-analysed requirement is not mislabelled "Needs Clarification".
+  if (readiness === "needs_clarification" || missingCount > 0 || isDuplicate) return "needs_clarification";
+  if (quality === "needs_revision") return "needs_revision";
   if (quality === "pass") return "analyzed";
   return "not_analyzed";
 }
@@ -196,7 +219,7 @@ function analysisLabel(status: AnalysisStatus) {
 
 function analysisBadgeVariant(status: AnalysisStatus): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
   if (status === "analyzed") return "success";
-  if (status === "needs_clarification" || status === "stale_source") return "warning";
+  if (status === "needs_clarification" || status === "needs_revision" || status === "stale_source") return "warning";
   if (status === "blocked" || status === "failed") return "destructive";
   if (status === "analyzing" || status === "queued") return "purple";
   return "outline";
@@ -322,9 +345,9 @@ const jiraStoryTypePreset = "Story, User Story, Requirement, Epic";
 
 type IntakeTab = "requirements" | "documents" | "url" | "github" | "jira" | "paste" | "api";
 type RequirementsWorkspaceView = "intake" | "analysis" | "traceability" | "review";
-type RequirementTransitionAction = "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability" | "request_clarification";
+type RequirementTransitionAction = "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability" | "request_clarification" | "resolve_clarification";
 type AnalysisDialog = "acceptance" | "issues" | "classification" | "systems" | "clarification";
-type AnalysisStatus = "not_analyzed" | "queued" | "analyzing" | "needs_clarification" | "blocked" | "analyzed" | "stale_source" | "failed";
+type AnalysisStatus = "not_analyzed" | "queued" | "analyzing" | "needs_clarification" | "needs_revision" | "blocked" | "analyzed" | "stale_source" | "failed";
 
 type IntakeSourceRow = {
   id: string;
@@ -482,6 +505,8 @@ function RequirementsContent() {
   const [transitioning, setTransitioning] = useState(false);
   const [analysisDialog, setAnalysisDialog] = useState<AnalysisDialog | null>(null);
   const [analysisDialogSaving, setAnalysisDialogSaving] = useState(false);
+  const [analysisDialogError, setAnalysisDialogError] = useState<string | null>(null);
+  const analysisDialogSubmittingRef = useRef(false);
   const [criteriaDraft, setCriteriaDraft] = useState("");
   const [missingInfoDraft, setMissingInfoDraft] = useState("");
   const [resolutionDraft, setResolutionDraft] = useState("");
@@ -556,7 +581,8 @@ function RequirementsContent() {
     if (!selectedProject) return;
     setMatrixLoading(true);
     try {
-      const res = await traceabilityApi.matrix(selectedProject, { page: 1, page_size: 250, include_drafts: true });
+      // Backend caps page_size at 200 (le=200 in the query validator).
+      const res = await traceabilityApi.matrix(selectedProject, { page: 1, page_size: 200, include_drafts: true });
       setTraceabilityMatrix(res.data.items);
     } catch (err) {
       console.error("Failed to load traceability matrix:", err);
@@ -911,6 +937,7 @@ function RequirementsContent() {
 
   const openAnalysisDialog = (kind: AnalysisDialog) => {
     if (!selectedReq) return;
+    setAnalysisDialogError(null);
     setCriteriaDraft((selectedReq.acceptance_criteria || []).join("\n"));
     setMissingInfoDraft((selectedReq.missing_information || []).join("\n"));
     setResolutionDraft("");
@@ -929,20 +956,32 @@ function RequirementsContent() {
 
   const saveAnalysisDialog = async () => {
     if (!selectedReq || !analysisDialog) return;
+    if (analysisDialogSubmittingRef.current) return;
+    analysisDialogSubmittingRef.current = true;
     setAnalysisDialogSaving(true);
     setAgentError(null);
+    setAnalysisDialogError(null);
     try {
+      const resolvingClarification = analysisDialog === "issues" && selectedReq.readiness_status === "needs_clarification";
       let updates: Partial<Requirement> = {};
       if (analysisDialog === "acceptance") {
         updates = { acceptance_criteria: splitLines(criteriaDraft) };
       } else if (analysisDialog === "issues") {
-        if (markMissingResolved && !resolutionDraft.trim()) {
-          setAgentError("Add resolution details before marking missing information as resolved.");
+        if ((markMissingResolved || resolvingClarification) && !resolutionDraft.trim()) {
+          setAnalysisDialogError("Add resolution details before marking missing information as resolved.");
           return;
         }
         const resolutionNote = resolutionDraft.trim()
           ? `${selectedReq.review_notes ? `${selectedReq.review_notes}\n` : ""}Missing information resolution: ${resolutionDraft.trim()}`
           : selectedReq.review_notes;
+        if (markMissingResolved || resolvingClarification) {
+          const res = await requirementsApi.transition(selectedReq.id, "resolve_clarification", resolutionDraft.trim());
+          setSelectedReq(res.data);
+          setRequirements((current) => current.map((item) => item.id === res.data.id ? res.data : item));
+          setAgentStatus("Clarification saved. Re-run Analysis to validate the updated requirement.");
+          setAnalysisDialog(null);
+          return;
+        }
         updates = {
           missing_information: markMissingResolved ? [] : splitLines(missingInfoDraft),
           review_notes: resolutionNote,
@@ -960,7 +999,7 @@ function RequirementsContent() {
         updates = { systems_impacted: splitLines(systemsDraft) };
       } else if (analysisDialog === "clarification") {
         if (!resolutionDraft.trim()) {
-          setAgentError("Describe the clarification required before submitting the request.");
+          setAnalysisDialogError("Describe the clarification required before submitting the request.");
           return;
         }
         const res = await requirementsApi.transition(selectedReq.id, "request_clarification", resolutionDraft.trim());
@@ -977,8 +1016,11 @@ function RequirementsContent() {
       setAnalysisDialog(null);
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
-      setAgentError(typeof detail === "string" ? detail : detail?.message || "Unable to update requirement details.");
+      const message = typeof detail === "string" ? detail : detail?.message || "Unable to update requirement details.";
+      setAnalysisDialogError(message);
+      setAgentError(message);
     } finally {
+      analysisDialogSubmittingRef.current = false;
       setAnalysisDialogSaving(false);
     }
   };
@@ -1254,8 +1296,8 @@ function RequirementsContent() {
   }), [requirements]);
 
   const filteredRequirements = useMemo(() => {
-    return requirementsByStage.intake.filter((r) => filterStatus === "all" || r.status === filterStatus);
-  }, [requirementsByStage.intake, filterStatus]);
+    return requirements.filter((r) => filterStatus === "all" || r.status === filterStatus);
+  }, [requirements, filterStatus]);
 
   const intakeSources = useMemo<IntakeSourceRow[]>(() => {
     const documentRows = documents.map((document) => {
@@ -1367,7 +1409,7 @@ function RequirementsContent() {
       const qualityScore = getRequirementQualityScore(requirement);
       const progress = status === "analyzed"
         ? 100
-        : status === "needs_clarification"
+        : status === "needs_clarification" || status === "needs_revision"
           ? 65
           : status === "blocked" || status === "failed"
             ? 25
@@ -1375,6 +1417,9 @@ function RequirementsContent() {
               ? 70
               : 0;
       const blockers = [
+        ...(["needs_revision", "fail"].includes((requirement.quality_verdict || "").toLowerCase())
+          ? ["Quality analysis must reach a Pass verdict before traceability. Revise the requirement and re-run Analysis."]
+          : []),
         ...asTextList(requirement.missing_information).map((item) => `Missing information: ${item}`),
         ...(duplicateCount > 0 ? ["Potential duplicate requirement requires reviewer decision."] : []),
         ...(conflictCount > 0 ? ["Potential source conflict requires clarification."] : []),
@@ -1535,7 +1580,7 @@ function RequirementsContent() {
         : requirement.status === "rejected"
           ? "rejected"
           : blockers.length > 0
-            ? (analysisStatus === "needs_clarification" ? "changes_requested" : "blocked")
+            ? (analysisStatus === "needs_clarification" || analysisStatus === "needs_revision" ? "changes_requested" : "blocked")
             : readyForApproval
               ? "ready"
               : "pending";
@@ -1578,7 +1623,7 @@ function RequirementsContent() {
   // UI-006 intake-governance metrics. Values are derived from persisted sources and
   // requirements so their ownership stays deterministic and auditable.
   const stats = useMemo(() => {
-    const titleCounts = requirementsByStage.intake.reduce<Record<string, number>>((counts, requirement) => {
+    const titleCounts = requirements.reduce<Record<string, number>>((counts, requirement) => {
       const key = requirement.title.trim().toLowerCase();
       if (key) counts[key] = (counts[key] || 0) + 1;
       return counts;
@@ -1594,9 +1639,9 @@ function RequirementsContent() {
       { title: "Processing", icon: RefreshCw, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: processing.toLocaleString(), sublabel: "Active", footer: "AI intake jobs in progress" },
       { title: "Blocked", icon: AlertTriangle, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: blocked.toLocaleString(), sublabel: "Sources", footer: "Validation or processing issues" },
       { title: "Duplicate Candidates", icon: CircleDot, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: duplicateCandidates.toLocaleString(), sublabel: "Review", footer: "Title-based candidate matches" },
-      { title: "Requirements Extracted", icon: FileText, iconBg: "bg-cyan-50 border-cyan-100", iconColor: "text-cyan-600", value: requirementsByStage.intake.length.toLocaleString(), sublabel: "Records", footer: "Awaiting analysis hand-off" },
+      { title: "Requirements Extracted", icon: FileText, iconBg: "bg-cyan-50 border-cyan-100", iconColor: "text-cyan-600", value: requirements.length.toLocaleString(), sublabel: "Records", footer: "All extracted requirement records" },
     ];
-  }, [intakeSources, requirementsByStage.intake]);
+  }, [intakeSources, requirements]);
 
   const selectedJiraConnectionRecord = jiraConnections.find((c) => c.id === selectedJiraConnection);
 
@@ -2044,7 +2089,7 @@ function RequirementsContent() {
                     {([
                       ["Intake Ready", analysisRows.length, "bg-emerald-50 border-emerald-100 text-emerald-600", FileText],
                       ["Analyzing", analysisRows.filter((row) => row.status === "queued" || row.status === "analyzing").length, "bg-blue-50 border-blue-100 text-blue-600", RefreshCw],
-                      ["Needs Clarification", analysisRows.filter((row) => row.status === "needs_clarification").length, "bg-amber-50 border-amber-100 text-amber-600", AlertTriangle],
+                      ["Clarification / Revision", analysisRows.filter((row) => row.status === "needs_clarification" || row.status === "needs_revision").length, "bg-amber-50 border-amber-100 text-amber-600", AlertTriangle],
                       ["Analyzed", analysisRows.filter((row) => row.status === "analyzed").length, "bg-purple-50 border-purple-100 text-purple-600", CheckCircle],
                       ["Ready for Traceability", analysisRows.filter((row) => row.status === "analyzed" && row.blockers.length === 0).length, "bg-cyan-50 border-cyan-100 text-cyan-600", ShieldCheck],
                       ["Blocked / Failed", analysisRows.filter((row) => row.status === "blocked" || row.status === "failed").length, "bg-red-50 border-red-100 text-red-600", XCircle],
@@ -2072,7 +2117,7 @@ function RequirementsContent() {
                   <input value={analysisSearch} onChange={(event) => setAnalysisSearch(event.target.value)} placeholder="Search by requirement ID, PPM ID, title, source..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {(["all", "not_analyzed", "needs_clarification", "analyzed", "blocked", "stale_source"] as const).map((status) => (
+                  {(["all", "not_analyzed", "needs_clarification", "needs_revision", "analyzed", "blocked", "stale_source"] as const).map((status) => (
                     <button key={status} onClick={() => setAnalysisFilter(status)} className={cn("rounded-lg px-3 py-2 text-[10px] font-bold transition-all", analysisFilter === status ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-500 hover:text-slate-900")}>
                       {status === "all" ? "All" : analysisLabel(status)}
                     </button>
@@ -2265,8 +2310,8 @@ function RequirementsContent() {
                   : t === "api" ? "Add API Specification"
                   : t === "requirements" ? "Extracted Requirements"
                   : "Jira"}
-                {t === "requirements" && requirementsByStage.intake.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{requirementsByStage.intake.length}</span>
+                {t === "requirements" && requirements.length > 0 && (
+                  <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{requirements.length}</span>
                 )}
                 {t === "documents" && documents.length > 0 && (
                   <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{documents.length}</span>
@@ -2310,6 +2355,7 @@ function RequirementsContent() {
                       <th className="px-4 py-2.5">Req ID</th>
                       <th className="px-4 py-2.5">Title</th>
                       <th className="px-4 py-2.5">Status</th>
+                      <th className="px-4 py-2.5">Lifecycle Stage</th>
                       <th className="px-4 py-2.5">Quality Verdict</th>
                       <th className="px-4 py-2.5">Created By</th>
                       <th className="px-4 py-2.5">Created At</th>
@@ -2321,14 +2367,14 @@ function RequirementsContent() {
                   <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
                     {loading ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-16 text-center text-slate-400 font-semibold">
+                        <td colSpan={10} className="px-4 py-16 text-center text-slate-400 font-semibold">
                           <Loader2 className="inline mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
                           Loading requirements library...
                         </td>
                       </tr>
                     ) : filteredRequirements.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-16 text-center text-slate-400 font-semibold">
+                        <td colSpan={10} className="px-4 py-16 text-center text-slate-400 font-semibold">
                           No requirements found matching selection.
                         </td>
                       </tr>
@@ -2354,6 +2400,11 @@ function RequirementsContent() {
                             <td className="px-4 py-2.5">
                               <Badge variant={getStatusVariant(req.status)} className="capitalize">
                                 {req.status.replace(/_/g, " ")}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <Badge variant={getRequirementWorkflowStageVariant(req)} className="whitespace-nowrap">
+                                {getRequirementWorkflowStageLabel(req)}
                               </Badge>
                             </td>
                             <td className="px-4 py-2.5">
@@ -3008,7 +3059,7 @@ function RequirementsContent() {
       </Drawer>
 
       <Drawer open={!!selectedReq} onOpenChange={(open) => !open && setSelectedReq(null)}>
-        <DrawerContent size="xl">
+        <DrawerContent size="xl" data-requirement-drawer-content>
           {selectedReq && (
             <>
               <DrawerHeader>
@@ -3403,6 +3454,10 @@ function RequirementsContent() {
                     ...(selectedReq.impacted_interfaces || []),
                     ...(selectedReq.apis || []),
                   ].filter(Boolean);
+                  const missingInfoItems = [
+                    ...asTextList(selectedReq.missing_information),
+                    ...asTextList(qualityMeta?.missing_information),
+                  ].filter((item, index, items) => items.indexOf(item) === index);
                   return (
                     <div className="space-y-3 text-xs">
                       <section className="border-b border-slate-100 pb-3">
@@ -3447,6 +3502,22 @@ function RequirementsContent() {
                             </button>
                           ))}
                         </div>
+                        {missingInfoItems.length > 0 && (
+                          <div className="mt-2 rounded-lg border border-red-100 bg-red-50/60 p-2">
+                            <div className="mb-1 text-[9px] font-bold uppercase text-red-600">Missing information required</div>
+                            <ul className="space-y-1">
+                              {missingInfoItems.slice(0, 3).map((item, index) => (
+                                <li key={`${item}-${index}`} className="flex items-start gap-1.5 text-[10px] font-semibold leading-snug text-red-800">
+                                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-red-500" />
+                                  <span>{item}</span>
+                                </li>
+                              ))}
+                            </ul>
+                            <button onClick={() => openAnalysisDialog("issues")} className="mt-1.5 text-[10px] font-bold text-[#1b59f8]">
+                              Resolve missing information
+                            </button>
+                          </div>
+                        )}
                       </section>
 
                       <section className="border-b border-slate-100 pb-3">
@@ -3498,10 +3569,16 @@ function RequirementsContent() {
                       <section className="space-y-2">
                         <h4 className="text-xs font-bold text-slate-800">Actions</h4>
                         <div className="grid grid-cols-2 gap-2">
-                          <Button variant="outline" size="sm" disabled={analysisDialogSaving} onClick={() => openAnalysisDialog("clarification")} className="h-8 bg-white text-[10px] font-bold">Request Clarification</Button>
+                          <Button variant="outline" size="sm" disabled={analysisDialogSaving} onClick={() => openAnalysisDialog(selectedReq.readiness_status === "needs_clarification" ? "issues" : "clarification")} className="h-8 bg-white text-[10px] font-bold">{selectedReq.readiness_status === "needs_clarification" ? "Provide Clarification" : "Request Clarification"}</Button>
                           <Button variant="outline" size="sm" disabled={agentRunning} onClick={() => runQualityAgent([selectedReq.id])} className="h-8 bg-white text-[10px] font-bold">Re-run Analysis</Button>
                         </div>
                         <Button size="sm" disabled={transitioning || !!row?.blockers.length || row?.status !== "analyzed"} onClick={() => handleRequirementTransition(selectedReq, "send_to_traceability", "traceability")} className="h-8 w-full bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Traceability</Button>
+                        {row && (row.blockers.length > 0 || row.status !== "analyzed") && (
+                          <p className="flex items-start gap-1.5 text-[10px] font-semibold leading-snug text-amber-700">
+                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span>{row.blockers[0] || "Analysis must reach a Pass verdict before this requirement can move to Traceability."}</span>
+                          </p>
+                        )}
                       </section>
                     </div>
                   );
@@ -3815,20 +3892,31 @@ function RequirementsContent() {
         </DrawerContent>
       </Drawer>
 
-      {analysisDialog && selectedReq && (() => {
+      {analysisDialog && selectedReq && typeof document !== "undefined" && document.querySelector("[data-requirement-drawer-content]") && createPortal((() => {
         const analysisRow = analysisRows.find((item) => item.requirement.id === selectedReq.id);
         const qualityMeta = metadataRecord(selectedReq).quality_review as Record<string, any> | undefined;
+        const missingInfoItems = [
+          ...asTextList(selectedReq.missing_information),
+          ...asTextList(qualityMeta?.missing_information),
+        ].filter((item, index, items) => items.indexOf(item) === index);
         const dialogTitle = analysisDialog === "acceptance" ? "Edit Acceptance Criteria"
           : analysisDialog === "issues" ? "Analysis Issues & Missing Information"
           : analysisDialog === "classification" ? "Edit Requirement Classification"
           : analysisDialog === "systems" ? "Edit Impacted Systems"
           : "Request Clarification";
         return (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={dialogTitle} onClick={() => !analysisDialogSaving && setAnalysisDialog(null)}>
-            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" style={{ zIndex: 60 }} role="dialog" aria-modal="true" aria-label={dialogTitle} onClick={() => { if (!analysisDialogSaving) { setAnalysisDialogError(null); setAnalysisDialog(null); } }}>
+            <form
+              className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveAnalysisDialog();
+              }}
+            >
               <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
                 <div><h3 className="text-sm font-bold text-slate-900">{dialogTitle}</h3><p className="mt-1 text-[11px] font-semibold text-slate-500">{selectedReq.requirement_id} · {selectedReq.title}</p></div>
-                <button aria-label="Close dialog" onClick={() => setAnalysisDialog(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+                <button type="button" aria-label="Close dialog" onClick={() => { setAnalysisDialogError(null); setAnalysisDialog(null); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
               </div>
               <div className="max-h-[65vh] space-y-4 overflow-y-auto px-5 py-4 text-xs">
                 {analysisDialog === "acceptance" && <>
@@ -3840,9 +3928,22 @@ function RequirementsContent() {
                     {[["Ambiguities", analysisRow?.ambiguityCount || 0], ["Missing", analysisRow?.missingInfoCount || 0], ["Duplicates", analysisRow?.duplicateCount || 0], ["Conflicts", analysisRow?.conflictCount || 0]].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="text-[9px] font-bold uppercase text-slate-400">{label}</div><div className="mt-1 text-lg font-bold text-slate-800">{value}</div></div>)}
                   </div>
                   {(asTextList(qualityMeta?.ambiguities).length > 0 || asTextList(qualityMeta?.conflicts).length > 0) && <div className="rounded-lg border border-amber-100 bg-amber-50 p-3"><div className="mb-1 text-[10px] font-bold uppercase text-amber-700">Other findings</div>{[...asTextList(qualityMeta?.ambiguities), ...asTextList(qualityMeta?.conflicts)].map((item) => <div key={item} className="mt-1 font-semibold text-amber-800">• {item}</div>)}</div>}
-                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-slate-500">Outstanding missing information — one item per line</label><textarea aria-label="Outstanding missing information" value={missingInfoDraft} onChange={(event) => { setMissingInfoDraft(event.target.value); setMarkMissingResolved(false); }} rows={5} className="w-full rounded-xl border border-red-200 bg-red-50/30 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-red-100" placeholder="No missing information remains" /></div>
-                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-slate-500">Resolution or supplied details</label><textarea aria-label="Resolution details" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Describe the information supplied and where it was verified..." /></div>
-                  <label className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 font-semibold text-emerald-800"><input aria-label="Mark missing information resolved" type="checkbox" checked={markMissingResolved} onChange={(event) => setMarkMissingResolved(event.target.checked)} className="mt-0.5" /><span>Mark all listed missing-information findings as resolved. Resolution details are required and retained in reviewer notes.</span></label>
+                  {missingInfoItems.length > 0 && (
+                    <div className="rounded-lg border border-red-100 bg-red-50 p-3">
+                      <div className="mb-2 text-[10px] font-bold uppercase text-red-700">What is missing</div>
+                      <ul className="space-y-1.5">
+                        {missingInfoItems.map((item, index) => (
+                          <li key={`${item}-${index}`} className="flex items-start gap-2 font-semibold leading-snug text-red-800">
+                            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-slate-500">Outstanding missing information - one item per line</label><textarea aria-label="Outstanding missing information" value={missingInfoDraft} onChange={(event) => { setMissingInfoDraft(event.target.value); setMarkMissingResolved(false); }} rows={5} className="w-full rounded-xl border border-red-200 bg-red-50/30 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-red-100" placeholder="No missing information remains" /></div>
+                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-slate-500">{selectedReq.readiness_status === "needs_clarification" ? "Clarification supplied" : "Resolution or supplied details"}</label><textarea aria-label="Resolution details" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder={selectedReq.readiness_status === "needs_clarification" ? "Enter the answer/details provided by the requirement owner and where they were verified..." : "Describe the information supplied and where it was verified..."} /></div>
+                  {selectedReq.readiness_status === "needs_clarification" ? <div className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-[10px] font-semibold text-amber-800">Submitting this answer resolves the clarification gate and returns the requirement to Analysis Pending. Select Re-run Analysis afterward to validate it.</div> : <label className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 font-semibold text-emerald-800"><input aria-label="Mark missing information resolved" type="checkbox" checked={markMissingResolved} onChange={(event) => setMarkMissingResolved(event.target.checked)} className="mt-0.5" /><span>Mark all listed missing-information findings as resolved. Resolution details are required and retained in reviewer notes.</span></label>}
                 </>}
                 {analysisDialog === "classification" && <div className="grid grid-cols-2 gap-3">
                   {([[
@@ -3857,14 +3958,45 @@ function RequirementsContent() {
                   <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Clarification required</span><textarea aria-label="Clarification required" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={7} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Explain exactly what information is required, who should provide it, and why analysis cannot proceed..." /></label>
                 </>}
               </div>
+              {analysisDialogError && (
+                <div className="mx-5 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                  {analysisDialogError}
+                </div>
+              )}
               <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
-                <Button variant="outline" size="sm" disabled={analysisDialogSaving} onClick={() => setAnalysisDialog(null)} className="bg-white">Cancel</Button>
-                <Button size="sm" disabled={analysisDialogSaving} onClick={saveAnalysisDialog} className="bg-[#1b59f8] text-white hover:bg-blue-700">{analysisDialogSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}{analysisDialog === "clarification" ? "Submit Request" : "Save Changes"}</Button>
+                <button
+                  type="button"
+                  disabled={analysisDialogSaving}
+                  onClick={() => { setAnalysisDialogError(null); setAnalysisDialog(null); }}
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-all hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={analysisDialogSaving}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    void saveAnalysisDialog();
+                  }}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    void saveAnalysisDialog();
+                  }}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void saveAnalysisDialog();
+                  }}
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1b59f8] px-3 text-xs font-medium text-white shadow-sm transition-all hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {analysisDialogSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                  {analysisDialog === "clarification" ? "Submit Request" : "Save Changes"}
+                </button>
               </div>
-            </div>
+            </form>
           </div>
         );
-      })()}
+      })(), document.querySelector("[data-requirement-drawer-content]") as Element)}
 
       {/* Delete Confirmation Modals */}
       {deletingReq && (

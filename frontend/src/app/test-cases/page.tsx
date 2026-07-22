@@ -8,7 +8,6 @@ import {
   Bot,
   CheckCircle,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Download,
   FileText,
@@ -16,7 +15,6 @@ import {
   Layers,
   Loader2,
   MoreHorizontal,
-  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -29,12 +27,17 @@ import {
   agentRunsApi,
   projectsApi,
   requirementsApi,
+  reviewsApi,
   scenariosApi,
   testCasesApi,
+  usersApi,
+  type ArtifactReview,
+  type CoverageMatrixEntry,
   type Requirement,
   type TestCase,
-  type TestCaseSummary,
+  type TestCaseHistory,
   type TestScenario,
+  type TestCaseSummary,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -56,16 +59,26 @@ const TABS = [
   { key: "gaps", label: "Gaps / Blocked" },
 ];
 
-const DEMO_COUNTS = {
-  requirementsSelected: 96,
-  totalGenerated: 348,
-  positive: 184,
-  negative: 112,
-  edge: 38,
-  gaps: 14,
-  regression: 98,
-  integration: 42,
+type KpiValues = {
+  requirementsSelected: number;
+  totalGenerated: number;
+  positive: number;
+  negative: number;
+  edge: number;
+  gaps: number;
+  regression: number;
+  integration: number;
 };
+
+function pct(part: number, total: number): string {
+  if (!total) return "0% of total";
+  return `${Math.round((part / total) * 1000) / 10}% of total`;
+}
+
+function pctOf(part: number, total: number, label: string): string {
+  if (!total) return `0% ${label}`;
+  return `${Math.round((part / total) * 1000) / 10}% ${label}`;
+}
 
 const TABLE_GRID = "70px 94px minmax(130px,1fr) 72px 94px 64px 84px 86px 82px 92px 72px 42px";
 const EDITOR_TABLE_GRID = "74px 102px minmax(128px,1fr) 72px 92px 62px 76px 84px 46px";
@@ -90,7 +103,7 @@ function normalize(value: string | null | undefined) {
 }
 
 function displayDate(value?: string | null) {
-  if (!value) return "Jul 21, 12:58 PM";
+  if (!value) return "—";
   return new Date(value).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -99,8 +112,34 @@ function displayDate(value?: string | null) {
   });
 }
 
+function displayDateTime(value?: string | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function relativeTime(value?: string | null) {
+  if (!value) return "";
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return "";
+  const diffMs = Date.now() - then;
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
 function ppmFromRequirement(req?: Requirement) {
-  return String(req?.metadata_?.ppm_id || "PPM-4588");
+  const ppm = req?.metadata_?.ppm_id;
+  return ppm ? String(ppm) : "—";
 }
 
 function scenarioClass(tc: TestCase) {
@@ -135,6 +174,35 @@ function traceabilityHealth(tc: TestCase) {
   if (!tc.linked_requirement_key && !tc.linked_requirement_id && !tc.requirement_id) return "Missing";
   if (tc.status === "blocked" || tc.status === "rejected") return "Partial";
   return "Good";
+}
+
+function resolveUserName(names: Map<number, string>, id?: number | null): string {
+  if (!id) return "—";
+  return names.get(id) || `User #${id}`;
+}
+
+function scenarioForCase(
+  tc: TestCase | null | undefined,
+  scenariosById: Map<number, TestScenario>,
+): TestScenario | undefined {
+  if (!tc) return undefined;
+  const dbId = tc.linked_scenario_id ?? tc.scenario_id;
+  if (!dbId) return undefined;
+  return scenariosById.get(dbId);
+}
+
+// scenario_test_case_coverage reviews are keyed by the scenario's DB id — the
+// test case's review context is the review of its parent scenario's coverage.
+function reviewForCase(
+  tc: TestCase | null | undefined,
+  reviews: ArtifactReview[],
+): ArtifactReview | undefined {
+  if (!tc) return undefined;
+  const dbId = tc.linked_scenario_id ?? tc.scenario_id;
+  if (!dbId) return undefined;
+  return reviews
+    .filter((r) => r.artifact_id === dbId)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 }
 
 function badgeClass(tone: Tone) {
@@ -280,13 +348,9 @@ function dataDependency(tc: TestCase) {
   if (data && typeof data === "object") {
     const source = (data as Record<string, unknown>).source || (data as Record<string, unknown>).dataset || (data as Record<string, unknown>).name;
     if (source) return String(source);
+    if (Object.keys(data).length) return `${Object.keys(data).length} data field${Object.keys(data).length === 1 ? "" : "s"}`;
   }
-  const title = normalize(tc.title);
-  if (title.includes("payment")) return "Payment Data";
-  if (title.includes("email") || title.includes("notification")) return "Email Service";
-  if (title.includes("user")) return "User Roles";
-  if (title.includes("order")) return "OMS Data";
-  return "CRM Data";
+  return "None";
 }
 
 function findRequirementForCase(tc: TestCase, byKey: Map<string, Requirement>, byId: Map<number, Requirement>) {
@@ -321,6 +385,10 @@ function TestCasesContent() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [userNames, setUserNames] = useState<Map<number, string>>(new Map());
+  const [coverageByCase, setCoverageByCase] = useState<Map<number, CoverageMatrixEntry>>(new Map());
+  const [scenarioReviews, setScenarioReviews] = useState<ArtifactReview[]>([]);
+  const [scenariosById, setScenariosById] = useState<Map<number, TestScenario>>(new Map());
 
   useEffect(() => {
     projectsApi.list().then((res) => {
@@ -337,17 +405,26 @@ function TestCasesContent() {
     setLoading(true);
     setError("");
     try {
-      const [tcRes, summaryRes, reqRes, scRes] = await Promise.all([
+      const [tcRes, summaryRes, reqRes, scRes, coverageRes, reviewsRes, usersRes] = await Promise.all([
         testCasesApi.list(selectedProject),
         testCasesApi.summary(selectedProject),
         requirementsApi.list(selectedProject, { status: "approved" }),
         scenariosApi.list(selectedProject),
+        reviewsApi.coverageMatrix(selectedProject).catch(() => ({ data: [] as CoverageMatrixEntry[] })),
+        reviewsApi.listForProject(selectedProject, "scenario_test_case_coverage").catch(() => ({ data: [] as ArtifactReview[] })),
+        usersApi.list().catch(() => ({ data: [] as Array<{ id: number; full_name: string }> })),
       ]);
       const approvedScenarios = scRes.data.filter((scenario) => scenario.status === "approved");
       setTestCases(tcRes.data);
       setSummary(summaryRes.data);
       setRequirements(reqRes.data);
       setScenarios(approvedScenarios);
+      setScenariosById(new Map(scRes.data.map((s) => [s.id, s])));
+      const coverageMap = new Map<number, CoverageMatrixEntry>();
+      coverageRes.data.forEach((entry) => { if (entry.test_case_id) coverageMap.set(entry.test_case_id, entry); });
+      setCoverageByCase(coverageMap);
+      setScenarioReviews(reviewsRes.data);
+      setUserNames(new Map(usersRes.data.map((u) => [u.id, u.full_name])));
       setSelectedScenarioIds((prev) => prev.length ? prev.filter((id) => approvedScenarios.some((s) => s.id === id)) : approvedScenarios.map((s) => s.id));
       setSelectedTestCase((prev) => prev ? tcRes.data.find((tc) => tc.id === prev.id) || tcRes.data[0] || null : tcRes.data[0] || null);
     } catch (loadError) {
@@ -376,22 +453,22 @@ function TestCasesContent() {
   const requirementsById = useMemo(() => new Map(requirements.map((req) => [req.id, req])), [requirements]);
 
   const generatedTotal = summary?.total ?? testCases.length;
-  const positiveCount = testCases.filter((tc) => testType(tc) === "Positive").length || Math.round(generatedTotal * 0.529);
-  const negativeCount = testCases.filter((tc) => testType(tc) === "Negative").length || Math.round(generatedTotal * 0.322);
-  const edgeCount = testCases.filter((tc) => testType(tc) === "Edge / Boundary").length || Math.round(generatedTotal * 0.109);
+  const positiveCount = testCases.filter((tc) => testType(tc) === "Positive").length;
+  const negativeCount = testCases.filter((tc) => testType(tc) === "Negative").length;
+  const edgeCount = testCases.filter((tc) => testType(tc) === "Edge / Boundary").length;
   const gapsCount = Math.max(0, requirements.length - new Set(testCases.map((tc) => tc.linked_requirement_key || tc.requirement_id)).size);
-  const regressionCount = testCases.filter((tc) => testType(tc) === "Regression").length || Math.round(generatedTotal * 0.28);
-  const integrationCount = testCases.filter((tc) => normalize(scenarioClass(tc)).includes("integration")).length || Math.round(generatedTotal * 0.12);
+  const regressionCount = testCases.filter((tc) => testType(tc) === "Regression").length;
+  const integrationCount = testCases.filter((tc) => normalize(scenarioClass(tc)).includes("integration")).length;
 
-  const kpiValues = {
-    requirementsSelected: requirements.length || DEMO_COUNTS.requirementsSelected,
-    totalGenerated: generatedTotal || DEMO_COUNTS.totalGenerated,
-    positive: positiveCount || DEMO_COUNTS.positive,
-    negative: negativeCount || DEMO_COUNTS.negative,
-    edge: edgeCount || DEMO_COUNTS.edge,
-    gaps: gapsCount || DEMO_COUNTS.gaps,
-    regression: regressionCount || DEMO_COUNTS.regression,
-    integration: integrationCount || DEMO_COUNTS.integration,
+  const kpiValues: KpiValues = {
+    requirementsSelected: requirements.length,
+    totalGenerated: generatedTotal,
+    positive: positiveCount,
+    negative: negativeCount,
+    edge: edgeCount,
+    gaps: gapsCount,
+    regression: regressionCount,
+    integration: integrationCount,
   };
 
   const filtered = useMemo(() => {
@@ -430,6 +507,26 @@ function TestCasesContent() {
   const linkedCases = selectedTestCase
     ? testCases.filter((tc) => (tc.linked_requirement_key || tc.requirement_id) === (selectedTestCase.linked_requirement_key || selectedTestCase.requirement_id))
     : [];
+  const selectedScenario = scenarioForCase(selectedTestCase, scenariosById);
+  const selectedReview = reviewForCase(selectedTestCase, scenarioReviews);
+  const selectedEligibility = (selectedTestCase?.metadata_ as { automation_eligibility?: { verdict?: string; reason?: string; automation_style?: string; agent_run_id?: number } } | undefined)?.automation_eligibility;
+
+  async function sendCaseToApproval(id: number) {
+    try {
+      await testCasesApi.update(id, { status: "pending_approval" });
+      setNotice("Test case sent to approval.");
+      await loadData();
+    } catch (updateError) {
+      setError(messageFromError(updateError, "Could not send test case to approval."));
+    }
+  }
+
+  function openInEditor(id: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "editor");
+    params.set("case", String(id));
+    router.push(`${pathname}?${params.toString()}`);
+  }
 
   async function generateCases(overrideQualityGate = false) {
     if (!selectedProject) return;
@@ -492,6 +589,10 @@ function TestCasesContent() {
         selectedTestCase={selectedTestCase}
         selectedRequirement={selectedRequirement}
         kpiValues={kpiValues}
+        userNames={userNames}
+        scenarioReviews={scenarioReviews}
+        scenariosById={scenariosById}
+        onReload={loadData}
         query={query}
         setQuery={setQuery}
         typeFilter={typeFilter}
@@ -548,10 +649,10 @@ function TestCasesContent() {
         <div className="grid grid-cols-2 gap-4 xl:grid-cols-6">
           <StatCard title="Requirements Selected" value={kpiValues.requirementsSelected} subtitle="Approved requirements" icon={FileText} tone="blue" />
           <StatCard title="Test Cases Generated" value={kpiValues.totalGenerated} subtitle="Total generated" icon={ShieldCheck} tone="emerald" />
-          <StatCard title="Positive Cases" value={kpiValues.positive} subtitle="52.9% of total" icon={TestTube2} tone="blue" />
-          <StatCard title="Negative Cases" value={kpiValues.negative} subtitle="32.2% of total" icon={AlertTriangle} tone="red" />
-          <StatCard title="Edge / Boundary Cases" value={kpiValues.edge} subtitle="10.9% of total" icon={Layers} tone="purple" />
-          <StatCard title="Gaps / Blocked" value={kpiValues.gaps} subtitle="4.0% require attention" icon={Zap} tone="amber" />
+          <StatCard title="Positive Cases" value={kpiValues.positive} subtitle={pct(kpiValues.positive, kpiValues.totalGenerated)} icon={TestTube2} tone="blue" />
+          <StatCard title="Negative Cases" value={kpiValues.negative} subtitle={pct(kpiValues.negative, kpiValues.totalGenerated)} icon={AlertTriangle} tone="red" />
+          <StatCard title="Edge / Boundary Cases" value={kpiValues.edge} subtitle={pct(kpiValues.edge, kpiValues.totalGenerated)} icon={Layers} tone="purple" />
+          <StatCard title="Gaps / Blocked" value={kpiValues.gaps} subtitle={kpiValues.gaps === 1 ? "requirement without a case" : "requirements without a case"} icon={Zap} tone="amber" />
         </div>
 
         {(error || notice) && (
@@ -569,19 +670,27 @@ function TestCasesContent() {
 
         <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
           <p className="mb-5 text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Generation Readiness</p>
-          <div className="flex items-center justify-between gap-4">
-            <div className="grid flex-1 grid-cols-2 gap-x-8 gap-y-5 xl:grid-cols-6">
-              <ReadinessItem label="Requirements Approved" value={`${requirements.length || 96}/${requirements.length || 96}`} />
-              <ReadinessItem label="Analysis Complete" value="96%" />
-              <ReadinessItem label="Traceability Ready" value="92/100" />
-              <ReadinessItem label="Test Data Ready" value="85%" tone="amber" />
-              <ReadinessItem label="Application Model" value="Available" />
-              <ReadinessItem label="Policy & Permissions" value="Compliant" />
-            </div>
-            <Button variant="outline" size="sm" className="h-9 shrink-0 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
-              View readiness details
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
+          <div className="grid grid-cols-2 gap-x-8 gap-y-5 xl:grid-cols-4">
+            <ReadinessItem
+              label="Approved Requirements"
+              value={String(requirements.length)}
+              tone={requirements.length ? "emerald" : "amber"}
+            />
+            <ReadinessItem
+              label="Approved Scenarios"
+              value={String(scenarios.length)}
+              tone={scenarios.length ? "emerald" : "amber"}
+            />
+            <ReadinessItem
+              label="Scenarios Selected"
+              value={String(selectedScenarioIds.length)}
+              tone={selectedScenarioIds.length ? "emerald" : "amber"}
+            />
+            <ReadinessItem
+              label="Test Cases Generated"
+              value={String(testCases.length)}
+              tone={testCases.length ? "emerald" : "amber"}
+            />
           </div>
         </div>
 
@@ -675,7 +784,7 @@ function TestCasesContent() {
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
-              {filtered.slice(0, 8).map((tc) => {
+              {filtered.map((tc) => {
                 const req = findRequirementForCase(tc, requirementsByKey, requirementsById);
                 const selected = selectedTestCase?.id === tc.id;
                 return (
@@ -690,7 +799,7 @@ function TestCasesContent() {
                   >
                     <span className="font-mono font-extrabold text-[#1b59f8]">{tc.test_case_id}</span>
                     <span className="space-y-1">
-                      <span className="block font-bold text-slate-800">{tc.linked_requirement_key || req?.requirement_id || "REQ-0022"}</span>
+                      <span className="block font-bold text-slate-800">{tc.linked_requirement_key || req?.requirement_id || "—"}</span>
                       <span className="block font-semibold text-slate-500">{ppmFromRequirement(req)}</span>
                     </span>
                     <span className="pr-3 font-bold leading-5 text-slate-800">{tc.title}</span>
@@ -714,27 +823,8 @@ function TestCasesContent() {
           )}
           <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
             <span className="text-xs font-semibold text-slate-500">
-              Showing 1 to {Math.min(8, filtered.length)} of {kpiValues.totalGenerated} test cases
+              Showing {filtered.length} of {kpiValues.totalGenerated} test cases
             </span>
-            <div className="flex items-center gap-2">
-              <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-300">
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              {[1, 2, 3, 4, 5].map((page) => (
-                <button key={page} className={cn("flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold", page === 1 ? "bg-[#1b59f8] text-white" : "text-slate-600 hover:bg-slate-50")}>
-                  {page}
-                </button>
-              ))}
-              <span className="px-2 text-xs font-bold text-slate-400">...</span>
-              <button className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-slate-600">44</button>
-              <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600">
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <button className="ml-3 inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600">
-                10 / page
-                <ChevronDown className="h-3 w-3" />
-              </button>
-            </div>
           </div>
         </div>
       </section>
@@ -755,7 +845,7 @@ function TestCasesContent() {
               </div>
               <h2 className="mt-5 text-base font-extrabold text-slate-950">{selectedTestCase.title}</h2>
               <p className="mt-3 text-xs font-semibold text-slate-500">
-                Linked Requirement: <span className="text-[#1b59f8]">{selectedTestCase.linked_requirement_key || selectedRequirement?.requirement_id || "REQ-0022"}</span>
+                Linked Requirement: <span className="text-[#1b59f8]">{selectedTestCase.linked_requirement_key || selectedRequirement?.requirement_id || "—"}</span>
                 <span className="ml-4">{ppmFromRequirement(selectedRequirement)}</span>
               </p>
             </div>
@@ -763,7 +853,7 @@ function TestCasesContent() {
             <div className="flex border-b border-slate-100 px-4">
               {([
                 ["overview", "Overview"],
-                ["cases", "Test Cases (3)"],
+                ["cases", `Sibling Cases (${linkedCases.length})`],
                 ["coverage", "Coverage & Gaps"],
                 ["ai", "AI Info"],
                 ["activity", "Activity"],
@@ -785,91 +875,110 @@ function TestCasesContent() {
               {drawerTab === "overview" && (
                 <>
                   <DrawerCard title="Requirement Summary" icon={ShieldCheck}>
-                    <p className="text-xs font-semibold leading-6 text-slate-600">
-                      {selectedRequirement?.summary || "Customer should be able to cancel order before payment is processed."}
-                    </p>
-                    <button className="mt-3 text-xs font-bold text-[#1b59f8]">View requirement <ChevronRight className="inline h-3 w-3" /></button>
+                    {selectedRequirement?.summary ? (
+                      <p className="text-xs font-semibold leading-6 text-slate-600">{selectedRequirement.summary}</p>
+                    ) : (
+                      <p className="text-xs font-semibold text-slate-400">No linked requirement summary.</p>
+                    )}
+                    {selectedRequirement && selectedTestCase.project_id && (
+                      <button
+                        onClick={() => router.push(`/requirements?project=${selectedTestCase.project_id}&view=analysis&requirement=${selectedRequirement.id}`)}
+                        className="mt-3 text-xs font-bold text-[#1b59f8]"
+                      >
+                        View requirement <ChevronRight className="inline h-3 w-3" />
+                      </button>
+                    )}
                   </DrawerCard>
 
-                  <DrawerCard title="AI Generation Summary" icon={Bot}>
+                  <DrawerCard title="Generation Summary" icon={Bot}>
                     <div className="space-y-4">
                       <div>
                         <p className="text-xs font-semibold text-slate-500">Generated on: {displayDate(selectedTestCase.created_at)}</p>
                         <div className="mt-4 flex items-center justify-between text-xs font-semibold text-slate-600">
-                          <span>Total cases generated for this requirement</span>
-                          <span className="font-extrabold text-slate-950">{Math.max(3, linkedCases.length)}</span>
+                          <span>Cases linked to this requirement</span>
+                          <span className="font-extrabold text-slate-950">{linkedCases.length}</span>
                         </div>
                       </div>
                       <div className="space-y-3">
-                        <SummaryRow tone="emerald" label="Positive" value={linkedCases.filter((tc) => testType(tc) === "Positive").length || 0} />
-                        <SummaryRow tone="red" label="Negative" value={linkedCases.filter((tc) => testType(tc) === "Negative").length || 3} />
-                        <SummaryRow tone="red" label="Edge / Boundary" value={linkedCases.filter((tc) => testType(tc) === "Edge / Boundary").length || 0} />
-                        <SummaryRow tone="amber" label="Regression" value={linkedCases.filter((tc) => testType(tc) === "Regression").length || 0} />
+                        <SummaryRow tone="emerald" label="Positive" value={linkedCases.filter((tc) => testType(tc) === "Positive").length} />
+                        <SummaryRow tone="red" label="Negative" value={linkedCases.filter((tc) => testType(tc) === "Negative").length} />
+                        <SummaryRow tone="red" label="Edge / Boundary" value={linkedCases.filter((tc) => testType(tc) === "Edge / Boundary").length} />
+                        <SummaryRow tone="amber" label="Regression" value={linkedCases.filter((tc) => testType(tc) === "Regression").length} />
                       </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                          <span>AI Confidence</span>
-                          <span>78%</span>
+                      {selectedReview && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                            <span>Coverage review score</span>
+                            <span>{typeof selectedReview.overall_score === "number" ? `${selectedReview.overall_score}/100` : selectedReview.verdict.replace(/_/g, " ")}</span>
+                          </div>
+                          {typeof selectedReview.overall_score === "number" && <MiniProgress value={selectedReview.overall_score} />}
                         </div>
-                        <MiniProgress value={78} />
-                      </div>
+                      )}
                     </div>
                   </DrawerCard>
 
                   <DrawerCard title="Coverage & Gaps" icon={Layers}>
-                    <div className="space-y-4">
-                      <div>
-                        <div className="mb-2 flex items-center justify-between text-xs font-bold text-slate-700">
-                          <span>Scenario Classes Covered</span>
-                          <span>6 / 8</span>
-                        </div>
-                        <MiniProgress value={75} />
-                      </div>
-                      <div>
-                        <p className="mb-2 text-xs font-bold text-slate-700">Missing Classes</p>
-                        <div className="flex flex-wrap gap-2">
-                          <span className={badgeClass("red")}>Concurrency</span>
-                          <span className={badgeClass("red")}>Recovery</span>
+                    {selectedReview?.coverage_gaps?.length ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-slate-700">Coverage gaps</p>
+                        <div className="space-y-2">
+                          {selectedReview.coverage_gaps.map((gap, index) => (
+                            <div key={index} className="flex items-start gap-2 text-xs font-semibold text-slate-600">
+                              <span className={badgeClass(gap.severity === "high" ? "red" : gap.severity === "medium" ? "amber" : "slate")}>{gap.severity}</span>
+                              <span>{gap.description}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <p className="text-xs font-semibold text-slate-400">{selectedReview ? "No coverage gaps on the latest review." : "No coverage review recorded yet."}</p>
+                    )}
                   </DrawerCard>
 
                   <DrawerCard title="Test Data Dependency" icon={FileText}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-extrabold text-slate-800">{dataDependency(selectedTestCase)}</p>
-                        <p className="mt-2 text-xs font-semibold text-slate-500">Source: CRM DB - Test Dataset v2.1</p>
+                    {selectedTestCase.test_data && Object.keys(selectedTestCase.test_data).length ? (
+                      <div className="space-y-1 text-xs font-semibold text-slate-700">
+                        {Object.entries(selectedTestCase.test_data).map(([key, value]) => (
+                          <div key={key} className="flex gap-2">
+                            <span className="font-bold text-slate-500">{key}:</span>
+                            <span className="min-w-0 break-words">{typeof value === "object" ? JSON.stringify(value) : String(value)}</span>
+                          </div>
+                        ))}
                       </div>
-                      <span className={badgeClass("emerald")}>Available</span>
-                    </div>
+                    ) : (
+                      <p className="text-xs font-semibold text-slate-400">No test data dependency recorded.</p>
+                    )}
                   </DrawerCard>
                 </>
               )}
 
               {drawerTab === "cases" && (
-                <DrawerCard title="Generated Cases" icon={TestTube2}>
-                  <div className="space-y-2">
-                    {linkedCases.slice(0, 5).map((tc) => (
-                      <button key={tc.id} onClick={() => setSelectedTestCase(tc)} className="flex w-full items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-left hover:bg-slate-50">
-                        <span>
-                          <span className="block font-mono text-xs font-bold text-[#1b59f8]">{tc.test_case_id}</span>
-                          <span className="block text-xs font-semibold text-slate-700">{tc.title}</span>
-                        </span>
-                        <span className={badgeClass(testType(tc) === "Positive" ? "emerald" : "red")}>{testType(tc)}</span>
-                      </button>
-                    ))}
-                  </div>
+                <DrawerCard title="Sibling Cases" icon={TestTube2}>
+                  {linkedCases.length ? (
+                    <div className="space-y-2">
+                      {linkedCases.map((tc) => (
+                        <button key={tc.id} onClick={() => setSelectedTestCase(tc)} className="flex w-full items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-left hover:bg-slate-50">
+                          <span>
+                            <span className="block font-mono text-xs font-bold text-[#1b59f8]">{tc.test_case_id}</span>
+                            <span className="block text-xs font-semibold text-slate-700">{tc.title}</span>
+                          </span>
+                          <span className={badgeClass(testType(tc) === "Positive" ? "emerald" : "red")}>{testType(tc)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-semibold text-slate-400">No sibling cases for this requirement.</p>
+                  )}
                 </DrawerCard>
               )}
 
               {drawerTab === "coverage" && (
                 <DrawerCard title="Coverage & Gaps" icon={Layers}>
                   <div className="space-y-4">
-                    <SummaryRow tone="emerald" label="Requirement linked" value="Yes" />
-                    <SummaryRow tone="emerald" label="Scenario linked" value={selectedTestCase.linked_scenario_id || selectedTestCase.scenario_id ? "Yes" : "Pending"} />
-                    <SummaryRow tone="amber" label="Missing scenario classes" value="2" />
-                    <SummaryRow tone="red" label="Blocked gaps" value={traceabilityHealth(selectedTestCase) === "Good" ? 0 : 1} />
+                    <SummaryRow tone={selectedTestCase.linked_requirement_key || selectedTestCase.requirement_id ? "emerald" : "amber"} label="Requirement linked" value={selectedTestCase.linked_requirement_key || selectedTestCase.requirement_id ? "Yes" : "No"} />
+                    <SummaryRow tone={selectedScenario ? "emerald" : "amber"} label="Scenario linked" value={selectedScenario ? selectedScenario.scenario_id : "No"} />
+                    <SummaryRow tone={selectedReview?.coverage_gaps?.length ? "amber" : "emerald"} label="Coverage gaps" value={selectedReview?.coverage_gaps?.length ?? 0} />
+                    <SummaryRow tone={traceabilityHealth(selectedTestCase) === "Good" ? "emerald" : "red"} label="Traceability health" value={traceabilityHealth(selectedTestCase)} />
                   </div>
                 </DrawerCard>
               )}
@@ -877,20 +986,23 @@ function TestCasesContent() {
               {drawerTab === "ai" && (
                 <DrawerCard title="AI Info" icon={Bot}>
                   <div className="grid grid-cols-2 gap-4 text-xs">
-                    <InfoPair label="Model" value="Qwen3-Coder-Next" />
-                    <InfoPair label="Prompt Version" value="v2.1" />
-                    <InfoPair label="Generation Tool" value="Test Case Generator" />
-                    <InfoPair label="Analyzed At" value="Jul 21, 2026, 12:58 PM" />
+                    <InfoPair label="Generation Run" value={selectedTestCase.agent_run_id ? `#${selectedTestCase.agent_run_id}` : "—"} />
+                    <InfoPair label="Generated At" value={displayDateTime(selectedTestCase.created_at)} />
+                    <InfoPair label="Automation Eligibility" value={selectedEligibility?.verdict ? selectedEligibility.verdict : "Not assessed"} />
+                    <InfoPair label="Automation Style" value={selectedEligibility?.automation_style || "—"} />
                   </div>
+                  {selectedEligibility?.reason && (
+                    <p className="mt-3 text-xs font-semibold text-slate-500">{selectedEligibility.reason}</p>
+                  )}
                 </DrawerCard>
               )}
 
               {drawerTab === "activity" && (
                 <DrawerCard title="Activity" icon={RefreshCw}>
                   <div className="space-y-3 text-xs font-semibold text-slate-600">
-                    <Activity text="Generated by AI" time="12:58 PM" />
-                    <Activity text="Requirement context loaded" time="12:57 PM" />
-                    <Activity text="Traceability index checked" time="12:56 PM" />
+                    <Activity text="Created" time={displayDate(selectedTestCase.created_at)} />
+                    {selectedTestCase.last_status_updated_at && <Activity text="Status updated" time={displayDate(selectedTestCase.last_status_updated_at)} />}
+                    {selectedTestCase.updated_at && selectedTestCase.updated_at !== selectedTestCase.created_at && <Activity text="Last modified" time={displayDate(selectedTestCase.updated_at)} />}
                   </div>
                 </DrawerCard>
               )}
@@ -899,15 +1011,11 @@ function TestCasesContent() {
             <div className="border-t border-slate-100 p-4">
               <p className="mb-3 text-xs font-extrabold text-slate-800">Actions</p>
               <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" size="sm" className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Send to Test Case Editor</Button>
-                <Button variant="outline" size="sm" className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Send to Approval</Button>
-                <Button variant="outline" size="sm" className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Missing Scenario
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => exportToCSV(linkedCases.length ? linkedCases : [selectedTestCase], requirementsByKey, requirementsById)} className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
+                <Button variant="outline" size="sm" onClick={() => openInEditor(selectedTestCase.id)} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Open in Editor</Button>
+                <Button variant="outline" size="sm" onClick={() => sendCaseToApproval(selectedTestCase.id)} disabled={selectedTestCase.status === "pending_approval" || selectedTestCase.status === "approved"} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Send to Approval</Button>
+                <Button variant="outline" size="sm" onClick={() => exportToCSV([selectedTestCase], requirementsByKey, requirementsById)} className="col-span-2 h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
                   <Download className="h-3.5 w-3.5" />
-                  Export Test Cases
+                  Export Test Case
                 </Button>
               </div>
             </div>
@@ -958,6 +1066,10 @@ function TestCaseEditorView({
   selectedTestCase,
   selectedRequirement,
   kpiValues,
+  userNames,
+  scenarioReviews,
+  scenariosById,
+  onReload,
   query,
   setQuery,
   typeFilter,
@@ -980,7 +1092,11 @@ function TestCaseEditorView({
   requirementsById: Map<number, Requirement>;
   selectedTestCase: TestCase | null;
   selectedRequirement?: Requirement;
-  kpiValues: typeof DEMO_COUNTS;
+  kpiValues: KpiValues;
+  userNames: Map<number, string>;
+  scenarioReviews: ArtifactReview[];
+  scenariosById: Map<number, TestScenario>;
+  onReload: () => void | Promise<void>;
   query: string;
   setQuery: (value: string) => void;
   typeFilter: string;
@@ -998,24 +1114,20 @@ function TestCaseEditorView({
 }) {
   const tc = selectedTestCase || testCases[0] || null;
   const req = tc ? findRequirementForCase(tc, requirementsByKey, requirementsById) || selectedRequirement : selectedRequirement;
-  const steps = tc?.steps?.length
-    ? tc.steps
-    : [
-        { step_number: 1, action: "Navigate to 'My Orders' page", expected_result: "User lands on My Orders page" },
-        { step_number: 2, action: "Select the order in 'Pending Payment' status", expected_result: "Order details are displayed" },
-        { step_number: 3, action: "Click on 'Cancel Order' button", expected_result: "Cancel confirmation popup is displayed" },
-        { step_number: 4, action: "Select 'Cancel Before Payment' option", expected_result: "Cancellation reason field is enabled" },
-        { step_number: 5, action: "Confirm cancellation", expected_result: "Order is cancelled and status is updated" },
-      ];
-  const preconditions = tc?.preconditions?.length
-    ? tc.preconditions
-    : ["User is logged in to the customer portal", "Order is created and is in 'Pending Payment' status", "Payment has not been initiated"];
-  const editableTotal = testCases.length || DEMO_COUNTS.totalGenerated;
-  const draftEdits = Math.max(126, Math.round(editableTotal * 0.362));
-  const validationIssues = Math.max(28, testCases.filter((row) => traceabilityHealth(row) !== "Good" || reviewStatus(row) === "Needs Review").length);
-  const readyForApproval = Math.max(156, Math.round(editableTotal * 0.448));
-  const automationReady = Math.max(102, testCases.filter((row) => row.automation_candidate).length);
-  const blocked = Math.max(16, testCases.filter((row) => row.status === "blocked").length);
+  const steps = tc?.steps ?? [];
+  const preconditions = tc?.preconditions ?? [];
+  const scenario = scenarioForCase(tc, scenariosById);
+  const review = reviewForCase(tc, scenarioReviews);
+  const reviewFindings = review?.findings ?? [];
+  const reviewSuggestions = (review?.findings ?? [])
+    .map((f) => f.suggestion)
+    .filter((s): s is string => Boolean(s));
+  const editableTotal = testCases.length;
+  const draftEdits = testCases.filter((row) => row.status === "draft").length;
+  const validationIssues = testCases.filter((row) => traceabilityHealth(row) !== "Good" || reviewStatus(row) === "Needs Review").length;
+  const readyForApproval = testCases.filter((row) => traceabilityHealth(row) === "Good" && reviewStatus(row) !== "Needs Review").length;
+  const automationReady = testCases.filter((row) => row.automation_candidate).length;
+  const blocked = testCases.filter((row) => row.status === "blocked").length;
   const editorRows = useMemo(() => {
     return testCases.filter((row) => {
       const rowReq = findRequirementForCase(row, requirementsByKey, requirementsById);
@@ -1042,12 +1154,27 @@ function TestCaseEditorView({
     ["issues", "Issues", validationIssues],
     ["blocked", "Blocked", blocked],
   ] as const;
+  const router = useRouter();
   const [uiNotice, setUiNotice] = useState("");
   const [uiError, setUiError] = useState("");
   const [busyAction, setBusyAction] = useState<"save" | "validate" | "approval" | null>(null);
   const [showMore, setShowMore] = useState(false);
-  const [editingSection, setEditingSection] = useState<string | null>(null);
-  const [extraStep, setExtraStep] = useState(false);
+  const [history, setHistory] = useState<TestCaseHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  useEffect(() => {
+    if (!tc) {
+      setHistory([]);
+      return;
+    }
+    let cancelled = false;
+    setHistoryLoading(true);
+    testCasesApi.history(tc.id)
+      .then((res) => { if (!cancelled) setHistory(res.data); })
+      .catch(() => { if (!cancelled) setHistory([]); })
+      .finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [tc?.id]);
 
   const notify = (message: string) => {
     setUiError("");
@@ -1059,11 +1186,9 @@ function TestCaseEditorView({
     setBusyAction("save");
     setUiError("");
     try {
-      await testCasesApi.update(tc.id, {
-        status: "draft",
-        expected_result: tc.expected_result || "Order is cancelled successfully before payment and user receives cancellation confirmation.",
-      });
-      notify(`${tc.test_case_id} draft saved.`);
+      await testCasesApi.update(tc.id, { status: "draft" });
+      notify(`${tc.test_case_id} saved as draft.`);
+      await onReload();
     } catch (error) {
       setUiError(messageFromError(error, "Could not save draft."));
     } finally {
@@ -1071,13 +1196,17 @@ function TestCaseEditorView({
     }
   }
 
-  async function validateCase() {
+  // No on-demand test-case validation endpoint exists — automated validation is
+  // performed by the coverage review agent. Surface its real verdict/score
+  // instead of fabricating a result.
+  function validateCase() {
     if (!tc) return;
-    setBusyAction("validate");
-    setUiError("");
-    await sleep(450);
-    setBusyAction(null);
-    notify(`${tc.test_case_id} validation completed. Overall validation score is 90/100.`);
+    if (!review) {
+      notify(`${tc.test_case_id} has no automated coverage review yet. Validation runs when the review agent processes its scenario.`);
+      return;
+    }
+    const score = typeof review.overall_score === "number" ? `, overall score ${review.overall_score}/100` : "";
+    notify(`Latest coverage review for ${tc.test_case_id}: ${review.verdict.replace(/_/g, " ")}${score}.`);
   }
 
   async function sendToApproval() {
@@ -1085,10 +1214,9 @@ function TestCaseEditorView({
     setBusyAction("approval");
     setUiError("");
     try {
-      await testCasesApi.update(tc.id, {
-        status: "pending_approval",
-      });
+      await testCasesApi.update(tc.id, { status: "pending_approval" });
       notify(`${tc.test_case_id} sent to approval.`);
+      await onReload();
     } catch (error) {
       setUiError(messageFromError(error, "Could not send test case to approval."));
     } finally {
@@ -1097,18 +1225,12 @@ function TestCaseEditorView({
   }
 
   function viewRequirement() {
-    notify(`Requirement ${tc?.linked_requirement_key || req?.requirement_id || "REQ-0023"} trace context opened in the inspector.`);
-  }
-
-  function discardChanges() {
-    setEditingSection(null);
-    setExtraStep(false);
-    notify("Unsaved editor changes discarded.");
-  }
-
-  function applySuggestions() {
-    setExtraStep(true);
-    notify("AI suggestions applied to the draft review context.");
+    const reqId = tc?.linked_requirement_id ?? req?.id;
+    if (!tc?.project_id || !reqId) {
+      setUiError("No linked requirement to open for this test case.");
+      return;
+    }
+    router.push(`/requirements?project=${tc.project_id}&view=analysis&requirement=${reqId}`);
   }
 
   return (
@@ -1156,7 +1278,6 @@ function TestCaseEditorView({
             {showMore && (
               <div className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-slate-200 bg-white p-2 text-xs font-bold shadow-lg">
                 <button onClick={() => { setShowMore(false); exportToCSV(tc ? [tc] : testCases, requirementsByKey, requirementsById); }} className="w-full rounded-md px-3 py-2 text-left text-slate-700 hover:bg-slate-50">Export selected</button>
-                <button onClick={() => { setShowMore(false); discardChanges(); }} className="w-full rounded-md px-3 py-2 text-left text-red-600 hover:bg-red-50">Discard changes</button>
               </div>
             )}
             </div>
@@ -1172,30 +1293,54 @@ function TestCaseEditorView({
         )}
 
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-          <StatCard title="Total Editable Cases" value={editableTotal} subtitle="100% of generated" icon={FileText} tone="blue" />
-          <StatCard title="Draft Edits" value={draftEdits} subtitle="36.2% edited" icon={FileText} tone="blue" />
-          <StatCard title="Validation Issues" value={validationIssues} subtitle="8.0% need fixes" icon={AlertTriangle} tone="red" />
-          <StatCard title="Ready for Approval" value={readyForApproval} subtitle="44.8% ready" icon={ShieldCheck} tone="emerald" />
-          <StatCard title="Automation Ready" value={automationReady} subtitle="29.3% automation candidate" icon={Layers} tone="emerald" />
-          <StatCard title="Blocked" value={blocked} subtitle="4.6% blocked" icon={Zap} tone="red" />
+          <StatCard title="Total Editable Cases" value={editableTotal} subtitle="All generated cases" icon={FileText} tone="blue" />
+          <StatCard title="Draft" value={draftEdits} subtitle={pctOf(draftEdits, editableTotal, "in draft")} icon={FileText} tone="blue" />
+          <StatCard title="Validation Issues" value={validationIssues} subtitle={pctOf(validationIssues, editableTotal, "need fixes")} icon={AlertTriangle} tone="red" />
+          <StatCard title="Ready for Approval" value={readyForApproval} subtitle={pctOf(readyForApproval, editableTotal, "ready")} icon={ShieldCheck} tone="emerald" />
+          <StatCard title="Automation Ready" value={automationReady} subtitle={pctOf(automationReady, editableTotal, "automation candidate")} icon={Layers} tone="emerald" />
+          <StatCard title="Blocked" value={blocked} subtitle={pctOf(blocked, editableTotal, "blocked")} icon={Zap} tone="red" />
         </div>
 
         <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4">
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
             <p className="mb-4 text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Editing Readiness Check</p>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-4 xl:grid-cols-6">
-              <ReadinessItem label="Requirement Linked" value={`Linked to ${tc?.linked_requirement_key || req?.requirement_id || "REQ-0023"}`} />
-              <ReadinessItem label="Scenario Linked" value="SCN-0156" />
-              <ReadinessItem label="Steps Complete" value={`${steps.length} / ${steps.length} steps`} />
-              <ReadinessItem label="Expected Result" value="Complete" />
-              <ReadinessItem label="Test Data" value="Available" />
-              <ReadinessItem label="Policy & Permissions" value="Compliant" />
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 xl:grid-cols-4">
+              <ReadinessItem
+                label="Requirement Linked"
+                value={tc?.linked_requirement_key || req?.requirement_id || "Not linked"}
+                tone={tc?.linked_requirement_key || req?.requirement_id ? "emerald" : "amber"}
+              />
+              <ReadinessItem
+                label="Scenario Linked"
+                value={scenario?.scenario_id || "Not linked"}
+                tone={scenario ? "emerald" : "amber"}
+              />
+              <ReadinessItem
+                label="Steps"
+                value={steps.length ? `${steps.length} step${steps.length === 1 ? "" : "s"}` : "None"}
+                tone={steps.length ? "emerald" : "amber"}
+              />
+              <ReadinessItem
+                label="Expected Result"
+                value={tc?.expected_result ? "Present" : "Missing"}
+                tone={tc?.expected_result ? "emerald" : "amber"}
+              />
             </div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-bold text-slate-500">Overall Validation</p>
-            <p className="mt-5 text-xl font-extrabold text-slate-950">90/100</p>
-            <span className={badgeClass("emerald")}>Good</span>
+            <p className="text-xs font-bold text-slate-500">Coverage Review</p>
+            {review ? (
+              <>
+                <p className="mt-5 text-xl font-extrabold text-slate-950">
+                  {typeof review.overall_score === "number" ? `${review.overall_score}/100` : "—"}
+                </p>
+                <span className={badgeClass(review.verdict === "pass" ? "emerald" : review.verdict === "fail" ? "red" : "amber")}>
+                  {review.verdict.replace(/_/g, " ")}
+                </span>
+              </>
+            ) : (
+              <p className="mt-5 text-xs font-semibold text-slate-500">No automated coverage review recorded yet.</p>
+            )}
           </div>
         </div>
 
@@ -1247,10 +1392,12 @@ function TestCaseEditorView({
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {(editorRows.length ? editorRows : filtered).slice(0, 7).map((row, index) => {
+                  {editorRows.length === 0 ? (
+                    <div className="py-16 text-center text-xs font-semibold text-slate-400">No test cases match the selected filters.</div>
+                  ) : editorRows.map((row) => {
                     const rowReq = findRequirementForCase(row, requirementsByKey, requirementsById);
                     const selected = tc?.id === row.id;
-                    const issue = index === 1 || index === 4 || index === 5;
+                    const issue = traceabilityHealth(row) !== "Good" || reviewStatus(row) === "Needs Review";
                     return (
                       <button
                         key={row.id}
@@ -1260,14 +1407,14 @@ function TestCaseEditorView({
                       >
                         <span className="font-mono font-extrabold text-[#1b59f8]">{row.test_case_id}</span>
                         <span>
-                          <span className="block font-bold text-slate-800">{row.linked_requirement_key || rowReq?.requirement_id || "REQ-0023"}</span>
+                          <span className="block font-bold text-slate-800">{row.linked_requirement_key || rowReq?.requirement_id || "—"}</span>
                           <span className="block text-slate-500">{ppmFromRequirement(rowReq)}</span>
                         </span>
                         <span className="pr-2 font-bold leading-4 text-slate-800">{row.title}</span>
-                        <span><span className={badgeClass(testType(row) === "Negative" ? "red" : "blue")}>Functional</span></span>
+                        <span><span className={badgeClass(testType(row) === "Negative" ? "red" : "blue")}>{testType(row)}</span></span>
                         <span><span className={badgeClass("slate")}>{scenarioClass(row)}</span></span>
                         <span><span className={badgeClass(priorityTone(row.priority))}>{row.priority}</span></span>
-                        <span><span className={badgeClass(index % 3 === 1 ? "slate" : index % 3 === 2 ? "blue" : "purple")}>{index % 3 === 1 ? "Draft Saved" : index % 3 === 2 ? "Ready" : "Editing"}</span></span>
+                        <span><span className={badgeClass("slate")}>{row.status.replace(/_/g, " ")}</span></span>
                         <span><span className={badgeClass(issue ? "amber" : "emerald")}>{issue ? "Issues" : "Valid"}</span></span>
                         <span className="flex justify-end"><span className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500"><MoreHorizontal className="h-3.5 w-3.5" /></span></span>
                       </button>
@@ -1276,14 +1423,7 @@ function TestCaseEditorView({
                 </div>
               )}
               <div className="flex items-center justify-between border-t border-slate-100 px-3 py-3">
-                <span className="text-xs font-semibold text-slate-500">Showing 1 to {Math.min(10, editorRows.length || filtered.length || 10)} of {editableTotal} test cases</span>
-                <div className="flex items-center gap-2">
-                  <button className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-300"><ChevronLeft className="h-4 w-4" /></button>
-                  {[1, 2, 3, 4, 5].map((page) => <button key={page} className={cn("flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold", page === 1 ? "bg-[#1b59f8] text-white" : "text-slate-600 hover:bg-slate-50")}>{page}</button>)}
-                  <span className="text-xs font-bold text-slate-400">...</span>
-                  <button className="flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold text-slate-600">35</button>
-                  <button className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-600"><ChevronRight className="h-4 w-4" /></button>
-                </div>
+                <span className="text-xs font-semibold text-slate-500">{editorRows.length} of {editableTotal} test cases</span>
               </div>
             </div>
           </div>
@@ -1293,73 +1433,75 @@ function TestCaseEditorView({
               <>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-extrabold text-slate-950">Editing: {tc.test_case_id}</h2>
-                    <span className={badgeClass("purple")}>Editing</span>
-                    <span className="text-[10px] font-bold text-emerald-600">Auto-saved 1m ago</span>
+                    <h2 className="text-sm font-extrabold text-slate-950">{tc.test_case_id}</h2>
+                    <span className={badgeClass("slate")}>{tc.status.replace(/_/g, " ")}</span>
+                    {tc.updated_at && <span className="text-[10px] font-bold text-slate-400">Updated {relativeTime(tc.updated_at)}</span>}
                   </div>
                   <div className="flex gap-2 text-slate-500">
-                    <button><ChevronRight className="h-4 w-4 -rotate-45" /></button>
-                    <button><X className="h-4 w-4" /></button>
+                    <button aria-label="Close" onClick={() => setSelectedTestCase(null)}><X className="h-4 w-4" /></button>
                   </div>
                 </div>
                 <div className="mb-4 flex items-center gap-5 rounded-lg border border-slate-200 bg-slate-50/40 px-3 py-2 text-xs font-semibold text-slate-600">
-                  <span>Linked Requirement: <span className="font-bold text-[#1b59f8]">{tc.linked_requirement_key || req?.requirement_id || "REQ-0023"}</span></span>
+                  <span>Linked Requirement: <span className="font-bold text-[#1b59f8]">{tc.linked_requirement_key || req?.requirement_id || "—"}</span></span>
                   <span>{ppmFromRequirement(req)}</span>
-                  <span className="min-w-0 flex-1 truncate">{req?.title || "Agent should be able to cancel order"}</span>
-                  <button onClick={viewRequirement} className="font-bold text-[#1b59f8]">View</button>
+                  <span className="min-w-0 flex-1 truncate">{req?.title || ""}</span>
+                  {(tc.linked_requirement_id ?? req?.id) && <button onClick={viewRequirement} className="font-bold text-[#1b59f8]">View</button>}
                 </div>
                 <div className="grid grid-cols-4 gap-3">
-                  <EditorField label="Test Type" value="Functional" select />
-                  <EditorField label="Scenario Class" value={scenarioClass(tc)} select />
-                  <EditorField label="Priority" value={tc.priority || "High"} select />
-                  <EditorField label="Automation Candidate" value={tc.automation_candidate ? "Yes" : "No"} select />
+                  <EditorField label="Test Type" value={tc.test_type || testType(tc)} />
+                  <EditorField label="Scenario Class" value={scenarioClass(tc)} />
+                  <EditorField label="Priority" value={tc.priority || "—"} />
+                  <EditorField label="Automation Candidate" value={tc.automation_candidate ? "Yes" : "No"} />
                 </div>
                 <div className="mt-3 grid grid-cols-[minmax(0,1fr)_120px_120px] gap-3">
                   <EditorField label="Title" value={tc.title} />
                   <EditorField label="Test Case ID" value={tc.test_case_id} muted />
-                  <EditorField label="Status" value="Editing" muted />
+                  <EditorField label="Status" value={tc.status.replace(/_/g, " ")} muted />
                 </div>
-                <EditorSection title="Preconditions" action={editingSection === "preconditions" ? "Done" : "Edit"} onAction={() => setEditingSection(editingSection === "preconditions" ? null : "preconditions")}>
-                  <ul className="list-disc space-y-1 pl-5 text-xs font-semibold leading-5 text-slate-700">
-                    {preconditions.map((item) => <li key={item}>{item}</li>)}
-                    {editingSection === "preconditions" && <li className="text-[#1b59f8]">Draft edit mode enabled for preconditions.</li>}
-                  </ul>
+                <EditorSection title="Preconditions">
+                  {preconditions.length ? (
+                    <ul className="list-disc space-y-1 pl-5 text-xs font-semibold leading-5 text-slate-700">
+                      {preconditions.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="text-xs font-semibold text-slate-400">No preconditions recorded.</p>
+                  )}
                 </EditorSection>
-                <EditorSection title="Test Steps" action="+ Add Step" onAction={() => { setExtraStep(true); notify("New draft step added."); }}>
-                  <div className="overflow-hidden rounded-lg border border-slate-200">
-                    <div className="grid grid-cols-[56px_minmax(180px,1fr)_160px_minmax(180px,1fr)] bg-slate-50 px-3 py-2 text-[10px] font-extrabold uppercase text-slate-500">
-                      <span>Step #</span><span>Action</span><span>Test Data</span><span>Expected Result</span>
+                <EditorSection title="Test Steps">
+                  {steps.length ? (
+                    <div className="overflow-hidden rounded-lg border border-slate-200">
+                      <div className="grid grid-cols-[56px_minmax(180px,1fr)_minmax(180px,1fr)] bg-slate-50 px-3 py-2 text-[10px] font-extrabold uppercase text-slate-500">
+                        <span>Step #</span><span>Action</span><span>Expected Result</span>
+                      </div>
+                      {steps.map((step) => (
+                        <div key={step.step_number} className="grid grid-cols-[56px_minmax(180px,1fr)_minmax(180px,1fr)] border-t border-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+                          <span className="text-slate-500">{step.step_number}</span>
+                          <span>{step.action}</span>
+                          <span className="text-slate-600">{step.expected_result}</span>
+                        </div>
+                      ))}
                     </div>
-                    {steps.map((step) => (
-                      <div key={step.step_number} className="grid grid-cols-[56px_minmax(180px,1fr)_160px_minmax(180px,1fr)] border-t border-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
-                        <span className="text-slate-500">{step.step_number}</span>
-                        <span>{step.action}</span>
-                        <span className="text-slate-500">{step.step_number === 2 ? "Order ID: ORD-45891" : "-"}</span>
-                        <span className="text-slate-600">{step.expected_result}</span>
-                      </div>
-                    ))}
-                    {extraStep && (
-                      <div className="grid grid-cols-[56px_minmax(180px,1fr)_160px_minmax(180px,1fr)] border-t border-blue-100 bg-blue-50/30 px-3 py-2 text-xs font-semibold text-slate-700">
-                        <span className="text-slate-500">{steps.length + 1}</span>
-                        <span>Validate cancellation confirmation audit event</span>
-                        <span className="text-slate-500">Audit payload</span>
-                        <span className="text-slate-600">Cancellation audit event is recorded successfully</span>
-                      </div>
-                    )}
-                  </div>
+                  ) : (
+                    <p className="text-xs font-semibold text-slate-400">No test steps recorded.</p>
+                  )}
                 </EditorSection>
-                <EditorSection title="Expected Result (Overall)" action={editingSection === "expected" ? "Done" : "Edit"} onAction={() => setEditingSection(editingSection === "expected" ? null : "expected")}>
-                  <p className="text-xs font-semibold text-slate-700">{tc.expected_result || "Order is cancelled successfully before payment and user receives cancellation confirmation."}</p>
-                  {editingSection === "expected" && <p className="mt-2 rounded-md bg-blue-50 px-3 py-2 text-xs font-semibold text-[#1b59f8]">Expected result is ready for inline refinement.</p>}
+                <EditorSection title="Expected Result (Overall)">
+                  <p className="text-xs font-semibold text-slate-700">{tc.expected_result || <span className="text-slate-400">Not set.</span>}</p>
                 </EditorSection>
-                <EditorSection title="Test Data Dependency" action="View Data" onAction={() => notify("Test data dependency details opened for review.")}>
-                  <p className="text-xs font-semibold text-slate-700">Data Set: Cancel_Order_Before_Payment</p>
+                <EditorSection title="Test Data Dependency">
+                  {tc.test_data && Object.keys(tc.test_data).length ? (
+                    <div className="space-y-1 text-xs font-semibold text-slate-700">
+                      {Object.entries(tc.test_data).map(([key, value]) => (
+                        <div key={key} className="flex gap-2">
+                          <span className="font-bold text-slate-500">{key}:</span>
+                          <span className="min-w-0 break-words">{typeof value === "object" ? JSON.stringify(value) : String(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-semibold text-slate-400">No test data dependency recorded.</p>
+                  )}
                 </EditorSection>
-                <div className="rounded-lg border border-dashed border-blue-300 bg-blue-50/20 p-4 text-center text-xs font-semibold text-slate-500">
-                  <p className="mb-1 text-left font-extrabold text-slate-700">Attachments (0)</p>
-                  Drag & drop files here or click to upload<br />
-                  <span className="text-[10px]">Supported types: png, jpg, pdf, docx, xlsx (Max 10MB)</span>
-                </div>
               </>
             ) : (
               <div className="flex h-full items-center justify-center text-xs font-semibold text-slate-500">Select a test case to edit.</div>
@@ -1370,100 +1512,91 @@ function TestCaseEditorView({
 
       <aside className="sticky top-0 h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <h2 className="mb-5 text-sm font-extrabold text-slate-950">Test Case Inspector</h2>
-        <InspectorCard title="Traceability" action="View full trace" onAction={() => notify("Full trace opened in the inspector context.")}>
+        <InspectorCard title="Traceability">
           <div className="grid grid-cols-[1fr_18px_1fr_18px_1fr] items-center gap-2 text-center text-[10px] font-bold">
-            <TraceBox label="Requirement" value={`${tc?.linked_requirement_key || req?.requirement_id || "REQ-0023"}\n${ppmFromRequirement(req)}`} />
+            <TraceBox label="Requirement" value={`${tc?.linked_requirement_key || req?.requirement_id || "—"}\n${ppmFromRequirement(req)}`} />
             <ChevronRight className="h-4 w-4 text-slate-400" />
-            <TraceBox label="Scenario" value="SCN-0156" />
+            <TraceBox label="Scenario" value={scenario?.scenario_id || "—"} />
             <ChevronRight className="h-4 w-4 text-slate-400" />
-            <TraceBox label="Test Case" value={tc?.test_case_id || "TC-03428"} />
+            <TraceBox label="Test Case" value={tc?.test_case_id || "—"} />
           </div>
         </InspectorCard>
-        <InspectorCard title="Validation Findings" badge="2 Issues">
-          <div className="space-y-3 text-xs font-semibold text-slate-700">
-            <Issue text="Expected result step 4 is too generic" />
-            <Issue text="Cancellation reason field data is missing" />
-            <button onClick={() => setActiveTab("issues")} className="font-bold text-[#1b59f8]">View all issues</button>
-          </div>
+        <InspectorCard title="Validation Findings" badge={reviewFindings.length ? `${reviewFindings.length} finding${reviewFindings.length === 1 ? "" : "s"}` : undefined}>
+          {reviewFindings.length ? (
+            <div className="space-y-3 text-xs font-semibold text-slate-700">
+              {reviewFindings.map((f, index) => <Issue key={index} text={`${f.dimension}: ${f.issue}`} />)}
+            </div>
+          ) : (
+            <p className="text-xs font-semibold text-slate-400">{review ? "No open findings on the latest coverage review." : "No automated review recorded yet."}</p>
+          )}
         </InspectorCard>
-        <InspectorCard title="AI Suggestions" badge="3 Suggestions">
-          <div className="space-y-3 text-xs font-semibold text-slate-700">
-            <Suggestion text="Add negative scenario: payment initiated then cancel" />
-            <Suggestion text="Add boundary scenario for large order value" />
-            <Suggestion text="Consider validating inventory after cancellation" />
-            <button onClick={applySuggestions} className="font-bold text-[#1b59f8]">Apply Suggestions</button>
-          </div>
+        <InspectorCard title="Review Suggestions" badge={reviewSuggestions.length ? `${reviewSuggestions.length}` : undefined}>
+          {reviewSuggestions.length ? (
+            <div className="space-y-3 text-xs font-semibold text-slate-700">
+              {reviewSuggestions.map((s, index) => <Suggestion key={index} text={s} />)}
+            </div>
+          ) : (
+            <p className="text-xs font-semibold text-slate-400">No suggestions on the latest coverage review.</p>
+          )}
         </InspectorCard>
-        <InspectorCard title="Change History" action="View all" onAction={() => notify("Full change history loaded.")}>
-          <div className="space-y-4 text-xs">
-            <HistoryRow time="Jul 21, 01:25 PM" actor="Surya (You)" text="Edited Step 4 - Expected result updated" />
-            <HistoryRow time="Jul 21, 01:20 PM" actor="Surya (You)" text="Updated preconditions" />
-            <HistoryRow time="Jul 21, 12:58 PM" actor="AI Generator" text="Initial test case generated" />
-          </div>
+        <InspectorCard title="Change History">
+          {historyLoading ? (
+            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading history…</div>
+          ) : history.length ? (
+            <div className="space-y-4 text-xs">
+              {history.slice(0, 8).map((h) => (
+                <HistoryRow
+                  key={h.id}
+                  time={displayDate(h.created_at)}
+                  actor={h.source === "platform" || !h.changed_by ? (h.source ? h.source.replace(/_/g, " ") : "System") : resolveUserName(userNames, h.changed_by)}
+                  text={h.comment || `${h.field_name.replace(/_/g, " ")}${h.new_value ? ` → ${h.new_value}` : ""}`}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs font-semibold text-slate-400">No change history recorded.</p>
+          )}
         </InspectorCard>
         <InspectorCard title="Review & Audit">
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <InfoPair label="Created By" value="AI Generator" />
-            <InfoPair label="Generated On" value="Jul 21, 2026, 12:58 PM" />
-            <InfoPair label="Last Edited By" value="Surya" />
-            <InfoPair label="Last Edited On" value="Jul 21, 2026, 01:25 PM" />
-            <InfoPair label="Review Status" value="Ready for Review" />
-            <button onClick={() => notify("Audit log opened for review.")} className="text-left">
-              <InfoPair label="Audit Trail" value="View log" />
-            </button>
+            <InfoPair label="Created By" value={resolveUserName(userNames, tc?.created_by)} />
+            <InfoPair label="Created On" value={displayDateTime(tc?.created_at)} />
+            <InfoPair label="Last Updated By" value={resolveUserName(userNames, tc?.updated_by ?? tc?.last_status_updated_by)} />
+            <InfoPair label="Last Updated On" value={displayDateTime(tc?.updated_at)} />
+            <InfoPair label="Status" value={tc ? tc.status.replace(/_/g, " ") : "—"} />
+            <InfoPair label="Coverage Verdict" value={review ? review.verdict.replace(/_/g, " ") : "Not reviewed"} />
           </div>
         </InspectorCard>
         <div className="space-y-3 pt-1">
           <p className="text-xs font-extrabold text-slate-800">Actions</p>
           <Button onClick={saveDraft} disabled={!tc || busyAction !== null} className="h-10 w-full bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]">Save Draft</Button>
-          <Button onClick={validateCase} disabled={!tc || busyAction !== null} variant="outline" className="h-10 w-full border-emerald-300 text-xs font-bold text-emerald-700">Validate Test Case</Button>
+          <Button onClick={validateCase} disabled={!tc || busyAction !== null} variant="outline" className="h-10 w-full border-emerald-300 text-xs font-bold text-emerald-700">Check Coverage Review</Button>
           <Button onClick={sendToApproval} disabled={!tc || busyAction !== null} variant="outline" className="h-10 w-full border-blue-300 text-xs font-bold text-[#1b59f8]">Send to Approval</Button>
-          <Button onClick={discardChanges} variant="outline" className="h-10 w-full border-red-300 text-xs font-bold text-red-600">Discard Changes</Button>
         </div>
       </aside>
     </div>
   );
 }
 
+// Read-only field display. The editor surfaces persisted values; inline
+// field editing is not wired to a persistence path, so we do not present
+// fake-editable inputs.
 function EditorField({
   label,
   value,
-  select,
   muted,
 }: {
   label: string;
   value: string;
-  select?: boolean;
   muted?: boolean;
 }) {
-  const [localValue, setLocalValue] = useState(value);
-  const options =
-    label === "Priority" ? ["High", "Medium", "Low", "Critical"] :
-    label === "Automation Candidate" ? ["Yes", "No"] :
-    label === "Test Type" ? ["Functional", "Regression", "Integration", "Negative", "Positive"] :
-    label === "Scenario Class" ? ["Business Validation", "Integration", "Payment Validation", "Input Validation", "Happy Path", "Notification"] :
-    [value];
-
   return (
-    <label className="block">
+    <div className="block">
       <span className="mb-1.5 block text-[10px] font-extrabold text-slate-500">{label}</span>
-      {select ? (
-        <select
-          value={localValue}
-          onChange={(event) => setLocalValue(event.target.value)}
-          className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-        >
-          {options.map((option) => <option key={option} value={option}>{option}</option>)}
-        </select>
-      ) : (
-        <input
-          value={localValue}
-          readOnly={muted}
-          onChange={(event) => setLocalValue(event.target.value)}
-          className={cn("h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100", muted ? "bg-slate-50" : "bg-white")}
-        />
-      )}
-    </label>
+      <div className={cn("flex h-10 w-full items-center truncate rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800", muted ? "bg-slate-50" : "bg-white")}>
+        {value}
+      </div>
+    </div>
   );
 }
 
@@ -1508,8 +1641,8 @@ function TraceBox({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-3">
       <p className="mb-1 text-[10px] font-bold text-slate-400">{label}</p>
-      {value.split("\n").map((line) => (
-        <p key={line} className={cn("font-extrabold", line.startsWith("REQ") || line.startsWith("TC") || line.startsWith("SCN") ? "text-[#1b59f8]" : "text-slate-600")}>{line}</p>
+      {value.split("\n").map((line, index) => (
+        <p key={index} className={cn("font-extrabold", line.startsWith("REQ") || line.startsWith("TC") || line.startsWith("SCN") ? "text-[#1b59f8]" : "text-slate-600")}>{line}</p>
       ))}
     </div>
   );
