@@ -12,6 +12,113 @@ from app.services.display_id_service import display_id, temporary_id
 
 # Requirements whose approval status cannot be changed again
 _TERMINAL_STATUSES = {"approved", "rejected"}
+_WORKFLOW_STAGES = {"intake", "analysis", "traceability", "review"}
+
+
+def requirement_workflow_stage(req: Requirement) -> str:
+    """Return one canonical stage, including safe mappings for legacy records."""
+    if req.status in _TERMINAL_STATUSES:
+        return "review"
+    metadata = req.metadata_ or {}
+    persisted = str(metadata.get("workflow_stage") or "").lower()
+    if persisted in _WORKFLOW_STAGES:
+        return persisted
+    readiness = str(req.readiness_status or "draft").lower()
+    if readiness in {"pending_review", "ready_for_review", "review_pending"}:
+        return "review"
+    if readiness in {"traceability_pending", "ready_for_traceability"}:
+        return "traceability"
+    if readiness in {"analysis_pending", "analysis_complete", "ai_review_pending", "ai_review_completed", "needs_clarification"}:
+        return "analysis"
+    legacy_analysis_complete = (
+        str(req.quality_verdict or "").lower() == "pass"
+        and not _has_values(req.missing_information)
+        and _has_values(req.telecom_domain or req.qa_domain or req.business_process)
+        and _has_values(req.product or req.product_group or req.sub_request_type)
+    )
+    if readiness == "ready_for_test_planning" and legacy_analysis_complete:
+        return "traceability"
+    return "intake"
+
+
+def _has_values(value) -> bool:
+    return bool(value and (not isinstance(value, str) or value.strip()))
+
+
+def requirement_analysis_blockers(req: Requirement) -> list[str]:
+    blockers: list[str] = []
+    if str(req.quality_verdict or "").lower() != "pass":
+        blockers.append("Quality analysis must pass before traceability.")
+    if _has_values(req.missing_information):
+        blockers.append("Missing information must be resolved before traceability.")
+    if not _has_values(req.telecom_domain or req.qa_domain or req.business_process):
+        blockers.append("Domain or business-process classification is required.")
+    if not _has_values(req.product or req.product_group or req.sub_request_type):
+        blockers.append("Product or request-type classification is required.")
+    return blockers
+
+
+def requirement_traceability_blockers(req: Requirement) -> list[str]:
+    blockers = requirement_analysis_blockers(req)
+    mapped_systems = (
+        req.systems_impacted or req.impacted_systems or req.impacted_interfaces
+        or req.upstream_systems or req.downstream_systems or req.product or req.product_group
+    )
+    if not _has_values(mapped_systems):
+        blockers.append("At least one application, product, system, or interface mapping is required.")
+    return blockers
+
+
+async def transition_requirement(
+    db: AsyncSession,
+    req: Requirement,
+    action: str,
+    notes: str | None = None,
+    user_id: int | None = None,
+) -> Requirement:
+    """Apply a validated stage transition; no screen can silently advance a row."""
+    if req.status in _TERMINAL_STATUSES:
+        raise HTTPException(status_code=409, detail="Approved or rejected requirements cannot be transitioned.")
+
+    current = requirement_workflow_stage(req)
+    transitions = {
+        "send_to_analysis": ("intake", "analysis", "analysis_pending", "draft"),
+        "send_to_traceability": ("analysis", "traceability", "traceability_pending", "draft"),
+        "send_to_review": ("traceability", "review", "pending_review", "pending_review"),
+        "send_back_to_analysis": (("traceability", "review"), "analysis", "needs_clarification", "draft"),
+        "send_back_to_traceability": ("review", "traceability", "traceability_pending", "draft"),
+    }
+    if action not in transitions:
+        raise HTTPException(status_code=422, detail="Unsupported requirement workflow action.")
+    expected, target, readiness, status = transitions[action]
+    allowed = current in expected if isinstance(expected, tuple) else current == expected
+    if not allowed:
+        raise HTTPException(status_code=409, detail=f"Cannot {action.replace('_', ' ')} from the {current} stage.")
+
+    if action == "send_to_analysis" and (not req.requirement_id or not req.title.strip() or not req.source):
+        raise HTTPException(status_code=409, detail="Intake validation failed: ID, title, and source provenance are required.")
+    blockers = requirement_analysis_blockers(req) if action == "send_to_traceability" else []
+    if action == "send_to_review":
+        blockers = requirement_traceability_blockers(req)
+    if blockers:
+        raise HTTPException(status_code=409, detail={"message": "Previous-stage validation failed.", "blockers": blockers})
+
+    metadata = dict(req.metadata_ or {})
+    history = list(metadata.get("workflow_history") or [])
+    history.append({"action": action, "from": current, "to": target, "notes": notes, "user_id": user_id})
+    metadata.update({"workflow_stage": target, "workflow_history": history})
+    if action == "send_to_review":
+        metadata["traceability_validated"] = True
+    elif action in {"send_back_to_analysis", "send_back_to_traceability"}:
+        metadata["traceability_validated"] = False
+    req.metadata_ = metadata
+    req.status = status
+    req.readiness_status = readiness
+    if notes:
+        req.review_notes = notes
+    await db.flush()
+    await db.refresh(req)
+    return req
 
 
 async def create_requirement(
@@ -29,6 +136,7 @@ async def create_requirement(
         source_document_id=data.source_document_id,
         status="draft",
         readiness_status="draft",
+        metadata_={"workflow_stage": "intake"},
         is_deleted=False,
         telecom_domain=data.telecom_domain,
         risk_level=data.risk_level,
@@ -213,6 +321,14 @@ async def approve_requirement(db: AsyncSession, req: Requirement, action: str, n
             status_code=409,
             detail=f"Requirement is already '{req.status}' and cannot be changed again.",
         )
+    if requirement_workflow_stage(req) != "review":
+        raise HTTPException(status_code=409, detail="Requirement approval is available only in Review & Approval.")
+    if action == "approve":
+        blockers = requirement_traceability_blockers(req)
+        if not (req.metadata_ or {}).get("traceability_validated"):
+            blockers.append("Traceability must be explicitly validated before approval.")
+        if blockers:
+            raise HTTPException(status_code=409, detail={"message": "Approval readiness validation failed.", "blockers": blockers})
     req.status = "approved" if action == "approve" else "rejected"
     req.readiness_status = "approved" if action == "approve" else "rejected"
     if notes:
@@ -246,16 +362,17 @@ async def update_quality_scores(
     req.quality_feedback = quality_feedback
     req.quality_verdict = quality_verdict
 
-    # Update readiness_status based on verdict
+    metadata = dict(req.metadata_ or {})
+    metadata["workflow_stage"] = "analysis"
+    req.metadata_ = metadata
+    req.status = "draft"
+    # Analysis never skips directly to traceability; the explicit hand-off owns that transition.
     if quality_verdict == "fail":
         req.readiness_status = "needs_clarification"
     elif quality_verdict == "needs_revision":
         req.readiness_status = "ai_review_completed"
     elif quality_verdict == "pass":
-        if scenario_generation_readiness is not None and scenario_generation_readiness >= 3.5:
-            req.readiness_status = "ready_for_test_planning"
-        else:
-            req.readiness_status = "ai_review_completed"
+        req.readiness_status = "analysis_complete"
     else:
         req.readiness_status = "ai_review_completed"
 

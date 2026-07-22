@@ -98,6 +98,22 @@ class RequirementUpdate(BaseModel):
         return v
 
 
+RequirementTransitionAction = Literal[
+    "send_to_analysis",
+    "send_to_traceability",
+    "send_to_review",
+    "send_back_to_analysis",
+    "send_back_to_traceability",
+]
+
+
+class RequirementTransitionRequest(BaseModel):
+    """An explicit, auditable hand-off between requirement workspaces."""
+
+    action: RequirementTransitionAction
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 class RequirementOut(BaseModel):
     id: int
     project_id: int

@@ -138,6 +138,24 @@ function metadataRecord(req: Requirement): Record<string, any> {
   return (req.metadata_ || {}) as Record<string, any>;
 }
 
+function getRequirementWorkflowStage(req: Requirement): "intake" | "analysis" | "traceability" | "review" {
+  if (["approved", "rejected"].includes((req.status || "").toLowerCase())) return "review";
+  const persisted = String(metadataRecord(req).workflow_stage || "").toLowerCase();
+  if (["intake", "analysis", "traceability", "review"].includes(persisted)) {
+    return persisted as "intake" | "analysis" | "traceability" | "review";
+  }
+  const readiness = String(req.readiness_status || "draft").toLowerCase();
+  if (["pending_review", "ready_for_review", "review_pending"].includes(readiness)) return "review";
+  if (["traceability_pending", "ready_for_traceability"].includes(readiness)) return "traceability";
+  if (["analysis_pending", "analysis_complete", "ai_review_pending", "ai_review_completed", "needs_clarification"].includes(readiness)) return "analysis";
+  const legacyAnalysisComplete = (req.quality_verdict || "").toLowerCase() === "pass"
+    && asTextList(req.missing_information).length === 0
+    && Boolean(req.telecom_domain || req.qa_domain || req.business_process)
+    && Boolean(req.product || req.product_group || req.sub_request_type);
+  if (readiness === "ready_for_test_planning" && legacyAnalysisComplete) return "traceability";
+  return "intake";
+}
+
 function asTextList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => renderInsightItem(item)).filter(Boolean);
   if (typeof value === "string" && value.trim()) return [value.trim()];
@@ -159,11 +177,12 @@ function getAnalysisStatus(req: Requirement, isDuplicate: boolean): AnalysisStat
   const quality = (req.quality_verdict || "").toLowerCase();
   const missingCount = asTextList(req.missing_information).length;
 
+  if (status === "approved") return "analyzed";
   if (readiness.includes("stale")) return "stale_source";
   if (status === "rejected" || readiness.includes("blocked")) return "blocked";
   if (quality === "fail") return "failed";
   if (missingCount > 0 || quality === "needs_revision" || isDuplicate) return "needs_clarification";
-  if (quality === "pass" || status === "approved" || status === "pending_review") return "analyzed";
+  if (quality === "pass") return "analyzed";
   return "not_analyzed";
 }
 
@@ -299,6 +318,7 @@ const jiraStoryTypePreset = "Story, User Story, Requirement, Epic";
 
 type IntakeTab = "requirements" | "documents" | "url" | "github" | "jira" | "paste" | "api";
 type RequirementsWorkspaceView = "intake" | "analysis" | "traceability" | "review";
+type RequirementTransitionAction = "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability";
 type AnalysisStatus = "not_analyzed" | "queued" | "analyzing" | "needs_clarification" | "blocked" | "analyzed" | "stale_source" | "failed";
 
 type IntakeSourceRow = {
@@ -313,7 +333,8 @@ type IntakeSourceRow = {
   validationIssues: string[];
   provenance: string;
   createdAt?: string;
-  nextAction: "Run AI Intake" | "Retry" | "Send to Analysis" | "Processing";
+  nextAction: "Run AI Intake" | "Retry" | "Send to Analysis" | "Processing" | "View Downstream";
+  requirementIds: number[];
 };
 
 type AnalysisRow = {
@@ -453,6 +474,7 @@ function RequirementsContent() {
   const [urlCrawlDepth, setUrlCrawlDepth] = useState(0);
   const [notes, setNotes] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
   // Test Environment + Generation Notes — tester-set context for AI test-case
   // generation, editable per requirement in the Details tab.
   const [genEnvDraft, setGenEnvDraft] = useState("");
@@ -838,6 +860,42 @@ function RequirementsContent() {
     }
   };
 
+  const handleRequirementTransition = async (req: Requirement, action: RequirementTransitionAction, nextView: RequirementsWorkspaceView) => {
+    setTransitioning(true);
+    setAgentError(null);
+    try {
+      await requirementsApi.transition(req.id, action, notes || undefined);
+      await loadData();
+      setSelectedReq(null);
+      setNotes("");
+      handleWorkspaceViewChange(nextView);
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail;
+      const message = typeof detail === "string" ? detail : detail?.message;
+      const blockers = Array.isArray(detail?.blockers) ? ` ${detail.blockers.join(" ")}` : "";
+      setAgentError(`${message || "Requirement transition failed."}${blockers}`);
+    } finally {
+      setTransitioning(false);
+    }
+  };
+
+  const sendSourceToAnalysis = async (source: IntakeSourceRow) => {
+    if (!source.requirementIds.length) return;
+    setTransitioning(true);
+    setAgentError(null);
+    try {
+      await Promise.all(source.requirementIds.map((id) => requirementsApi.transition(id, "send_to_analysis")));
+      await loadData();
+      setSelectedSource(null);
+      handleWorkspaceViewChange("analysis");
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail;
+      setAgentError(typeof detail === "string" ? detail : detail?.message || "Source hand-off failed.");
+    } finally {
+      setTransitioning(false);
+    }
+  };
+
   const handleApprove = async (action: "approve" | "reject") => {
     if (!selectedReq) return;
     setReviewLoading(true);
@@ -1101,13 +1159,22 @@ function RequirementsContent() {
   }
 
   // Filtered requirements list
+  const requirementsByStage = useMemo(() => ({
+    intake: requirements.filter((requirement) => getRequirementWorkflowStage(requirement) === "intake"),
+    analysis: requirements.filter((requirement) => getRequirementWorkflowStage(requirement) === "analysis"),
+    traceability: requirements.filter((requirement) => getRequirementWorkflowStage(requirement) === "traceability"),
+    review: requirements.filter((requirement) => getRequirementWorkflowStage(requirement) === "review"),
+  }), [requirements]);
+
   const filteredRequirements = useMemo(() => {
-    return requirements.filter((r) => filterStatus === "all" || r.status === filterStatus);
-  }, [requirements, filterStatus]);
+    return requirementsByStage.intake.filter((r) => filterStatus === "all" || r.status === filterStatus);
+  }, [requirementsByStage.intake, filterStatus]);
 
   const intakeSources = useMemo<IntakeSourceRow[]>(() => {
     const documentRows = documents.map((document) => {
-      const extractedCount = requirements.filter((requirement) => requirement.source_document_id === document.id).length;
+      const sourceRequirements = requirements.filter((requirement) => requirement.source_document_id === document.id);
+      const intakeRequirements = sourceRequirements.filter((requirement) => getRequirementWorkflowStage(requirement) === "intake");
+      const extractedCount = sourceRequirements.length;
       const normalizedStatus = document.status.toLowerCase();
       const isProcessing = ["uploaded", "processing"].includes(normalizedStatus);
       const isBlocked = ["failed", "error", "blocked"].includes(normalizedStatus);
@@ -1133,7 +1200,8 @@ function RequirementsContent() {
         validationIssues,
         provenance: `Uploaded source #${document.id}`,
         createdAt: document.created_at,
-        nextAction: status === "blocked" ? "Retry" : status === "processing" ? "Processing" : extractedCount > 0 ? "Send to Analysis" : "Run AI Intake",
+        nextAction: status === "blocked" ? "Retry" : status === "processing" ? "Processing" : intakeRequirements.length > 0 ? "Send to Analysis" : extractedCount > 0 ? "View Downstream" : "Run AI Intake",
+        requirementIds: intakeRequirements.map((requirement) => requirement.id),
       } satisfies IntakeSourceRow;
     });
 
@@ -1166,7 +1234,8 @@ function RequirementsContent() {
             ? `Imported from Jira issue ${requirement.jira_issue_key}`
             : `Created from ${sourceType.toLowerCase()} intake`,
           createdAt: requirement.created_at,
-          nextAction: validationIssues.length ? "Retry" : "Send to Analysis",
+          nextAction: validationIssues.length ? "Retry" : getRequirementWorkflowStage(requirement) === "intake" ? "Send to Analysis" : "View Downstream",
+          requirementIds: getRequirementWorkflowStage(requirement) === "intake" ? [requirement.id] : [],
         } satisfies IntakeSourceRow;
       });
 
@@ -1193,7 +1262,7 @@ function RequirementsContent() {
   }, [requirements]);
 
   const analysisRows = useMemo<AnalysisRow[]>(() => {
-    return requirements.map((requirement) => {
+    return requirementsByStage.analysis.map((requirement) => {
       const meta = metadataRecord(requirement);
       const qualityMeta = (meta.quality_review || {}) as Record<string, any>;
       const ambiguityCount = asTextList(qualityMeta.ambiguities).length
@@ -1242,7 +1311,7 @@ function RequirementsContent() {
         blockers,
       };
     });
-  }, [duplicateRequirementIds, requirements, resolveUser, selectedProjectPpmId]);
+  }, [duplicateRequirementIds, requirementsByStage.analysis, resolveUser, selectedProjectPpmId]);
 
   const filteredAnalysisRows = useMemo(() => {
     const query = analysisSearch.trim().toLowerCase();
@@ -1265,18 +1334,18 @@ function RequirementsContent() {
     const ready = analysisRows.filter((row) => row.status === "analyzed" && row.blockers.length === 0).length;
 
     return [
-      { title: "Total Requirements", icon: FileText, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: requirements.length.toLocaleString(), sublabel: "From intake", footer: "Analyzable requirement records" },
+      { title: "Total Requirements", icon: FileText, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: analysisRows.length.toLocaleString(), sublabel: "In analysis", footer: "Current analysis-stage records" },
       { title: "Analysis Ready", icon: ShieldCheck, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: ready.toLocaleString(), sublabel: "Ready", footer: "No mandatory blockers" },
       { title: "In Progress", icon: RefreshCw, iconBg: "bg-indigo-50 border-indigo-100", iconColor: "text-indigo-500", value: (count("queued") + count("analyzing")).toLocaleString(), sublabel: "Active", footer: "Queued or analyzing" },
       { title: "Ambiguity Detected", icon: AlertTriangle, iconBg: "bg-orange-50 border-orange-100", iconColor: "text-orange-500", value: needsAttention.toLocaleString(), sublabel: "Review", footer: "Needs clarification" },
       { title: "Missing Information", icon: CircleDot, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: missingInfo.toLocaleString(), sublabel: "Blocked", footer: "Details required" },
       { title: "Duplicates / Conflicts", icon: GitBranch, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: duplicatesAndConflicts.toLocaleString(), sublabel: "Review", footer: "Resolution required" },
     ];
-  }, [analysisRows, requirements.length]);
+  }, [analysisRows]);
 
   const traceabilityRows = useMemo<RequirementTraceabilityRow[]>(() => {
     const matrixByRequirementId = new Map(traceabilityMatrix.map((row) => [row.requirement.id, row]));
-    return requirements.map((requirement, index) => {
+    return requirementsByStage.traceability.map((requirement) => {
       const matrix = matrixByRequirementId.get(requirement.id);
       const analysis = analysisRows.find((row) => row.requirement.id === requirement.id);
       const testCaseLinked = matrix?.test_cases.length ?? 0;
@@ -1303,7 +1372,7 @@ function RequirementsContent() {
 
       return {
         requirement,
-        ppmId: selectedProjectPpmId === "Not set" ? `PPM-${4587 + index}` : selectedProjectPpmId,
+        ppmId: String(metadataRecord(requirement).ppm_id || selectedProjectPpmId || "Not assigned"),
         sourceLabel: requirement.jira_issue_key || requirement.source || "Source / Evidence",
         analysisStatus: analysis?.status ?? getAnalysisStatus(requirement, duplicateRequirementIds.has(requirement.id)),
         scenarioLinked,
@@ -1320,7 +1389,7 @@ function RequirementsContent() {
         gaps: matrix?.gaps ?? [],
       };
     });
-  }, [analysisRows, duplicateRequirementIds, requirements, selectedProjectPpmId, traceabilityMatrix]);
+  }, [analysisRows, duplicateRequirementIds, requirementsByStage.traceability, selectedProjectPpmId, traceabilityMatrix]);
 
   const filteredTraceabilityRows = useMemo(() => {
     const query = traceabilitySearch.trim().toLowerCase();
@@ -1356,46 +1425,49 @@ function RequirementsContent() {
   }, [traceabilityRows]);
 
   const reviewRows = useMemo<RequirementReviewRow[]>(() => {
-    const reviewers = ["Ayesha", "Rahul", "Karan", "Meera"];
-    return requirements.map((requirement, index) => {
-      const analysis = analysisRows.find((row) => row.requirement.id === requirement.id);
-      const trace = traceabilityRows.find((row) => row.requirement.id === requirement.id);
-      const traceScore = trace
-        ? Math.round(((trace.scenarioLinked + trace.testCaseLinked + trace.automationLinked + trace.evidenceLinked) / Math.max(1, trace.scenarioTotal + trace.testCaseTotal + trace.automationTotal + trace.evidenceTotal)) * 100)
-        : 0;
+    return requirementsByStage.review.map((requirement) => {
+      const meta = metadataRecord(requirement);
+      const analysisStatus = getAnalysisStatus(requirement, duplicateRequirementIds.has(requirement.id));
+      const traceValidated = meta.traceability_validated === true || requirement.readiness_status === "pending_review" || ["approved", "rejected"].includes(requirement.status);
+      const traceScore = traceValidated ? 100 : 0;
+      const taxonomyReady = Boolean(requirement.telecom_domain || requirement.qa_domain || requirement.business_process)
+        && Boolean(requirement.product || requirement.product_group || requirement.sub_request_type);
+      const applicationMapped = Boolean(requirement.systems_impacted?.length || requirement.impacted_interfaces?.length || requirement.upstream_systems?.length || requirement.downstream_systems?.length || requirement.product || requirement.product_group);
       const blockers = [
-        ...(analysis?.blockers || []),
-        ...(trace && trace.health !== "fully_traced" ? [`Traceability is ${traceHealthLabel(trace.health).toLowerCase()}.`] : []),
+        ...(analysisStatus !== "analyzed" ? ["Requirement analysis has not passed."] : []),
+        ...(asTextList(requirement.missing_information).length ? ["Missing information must be resolved."] : []),
+        ...(duplicateRequirementIds.has(requirement.id) ? ["Potential duplicate requires resolution."] : []),
+        ...(!taxonomyReady ? ["Taxonomy classification is incomplete."] : []),
+        ...(!applicationMapped ? ["Application or system mapping is incomplete."] : []),
+        ...(!traceValidated ? ["Traceability gate has not been validated."] : []),
         ...((requirement.status || "").toLowerCase() === "rejected" ? ["Requirement was rejected."] : []),
       ];
-      const readyForApproval = (analysis?.status === "analyzed" || requirement.status === "pending_review" || requirement.status === "approved")
-        && trace?.health === "fully_traced"
-        && blockers.length === 0;
+      const readyForApproval = blockers.length === 0 && !["approved", "rejected"].includes(requirement.status);
       const reviewStatus: ReviewStatus = requirement.status === "approved"
         ? "approved"
         : requirement.status === "rejected"
           ? "rejected"
           : blockers.length > 0
-            ? (analysis?.status === "needs_clarification" ? "changes_requested" : "blocked")
+            ? (analysisStatus === "needs_clarification" ? "changes_requested" : "blocked")
             : readyForApproval
               ? "ready"
               : "pending";
 
       return {
         requirement,
-        ppmId: trace?.ppmId || (selectedProjectPpmId === "Not set" ? `PPM-${4587 + index}` : selectedProjectPpmId),
+        ppmId: String(meta.ppm_id || selectedProjectPpmId || "Not assigned"),
         owner: resolveUser(requirement.updated_by || requirement.created_by),
-        analysisStatus: analysis?.status ?? getAnalysisStatus(requirement, duplicateRequirementIds.has(requirement.id)),
-        traceabilityHealth: trace?.health || "not_traced",
+        analysisStatus,
+        traceabilityHealth: traceValidated ? "fully_traced" : "not_traced",
         traceabilityScore: traceScore,
         reviewStatus,
-        reviewer: reviewStatus === "blocked" ? "Unassigned" : reviewers[index % reviewers.length],
-        slaAge: reviewStatus === "approved" || reviewStatus === "blocked" ? "-" : index % 4 === 0 ? "2d left" : index % 4 === 1 ? "1d left" : index % 4 === 2 ? "3d ago" : "4h left",
+        reviewer: meta.assigned_reviewer_id ? resolveUser(Number(meta.assigned_reviewer_id)) : "Unassigned",
+        slaAge: meta.review_due_at ? new Date(String(meta.review_due_at)).toLocaleDateString() : "Not assigned",
         readyForApproval,
         blockers,
       };
     });
-  }, [analysisRows, duplicateRequirementIds, requirements, resolveUser, selectedProjectPpmId, traceabilityRows]);
+  }, [duplicateRequirementIds, requirementsByStage.review, resolveUser, selectedProjectPpmId]);
 
   const reviewStats = useMemo(() => {
     const total = reviewRows.length;
@@ -1419,13 +1491,13 @@ function RequirementsContent() {
   // UI-006 intake-governance metrics. Values are derived from persisted sources and
   // requirements so their ownership stays deterministic and auditable.
   const stats = useMemo(() => {
-    const titleCounts = requirements.reduce<Record<string, number>>((counts, requirement) => {
+    const titleCounts = requirementsByStage.intake.reduce<Record<string, number>>((counts, requirement) => {
       const key = requirement.title.trim().toLowerCase();
       if (key) counts[key] = (counts[key] || 0) + 1;
       return counts;
     }, {});
     const duplicateCandidates = Object.values(titleCounts).reduce((count, occurrences) => count + Math.max(0, occurrences - 1), 0);
-    const ready = intakeSources.filter((source) => source.status === "completed" && source.validationIssues.length === 0).length;
+    const ready = intakeSources.filter((source) => source.status === "completed" && source.validationIssues.length === 0 && source.requirementIds.length > 0).length;
     const processing = intakeSources.filter((source) => source.status === "processing").length;
     const blocked = intakeSources.filter((source) => source.status === "blocked").length;
 
@@ -1435,9 +1507,9 @@ function RequirementsContent() {
       { title: "Processing", icon: RefreshCw, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: processing.toLocaleString(), sublabel: "Active", footer: "AI intake jobs in progress" },
       { title: "Blocked", icon: AlertTriangle, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: blocked.toLocaleString(), sublabel: "Sources", footer: "Validation or processing issues" },
       { title: "Duplicate Candidates", icon: CircleDot, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: duplicateCandidates.toLocaleString(), sublabel: "Review", footer: "Title-based candidate matches" },
-      { title: "Requirements Extracted", icon: FileText, iconBg: "bg-cyan-50 border-cyan-100", iconColor: "text-cyan-600", value: requirements.length.toLocaleString(), sublabel: "Records", footer: "Available in extracted requirements" },
+      { title: "Requirements Extracted", icon: FileText, iconBg: "bg-cyan-50 border-cyan-100", iconColor: "text-cyan-600", value: requirementsByStage.intake.length.toLocaleString(), sublabel: "Records", footer: "Awaiting analysis hand-off" },
     ];
-  }, [intakeSources, requirements]);
+  }, [intakeSources, requirementsByStage.intake]);
 
   const selectedJiraConnectionRecord = jiraConnections.find((c) => c.id === selectedJiraConnection);
 
@@ -1877,7 +1949,7 @@ function RequirementsContent() {
                       <h2 className="text-xs font-bold uppercase tracking-wide text-slate-900">Analysis Workflow</h2>
                       <p className="mt-0.5 text-[10px] font-semibold text-slate-400">Grounded analysis from intake-ready requirements through clarification and traceability readiness</p>
                     </div>
-                    <Button variant="outline" size="sm" disabled={agentRunning || requirements.length === 0} onClick={() => runQualityAgent()} className="h-7 border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-650">
+                    <Button variant="outline" size="sm" disabled={agentRunning || analysisRows.length === 0} onClick={() => runQualityAgent(analysisRows.map((row) => row.requirement.id))} className="h-7 border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-650">
                       <Bot className="mr-1 h-3.5 w-3.5" />Run Analysis
                     </Button>
                   </div>
@@ -1964,7 +2036,7 @@ function RequirementsContent() {
                           <td className="px-3 py-3"><span className={cn("font-bold", row.duplicateCount ? "text-amber-600" : "text-slate-400")}>{row.duplicateCount}</span></td>
                           <td className="px-3 py-3"><Badge variant={riskBadgeVariant(row.riskLevel)}>{row.riskLevel}</Badge></td>
                           <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
-                          <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}><Button size="sm" variant={isReadyForTraceability ? "default" : "outline"} disabled={!isReadyForTraceability} onClick={() => handleOpenReqDetail(row.requirement)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={!isReadyForTraceability ? row.blockers[0] || "Complete analysis before traceability" : undefined}>{isReadyForTraceability ? "Send to Traceability" : "Review"}</Button></td>
+                          <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}><Button size="sm" variant={isReadyForTraceability ? "default" : "outline"} disabled={!isReadyForTraceability || transitioning} onClick={() => isReadyForTraceability ? handleRequirementTransition(row.requirement, "send_to_traceability", "traceability") : handleOpenReqDetail(row.requirement)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={!isReadyForTraceability ? row.blockers[0] || "Complete analysis before traceability" : undefined}>{isReadyForTraceability ? "Send to Traceability" : "Review"}</Button></td>
                         </tr>
                       );
                     })}
@@ -2076,7 +2148,7 @@ function RequirementsContent() {
                       <td className="px-4 py-3 font-bold text-slate-800">{source.extractedCount}</td>
                       <td className="px-4 py-3">{source.validationIssues.length ? <span className="font-semibold text-red-600">{source.validationIssues.length} issue{source.validationIssues.length > 1 ? "s" : ""}</span> : <span className="font-semibold text-emerald-600">Passed</span>}</td>
                       <td className="px-4 py-3 text-right" onClick={(event) => event.stopPropagation()}>
-                        <Button size="sm" variant={source.nextAction === "Run AI Intake" || source.nextAction === "Retry" ? "default" : "outline"} disabled={agentRunning || source.nextAction === "Processing" || (source.nextAction === "Send to Analysis" && (source.validationIssues.length > 0 || source.extractedCount === 0))} onClick={() => source.documentId && (source.nextAction === "Run AI Intake" || source.nextAction === "Retry") ? runIntakeAgent(source.documentId) : setSelectedSource(source)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={source.validationIssues.length ? "Resolve validation blockers before continuing" : undefined}>
+                        <Button size="sm" variant={source.nextAction === "Run AI Intake" || source.nextAction === "Retry" ? "default" : "outline"} disabled={agentRunning || transitioning || source.nextAction === "Processing" || (source.nextAction === "Send to Analysis" && (source.validationIssues.length > 0 || source.requirementIds.length === 0))} onClick={() => source.documentId && (source.nextAction === "Run AI Intake" || source.nextAction === "Retry") ? runIntakeAgent(source.documentId) : source.nextAction === "Send to Analysis" ? sendSourceToAnalysis(source) : setSelectedSource(source)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={source.validationIssues.length ? "Resolve validation blockers before continuing" : undefined}>
                           {source.nextAction === "Processing" && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}{source.nextAction}
                         </Button>
                       </td>
@@ -2106,8 +2178,8 @@ function RequirementsContent() {
                   : t === "api" ? "Add API Specification"
                   : t === "requirements" ? "Extracted Requirements"
                   : "Jira"}
-                {t === "requirements" && requirements.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{requirements.length}</span>
+                {t === "requirements" && requirementsByStage.intake.length > 0 && (
+                  <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{requirementsByStage.intake.length}</span>
                 )}
                 {t === "documents" && documents.length > 0 && (
                   <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{documents.length}</span>
@@ -2125,7 +2197,7 @@ function RequirementsContent() {
               {/* Filter Buttons & AI Action */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-200 bg-white p-1">
-                  {["all", "draft", "pending_review", "approved", "rejected"].map((s) => (
+                  {["all", "draft"].map((s) => (
                     <button
                       key={s}
                       onClick={() => setFilterStatus(s)}
@@ -2141,16 +2213,6 @@ function RequirementsContent() {
                   ))}
                 </div>
 
-                <Button
-                  variant="default"
-                  size="sm"
-                  disabled={agentRunning || requirements.length === 0}
-                  onClick={() => runQualityAgent()}
-                  className="h-8 text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white"
-                >
-                  <Bot className="h-3.5 w-3.5 mr-1" />
-                  Evaluate Quality (Agent 2)
-                </Button>
               </div>
 
               {/* Requirements Table */}
@@ -2846,8 +2908,10 @@ function RequirementsContent() {
                   <Button variant="outline" size="sm" onClick={() => setSelectedSource(null)} className="h-9 flex-1 bg-white">Close</Button>
                   {selectedSource.documentId && (selectedSource.nextAction === "Run AI Intake" || selectedSource.nextAction === "Retry") ? (
                     <Button size="sm" disabled={agentRunning} onClick={() => { runIntakeAgent(selectedSource.documentId!); setSelectedSource(null); }} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">{selectedSource.nextAction}</Button>
+                  ) : selectedSource.nextAction === "Send to Analysis" ? (
+                    <Button size="sm" disabled={transitioning || selectedSource.validationIssues.length > 0 || selectedSource.requirementIds.length === 0} onClick={() => sendSourceToAnalysis(selectedSource)} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">Send to Analysis</Button>
                   ) : (
-                    <Button size="sm" disabled={selectedSource.validationIssues.length > 0 || selectedSource.extractedCount === 0} onClick={() => { setTab("requirements"); setSelectedSource(null); }} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">Open Extracted Requirements</Button>
+                    <Button size="sm" onClick={() => { const downstream = requirements.find((requirement) => requirement.source_document_id === selectedSource.documentId || selectedSource.requirementIds.includes(requirement.id)); setSelectedSource(null); handleWorkspaceViewChange(downstream ? getRequirementWorkflowStage(downstream) : "analysis"); }} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">View Downstream</Button>
                   )}
                 </div>
               </DrawerFooter>
@@ -3041,7 +3105,7 @@ function RequirementsContent() {
                         <div className="grid grid-cols-2 gap-2 pt-2">
                           <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Generate Missing Items</Button>
                           <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Link Existing</Button>
-                          <Button size="sm" disabled={traceChain.summary.gaps.length > 0} className="col-span-2 h-8 bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Review & Approval</Button>
+                          <Button size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_to_review", "review")} className="col-span-2 h-8 bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Review & Approval</Button>
                         </div>
                       </div>
                     )}
@@ -3174,13 +3238,16 @@ function RequirementsContent() {
                 {/* ── DETAILS TAB (existing content) ──────────────────────── */}
                 {drawerTab === "details" && workspaceView === "review" && (() => {
                   const row = reviewRows.find((item) => item.requirement.id === selectedReq.id);
+                  const reviewMeta = metadataRecord(selectedReq);
+                  const workflowHistory = Array.isArray(reviewMeta.workflow_history) ? reviewMeta.workflow_history as Array<Record<string, unknown>> : [];
+                  const qualityScore = getRequirementQualityScore(selectedReq);
                   const readinessItems = [
-                    ["Analysis completed", row?.analysisStatus === "analyzed" ? "72/100" : "Pending", row?.analysisStatus === "analyzed"],
+                    ["Analysis completed", row?.analysisStatus === "analyzed" ? (qualityScore === null ? "Passed" : `${qualityScore}/100`) : "Pending", row?.analysisStatus === "analyzed"],
                     ["Traceability health", `${row?.traceabilityScore ?? 0}/100`, (row?.traceabilityScore ?? 0) >= 70],
                     ["Missing information", row?.blockers.some((blocker) => blocker.toLowerCase().includes("missing")) ? "Open" : "0", !row?.blockers.some((blocker) => blocker.toLowerCase().includes("missing"))],
                     ["Duplicates resolved", row?.blockers.some((blocker) => blocker.toLowerCase().includes("duplicate")) ? "No" : "Yes", !row?.blockers.some((blocker) => blocker.toLowerCase().includes("duplicate"))],
-                    ["Mandatory evidence", row?.traceabilityHealth === "fully_traced" ? "Yes" : "Partial", row?.traceabilityHealth === "fully_traced"],
-                    ["Policy & permissions", "Compliant", true],
+                    ["Traceability gate", row?.traceabilityHealth === "fully_traced" ? "Validated" : "Pending", row?.traceabilityHealth === "fully_traced"],
+                    ["Policy & permissions", "Enforced", true],
                   ] as const;
                   return (
                     <div className="space-y-3 text-xs">
@@ -3201,7 +3268,7 @@ function RequirementsContent() {
                         <h4 className="mb-3 text-xs font-bold text-slate-800">Approval Recommendation</h4>
                         <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold">
                           <div><div className="text-[9px] font-bold text-slate-400">AI Recommendation</div><Badge variant={row?.readyForApproval ? "success" : "warning"} className="mt-1">{row?.readyForApproval ? "Approve" : "Review"}</Badge></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">AI Confidence</div><Badge variant="purple" className="mt-1">{Math.max(50, row?.traceabilityScore ?? 0)}%</Badge></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">AI Confidence</div><Badge variant="purple" className="mt-1">{qualityScore === null ? "Not recorded" : `${qualityScore}%`}</Badge></div>
                         </div>
                         <p className="mt-2 text-[11px] font-semibold text-slate-600">{row?.readyForApproval ? "The requirement meets all quality and governance criteria." : row?.blockers[0] || "Reviewer attention required."}</p>
                       </section>
@@ -3219,23 +3286,23 @@ function RequirementsContent() {
                       <section className="rounded-xl border border-slate-200 bg-white p-3">
                         <div className="mb-3 flex items-center justify-between"><h4 className="text-xs font-bold text-slate-800">Approval History</h4><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div>
                         <div className="space-y-2 text-[11px] font-semibold text-slate-600">
-                          {["Analysis completed by AI", "Traceability verified", `Assigned to ${row?.reviewer}`].map((activity, index) => (
-                            <div key={activity} className="flex items-center justify-between gap-3"><span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#1b59f8]" />{activity}</span><span className="text-slate-400">{index + 1}h ago</span></div>
-                          ))}
+                          {workflowHistory.length ? workflowHistory.slice(-4).reverse().map((entry, index) => (
+                            <div key={`${String(entry.action)}-${index}`} className="flex items-center justify-between gap-3"><span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#1b59f8]" />{String(entry.action || "Workflow updated").replace(/_/g, " ")}</span><span className="text-slate-400">{String(entry.to || "")}</span></div>
+                          )) : <div className="text-slate-400">No workflow transition history is recorded for this legacy requirement.</div>}
                         </div>
                       </section>
 
-                      <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                      {!['approved', 'rejected'].includes(selectedReq.status) && <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
                         <h4 className="text-xs font-bold text-slate-800">Review Actions</h4>
                         <Button size="sm" disabled={!row?.readyForApproval || reviewLoading} onClick={() => handleApprove("approve")} className="h-8 w-full bg-emerald-600 text-[10px] font-bold text-white hover:bg-emerald-700">Approve Requirement</Button>
-                        <Button variant="outline" size="sm" className="h-8 w-full border-amber-200 bg-white text-[10px] font-bold text-amber-700">Request Changes</Button>
+                        <Button variant="outline" size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_back_to_analysis", "analysis")} className="h-8 w-full border-amber-200 bg-white text-[10px] font-bold text-amber-700">Request Changes</Button>
                         <Button variant="outline" size="sm" disabled={reviewLoading} onClick={() => handleApprove("reject")} className="h-8 w-full border-red-200 bg-white text-[10px] font-bold text-red-600">Reject Requirement</Button>
                         <div className="grid grid-cols-2 gap-2">
-                          <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Send Back to Analysis</Button>
-                          <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Send Back to Traceability</Button>
+                          <Button variant="outline" size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_back_to_analysis", "analysis")} className="h-8 bg-white text-[10px] font-bold">Send Back to Analysis</Button>
+                          <Button variant="outline" size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_back_to_traceability", "traceability")} className="h-8 bg-white text-[10px] font-bold">Send Back to Traceability</Button>
                         </div>
                         <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-center text-[10px] font-semibold text-blue-700">All actions are audited and immutable.</div>
-                      </section>
+                      </section>}
                     </div>
                   );
                 })()}
@@ -3303,10 +3370,10 @@ function RequirementsContent() {
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                           {([
                             ["Domain", selectedReq.telecom_domain || selectedReq.qa_domain || "Unclassified"],
-                            ["Journey", selectedReq.business_process || "Order Fulfillment"],
-                            ["Application", selectedReq.product || selectedReq.product_group || "OMS"],
-                            ["Request Type", selectedReq.sub_request_type || selectedReq.jira_issue_type || "Operational"],
-                            ["Test Type", selectedReq.test_phase || "Functional"],
+                            ["Journey", selectedReq.business_process || "Not classified"],
+                            ["Application", selectedReq.product || selectedReq.product_group || "Not mapped"],
+                            ["Request Type", selectedReq.sub_request_type || selectedReq.jira_issue_type || "Not classified"],
+                            ["Test Type", selectedReq.test_phase || "Not specified"],
                             ["Risk Level", row?.riskLevel || selectedReq.risk_level || "Medium"],
                           ] as const).map(([label, value]) => (
                             <div key={label}>
@@ -3323,9 +3390,10 @@ function RequirementsContent() {
                           <button className="text-[10px] font-bold text-[#1b59f8]">View all</button>
                         </div>
                         <div className="flex flex-wrap gap-1">
-                          {(impactedSystems.length ? impactedSystems : ["OMS", "Notification Service", "CRM"]).slice(0, 4).map((system) => (
+                          {impactedSystems.slice(0, 4).map((system) => (
                             <Badge key={system} variant="outline" className="text-[9px]">{system}</Badge>
                           ))}
+                          {impactedSystems.length === 0 && <span className="text-[10px] font-semibold text-slate-400">No impacted systems recorded.</span>}
                           {impactedSystems.length > 4 && <span className="text-[10px] font-bold text-[#1b59f8]">+{impactedSystems.length - 4} more</span>}
                         </div>
                       </section>
@@ -3333,8 +3401,8 @@ function RequirementsContent() {
                       <section className="border-b border-slate-100 pb-3">
                         <h4 className="mb-2 text-xs font-bold text-slate-800">AI Analysis Details</h4>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
-                          <div><div className="text-[9px] font-bold text-slate-400">Model</div><div className="font-bold text-slate-700">{String(qualityMeta?.model || "Qwen3-Coder-Next")}</div></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">Prompt Version</div><div className="font-bold text-slate-700">{String(qualityMeta?.prompt_version || "v2.1")}</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Model</div><div className="font-bold text-slate-700">{String(qualityMeta?.model || "Not recorded")}</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Prompt Version</div><div className="font-bold text-slate-700">{String(qualityMeta?.prompt_version || "Not recorded")}</div></div>
                           <div><div className="text-[9px] font-bold text-slate-400">Analysis Tool</div><div className="font-bold text-slate-700">Requirement Analyzer</div></div>
                           <div><div className="text-[9px] font-bold text-slate-400">Analyzed At</div><div className="font-bold text-slate-700">{selectedReq.updated_at ? new Date(selectedReq.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Pending"}</div></div>
                         </div>
@@ -3346,7 +3414,7 @@ function RequirementsContent() {
                           <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Request Clarification</Button>
                           <Button variant="outline" size="sm" disabled={agentRunning} onClick={() => runQualityAgent([selectedReq.id])} className="h-8 bg-white text-[10px] font-bold">Re-run Analysis</Button>
                         </div>
-                        <Button size="sm" disabled={!!row?.blockers.length || row?.status !== "analyzed"} className="h-8 w-full bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Traceability</Button>
+                        <Button size="sm" disabled={transitioning || !!row?.blockers.length || row?.status !== "analyzed"} onClick={() => handleRequirementTransition(selectedReq, "send_to_traceability", "traceability")} className="h-8 w-full bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Traceability</Button>
                       </section>
                     </div>
                   );
@@ -3635,40 +3703,6 @@ function RequirementsContent() {
                   </div>
                 ) : null)}
 
-                {/* Review Gate */}
-                {!["approved", "rejected"].includes(selectedReq.status) && (
-                  <div className="border-2 border-dashed rounded-xl p-4 bg-slate-50/20 space-y-3">
-                    <h4 className="text-xs font-bold text-slate-800">Review Gate Approval Decision</h4>
-                    <textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      rows={3}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
-                      placeholder="Add reviewer notes/feedback..."
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => handleApprove("approve")}
-                        disabled={reviewLoading}
-                        variant="default"
-                        className="flex-1 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white h-9"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1 text-white" />
-                        Approve
-                      </Button>
-                      <Button
-                        onClick={() => handleApprove("reject")}
-                        disabled={reviewLoading}
-                        variant="outline"
-                        className="flex-1 text-xs font-semibold border-rose-200 text-rose-600 hover:bg-rose-50 bg-white h-9"
-                      >
-                        <XCircle className="h-4 w-4 mr-1 text-rose-600" />
-                        Reject
-                      </Button>
-                    </div>
-                  </div>
-                )}
-                  
                   <div className="border-t border-slate-100 pt-4 space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
                       <Clock className="w-3 h-3" />

@@ -864,7 +864,9 @@ async def _persist_agent_artifacts(
                 risks=req_data.get("risks"),
                 missing_information=req_data.get("missing_information"),
                 source_document_id=document_id,
-                status="pending_review",
+                status="draft",
+                readiness_status="intake_ready",
+                metadata_={"workflow_stage": "intake"},
             )
             db.add(req)
             await db.flush()
@@ -913,9 +915,10 @@ async def _persist_agent_artifacts(
                 regulatory_impact=bool(req_data.get("regulatory_impact", False)),
                 revenue_impact=bool(req_data.get("revenue_impact", False)),
                 source_document_id=document_id,
-                status="pending_review",
-                readiness_status="ai_review_pending",
+                status="draft",
+                readiness_status="intake_ready",
                 metadata_={
+                    "workflow_stage": "intake",
                     "input_kind": "ui_image",
                     "ui_analysis": {
                         "screen_name": ui_analysis.get("screen_name"),
@@ -997,9 +1000,10 @@ async def _persist_agent_artifacts(
                     regulatory_impact=bool(req_data.get("regulatory_impact", False)),
                     revenue_impact=bool(req_data.get("revenue_impact", False)),
                     source_document_id=doc.id if doc else None,
-                    status="pending_review",
-                    readiness_status="ai_review_pending",
+                    status="draft",
+                    readiness_status="intake_ready",
                     metadata_={
+                        "workflow_stage": "intake",
                         "input_kind": "portal_url",
                         "source_url": page.get("url"),
                         "ui_analysis": {
@@ -1060,9 +1064,10 @@ async def _persist_agent_artifacts(
                 telecom_domain=req_data.get("telecom_domain"),
                 risk_level=req_data.get("risk_level"),
                 test_phase=req_data.get("test_phase"),
-                status="pending_review",
-                readiness_status="ai_review_pending",
+                status="draft",
+                readiness_status="intake_ready",
                 metadata_={
+                    "workflow_stage": "intake",
                     "input_kind": source_label,
                     "repo_url": repo_url,
                     "local_path": local_path,

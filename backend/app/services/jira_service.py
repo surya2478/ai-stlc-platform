@@ -36,6 +36,7 @@ from app.schemas.jira import (
     JiraIssuePageOut,
     JiraSyncTriggerRequest,
 )
+from app.services.requirement_service import requirement_workflow_stage
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -781,8 +782,9 @@ class JiraService:
         existing = result.scalar_one_or_none()
         if existing is not None:
             self._apply_issue(existing, issue)
-            if existing.status == "draft":
-                existing.status = "pending_review"
+            if existing.status == "draft" and requirement_workflow_stage(existing) == "intake":
+                existing.readiness_status = "intake_ready"
+                existing.metadata_ = {**(existing.metadata_ or {}), "workflow_stage": "intake"}
             await self.db.flush()
             return False, existing
 
@@ -796,8 +798,9 @@ class JiraService:
             jira_issue_key=issue.key,
             jira_issue_type=issue.issue_type,
             jira_priority=issue.priority,
-            status="pending_review",
-            metadata_={"jira": _safe_issue_metadata(issue)},
+            status="draft",
+            readiness_status="intake_ready",
+            metadata_={"jira": _safe_issue_metadata(issue), "workflow_stage": "intake"},
         )
         try:
             begin_nested = getattr(self.db, "begin_nested", None)
@@ -819,8 +822,9 @@ class JiraService:
             if concurrent is None:
                 raise
             self._apply_issue(concurrent, issue)
-            if concurrent.status == "draft":
-                concurrent.status = "pending_review"
+            if concurrent.status == "draft" and requirement_workflow_stage(concurrent) == "intake":
+                concurrent.readiness_status = "intake_ready"
+                concurrent.metadata_ = {**(concurrent.metadata_ or {}), "workflow_stage": "intake"}
             await self.db.flush()
             return False, concurrent
         await self.db.refresh(requirement)

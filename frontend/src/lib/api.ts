@@ -939,6 +939,8 @@ export const requirementsApi = {
     api.patch<Requirement>(`/requirements/${id}`, data),
   approve: (id: number, action: "approve" | "reject", notes?: string) =>
     api.post<Requirement>(`/requirements/${id}/approve`, { action, notes }),
+  transition: (id: number, action: "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability", notes?: string) =>
+    api.post<Requirement>(`/requirements/${id}/transition`, { action, notes }),
   delete: (id: number) => api.delete(`/requirements/${id}`),
   triggerIntake: (projectId: number, documentId: number) =>
     api.post("/requirements/agent/intake", { project_id: projectId, document_id: documentId }),

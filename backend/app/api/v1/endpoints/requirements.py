@@ -12,7 +12,7 @@ from app.models.document import UploadedDocument
 from app.schemas.requirement import (
     RequirementCreate, RequirementUpdate, RequirementOut,
     RequirementListOut, AgentTriggerRequest, ApprovalRequest, RequirementStatsOut,
-    URLAnalysisRequest, CodeAnalysisRequest,
+    URLAnalysisRequest, CodeAnalysisRequest, RequirementTransitionRequest,
 )
 from app.schemas.common import MessageResponse
 from app.services import agent_run_service, approval_service, coverage_service, requirement_service, traceability_service
@@ -257,6 +257,37 @@ async def approve_requirement(
     return req
 
 
+@router.post("/{req_id}/transition", response_model=RequirementOut)
+async def transition_requirement(
+    req_id: int,
+    body: RequirementTransitionRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    req = await requirement_service.get_requirement(db, req_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    await require_permission(APPROVE_REQUIREMENTS, req.project_id, current_user, db)
+    previous_stage = requirement_service.requirement_workflow_stage(req)
+    req = await requirement_service.transition_requirement(
+        db, req, body.action, body.notes, current_user.id
+    )
+    await approval_service.create_approval_action(
+        db,
+        project_id=req.project_id,
+        user_id=current_user.id,
+        entity_type="requirement",
+        entity_id=req.id,
+        action=body.action,
+        notes=body.notes,
+        decision="transitioned",
+        old_value={"workflow_stage": previous_stage},
+        new_value={"workflow_stage": requirement_service.requirement_workflow_stage(req)},
+    )
+    await db.commit()
+    return req
+
+
 # ── Agent endpoints ────────────────────────────────────────────────────────────
 
 @router.post("/agent/intake")
@@ -374,8 +405,9 @@ async def trigger_intake_agent(
             req.downstream_systems = req_data.get("downstream_systems")
             req.regulatory_impact = req_data.get("regulatory_impact", False)
             req.revenue_impact = req_data.get("revenue_impact", False)
-            req.readiness_status = "ai_review_pending"
-            req.status = "pending_review"
+            req.readiness_status = "intake_ready"
+            req.status = "draft"
+            req.metadata_ = {**(req.metadata_ or {}), "workflow_stage": "intake"}
             await db.flush()
             await traceability_service.create_lineage(
                 db,
@@ -670,14 +702,15 @@ async def trigger_quality_agent(
     if not reqs:
         raise HTTPException(status_code=404, detail="No requirements found")
 
-    # Filter to only consider requirements without a quality score (empty rows)
-    unscored_reqs = [r for r in reqs if r.quality_score is None]
-    if not unscored_reqs:
+    analysis_reqs = [r for r in reqs if requirement_service.requirement_workflow_stage(r) == "analysis"]
+    if not body.requirement_ids:
+        analysis_reqs = [r for r in analysis_reqs if r.quality_score is None]
+    if not analysis_reqs:
         raise HTTPException(
-            status_code=400,
-            detail="All selected/project requirements already have quality scores."
+            status_code=409,
+            detail="No selected requirements are eligible for analysis. Send intake records to Analysis first."
         )
-    reqs = unscored_reqs
+    reqs = analysis_reqs
 
     # Include id AND all telecom fields in the dict passed to agent
     req_dicts = [
