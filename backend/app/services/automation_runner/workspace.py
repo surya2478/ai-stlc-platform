@@ -93,9 +93,20 @@ def materialize_bundle(*, workspace: Path, compiled_files: dict[str, str]) -> No
     """Write every file in a Script Compiler bundle (Phase 2) into the
     workspace, creating subdirectories (specs/pages/fixtures/utils) as
     needed. Use `AutomationScript.file_path` as the entry path passed to
-    `run_script_for_execution` — this only materialises the tree."""
+    `run_script_for_execution` — this only materialises the tree.
+
+    Defense in depth: `compiled_files` keys are expected to already be safe
+    relative paths (the Script Compiler validates/derives them from
+    contract fields), but a containment check is enforced here too so a
+    malformed or future-untrusted key (e.g. "../../etc/x") can never write
+    outside `workspace`, matching the same guard `_lift_attachments` in
+    `local_playwright.py` applies on the read side.
+    """
+    workspace = workspace.resolve()
     for relative_path, content in compiled_files.items():
-        target = workspace / relative_path
+        target = (workspace / relative_path).resolve()
+        if target != workspace and workspace not in target.parents:
+            raise ValueError(f"Refusing to write outside workspace: {relative_path!r}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
 

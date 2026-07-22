@@ -15,9 +15,25 @@ assets never break silently when the schema evolves (see the plan's Phase
 """
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+# PageObject/PageElement `name` becomes a TS class name, import identifier,
+# and (unslugified) filesystem path segment (see script_compiler/compiler.py
+# and automation_runner/workspace.py) — it must be a plain, safe identifier,
+# never LLM-controlled free text, or a crafted value could break out of the
+# generated source or escape the intended workspace directory.
+_SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+
+
+def _validate_safe_identifier(value: str) -> str:
+    if not _SAFE_IDENTIFIER_RE.match(value):
+        raise ValueError(
+            f"{value!r} is not a safe identifier (must match {_SAFE_IDENTIFIER_RE.pattern})"
+        )
+    return value
 
 ContractVersion = Literal["1.0"]
 ScriptType = Literal["playwright-typescript", "pytest-python"]
@@ -73,11 +89,21 @@ class PageElement(ContractBaseModel):
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
+    @field_validator("name")
+    @classmethod
+    def _name_is_safe_identifier(cls, value: str) -> str:
+        return _validate_safe_identifier(value)
+
 
 class PageObject(ContractBaseModel):
     name: str
     route: str | None = None
     elements: list[PageElement] = Field(default_factory=list)
+
+    @field_validator("name")
+    @classmethod
+    def _name_is_safe_identifier(cls, value: str) -> str:
+        return _validate_safe_identifier(value)
 
 
 class ContractStep(ContractBaseModel):
