@@ -109,13 +109,16 @@ async def _review_batch(state: QualityState) -> QualityState:
                 "impacted_interfaces": r.get("impacted_interfaces", []),
                 "test_phase": r.get("test_phase"),
                 "risk_level": r.get("risk_level"),
+                "clarification_context": r.get("clarification_context"),
             }
             for r in batch
         ]
         prompt = (
             f"Review these {len(batch)} requirements and return a JSON array of review objects.\n"
             f"IMPORTANT: Use the numeric 'id' field as requirement_id in your output.\n\n"
-            f"<user_content>\n{json.dumps(batch_for_llm, indent=2)}\n</user_content>"
+            f"<user_content>\n{json.dumps(batch_for_llm, indent=2)}\n</user_content>\n\n"
+            "For any requirement with clarification_context, treat that text as the authoritative answer supplied by the requirement owner. "
+            "Use it when scoring completeness and testability, and do not repeat the resolved issue in missing_information or issues unless the answer is contradictory or still incomplete."
         )
         try:
             response = await llm.generate(

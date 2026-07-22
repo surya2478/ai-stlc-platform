@@ -733,6 +733,10 @@ async def trigger_quality_agent(
             "test_phase": r.test_phase,
             "risk_level": r.risk_level,
             "release_version": r.release_version,
+            # Feed the owner's clarification answer back into Agent 2. Without
+            # this context a re-run evaluates only the original source and
+            # recreates the same missing-information finding.
+            "clarification_context": r.review_notes if (r.metadata_ or {}).get("clarification_resolved") else None,
         }
         for r in reqs
     ]

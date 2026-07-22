@@ -138,3 +138,25 @@ async def test_clarification_request_requires_details_and_stays_in_analysis():
     assert req.readiness_status == "needs_clarification"
     assert req.review_notes == "Confirm the source and allowed cancellation window."
     assert req.metadata_["workflow_history"][-1]["action"] == "request_clarification"
+
+
+@pytest.mark.asyncio
+async def test_clarification_resolution_clears_blocker_and_requeues_analysis():
+    db = FakeDB()
+    req = requirement(
+        readiness_status="needs_clarification",
+        missing_information=["Cancellation window"],
+        review_notes="Confirm the source and allowed cancellation window.",
+        metadata_={"workflow_stage": "analysis"},
+    )
+    await transition_requirement(
+        db,
+        req,
+        "resolve_clarification",
+        notes="Owner confirmed a 30-day cancellation window in the signed process document.",
+        user_id=11,
+    )
+    assert requirement_workflow_stage(req) == "analysis"
+    assert req.readiness_status == "analysis_pending"
+    assert req.missing_information == []
+    assert req.metadata_["clarification_resolved"] is True

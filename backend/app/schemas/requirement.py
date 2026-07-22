@@ -106,6 +106,7 @@ RequirementTransitionAction = Literal[
     "send_back_to_analysis",
     "send_back_to_traceability",
     "request_clarification",
+    "resolve_clarification",
 ]
 
 

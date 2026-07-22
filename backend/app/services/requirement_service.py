@@ -88,6 +88,7 @@ async def transition_requirement(
         "send_back_to_analysis": (("traceability", "review"), "analysis", "needs_clarification", "draft"),
         "send_back_to_traceability": ("review", "traceability", "traceability_pending", "draft"),
         "request_clarification": ("analysis", "analysis", "needs_clarification", "draft"),
+        "resolve_clarification": ("analysis", "analysis", "analysis_pending", "draft"),
     }
     if action not in transitions:
         raise HTTPException(status_code=422, detail="Unsupported requirement workflow action.")
@@ -100,6 +101,8 @@ async def transition_requirement(
         raise HTTPException(status_code=409, detail="Intake validation failed: ID, title, and source provenance are required.")
     if action == "request_clarification" and not (notes or "").strip():
         raise HTTPException(status_code=422, detail="Clarification details are required.")
+    if action == "resolve_clarification" and not (notes or "").strip():
+        raise HTTPException(status_code=422, detail="Supply the clarification details before resolving this blocker.")
     blockers = requirement_analysis_blockers(req) if action == "send_to_traceability" else []
     if action == "send_to_review":
         blockers = requirement_traceability_blockers(req)
@@ -118,7 +121,18 @@ async def transition_requirement(
     req.status = status
     req.readiness_status = readiness
     if notes:
-        req.review_notes = notes
+        if action == "request_clarification":
+            req.review_notes = notes.strip()
+        else:
+            req.review_notes = f"{req.review_notes}\n" if req.review_notes else ""
+            req.review_notes = f"{req.review_notes}Clarification supplied: {notes.strip()}"
+    if action == "resolve_clarification":
+        req.missing_information = []
+        metadata["clarification_resolved"] = True
+        req.metadata_ = metadata
+    elif action == "request_clarification":
+        metadata["clarification_resolved"] = False
+        req.metadata_ = metadata
     await db.flush()
     await db.refresh(req)
     return req
