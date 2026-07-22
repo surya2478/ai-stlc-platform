@@ -114,3 +114,27 @@ async def test_review_can_return_to_traceability_or_analysis():
     assert requirement_workflow_stage(req) == "traceability"
     await transition_requirement(db, req, "send_back_to_analysis", user_id=9)
     assert requirement_workflow_stage(req) == "analysis"
+
+
+@pytest.mark.asyncio
+async def test_clarification_request_requires_details_and_stays_in_analysis():
+    db = FakeDB()
+    req = requirement(
+        readiness_status="analysis_pending",
+        metadata_={"workflow_stage": "analysis"},
+    )
+    with pytest.raises(HTTPException) as exc:
+        await transition_requirement(db, req, "request_clarification", notes="", user_id=11)
+    assert exc.value.status_code == 422
+
+    await transition_requirement(
+        db,
+        req,
+        "request_clarification",
+        notes="Confirm the source and allowed cancellation window.",
+        user_id=11,
+    )
+    assert requirement_workflow_stage(req) == "analysis"
+    assert req.readiness_status == "needs_clarification"
+    assert req.review_notes == "Confirm the source and allowed cancellation window."
+    assert req.metadata_["workflow_history"][-1]["action"] == "request_clarification"

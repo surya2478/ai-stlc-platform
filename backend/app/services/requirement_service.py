@@ -87,6 +87,7 @@ async def transition_requirement(
         "send_to_review": ("traceability", "review", "pending_review", "pending_review"),
         "send_back_to_analysis": (("traceability", "review"), "analysis", "needs_clarification", "draft"),
         "send_back_to_traceability": ("review", "traceability", "traceability_pending", "draft"),
+        "request_clarification": ("analysis", "analysis", "needs_clarification", "draft"),
     }
     if action not in transitions:
         raise HTTPException(status_code=422, detail="Unsupported requirement workflow action.")
@@ -97,6 +98,8 @@ async def transition_requirement(
 
     if action == "send_to_analysis" and (not req.requirement_id or not req.title.strip() or not req.source):
         raise HTTPException(status_code=409, detail="Intake validation failed: ID, title, and source provenance are required.")
+    if action == "request_clarification" and not (notes or "").strip():
+        raise HTTPException(status_code=422, detail="Clarification details are required.")
     blockers = requirement_analysis_blockers(req) if action == "send_to_traceability" else []
     if action == "send_to_review":
         blockers = requirement_traceability_blockers(req)

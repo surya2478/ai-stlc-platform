@@ -138,6 +138,10 @@ function metadataRecord(req: Requirement): Record<string, any> {
   return (req.metadata_ || {}) as Record<string, any>;
 }
 
+function splitLines(value: string) {
+  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+}
+
 function getRequirementWorkflowStage(req: Requirement): "intake" | "analysis" | "traceability" | "review" {
   if (["approved", "rejected"].includes((req.status || "").toLowerCase())) return "review";
   const persisted = String(metadataRecord(req).workflow_stage || "").toLowerCase();
@@ -318,7 +322,8 @@ const jiraStoryTypePreset = "Story, User Story, Requirement, Epic";
 
 type IntakeTab = "requirements" | "documents" | "url" | "github" | "jira" | "paste" | "api";
 type RequirementsWorkspaceView = "intake" | "analysis" | "traceability" | "review";
-type RequirementTransitionAction = "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability";
+type RequirementTransitionAction = "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability" | "request_clarification";
+type AnalysisDialog = "acceptance" | "issues" | "classification" | "systems" | "clarification";
 type AnalysisStatus = "not_analyzed" | "queued" | "analyzing" | "needs_clarification" | "blocked" | "analyzed" | "stale_source" | "failed";
 
 type IntakeSourceRow = {
@@ -475,6 +480,14 @@ function RequirementsContent() {
   const [notes, setNotes] = useState("");
   const [reviewLoading, setReviewLoading] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
+  const [analysisDialog, setAnalysisDialog] = useState<AnalysisDialog | null>(null);
+  const [analysisDialogSaving, setAnalysisDialogSaving] = useState(false);
+  const [criteriaDraft, setCriteriaDraft] = useState("");
+  const [missingInfoDraft, setMissingInfoDraft] = useState("");
+  const [resolutionDraft, setResolutionDraft] = useState("");
+  const [markMissingResolved, setMarkMissingResolved] = useState(false);
+  const [systemsDraft, setSystemsDraft] = useState("");
+  const [classificationDraft, setClassificationDraft] = useState({ domain: "", journey: "", application: "", requestType: "", testType: "", riskLevel: "Medium" });
   // Test Environment + Generation Notes — tester-set context for AI test-case
   // generation, editable per requirement in the Details tab.
   const [genEnvDraft, setGenEnvDraft] = useState("");
@@ -893,6 +906,80 @@ function RequirementsContent() {
       setAgentError(typeof detail === "string" ? detail : detail?.message || "Source hand-off failed.");
     } finally {
       setTransitioning(false);
+    }
+  };
+
+  const openAnalysisDialog = (kind: AnalysisDialog) => {
+    if (!selectedReq) return;
+    setCriteriaDraft((selectedReq.acceptance_criteria || []).join("\n"));
+    setMissingInfoDraft((selectedReq.missing_information || []).join("\n"));
+    setResolutionDraft("");
+    setMarkMissingResolved(false);
+    setSystemsDraft((selectedReq.systems_impacted || []).join("\n"));
+    setClassificationDraft({
+      domain: selectedReq.telecom_domain || selectedReq.qa_domain || "",
+      journey: selectedReq.business_process || "",
+      application: selectedReq.product || selectedReq.product_group || "",
+      requestType: selectedReq.sub_request_type || "",
+      testType: selectedReq.test_phase || "",
+      riskLevel: selectedReq.risk_level || "Medium",
+    });
+    setAnalysisDialog(kind);
+  };
+
+  const saveAnalysisDialog = async () => {
+    if (!selectedReq || !analysisDialog) return;
+    setAnalysisDialogSaving(true);
+    setAgentError(null);
+    try {
+      let updates: Partial<Requirement> = {};
+      if (analysisDialog === "acceptance") {
+        updates = { acceptance_criteria: splitLines(criteriaDraft) };
+      } else if (analysisDialog === "issues") {
+        if (markMissingResolved && !resolutionDraft.trim()) {
+          setAgentError("Add resolution details before marking missing information as resolved.");
+          return;
+        }
+        const resolutionNote = resolutionDraft.trim()
+          ? `${selectedReq.review_notes ? `${selectedReq.review_notes}\n` : ""}Missing information resolution: ${resolutionDraft.trim()}`
+          : selectedReq.review_notes;
+        updates = {
+          missing_information: markMissingResolved ? [] : splitLines(missingInfoDraft),
+          review_notes: resolutionNote,
+        };
+      } else if (analysisDialog === "classification") {
+        updates = {
+          telecom_domain: classificationDraft.domain.trim() || undefined,
+          business_process: classificationDraft.journey.trim() || undefined,
+          product: classificationDraft.application.trim() || undefined,
+          sub_request_type: classificationDraft.requestType.trim() || undefined,
+          test_phase: classificationDraft.testType.trim() || undefined,
+          risk_level: classificationDraft.riskLevel.trim() || undefined,
+        };
+      } else if (analysisDialog === "systems") {
+        updates = { systems_impacted: splitLines(systemsDraft) };
+      } else if (analysisDialog === "clarification") {
+        if (!resolutionDraft.trim()) {
+          setAgentError("Describe the clarification required before submitting the request.");
+          return;
+        }
+        const res = await requirementsApi.transition(selectedReq.id, "request_clarification", resolutionDraft.trim());
+        setSelectedReq(res.data);
+        setRequirements((current) => current.map((item) => item.id === res.data.id ? res.data : item));
+        setAgentStatus("Clarification request recorded and added to the audit trail.");
+        setAnalysisDialog(null);
+        return;
+      }
+      const res = await requirementsApi.update(selectedReq.id, updates);
+      setSelectedReq(res.data);
+      setRequirements((current) => current.map((item) => item.id === res.data.id ? res.data : item));
+      setAgentStatus("Requirement details updated successfully.");
+      setAnalysisDialog(null);
+    } catch (e: any) {
+      const detail = e?.response?.data?.detail;
+      setAgentError(typeof detail === "string" ? detail : detail?.message || "Unable to update requirement details.");
+    } finally {
+      setAnalysisDialogSaving(false);
     }
   };
 
@@ -2036,7 +2123,7 @@ function RequirementsContent() {
                           <td className="px-3 py-3"><span className={cn("font-bold", row.duplicateCount ? "text-amber-600" : "text-slate-400")}>{row.duplicateCount}</span></td>
                           <td className="px-3 py-3"><Badge variant={riskBadgeVariant(row.riskLevel)}>{row.riskLevel}</Badge></td>
                           <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
-                          <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}><Button size="sm" variant={isReadyForTraceability ? "default" : "outline"} disabled={!isReadyForTraceability || transitioning} onClick={() => isReadyForTraceability ? handleRequirementTransition(row.requirement, "send_to_traceability", "traceability") : handleOpenReqDetail(row.requirement)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={!isReadyForTraceability ? row.blockers[0] || "Complete analysis before traceability" : undefined}>{isReadyForTraceability ? "Send to Traceability" : "Review"}</Button></td>
+                          <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}><Button size="sm" variant={isReadyForTraceability ? "default" : "outline"} disabled={transitioning} onClick={() => isReadyForTraceability ? handleRequirementTransition(row.requirement, "send_to_traceability", "traceability") : handleOpenReqDetail(row.requirement)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={!isReadyForTraceability ? "Open the requirement to review and resolve its blockers" : "All analysis gates passed; send to Traceability"}>{isReadyForTraceability ? "Send to Traceability" : "Review"}</Button></td>
                         </tr>
                       );
                     })}
@@ -3339,13 +3426,13 @@ function RequirementsContent() {
                             </li>
                           ))}
                         </ul>
-                        <button className="mt-2 text-[10px] font-bold text-[#1b59f8]">+ Add / Edit</button>
+                        <button onClick={() => openAnalysisDialog("acceptance")} className="mt-2 text-[10px] font-bold text-[#1b59f8]">+ Add / Edit</button>
                       </section>
 
                       <section className="border-b border-slate-100 pb-3">
                         <div className="mb-2 flex items-center justify-between">
                           <h4 className="text-xs font-bold text-slate-800">Issues Detected</h4>
-                          <button className="text-[10px] font-bold text-[#1b59f8]">View all</button>
+                          <button onClick={() => openAnalysisDialog("issues")} className="text-[10px] font-bold text-[#1b59f8]">View all</button>
                         </div>
                         <div className="grid grid-cols-4 gap-1.5">
                           {([
@@ -3354,10 +3441,10 @@ function RequirementsContent() {
                             ["Duplicates", row?.duplicateCount ?? 0, "bg-amber-50 border-amber-100 text-amber-700"],
                             ["Conflicts", row?.conflictCount ?? 0, "bg-blue-50 border-blue-100 text-blue-700"],
                           ] as const).map(([label, count, tone]) => (
-                            <div key={label} className={cn("rounded-lg border p-2", tone)}>
+                            <button key={label} type="button" onClick={() => openAnalysisDialog("issues")} className={cn("rounded-lg border p-2 text-left transition hover:ring-2 hover:ring-blue-200", tone)} aria-label={`View ${label}`}>
                               <div className="truncate text-[9px] font-bold text-slate-500">{label}</div>
                               <div className="mt-1 text-lg font-bold">{count}</div>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       </section>
@@ -3365,7 +3452,7 @@ function RequirementsContent() {
                       <section className="border-b border-slate-100 pb-3">
                         <div className="mb-2 flex items-center justify-between">
                           <h4 className="text-xs font-bold text-slate-800">Classification</h4>
-                          <button className="text-[10px] font-bold text-[#1b59f8]">Edit</button>
+                          <button onClick={() => openAnalysisDialog("classification")} className="text-[10px] font-bold text-[#1b59f8]">Edit</button>
                         </div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                           {([
@@ -3387,7 +3474,7 @@ function RequirementsContent() {
                       <section className="border-b border-slate-100 pb-3">
                         <div className="mb-2 flex items-center justify-between">
                           <h4 className="text-xs font-bold text-slate-800">Impacted Systems</h4>
-                          <button className="text-[10px] font-bold text-[#1b59f8]">View all</button>
+                          <button onClick={() => openAnalysisDialog("systems")} className="text-[10px] font-bold text-[#1b59f8]">View all</button>
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {impactedSystems.slice(0, 4).map((system) => (
@@ -3411,7 +3498,7 @@ function RequirementsContent() {
                       <section className="space-y-2">
                         <h4 className="text-xs font-bold text-slate-800">Actions</h4>
                         <div className="grid grid-cols-2 gap-2">
-                          <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Request Clarification</Button>
+                          <Button variant="outline" size="sm" disabled={analysisDialogSaving} onClick={() => openAnalysisDialog("clarification")} className="h-8 bg-white text-[10px] font-bold">Request Clarification</Button>
                           <Button variant="outline" size="sm" disabled={agentRunning} onClick={() => runQualityAgent([selectedReq.id])} className="h-8 bg-white text-[10px] font-bold">Re-run Analysis</Button>
                         </div>
                         <Button size="sm" disabled={transitioning || !!row?.blockers.length || row?.status !== "analyzed"} onClick={() => handleRequirementTransition(selectedReq, "send_to_traceability", "traceability")} className="h-8 w-full bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Traceability</Button>
@@ -3727,6 +3814,57 @@ function RequirementsContent() {
           )}
         </DrawerContent>
       </Drawer>
+
+      {analysisDialog && selectedReq && (() => {
+        const analysisRow = analysisRows.find((item) => item.requirement.id === selectedReq.id);
+        const qualityMeta = metadataRecord(selectedReq).quality_review as Record<string, any> | undefined;
+        const dialogTitle = analysisDialog === "acceptance" ? "Edit Acceptance Criteria"
+          : analysisDialog === "issues" ? "Analysis Issues & Missing Information"
+          : analysisDialog === "classification" ? "Edit Requirement Classification"
+          : analysisDialog === "systems" ? "Edit Impacted Systems"
+          : "Request Clarification";
+        return (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={dialogTitle} onClick={() => !analysisDialogSaving && setAnalysisDialog(null)}>
+            <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+              <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
+                <div><h3 className="text-sm font-bold text-slate-900">{dialogTitle}</h3><p className="mt-1 text-[11px] font-semibold text-slate-500">{selectedReq.requirement_id} · {selectedReq.title}</p></div>
+                <button aria-label="Close dialog" onClick={() => setAnalysisDialog(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="max-h-[65vh] space-y-4 overflow-y-auto px-5 py-4 text-xs">
+                {analysisDialog === "acceptance" && <>
+                  <p className="font-semibold text-slate-600">Enter one independently testable acceptance criterion per line.</p>
+                  <textarea aria-label="Acceptance criteria" value={criteriaDraft} onChange={(event) => setCriteriaDraft(event.target.value)} rows={10} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="The system shall..." />
+                </>}
+                {analysisDialog === "issues" && <>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[["Ambiguities", analysisRow?.ambiguityCount || 0], ["Missing", analysisRow?.missingInfoCount || 0], ["Duplicates", analysisRow?.duplicateCount || 0], ["Conflicts", analysisRow?.conflictCount || 0]].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="text-[9px] font-bold uppercase text-slate-400">{label}</div><div className="mt-1 text-lg font-bold text-slate-800">{value}</div></div>)}
+                  </div>
+                  {(asTextList(qualityMeta?.ambiguities).length > 0 || asTextList(qualityMeta?.conflicts).length > 0) && <div className="rounded-lg border border-amber-100 bg-amber-50 p-3"><div className="mb-1 text-[10px] font-bold uppercase text-amber-700">Other findings</div>{[...asTextList(qualityMeta?.ambiguities), ...asTextList(qualityMeta?.conflicts)].map((item) => <div key={item} className="mt-1 font-semibold text-amber-800">• {item}</div>)}</div>}
+                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-slate-500">Outstanding missing information — one item per line</label><textarea aria-label="Outstanding missing information" value={missingInfoDraft} onChange={(event) => { setMissingInfoDraft(event.target.value); setMarkMissingResolved(false); }} rows={5} className="w-full rounded-xl border border-red-200 bg-red-50/30 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-red-100" placeholder="No missing information remains" /></div>
+                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-slate-500">Resolution or supplied details</label><textarea aria-label="Resolution details" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Describe the information supplied and where it was verified..." /></div>
+                  <label className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 font-semibold text-emerald-800"><input aria-label="Mark missing information resolved" type="checkbox" checked={markMissingResolved} onChange={(event) => setMarkMissingResolved(event.target.checked)} className="mt-0.5" /><span>Mark all listed missing-information findings as resolved. Resolution details are required and retained in reviewer notes.</span></label>
+                </>}
+                {analysisDialog === "classification" && <div className="grid grid-cols-2 gap-3">
+                  {([[
+                    "Domain", "domain"], ["Journey / Business Process", "journey"], ["Application / Product", "application"], ["Request Type", "requestType"], ["Test Type / Phase", "testType"], ["Risk Level", "riskLevel"]] as Array<[string, keyof typeof classificationDraft]>).map(([label, key]) => <label key={key} className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">{label}</span><input aria-label={label} value={classificationDraft[key]} onChange={(event) => setClassificationDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-9 w-full rounded-lg border border-slate-200 px-3 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" /></label>)}
+                </div>}
+                {analysisDialog === "systems" && <>
+                  <p className="font-semibold text-slate-600">Enter every application, service, API, interface, or dependent system impacted by this requirement, one per line.</p>
+                  <textarea aria-label="Impacted systems" value={systemsDraft} onChange={(event) => setSystemsDraft(event.target.value)} rows={10} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="OMS&#10;Notification Service&#10;CRM" />
+                </>}
+                {analysisDialog === "clarification" && <>
+                  <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 font-semibold text-blue-800">This records an audited clarification request and keeps the requirement in Analysis with “Needs Clarification” status. It does not send an external email or Jira message.</div>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Clarification required</span><textarea aria-label="Clarification required" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={7} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Explain exactly what information is required, who should provide it, and why analysis cannot proceed..." /></label>
+                </>}
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+                <Button variant="outline" size="sm" disabled={analysisDialogSaving} onClick={() => setAnalysisDialog(null)} className="bg-white">Cancel</Button>
+                <Button size="sm" disabled={analysisDialogSaving} onClick={saveAnalysisDialog} className="bg-[#1b59f8] text-white hover:bg-blue-700">{analysisDialogSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}{analysisDialog === "clarification" ? "Submit Request" : "Save Changes"}</Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Delete Confirmation Modals */}
       {deletingReq && (

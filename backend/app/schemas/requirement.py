@@ -87,6 +87,7 @@ class RequirementUpdate(BaseModel):
     # Status
     status: Literal["draft", "pending_review", "approved", "rejected"] | None = None
     readiness_status: str | None = None
+    review_notes: str | None = Field(default=None, max_length=5000)
 
     @field_validator("title")
     @classmethod
@@ -104,6 +105,7 @@ RequirementTransitionAction = Literal[
     "send_to_review",
     "send_back_to_analysis",
     "send_back_to_traceability",
+    "request_clarification",
 ]
 
 
