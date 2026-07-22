@@ -2564,6 +2564,20 @@ export const traceabilityApi = {
   approvals: (projectId: number, params?: { entity_type?: string; entity_id?: number; page?: number; page_size?: number }) =>
     api.get<ApprovalAction[]>(`/traceability/projects/${projectId}/approvals`, { params }),
 
+  /** Record an audited governance decision for a supported artifact. */
+  decide: (
+    entityType: string,
+    entityId: number,
+    action: "approve" | "reject" | "request_changes",
+    notes?: string,
+    changesRequested?: Record<string, unknown>,
+  ) =>
+    api.post<ApprovalAction>(`/traceability/approvals/${entityType}/${entityId}`, {
+      action,
+      notes,
+      changes_requested: changesRequested,
+    }),
+
   /** Entity-centric lineage walk over artifact_lineage (both directions). */
   getLineage: (entityType: LineageEntityType | string, entityId: number) =>
     api.get<LineageChain>(`/traceability/lineage/${entityType}/${entityId}`),

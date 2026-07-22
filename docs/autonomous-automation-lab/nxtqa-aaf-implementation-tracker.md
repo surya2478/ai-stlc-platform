@@ -539,7 +539,7 @@ Use `-` for not applicable and add approval/evidence links when work starts.
 | UI-010 | 1 | P1-S3 | Generated Test Cases | [ ] | [ ] | [x] | [ ] | [ ] | [ ] | [ ] |
 | UI-011 | 1 | P1-S3 | Test Case Editor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-012 | 1 | P1-S3 | Journey Graph | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
-| UI-013 | 1 | P1-S3 | Test Case Approval | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| UI-013 | 1 | P1-S3 | Test Case Approval | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-014 | 1 | P1-S4 | Application Registry | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-015 | 1 | P1-S4 | Live Discovery Session | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-016 | 1 | P1-S4 | Application Model | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |

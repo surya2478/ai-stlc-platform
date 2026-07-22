@@ -39,6 +39,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { JourneyGraphView } from "./JourneyGraphView";
+import { TestCaseApprovalView } from "./TestCaseApprovalView";
 
 type DrawerTab = "overview" | "cases" | "coverage" | "ai" | "activity";
 type Tone = "blue" | "emerald" | "red" | "purple" | "amber" | "slate";
@@ -364,6 +365,13 @@ function TestCasesContent() {
     setDrawerTab("overview");
   }, [selectedTestCase?.id]);
 
+  useEffect(() => {
+    const requestedCase = searchParams.get("case");
+    if (!requestedCase || !testCases.length) return;
+    const match = testCases.find((item) => String(item.id) === requestedCase || item.test_case_id === requestedCase);
+    if (match) setSelectedTestCase(match);
+  }, [searchParams, testCases]);
+
   const requirementsByKey = useMemo(() => new Map(requirements.map((req) => [req.requirement_id, req])), [requirements]);
   const requirementsById = useMemo(() => new Map(requirements.map((req) => [req.id, req])), [requirements]);
 
@@ -467,6 +475,10 @@ function TestCasesContent() {
 
   if (view === "journey-graph") {
     return <JourneyGraphView projectId={selectedProject} />;
+  }
+
+  if (view === "approval") {
+    return <TestCaseApprovalView projectId={selectedProject} />;
   }
 
   if (view === "editor") {

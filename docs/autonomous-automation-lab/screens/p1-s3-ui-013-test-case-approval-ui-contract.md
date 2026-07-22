@@ -13,7 +13,7 @@
 | Previous screen | UI-012 Journey Graph |
 | Next screen | UI-014 Application Registry |
 | Primary baseline | Existing Test Planning shell and the compact UI-009/UI-011/UI-012 table plus right-side inspector pattern |
-| Implementation status | `CONTRACT_DRAFT_PENDING_REFERENCE_IMAGE` |
+| Implementation status | `REFERENCE_IMAGE_APPROVED_IMPLEMENTED_AND_VALIDATED` |
 
 ## 1. Purpose
 
@@ -304,12 +304,40 @@ The UI must not create approval results, reviewer recommendations, readiness sco
 
 ## 16. Reference image gate
 
-Implementation must not begin until the UI-013 Test Case Approval reference image is provided and approved.
-
-Expected image file:
+The approved UI-013 reference is stored at:
 
 `docs/autonomous-automation-lab/screens/Test_Case_Approval.png`
 
-After approval, update the status to:
+Reference gate result: `APPROVED_AND_IMPLEMENTED`
 
-`REFERENCE_IMAGE_APPROVED_READY_FOR_IMPLEMENTATION`
+## 17. Implementation and validation record
+
+Implemented route:
+
+`/test-cases?project={projectId}&view=approval`
+
+Implementation files:
+
+- `frontend/src/app/test-cases/TestCaseApprovalView.tsx`
+- `frontend/src/app/test-cases/page.tsx`
+- `frontend/src/app/test-cases/JourneyGraphView.tsx`
+- `frontend/src/lib/api.ts`
+- `backend/tests/test_test_case_approval_governance.py`
+
+Validated behavior:
+
+- Authenticated project test cases, requirements, scenarios, applications, reviews, approval history, memberships, roles and users drive the screen.
+- Missing journey review, application mapping, evidence requirements, discovery evaluation and independent review remain explicit blockers.
+- Approval and bulk approval exclude ineligible rows and surface backend rejection reasons without an override.
+- Request Changes and Reject expose a required reviewer-comment gate.
+- Reviewer assignment persists through the audited test-case update endpoint.
+- Editor and Journey Graph navigation preserve project, test-case and journey context.
+- Queue filters, tabs, row selection, inspector tabs, pagination, refresh and exports were exercised in the authenticated portal.
+
+Validation evidence:
+
+- TypeScript: `npx tsc --noEmit` - passed.
+- Focused lint: no warnings or errors in the UI-013 implementation files.
+- Backend governance regression suite: 15 passed.
+- Production build: passed; pre-existing warnings remain in unrelated files.
+- Authenticated browser validation: passed against project 3 without mutating approval state.

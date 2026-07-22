@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   AppWindow,
@@ -260,6 +260,7 @@ function deriveJourneys(
 
 export function JourneyGraphView({ projectId }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [scenarios, setScenarios] = useState<TestScenario[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
@@ -340,8 +341,13 @@ export function JourneyGraphView({ projectId }: Props) {
       setSelectedNode(null);
       return;
     }
+    const requestedJourney = searchParams.get("journey");
+    if (requestedJourney && journeys.some((item) => item.id === requestedJourney)) {
+      if (selectedJourneyId !== requestedJourney) setSelectedJourneyId(requestedJourney);
+      return;
+    }
     if (!journeys.some((item) => item.id === selectedJourneyId)) setSelectedJourneyId(journeys[0].id);
-  }, [journeys, selectedJourneyId]);
+  }, [journeys, searchParams, selectedJourneyId]);
 
   const selectedJourney = journeys.find((item) => item.id === selectedJourneyId) || journeys[0];
 
