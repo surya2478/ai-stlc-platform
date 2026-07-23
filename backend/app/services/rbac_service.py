@@ -78,6 +78,25 @@ _GRANULAR_CLASSIFICATION_PERMISSIONS: frozenset[str] = frozenset(
     }
 )
 
+# ─── UI-015 Live Discovery Session (P1-S4 extension) ─────────────────────────
+DISCOVERY_VIEW = "discovery.view"
+DISCOVERY_START_SESSION = "discovery.start_session"
+DISCOVERY_CONTROL_SESSION = "discovery.control_session"  # pause/resume/stop/checkpoint
+DISCOVERY_EMERGENCY_STOP = "discovery.emergency_stop"
+DISCOVERY_CORRECT_ACTION = "discovery.correct_action"
+DISCOVERY_COMPLETE_SESSION = "discovery.complete_session"
+
+_GRANULAR_DISCOVERY_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        DISCOVERY_VIEW,
+        DISCOVERY_START_SESSION,
+        DISCOVERY_CONTROL_SESSION,
+        DISCOVERY_EMERGENCY_STOP,
+        DISCOVERY_CORRECT_ACTION,
+        DISCOVERY_COMPLETE_SESSION,
+    }
+)
+
 _GRANULAR_AUTOMATION_PERMISSIONS: frozenset[str] = frozenset(
     {
         AUTOMATION_VIEW,
@@ -99,7 +118,10 @@ _GRANULAR_EXECUTION_PERMISSIONS: frozenset[str] = frozenset(
     }
 )
 GRANULAR_PERMISSIONS: frozenset[str] = (
-    _GRANULAR_AUTOMATION_PERMISSIONS | _GRANULAR_EXECUTION_PERMISSIONS | _GRANULAR_CLASSIFICATION_PERMISSIONS
+    _GRANULAR_AUTOMATION_PERMISSIONS
+    | _GRANULAR_EXECUTION_PERMISSIONS
+    | _GRANULAR_CLASSIFICATION_PERMISSIONS
+    | _GRANULAR_DISCOVERY_PERMISSIONS
 )
 
 ALL_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -141,7 +163,7 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
     """
     extra: set[Permission] = set()
     if VIEW_PROJECT in base:
-        extra.update({AUTOMATION_VIEW, EXECUTION_VIEW_LIVE_RUNS, AUTOMATION_CLASSIFICATION_VIEW})
+        extra.update({AUTOMATION_VIEW, EXECUTION_VIEW_LIVE_RUNS, AUTOMATION_CLASSIFICATION_VIEW, DISCOVERY_VIEW})
     if GENERATE_AUTOMATION in base:
         extra.update({
             AUTOMATION_GENERATE_SCRIPT,
@@ -150,9 +172,16 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             AUTOMATION_RUN_SANDBOX,
             AUTOMATION_CLASSIFICATION_EVALUATE,
             AUTOMATION_CLASSIFICATION_REVIEW,
+            DISCOVERY_START_SESSION,
+            DISCOVERY_CONTROL_SESSION,
+            DISCOVERY_EMERGENCY_STOP,
+            DISCOVERY_CORRECT_ACTION,
         })
     if APPROVE_TEST_CASES in base:
-        extra.update({AUTOMATION_REVIEW_SCRIPT, AUTOMATION_APPROVE_SCRIPT, AUTOMATION_CLASSIFICATION_APPROVE})
+        extra.update({
+            AUTOMATION_REVIEW_SCRIPT, AUTOMATION_APPROVE_SCRIPT, AUTOMATION_CLASSIFICATION_APPROVE,
+            DISCOVERY_COMPLETE_SESSION,
+        })
     if EXECUTE_TESTS in base:
         extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})
     if RAISE_DEFECTS in base:

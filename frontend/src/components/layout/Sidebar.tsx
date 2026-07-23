@@ -75,6 +75,7 @@ const NAV_ITEMS: NavGroup[] = [
     group: "Application Discovery",
     items: [
       { label: "Application Registry", href: "/applications", icon: Boxes },
+      { label: "Live Discovery Session", href: "/automation?view=discovery", icon: Radar },
     ],
   },
   {
@@ -126,6 +127,12 @@ function isActiveHref(pathname: string, currentQuery: string, href: string): boo
   if (expectedView) {
     const currentView = currentParams.get("view") || (path === "/test-cases" ? "generated" : null);
     return currentView === expectedView;
+  }
+  // "/automation" has a sibling view-scoped nav item (Live Discovery
+  // Session, view=discovery) — the base "AI Automation Studio" entry must
+  // not also light up while that view is active.
+  if (path === "/automation") {
+    return !currentParams.get("view");
   }
   return true;
 }

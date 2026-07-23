@@ -220,6 +220,14 @@ class Settings(BaseSettings):
     # defaults (see classification_agent.py::_deterministic_only_recommendation).
     automation_classification_agent_enabled: bool = False
 
+    # ── UI-015 Live Discovery Session (P1-S4 extension) ──────────────────────
+    # Master switch: every /discovery route 404s when off, same isolation
+    # pattern as automation_classification_enabled. Phase 1 = Guided User
+    # Recording only (see the implementation plan) — Free/Agent-Driven modes
+    # remain refused with an explicit "not implemented in Phase 1" error
+    # regardless of this flag.
+    discovery_sessions_enabled: bool = False
+
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days
     retention_rag_events_days: int = 180      # purge RAG retrieval audit events older than N days

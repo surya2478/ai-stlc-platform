@@ -12,6 +12,7 @@ import {
   Link2,
   Loader2,
   PlayCircle,
+  Radar,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -60,6 +61,7 @@ import { IntelligenceAssistantPanel } from "@/components/automation/Intelligence
 import { AutomationInventoryPanel, type InventoryItem } from "@/components/automation/AutomationInventoryPanel";
 import { AutomationWorkspace } from "@/components/automation/AutomationWorkspace";
 import { ConvertManualToAutomationDialog } from "@/components/automation/ConvertManualToAutomationDialog";
+import { DiscoverySessionView } from "@/components/discovery/DiscoverySessionView";
 import { RunnerStatusChip } from "@/app/execution/_components/RunnerStatusChip";
 import { RunTriggerDialog, RunAllEligibleDialog, type RunTarget, type BatchRunCandidate } from "@/app/execution/_components/AutomationBuilderTab";
 import { RunDetailDrawer } from "@/app/execution/_components/RunDetailDrawer";
@@ -782,6 +784,26 @@ function AutomationContent() {
       footer: "Approved internal + verified external",
     },
   ];
+
+  if (searchParams.get("view") === "discovery") {
+    if (!selectedProject) {
+      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Live Discovery Session.</div>;
+    }
+    return (
+      <div className="space-y-6 select-none pb-8 animate-fade-in">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
+            <Radar className="h-6 w-6 text-[#1b59f8]" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Live Discovery Session</h1>
+            <p className="text-xs text-slate-500 mt-1">Observe, record and ground application behaviour with governed evidence.</p>
+          </div>
+        </div>
+        <DiscoverySessionView projectId={selectedProject} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 select-none pb-8 animate-fade-in">

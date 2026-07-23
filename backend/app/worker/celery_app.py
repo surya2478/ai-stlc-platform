@@ -14,6 +14,7 @@ celery_app = Celery(
     include=[
         "app.worker.tasks.agent_tasks",
         "app.worker.tasks.automation_tasks",
+        "app.worker.tasks.discovery_tasks",
         "app.worker.tasks.document_tasks",
         "app.worker.tasks.jira_tasks",
         "app.worker.tasks.rag_tasks",

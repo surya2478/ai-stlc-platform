@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle, ChevronRight, Clock, Globe, Plug, Radar, ShieldCheck, X,
 } from "lucide-react";
@@ -130,6 +131,17 @@ export function ApplicationInspector({
 }) {
   const [tab, setTab] = useState<InspectorTab>("overview");
   useEffect(() => { setTab("overview"); }, [app?.id]);
+  const router = useRouter();
+
+  function openDiscovery() {
+    if (!app?.id) return;
+    const firstEnv = Object.keys(app.environment_urls || {})[0];
+    const params = new URLSearchParams({
+      project: String(app.project_id), view: "discovery", application: String(app.id),
+    });
+    if (firstEnv) params.set("environment", firstEnv);
+    router.push(`/automation?${params.toString()}`);
+  }
 
   const events = useMemo(() => extractAppEvents(auditLog, app?.id), [auditLog, app?.id]);
   const gaps = app ? applicationGaps(app) : [];
@@ -320,9 +332,14 @@ export function ApplicationInspector({
             <Button
               size="sm"
               variant="outline"
-              disabled
-              title="Start Discovery becomes available once UI-015 Live Discovery Session is implemented."
-              className="mt-3 h-9 w-full gap-2 border-slate-200 text-xs font-bold text-slate-400"
+              disabled={!Object.keys(app.environment_urls || {}).length}
+              title={
+                Object.keys(app.environment_urls || {}).length
+                  ? "Open Live Discovery Session for this application"
+                  : "Configure at least one environment URL before starting discovery."
+              }
+              onClick={openDiscovery}
+              className="mt-3 h-9 w-full gap-2 border-slate-200 text-xs font-bold text-slate-600"
             >
               <Radar className="h-4 w-4" />
               Start Discovery

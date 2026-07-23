@@ -9,7 +9,7 @@ from app.api.v1.endpoints import (
     test_data, automation, execution, defects,
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
     applications, reviews, playwright_studio, mcp_connections, video,
-    grounded_poc, automation_classification,
+    grounded_poc, automation_classification, discovery,
 )
 
 api_router = APIRouter()
@@ -51,4 +51,7 @@ api_router.include_router(
 api_router.include_router(
     automation_classification.router, prefix="/automation-classifications", tags=["Automation Classification"]
 )
+# UI-015 Live Discovery Session (P1-S4 extension) — isolated namespace;
+# every route 404s unless DISCOVERY_SESSIONS_ENABLED=true.
+api_router.include_router(discovery.router, prefix="/discovery", tags=["Live Discovery Session"])
 

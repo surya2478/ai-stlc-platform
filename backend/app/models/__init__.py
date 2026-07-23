@@ -62,5 +62,12 @@ from app.models.automation_classification import (  # noqa: F401
     ClassificationFieldCorrection,
     ClassificationAuditEvent,
 )
+from app.models.discovery_session import (  # noqa: F401
+    DiscoverySession,
+    DiscoveryAction,
+    DiscoveryCheckpoint,
+    DiscoveryCapture,
+    DiscoverySessionEvent,
+)
 
 

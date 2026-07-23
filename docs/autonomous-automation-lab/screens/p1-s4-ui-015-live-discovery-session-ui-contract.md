@@ -14,8 +14,8 @@
 | Previous screen | UI-014 Application Registry |
 | Next screen | UI-016 Application Model |
 | Existing baseline | Project applications/environments, Playwright MCP discovery agent, readiness service, agent-run events and locator-map persistence |
-| Reference image | `docs/autonomous-automation-lab/screens/Live Discovery Session.png` |
-| Implementation status | `REFERENCE_IMAGE_REVIEWED_CHANGES_REQUIRED` |
+| Reference image | `docs/autonomous-automation-lab/screens/Live Discovery Session.png` (revision pending file replacement — see Section 25) |
+| Implementation status | `REFERENCE_IMAGE_APPROVED_READY_FOR_IMPLEMENTATION` |
 
 ## 1. Purpose
 
@@ -48,7 +48,8 @@ Existing reusable backend capabilities:
 - locator persistence: `backend/app/services/locator_map_service.py`;
 - project application/environment source: `ProjectApplication` and project-application APIs;
 - agent execution/progress foundation: `AgentRun`, Celery task dispatch and agent-run logs;
-- current captured baseline: accessibility snapshots, ranked interactive elements, page URLs/titles, locator recommendations and live automation blockers.
+- current captured baseline: accessibility snapshots, ranked interactive elements, page URLs/titles, locator recommendations and live automation blockers;
+- validation adapter/MCP registry: `MCPConnection` (`backend/app/models/mcp_connection.py`) and its `capability_key` column, project-scoped connection status (`connected`/`not_configured`/`error`), and `backend/app/services/test_classification/capability_resolver.py`'s resolution pattern — added for Test Automation Classification & Routing and directly reusable here. UI-015's "Validation Adapters / MCPs" panel and "System Validations" tab must resolve against these same real, project-scoped `MCPConnection` rows rather than a second registry; a validator with no matching `capability_key` in the project is `UNSUPPORTED`/`NOT_CONFIGURED`, never fabricated as connected.
 
 Existing behavior is not sufficient for the complete UI-015 contract. The current discovery endpoint is a queued, bounded, headless agent run driven by selected test cases. It does not yet provide:
 
@@ -249,6 +250,13 @@ Required checks:
 11. Evidence storage is writable and within managed workspace boundaries
 12. User permission and project membership are valid
 13. Guided/Agent-Driven test case is approved, application-mapped and discovery-eligible
+14. Every validation adapter/MCP declared mandatory by the resolved automation classification (or by project/application policy when no classification exists) is connected and healthy
+
+Check 14 resolves against the same real `MCPConnection` registry described in Section 2 — the specific
+adapters shown (e.g. an "Event / Kafka" or "CRM MCP" row) are whatever the project has actually
+registered and whatever the current session's application/journey/classification declares as
+required, never a fixed list. A mandatory adapter that is `not_configured` or `error` is a `Blocked`
+readiness result, not a warning; an optional adapter in that state is a `Warning`.
 
 The gate displays live `Passed`, `Warning`, `Blocked` or `Not Evaluated` results with exact backend detail.
 
@@ -266,6 +274,15 @@ Use six compact cards backed by session data:
 6. **Evidence & Blockers** — evidence completeness and open blockers
 
 No illustrative totals, percentages or timestamps are permitted.
+
+The revised reference image shows the readiness strip (Section 7, expanded to the per-check card
+layout with a Readiness Score gauge) occupying this top band instead of the six KPI cards, and
+keeps it visible for the whole session lifecycle rather than only pre-start. Both requirements
+stand: the readiness strip is promoted to persistent, always-visible top placement (superseding
+the "compact strip above session controls" wording in Section 21), and the six KPI cards move to
+the Session Inspector's Live State tab (Section 11.3) as a persisted session summary once
+`RECORDING` begins, rather than staying in the top band. Confirm this placement during the first
+implementation review before treating it as final.
 
 ## 9. Persisted session state machine
 
@@ -376,9 +393,11 @@ Required tabs:
 - DOM / Accessibility
 - Elements
 - Network / API
+- System Validations
 - Console / Timing
 - Evidence
 - Activity / Audit
+- Notes
 
 #### Live State
 
@@ -422,6 +441,43 @@ Required tabs:
 
 Secrets, authorization headers, cookies, tokens and prohibited payload fields must be removed before persistence or display.
 
+#### System Validations
+
+Deterministic cross-system business-state validation, distinct from the raw HTTP/API log in the
+Network / API tab — this tab answers "did the domains this journey touches actually reach the
+expected state", not just "did a request succeed".
+
+- Validation summary counts: Total, Passed, Failed, Inconclusive, Blocked, sourced from persisted
+  validation results for the current session, never computed client-side from unrelated data.
+- A table of individual validation results, one row per system/MCP check that ran or was expected
+  to run for the current step/action, with columns:
+  - System / MCP — the validator's `capability_key` and display name, resolved from the project's
+    `MCPConnection` registry (Section 2); never a hard-coded system name.
+  - Expected — the business-state assertion the classification/policy or step declared (e.g. an
+    order status, a charge state, an event-publication fact).
+  - Actual — the value the validator actually observed.
+  - Result — `Passed`, `Failed`, `Inconclusive` or `Blocked`.
+  - Evidence — link/reference to the persisted evidence record backing this result (raw
+    request/response, DB row snapshot, consumed event payload, etc.), sanitized per Section 16.
+- A blockers sub-list surfacing any `Failed`/`Blocked` row with its detail and timestamp, feeding
+  the same blocker concept used in the KPI cards (Section 8) and completion gate (Section 15).
+- Rows for validators that are configured but not yet evaluated for the current step show
+  `Not Evaluated`, not a fabricated status.
+- If a mandatory validator is `not_configured`/`error` in the `MCPConnection` registry, its row
+  shows `Blocked` with that exact reason — never silently omitted or downgraded to optional,
+  matching the same non-negotiable rule already enforced for automation classification
+  (`docs/test-automation-classification-routing-implementation-prompt.md`).
+
+#### Notes
+
+- Free-text session notes and step-level annotations added by the user during Guided, Free or
+  Agent-Driven capture (the `Add Note` control in Section 10/11.2).
+- Each note persists actor, timestamp, associated step/action/checkpoint reference when
+  applicable, and is included in the immutable audit trail (Activity / Audit tab, Section 17
+  Session Transition Event where relevant).
+- Notes are informational only — they do not change session state, readiness or validation
+  results.
+
 #### Console / Timing
 
 - Console severity and sanitized message
@@ -452,6 +508,24 @@ Secrets, authorization headers, cookies, tokens and prohibited payload fields mu
 - Control handoffs
 - Errors and recovery decisions
 - Actor, timestamp, reason, policy and correlation ID
+
+### 11.4 Validation adapters / MCPs strip
+
+A persistent, compact strip below the live workspace (not inside the right inspector) showing
+every validation adapter/MCP connected to the current project, each as a small card with:
+
+- adapter/MCP display name and `capability_key`;
+- category icon (browser/web discovery, API/REST/SOAP, database, domain business system, event
+  broker, etc.) sourced from the `MCPConnection.connection_type`, never inferred from the name;
+- live connection status (`Connected`, `Not Configured`, `Error`/`Warning`), reflecting
+  `MCPConnection.status` and `last_checked_at` — not a static badge;
+- a `Configure` / `Add Adapter` action that deep-links into the existing MCP Connections
+  management surface (`frontend/src/components/playwright-studio/McpConnectionsPanel.tsx` /
+  `/api/v1/mcp-connections`) rather than duplicating adapter CRUD inside UI-015.
+
+This strip is read-only status — adapter registration, credentials and health-check configuration
+remain owned by the existing MCP Connections management screen. UI-015 only surfaces status and
+routes users there to fix a gap; it must not grow its own adapter-editing UI.
 
 ## 12. Resume-state validation
 
@@ -622,6 +696,17 @@ UI-015 requires persisted entities or equivalent versioned records for:
 - open mapping issues;
 - reviewer and approval state.
 
+### System Validation Result
+
+- session ID and correlated step/action ID;
+- validator `capability_key` and resolved `MCPConnection` ID (Section 2);
+- expected value/assertion source (classification requirement, policy rule or manual step);
+- actual observed value;
+- result: `passed` / `failed` / `inconclusive` / `blocked` / `not_evaluated`;
+- evidence reference (sanitized, Section 16);
+- timestamp and duration;
+- correlation ID.
+
 ## 18. Required API capabilities
 
 Exact URLs may follow existing endpoint conventions, but the backend must expose equivalent project-scoped capabilities:
@@ -640,7 +725,11 @@ Exact URLs may follow existing endpoint conventions, but the backend must expose
 - complete/cancel session;
 - create/update draft Application Model;
 - export sanitized session evidence;
-- retrieve immutable activity/audit history.
+- retrieve immutable activity/audit history;
+- list the project's validation adapters/MCPs and live connection status (reuses the existing
+  `MCPConnection`/`/api/v1/mcp-connections` registry — Section 2 — not a new endpoint family);
+- read persisted System Validation Results for a session/step, and trigger a validator re-check
+  where policy allows manual re-validation.
 
 Suggested command shape:
 
@@ -676,11 +765,15 @@ Do not implement critical lifecycle changes through frontend-only state.
 ## 21. Visual contract
 
 - Existing dark navy sidebar and white application shell
-- Compact header/context selectors
-- Six compact KPI cards
-- Compact readiness strip directly above session controls
+- Compact header/context selectors, including the Test Case selector field (Section 6.1)
+- Persistent, always-visible readiness strip with per-check cards and a Readiness Score gauge,
+  directly below the header (Section 7, Section 8 note)
+- Six KPI/session-summary cards relocate into the Session Inspector Live State tab once recording
+  begins (Section 8 note)
 - Dense three-region live workspace
-- Fixed-width right inspector consistent with UI-007 through UI-013
+- A read-only Validation Adapters/MCPs status strip below the live workspace (Section 11.4)
+- Fixed-width right inspector consistent with UI-007 through UI-013, including the System
+  Validations tab (Section 11.3)
 - Blue primary/active controls
 - Emerald ready/recording/completed states
 - Amber initializing/paused/warning states
@@ -757,12 +850,21 @@ Frontend/live browser:
 
 ## 25. Reference image gate
 
-The supplied UI-015 reference image has been reviewed. It currently displays `TC-03428` as static Test/Journey context without a visible selection or upstream-handoff mechanism. The image must be revised or explicitly approved with the Test Context interaction defined in Sections 3.1 and 6.1 before implementation begins.
+**Resolved 2026-07-23.** The original reference image displayed `TC-03428` as static Test/Journey
+context with no visible selection or upstream-handoff mechanism. A revised image was supplied
+showing Test Case promoted to a header-level field alongside Application/Environment/Auth
+Profile/Mode. Decision: build the full interactive selector per Sections 3.1/6.1 (chips, `Change`
+action pre-start, lock icon post-start) — the revised image is treated as showing the field's
+resting/selected state, not a simplification of the interaction contract.
 
-Expected image file:
+The revised image also introduced a "System Validations" inspector tab, a "Validation Adapters /
+MCPs" status strip, and an expanded, always-visible readiness-check layout with a Readiness Score
+gauge, none of which were in the original contract. This document has been updated to specify
+all three (Sections 2, 7, 8, 11.3, 11.4, 17, 18, 21) rather than treating the image as
+implementation-only guidance the text doesn't cover.
 
-`docs/autonomous-automation-lab/screens/Live Discovery Session.png`
+**Outstanding action:** the revised image was supplied inline in chat, not as a file — it has not
+yet replaced `docs/autonomous-automation-lab/screens/Live Discovery Session.png` on disk. Save it
+to that path before implementation so the reference image and this contract stay in sync.
 
-After approval, update the status to:
-
-`REFERENCE_IMAGE_APPROVED_READY_FOR_IMPLEMENTATION`
+Implementation status: `REFERENCE_IMAGE_APPROVED_READY_FOR_IMPLEMENTATION`

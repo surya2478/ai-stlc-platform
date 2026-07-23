@@ -3134,3 +3134,150 @@ export const groundedPocApi = {
   cancelRun: (runId: number) =>
     api.post<PocActionResponse>(`/poc/grounded-automation/runs/${runId}/cancel`),
 };
+
+// ── UI-015 Live Discovery Session (P1-S4, Phase 1: Guided User Recording) ──
+
+export interface EligibleTestCase {
+  test_case_id: number;
+  display_id: string;
+  title: string;
+  requirement_ref: string | null;
+  scenario_ref: string | null;
+  approval_status: string;
+  eligible: boolean;
+  blocking_reason: string | null;
+}
+
+export interface DiscoverySession {
+  id: number;
+  project_id: number;
+  application_id: number;
+  environment: string;
+  mode: "GUIDED_USER" | "FREE_USER_ACTION" | "SUPERVISED_AGENT_DRIVEN";
+  status: string;
+  browser_target: string | null;
+  framework: string;
+  auth_profile_reference: string | null;
+  test_case_id: number | null;
+  test_case_version: number | null;
+  requirement_ref: string | null;
+  ppm_ref: string | null;
+  journey_ref: string | null;
+  scenario_ref: string | null;
+  purpose: string | null;
+  evidence_policy: Record<string, unknown>;
+  capture_options: Record<string, unknown>;
+  allowed_hosts: string[];
+  owner_id: number | null;
+  created_by: number | null;
+  started_at: string | null;
+  terminal_at: string | null;
+  terminal_reason: string | null;
+  failure_detail: string | null;
+  latest_checkpoint_id: number | null;
+  draft_model_version_id: number | null;
+  correlation_id: string | null;
+  current_step_index: number;
+  resume_state_classification: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReadinessCheckResult {
+  name: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface ReadinessResult {
+  ready: boolean;
+  checks: ReadinessCheckResult[];
+}
+
+export interface DiscoveryAction {
+  id: number;
+  session_id: number;
+  sequence: number;
+  actor: string;
+  test_step_ref: string | null;
+  action_family: string;
+  target_semantic: string | null;
+  target_screen_ref: string | null;
+  occurred_at: string;
+  duration_ms: number | null;
+  evidence_refs: number[];
+  locator_confidence: number | null;
+  inclusion_state: string;
+  issue_note: string | null;
+  reviewer_note: string | null;
+  input_binding: Record<string, unknown> | null;
+  post_state: { accessibility_snapshot_excerpt?: string } & Record<string, unknown> | null;
+}
+
+export interface DiscoveryCheckpoint {
+  id: number;
+  session_id: number;
+  sequence: number;
+  state_at_checkpoint: string;
+  action_position: number | null;
+  sanitized_url: string | null;
+  sanitized_screen: string | null;
+  resumable: boolean;
+  expires_at: string | null;
+  created_by_actor: string;
+  created_at: string;
+}
+
+export interface DiscoverySessionEvent {
+  id: number;
+  session_id: number;
+  actor_id: number | null;
+  actor_type: string;
+  previous_state: string | null;
+  new_state: string;
+  command: string | null;
+  reason: string | null;
+  idempotency_key: string | null;
+  correlation_id: string | null;
+  occurred_at: string;
+}
+
+const ACTIVE_DISCOVERY_STATUSES = new Set([
+  "INITIALISING", "RECORDING", "PAUSE_REQUESTED", "RESUMING", "STOP_REQUESTED",
+]);
+
+export function isActiveDiscoverySession(session: Pick<DiscoverySession, "status"> | undefined | null): boolean {
+  return Boolean(session && ACTIVE_DISCOVERY_STATUSES.has(session.status));
+}
+
+export const discoveryApi = {
+  eligibleTestCases: (projectId: number, applicationId: number, mode: string) =>
+    api.get<EligibleTestCase[]>(`/discovery/projects/${projectId}/eligible-test-cases`, {
+      params: { application_id: applicationId, mode },
+    }),
+  createSession: (projectId: number, payload: {
+    application_id: number; environment: string; mode: string; test_case_id?: number | null;
+    purpose?: string | null; browser_target?: string | null; framework?: string;
+    auth_profile_reference?: string | null; correlation_id?: string | null;
+  }) => api.post<DiscoverySession>(`/discovery/projects/${projectId}/sessions`, payload),
+  listSessions: (projectId: number, params?: { application_id?: number; status?: string }) =>
+    api.get<DiscoverySession[]>(`/discovery/projects/${projectId}/sessions`, { params }),
+  getSession: (sessionId: number) => api.get<DiscoverySession>(`/discovery/sessions/${sessionId}`),
+  evaluateReadiness: (sessionId: number) =>
+    api.post<ReadinessResult>(`/discovery/sessions/${sessionId}/readiness`),
+  issueCommand: (sessionId: number, payload: {
+    command: string; idempotency_key: string; reason?: string | null; params?: Record<string, unknown>;
+  }) => api.post<DiscoverySession>(`/discovery/sessions/${sessionId}/commands`, payload),
+  listActions: (sessionId: number) => api.get<DiscoveryAction[]>(`/discovery/sessions/${sessionId}/actions`),
+  recordAction: (sessionId: number, payload: {
+    idempotency_key: string; action_family: string; target_ref?: string | null;
+    target_semantic?: string | null; input_text?: string | null; url?: string | null;
+  }) => api.post<DiscoverySession>(`/discovery/sessions/${sessionId}/actions`, payload),
+  correctAction: (sessionId: number, actionId: number, payload: {
+    inclusion_state: string; reviewer_note?: string | null; reason?: string | null; mapped_test_step_ref?: string | null;
+  }) => api.post<DiscoveryAction>(`/discovery/sessions/${sessionId}/actions/${actionId}/correct`, payload),
+  listCheckpoints: (sessionId: number) =>
+    api.get<DiscoveryCheckpoint[]>(`/discovery/sessions/${sessionId}/checkpoints`),
+  getActivity: (sessionId: number) =>
+    api.get<DiscoverySessionEvent[]>(`/discovery/sessions/${sessionId}/activity`),
+};

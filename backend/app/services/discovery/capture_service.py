@@ -1,0 +1,287 @@
+"""Guided User Recording step-loop body (Phase 1).
+
+Reuses the same Playwright-via-MCP transport as `mcp_discovery_agent.py` /
+`grounded_capture_agent.py` (per the plan's reuse table) rather than a new
+browser stack. What Phase 1 actually grounds per approved test step is a
+real navigate + accessibility snapshot + screenshot — the honest subset the
+existing infrastructure can perform without guessing at click targets a
+recording adapter would normally supply. Guided User Recording's click/type
+capture through a browser-side recording adapter is explicitly Phase 2+
+backlog (see the implementation plan) — this module never fabricates a
+click/type action it did not actually observe.
+
+Every persisted evidence path lives under the managed discovery workspace
+root, never a guessed location, and every screenshot capture uses the same
+CWD-leak workaround as GroundedCaptureAgent (`@playwright/mcp`'s
+`browser_take_screenshot` ignores `--output-dir` and any directory
+component in `filename`).
+"""
+from __future__ import annotations
+
+import hashlib
+import shutil
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlparse
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agents.automation.mcp_session import MCPSession, MCPSessionConfig, mask_snapshot_text
+from app.models.discovery_session import DiscoveryAction, DiscoveryCapture, DiscoveryCheckpoint, DiscoverySession
+from app.models.project_application import ProjectApplication
+from app.models.test_case import TestCase
+
+
+def discovery_workspace_root() -> Path:
+    from app.services.automation_runner.workspace import workspace_root
+
+    return workspace_root().parent / "discovery_workspace"
+
+
+def session_output_dir(session_id: int) -> Path:
+    path = discovery_workspace_root() / str(session_id)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+async def build_session_config(db: AsyncSession, session: DiscoverySession) -> MCPSessionConfig:
+    output_dir = session_output_dir(session.id)
+    return MCPSessionConfig(
+        allowed_hosts=list(session.allowed_hosts or []), headless=True, output_dir=str(output_dir),
+    )
+
+
+async def _capture_screenshot(mcp_session: MCPSession, output_dir: Path, *, label: str) -> str | None:
+    leak_name = f"discovery_{uuid.uuid4().hex}.png"
+    await mcp_session.call("browser_take_screenshot", {"filename": leak_name})
+    leaked_path = Path.cwd() / leak_name
+    if not leaked_path.exists():
+        return None
+    target_path = output_dir / f"{label}.png"
+    shutil.move(str(leaked_path), str(target_path))
+    return str(target_path)
+
+
+def _checksum(path: str | None) -> str | None:
+    if not path:
+        return None
+    try:
+        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+async def start_capture(db: AsyncSession, session: DiscoverySession) -> tuple[MCPSession, Path, str | None]:
+    """Opens the MCPSession and navigates to the environment's starting URL.
+    Returns the open session (caller keeps it open across the step loop),
+    the workspace dir, and the resolved starting URL (None if unresolvable —
+    caller must fail the session rather than guess a URL)."""
+    application = await db.get(ProjectApplication, session.application_id)
+    url = (application.environment_urls or {}).get(session.environment) if application else None
+    output_dir = session_output_dir(session.id)
+    config = await build_session_config(db, session)
+    mcp_session = MCPSession(config)
+    await mcp_session.__aenter__()
+    if url:
+        await mcp_session.navigate(url)
+    return mcp_session, output_dir, url
+
+
+async def _capture_evidence_and_persist_action(
+    db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path, *,
+    actor: str, action_family: str, target_semantic: str, sequence: int, label: str,
+    test_step_ref: str | None = None, input_binding: dict | None = None,
+    provenance_call: str = "browser_snapshot",
+) -> DiscoveryAction:
+    """Shared evidence-capture body for one real action: a snapshot +
+    screenshot around whatever the caller already did (or is about to
+    describe), persisted as one DiscoveryAction + DiscoveryCapture pair.
+    Used by both the Guided step-walk (`capture_one_step`) and Free mode's
+    user-driven `perform_free_action` — the evidence contract is identical,
+    only who decided the action (system vs. user) differs.
+    """
+    raw_snapshot = await mcp_session.snapshot()
+    masked_snapshot = mask_snapshot_text(raw_snapshot)
+    screenshot_path = await _capture_screenshot(mcp_session, output_dir, label=label)
+    now = datetime.now(timezone.utc)
+
+    action = DiscoveryAction(
+        session_id=session.id,
+        project_id=session.project_id,
+        sequence=sequence,
+        actor=actor,
+        test_step_ref=test_step_ref,
+        action_family=action_family,
+        target_semantic=target_semantic[:300],
+        input_binding=input_binding,
+        occurred_at=now,
+        post_state={"accessibility_snapshot_excerpt": masked_snapshot[:4000]},
+        inclusion_state="included",
+        provenance={"tool": "playwright_mcp", "call": provenance_call},
+    )
+    db.add(action)
+    await db.flush()
+
+    if screenshot_path:
+        capture = DiscoveryCapture(
+            session_id=session.id, project_id=session.project_id, action_id=action.id,
+            capture_type="screenshot", storage_path=screenshot_path, checksum=_checksum(screenshot_path),
+            source="playwright_mcp", captured_at=now, redaction_state="not_required",
+        )
+        db.add(capture)
+        await db.flush()
+        action.evidence_refs = [capture.id]
+
+    await db.flush()
+    return action
+
+
+async def capture_one_step(
+    db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path,
+) -> DiscoveryAction | None:
+    """Captures real evidence (snapshot + screenshot) for the current guided
+    step and advances `current_step_index`. Returns None once every step has
+    been captured."""
+    test_case = await db.get(TestCase, session.test_case_id) if session.test_case_id else None
+    steps = (test_case.steps or []) if test_case else []
+    if session.current_step_index >= len(steps):
+        return None
+
+    step = steps[session.current_step_index]
+    step_text = step.get("action") or step.get("description") or str(step) if isinstance(step, dict) else str(step)
+
+    action = await _capture_evidence_and_persist_action(
+        db, session, mcp_session, output_dir,
+        actor="system", action_family="read", target_semantic=step_text,
+        sequence=session.current_step_index, label=f"step_{session.current_step_index}",
+        test_step_ref=str(step.get("step_number")) if isinstance(step, dict) and step.get("step_number") else None,
+    )
+    session.current_step_index += 1
+    await db.flush()
+    return action
+
+
+# ── Free User-Action Recording (Phase 2) ─────────────────────────────────
+
+FREE_ACTION_FAMILIES = ("navigate", "click", "input", "read")
+
+# Heuristic only (no secure-input semantic exists in the MCP transport yet —
+# Section 16's "support secure-input semantic actions" is aspirational future
+# work). Matches on the human-supplied element description, not the typed
+# value, since the value is exactly what must never be persisted for these.
+_SENSITIVE_FIELD_HINTS = ("password", "otp", "pin", "cvv", "cvc", "card number", "secret", "token")
+
+
+def _is_sensitive_field(target_semantic: str | None) -> bool:
+    text = (target_semantic or "").lower()
+    return any(hint in text for hint in _SENSITIVE_FIELD_HINTS)
+
+
+class FreeActionError(ValueError):
+    """A Free-mode action request was malformed or not executable — reported
+    back to the caller as a recorded failure event, never silently dropped."""
+
+
+async def perform_free_action(
+    db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path, *,
+    action_family: str,
+    target_ref: str | None = None,
+    target_semantic: str | None = None,
+    input_text: str | None = None,
+    url: str | None = None,
+) -> DiscoveryAction:
+    """Performs exactly one user-directed action against the real live
+    browser session (Section 5.2 — "user actions are captured without an
+    approved step plan"). Every action here is one the user explicitly
+    named (a URL to navigate to, an element ref to click/type into, read
+    from the last snapshot) — nothing is inferred or guessed on their
+    behalf; `MCPSession.navigate`'s existing allowed-host check is the same
+    single security boundary Guided mode relies on.
+    """
+    if action_family not in FREE_ACTION_FAMILIES:
+        raise FreeActionError(f"Unsupported action_family '{action_family}'")
+
+    input_binding: dict | None = None
+    if action_family == "navigate":
+        if not url:
+            raise FreeActionError("navigate requires 'url'")
+        await mcp_session.navigate(url)  # raises MCPSecurityError if host not allowed
+        semantic = target_semantic or f"Navigate to {url}"
+        input_binding = {"url": url}
+    elif action_family == "click":
+        if not target_ref:
+            raise FreeActionError("click requires 'target_ref'")
+        await mcp_session.click(element=target_semantic or target_ref, target=target_ref)
+        semantic = target_semantic or f"Click {target_ref}"
+        input_binding = {"target_ref": target_ref}
+    elif action_family == "input":
+        if not target_ref or input_text is None:
+            raise FreeActionError("input requires 'target_ref' and 'input_text'")
+        if _is_sensitive_field(target_semantic) or _is_sensitive_field(target_ref):
+            persisted_text = "[REDACTED - sensitive field]"
+        else:
+            persisted_text = mask_snapshot_text(input_text)[:500]
+        await mcp_session.type_text(element=target_semantic or target_ref, target=target_ref, text=input_text)
+        semantic = target_semantic or f"Type into {target_ref}"
+        input_binding = {"target_ref": target_ref, "text": persisted_text}
+    else:  # "read" — an explicit user-triggered observation, no browser interaction
+        semantic = target_semantic or "Observed current state"
+
+    result = await db.execute(
+        select(DiscoveryAction.sequence)
+        .where(DiscoveryAction.session_id == session.id)
+        .order_by(DiscoveryAction.sequence.desc())
+        .limit(1)
+    )
+    existing_max_sequence = result.scalar_one_or_none()
+    # `existing_max_sequence or -1` would be wrong here: 0 is a legitimate
+    # first sequence number, and `0 or -1` evaluates to -1 in Python (0 is
+    # falsy), which silently reused sequence 0 for every action instead of
+    # incrementing — caught live when a second Free-mode action got
+    # persisted with the same sequence as the first.
+    next_sequence = (existing_max_sequence + 1) if existing_max_sequence is not None else 0
+
+    return await _capture_evidence_and_persist_action(
+        db, session, mcp_session, output_dir,
+        actor="user", action_family=action_family, target_semantic=semantic,
+        sequence=next_sequence, label=f"free_{next_sequence}",
+        input_binding=input_binding, provenance_call=f"browser_{action_family}",
+    )
+
+
+async def create_checkpoint(
+    db: AsyncSession, session: DiscoverySession, *, state_at_checkpoint: str, created_by_actor: str = "system",
+    resumable: bool = True,
+) -> DiscoveryCheckpoint:
+    result = await db.execute(
+        select(DiscoveryAction.target_semantic)
+        .where(DiscoveryAction.session_id == session.id)
+        .order_by(DiscoveryAction.sequence.desc())
+        .limit(1)
+    )
+    last_screen = result.scalar_one_or_none()
+
+    result = await db.execute(select(DiscoveryCheckpoint.sequence).where(DiscoveryCheckpoint.session_id == session.id))
+    next_sequence = (max([r for r in result.scalars().all()], default=-1)) + 1
+
+    application = await db.get(ProjectApplication, session.application_id)
+    url = (application.environment_urls or {}).get(session.environment) if application else None
+    sanitized_url = urlparse(url).netloc + urlparse(url).path if url else None
+
+    checkpoint = DiscoveryCheckpoint(
+        session_id=session.id, project_id=session.project_id, sequence=next_sequence,
+        state_at_checkpoint=state_at_checkpoint, action_position=session.current_step_index,
+        sanitized_url=sanitized_url, sanitized_screen=last_screen,
+        resumable=resumable, created_by_actor=created_by_actor,
+    )
+    db.add(checkpoint)
+    await db.flush()
+    session.latest_checkpoint_id = checkpoint.id
+    await db.flush()
+    return checkpoint
+
+
+async def close_capture(mcp_session: MCPSession) -> None:
+    await mcp_session.__aexit__(None, None, None)
