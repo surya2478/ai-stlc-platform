@@ -54,6 +54,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 type Tone = "blue" | "emerald" | "amber" | "red" | "purple" | "slate";
 type InspectorTab = "review" | "traceability" | "test-case" | "evidence" | "history" | "activity" | "automation";
@@ -608,6 +610,7 @@ const CLASSIFICATION_DECISIONS: Array<{ key: "approve" | "approve_conditional" |
 ];
 
 function ClassificationInspector({ row, enabled, canEvaluate, canApprove, onChanged }: { row: ApprovalRow; enabled: boolean; canEvaluate: boolean; canReview: boolean; canApprove: boolean; onChanged: () => void }) {
+  const { runAIAction } = useAIAction();
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [decisionKey, setDecisionKey] = useState<typeof CLASSIFICATION_DECISIONS[number]["key"] | null>(null);
@@ -619,7 +622,17 @@ function ClassificationInspector({ row, enabled, canEvaluate, canApprove, onChan
     if (!projectId) return;
     setBusy("evaluate"); setError("");
     try {
-      await automationClassificationApi.evaluate(projectId, [row.testCase.id]);
+      await runAIAction({
+        actionName: "classify_automation_eligibility",
+        title: "Classifying Automation Eligibility",
+        module: "Test Case Approval",
+        artifactType: "Automation Classification",
+        projectId,
+        testCaseId: row.testCase.test_case_id,
+        stages: AI_PROCESSING_STAGES.automationClassification,
+        successMessage: "Automation classification was queued.",
+        execute: () => automationClassificationApi.evaluate(projectId, [row.testCase.id]),
+      });
       onChanged();
     } catch (evalError) { setError(errorMessage(evalError, "Could not queue classification.")); }
     finally { setBusy(""); }
@@ -629,7 +642,17 @@ function ClassificationInspector({ row, enabled, canEvaluate, canApprove, onChan
     if (!classification) return;
     setBusy("reclassify"); setError("");
     try {
-      await automationClassificationApi.reclassify(classification.id);
+      await runAIAction({
+        actionName: "reclassify_automation_eligibility",
+        title: "Reclassifying Automation Eligibility",
+        module: "Test Case Approval",
+        artifactType: "Automation Classification",
+        projectId,
+        testCaseId: row.testCase.test_case_id,
+        stages: AI_PROCESSING_STAGES.automationClassification,
+        successMessage: "Automation reclassification was queued.",
+        execute: () => automationClassificationApi.reclassify(classification.id),
+      });
       onChanged();
     } catch (evalError) { setError(errorMessage(evalError, "Could not queue reclassification.")); }
     finally { setBusy(""); }

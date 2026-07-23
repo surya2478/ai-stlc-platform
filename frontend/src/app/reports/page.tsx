@@ -11,6 +11,8 @@ import {
   BarChart3, Bot, CheckCircle, ChevronDown, ChevronUp,
   AlertTriangle, TrendingUp, Shield, Lightbulb, RefreshCw, X, Loader2
 } from "lucide-react";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 // Status Chip Variant Mapping
 function getStatusVariant(status: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
@@ -185,6 +187,7 @@ function ReportRow({ report }: { report: Report }) {
 }
 
 function ReportsContent() {
+  const { runAIAction } = useAIAction();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -239,7 +242,16 @@ function ReportsContent() {
     setAgentStatus("running");
     setAgentError(null);
     try {
-      await reportsApi.generate(selectedProject, reportType);
+      await runAIAction({
+        actionName: "generate_quality_report",
+        title: "Generating Quality Report",
+        module: "Reports",
+        artifactType: "Quality Report",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.report,
+        successMessage: "Quality report generated successfully.",
+        execute: () => reportsApi.generate(selectedProject, reportType),
+      });
       setAgentStatus("done");
       await loadReports();
     } catch (e: unknown) {

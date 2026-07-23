@@ -14,6 +14,8 @@ import {
   Bug, Bot, CheckCircle, XCircle, ChevronDown, ChevronUp,
   AlertTriangle, Layers, ExternalLink, ShieldAlert, X, RefreshCw, Loader2
 } from "lucide-react";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 // Status Chip Variant Mapping
 function getStatusVariant(status: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
@@ -180,6 +182,7 @@ function DefectRow({
 }
 
 function DefectsContent() {
+  const { runAIAction } = useAIAction();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -263,7 +266,21 @@ function DefectsContent() {
     setAgentStatus("running");
     setAgentError(null);
     try {
-      const res = await defectsApi.analyseDefects(selectedProject, Array.from(selectedResultIds));
+      const res = await runAIAction({
+        actionName: "analyze_execution_failures",
+        title: "Diagnosing Execution Failures",
+        module: "Defects and Evidence",
+        artifactType: "Defect Recommendations",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.failureDiagnosis,
+        successMessage: "Failure diagnosis and defect recommendations are ready.",
+        execute: async () => {
+          const response = await defectsApi.analyseDefects(selectedProject, Array.from(selectedResultIds));
+          const generated = (response.data as { defect_ids?: number[] }).defect_ids?.length ?? 0;
+          if (generated === 0) throw new Error("AI analysis completed but produced no defect recommendations.");
+          return response;
+        },
+      });
       const data = res.data as { defect_ids?: number[]; message?: string };
       const count = data.defect_ids?.length ?? 0;
       if (count === 0) {

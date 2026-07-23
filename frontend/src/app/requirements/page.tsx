@@ -34,6 +34,8 @@ import { Button } from "@/components/ui/button";
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody, DrawerFooter
 } from "@/components/ui/drawer";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 // Status Chip Variant Mapping
 function getStatusVariant(status: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
@@ -427,6 +429,7 @@ const EXPORT_MENU_OPTIONS: Array<["test-cases-excel" | "test-cases-csv" | "test-
 ];
 
 function RequirementsContent() {
+  const { runAIAction, updateAIProcessing } = useAIAction();
   const { resolveUser } = useUserDirectory();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -727,29 +730,28 @@ function RequirementsContent() {
         const run = res.data;
         if (run.progress_message) {
           setAgentStatus(`${run.progress_message} (${run.progress_percent ?? 0}%)`);
+          updateAIProcessing({ status: "processing", currentStage: run.progress_message });
         }
         if (run.status === "completed") {
           const count = typeof run.output_data?.count === "number" ? run.output_data.count : null;
           if (options?.zeroCountError && count === 0) {
-            setAgentError(options.zeroCountError);
             setAgentStatus("");
             await loadData();
-            return;
+            throw new Error(options.zeroCountError);
           }
           setAgentStatus(completedMessage);
           await loadData();
           return;
         }
         if (run.status === "failed") {
-          setAgentError(run.error_message || failedFallback);
           setAgentStatus("");
-          return;
+          throw new Error(run.error_message || failedFallback);
         }
       } catch (err) {
         console.error("Error polling agent run:", err);
       }
     }
-    setAgentStatus("Still running. Check Agent Logs for progress.");
+    throw new Error("Still running. Check Agent Logs for progress.");
   };
 
   const runIntakeAgent = async (docId: number) => {
@@ -758,15 +760,28 @@ function RequirementsContent() {
     setAgentStatus("Agent 1 running -- extracting requirements from document...");
     setAgentError(null);
     try {
+      await runAIAction({
+        actionName: "requirement_intake",
+        title: "Analyzing Requirement Source",
+        module: "Requirement Intelligence",
+        artifactType: "Requirements",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.requirementAnalysis,
+        successMessage: "Requirements extracted successfully.",
+        execute: async () => {
       const res = await requirementsApi.triggerIntake(selectedProject, docId);
       const data = res.data as { message?: string; agent_run_id?: number };
       if (data.agent_run_id) {
+        updateAIProcessing({ status: "waiting", agentRunId: String(data.agent_run_id), currentStage: data.message ?? "Waiting for the requirement-intake agent" });
         setAgentStatus(data.message ?? "Requirement intake queued.");
         await pollAgentRun(data.agent_run_id, "Requirements extracted successfully.", "Requirement extraction failed.");
       } else {
         setAgentStatus(`Done: ${data.message || "Extraction completed successfully"}`);
         await loadData();
       }
+      return res;
+        },
+      });
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       setAgentError(detail ? `Intake failed: ${detail}` : "Intake failed — check backend logs.");
@@ -783,9 +798,19 @@ function RequirementsContent() {
     setAgentStatus("URL agent running -- rendering and analysing portal page(s)...");
     setAgentError(null);
     try {
+      await runAIAction({
+        actionName: "analyze_portal_url",
+        title: "Analyzing Portal URL",
+        module: "Requirement Intelligence",
+        artifactType: "Portal Requirements",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.requirementAnalysis,
+        successMessage: "Portal requirements generated successfully.",
+        execute: async () => {
       const res = await requirementsApi.triggerUrlAnalysis(selectedProject, portalUrl.trim(), urlCrawlDepth);
       const data = res.data as { message?: string; agent_run_id?: number };
       if (data.agent_run_id) {
+        updateAIProcessing({ status: "waiting", agentRunId: String(data.agent_run_id), currentStage: data.message ?? "Waiting for the portal-analysis agent" });
         setAgentStatus(data.message ?? "Portal URL analysis queued.");
         await pollAgentRun(data.agent_run_id, "Portal requirements generated successfully.", "Portal URL analysis failed.");
         setPortalUrl("");
@@ -793,6 +818,9 @@ function RequirementsContent() {
         setAgentStatus(`Done: ${data.message || "URL analysis completed successfully"}`);
         await loadData();
       }
+      return res;
+        },
+      });
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       setAgentError(detail ? `URL analysis failed: ${typeof detail === "string" ? detail : JSON.stringify(detail)}` : "URL analysis failed — check backend logs.");
@@ -817,6 +845,15 @@ function RequirementsContent() {
         : "Code analysis agent running — reading local repository files..."
     );
     try {
+      await runAIAction({
+        actionName: "analyze_repository",
+        title: source === "github" ? "Analyzing GitHub Repository" : "Analyzing Local Repository",
+        module: "Requirement Intelligence",
+        artifactType: "Code-derived Requirements",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.requirementAnalysis,
+        successMessage: "Code requirements generated successfully.",
+        execute: async () => {
       const res = await requirementsApi.triggerCodeAnalysis(selectedProject, {
         source,
         github_url: source === "github" ? githubUrl.trim() : undefined,
@@ -827,6 +864,7 @@ function RequirementsContent() {
       });
       const data = res.data as { message?: string; agent_run_id?: number };
       if (data.agent_run_id) {
+        updateAIProcessing({ status: "waiting", agentRunId: String(data.agent_run_id), currentStage: data.message ?? "Waiting for the code-analysis agent" });
         setAgentStatus(data.message ?? "Code analysis queued.");
         await pollAgentRun(
           data.agent_run_id,
@@ -838,6 +876,9 @@ function RequirementsContent() {
         setAgentStatus(`Done: ${data.message || "Code analysis completed successfully"}`);
         await loadData();
       }
+      return res;
+        },
+      });
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       setAgentError(detail ? `Code analysis failed: ${typeof detail === "string" ? detail : JSON.stringify(detail)}` : "Code analysis failed — check backend logs.");
@@ -856,15 +897,28 @@ function RequirementsContent() {
     setAgentStatus("Vision agent running -- analysing UI screenshot...");
     setAgentError(null);
     try {
+      await runAIAction({
+        actionName: "analyze_ui_screenshot",
+        title: "Analyzing UI Screenshot",
+        module: "Requirement Intelligence",
+        artifactType: "UI Requirements",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.requirementAnalysis,
+        successMessage: "UI requirements generated successfully.",
+        execute: async () => {
       const res = await requirementsApi.triggerUiAnalysis(selectedProject, docId);
       const data = res.data as { message?: string; agent_run_id?: number };
       if (data.agent_run_id) {
+        updateAIProcessing({ status: "waiting", agentRunId: String(data.agent_run_id), currentStage: data.message ?? "Waiting for the vision agent" });
         setAgentStatus(data.message ?? "UI screenshot analysis queued.");
         await pollAgentRun(data.agent_run_id, "UI requirements generated successfully.", "UI screenshot analysis failed.");
       } else {
         setAgentStatus(`Done: ${data.message || "UI analysis completed successfully"}`);
         await loadData();
       }
+      return res;
+        },
+      });
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       setAgentError(detail ? `UI analysis failed: ${detail}` : "UI analysis failed — check backend logs.");
@@ -880,9 +934,19 @@ function RequirementsContent() {
     setAgentStatus("Agent 2 running -- reviewing requirement quality...");
     setAgentError(null);
     try {
+      await runAIAction({
+        actionName: "review_requirement_quality",
+        title: "Reviewing Requirement Quality",
+        module: "Requirement Intelligence",
+        artifactType: "Quality Review",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.requirementAnalysis,
+        successMessage: "Requirement quality review completed.",
+        execute: async () => {
       const res = await requirementsApi.triggerQuality(selectedProject, reqIds);
       const data = res.data as { message?: string; agent_run_id?: number };
       if (data.agent_run_id) {
+        updateAIProcessing({ status: "waiting", agentRunId: String(data.agent_run_id), currentStage: data.message ?? "Waiting for the quality-review agent" });
         setAgentStatus(data.message ?? "Quality review queued.");
         await pollAgentRun(data.agent_run_id, "Quality review completed successfully.", "Quality review failed.");
       } else {
@@ -890,6 +954,9 @@ function RequirementsContent() {
         setAgentStatus(`Done. Pass: ${summary?.pass ?? 0}, Needs Revision: ${summary?.needs_revision ?? 0}, Fail: ${summary?.fail ?? 0}`);
         await loadData();
       }
+      return res;
+        },
+      });
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       setAgentError(detail ? `Quality review failed: ${detail}` : "Quality review failed — check backend logs.");

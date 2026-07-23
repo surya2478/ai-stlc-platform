@@ -12,6 +12,8 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -64,6 +66,7 @@ export function StepEditor({
   onDraftDefect?: () => void;
 }) {
   const { toast } = useToast();
+  const { runAIAction } = useAIAction();
   const [actual, setActual] = useState(step.actual_result ?? "");
   const [comments, setComments] = useState(step.comments ?? "");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,10 +111,18 @@ export function StepEditor({
     setAiBusy(true);
     setAiResult(null);
     try {
-      const res = await executionApi.aiAssistStep(step.id, {
-        actualResult: actual || undefined,
-        comments: comments || undefined,
-        screenshot: aiScreenshot ?? undefined,
+      const res = await runAIAction({
+        actionName: "analyze_manual_execution_step",
+        title: "Analyzing Execution Evidence",
+        module: "Manual Execution",
+        artifactType: "Step Recommendation",
+        stages: AI_PROCESSING_STAGES.failureDiagnosis,
+        successMessage: "Execution-step recommendation is ready.",
+        execute: () => executionApi.aiAssistStep(step.id, {
+          actualResult: actual || undefined,
+          comments: comments || undefined,
+          screenshot: aiScreenshot ?? undefined,
+        }),
       });
       setAiResult(res.data as AiSuggestion);
     } catch (e: unknown) {

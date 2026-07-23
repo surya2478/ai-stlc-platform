@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { automationApi, type TestCase } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 type Framework = "playwright" | "pytest";
 type AutomationKind = "ui" | "api" | "hybrid";
@@ -53,6 +55,7 @@ export function GenerateWithAIDialog({
   preselectedIds = [],
   onGenerated,
 }: Props) {
+  const { runAIAction } = useAIAction();
   const [framework, setFramework] = useState<Framework>("playwright");
   const [kind, setKind] = useState<AutomationKind>("ui");
   const [context, setContext] = useState("");
@@ -119,11 +122,20 @@ export function GenerateWithAIDialog({
     setBusy(true);
     setError("");
     try {
-      await automationApi.generateScripts(
+      await runAIAction({
+        actionName: "generate_automation_scripts",
+        title: `Generating ${framework === "playwright" ? "Playwright" : "Pytest"} Scripts`,
+        module: "Automation Studio",
+        artifactType: "Automation Scripts",
         projectId,
-        Array.from(selected),
-        framework,
-      );
+        stages: AI_PROCESSING_STAGES.scriptGeneration,
+        successMessage: "Automation script generation started successfully.",
+        execute: () => automationApi.generateScripts(
+          projectId,
+          Array.from(selected),
+          framework,
+        ),
+      });
       onGenerated?.(selected.size);
       onClose();
     } catch (e) {

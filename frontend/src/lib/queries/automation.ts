@@ -7,6 +7,8 @@ import {
 } from "@tanstack/react-query";
 import { automationApi, type AutomationScript } from "@/lib/api";
 import { executionKeys } from "@/lib/queries/execution";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 export const automationKeys = {
   scripts: (projectId: number) => ["automation", "scripts", projectId] as const,
@@ -116,18 +118,37 @@ export function useTransitionScript() {
 
 export function useRegenerateScript() {
   const queryClient = useQueryClient();
+  const { runAIAction } = useAIAction();
   return useMutation({
     mutationFn: async (scriptId: number) =>
-      (await automationApi.regenerateScript(scriptId)).data,
+      (await runAIAction({
+        actionName: "regenerate_automation_script",
+        title: "Regenerating Automation Script",
+        module: "Automation Studio",
+        artifactType: "Automation Script",
+        stages: AI_PROCESSING_STAGES.scriptGeneration,
+        successMessage: "Automation script regenerated successfully.",
+        execute: () => automationApi.regenerateScript(scriptId),
+      })).data,
     onSuccess: (script) => invalidateScriptQueries(queryClient, script),
   });
 }
 
 export function useRepairScript() {
   const queryClient = useQueryClient();
+  const { runAIAction } = useAIAction();
   return useMutation({
     mutationFn: async (vars: { executionResultId: number; executionRunId: number; projectId: number }) =>
-      (await automationApi.repairFromResult(vars.executionResultId)).data,
+      (await runAIAction({
+        actionName: "prepare_healing_recommendation",
+        title: "Preparing Healing Recommendation",
+        module: "Execution and Evidence",
+        artifactType: "Script Repair",
+        projectId: vars.projectId,
+        stages: AI_PROCESSING_STAGES.healingRecommendation,
+        successMessage: "Healing recommendation processing completed.",
+        execute: () => automationApi.repairFromResult(vars.executionResultId),
+      })).data,
     onSuccess: (data, variables) => {
       // Refreshes the classification chip (written even when not repaired)
       // and, if a new script version was created, the inventory/planning lists.

@@ -22,6 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { automationApi, testCasesApi, type TestCase } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 type Framework = "playwright" | "pytest";
 
@@ -47,6 +49,7 @@ export function ConvertManualToAutomationDialog({
   projectId,
   onConverted,
 }: Props) {
+  const { runAIAction } = useAIAction();
   const [manualCases, setManualCases] = useState<TestCase[]>([]);
   const [loading, setLoading] = useState(false);
   const [framework, setFramework] = useState<Framework>("playwright");
@@ -126,12 +129,21 @@ export function ConvertManualToAutomationDialog({
     setBusy(true);
     setError("");
     try {
-      await automationApi.generateScripts(
+      await runAIAction({
+        actionName: "convert_manual_to_automation",
+        title: "Converting Manual Flow to Automation",
+        module: "Automation Studio",
+        artifactType: "Automation Scripts",
         projectId,
-        Array.from(selected),
-        framework,
-        "manual_conversion",
-      );
+        stages: AI_PROCESSING_STAGES.scriptGeneration,
+        successMessage: "Manual-to-automation conversion started successfully.",
+        execute: () => automationApi.generateScripts(
+          projectId,
+          Array.from(selected),
+          framework,
+          "manual_conversion",
+        ),
+      });
       onConverted?.(selected.size);
       onClose();
     } catch (e) {

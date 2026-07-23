@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { api, projectsApi, type Project } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -140,6 +142,7 @@ function renderInlineStyles(text: string, projectId: number | null) {
 // ── Main Assistant Widget ───────────────────────────────────────────────────────
 
 export const AssistantWidget: React.FC = () => {
+  const { runAIAction } = useAIAction();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -263,11 +266,20 @@ export const AssistantWidget: React.FC = () => {
     setMessages((prev) => [...prev, userTempMsg]);
 
     try {
-      const res = await api.post("/assistant/chat", {
-        message: textToSend,
-        conversation_id: activeConversationId,
-        current_route: pathname,
-        project_id: resolvedProjectId
+      const res = await runAIAction({
+        actionName: "retrieve_knowledge_context",
+        title: "Retrieving Knowledge Context",
+        module: "Platform Assistant",
+        artifactType: "Assistant Response",
+        projectId: resolvedProjectId,
+        stages: AI_PROCESSING_STAGES.knowledge,
+        successMessage: "Knowledge context retrieved.",
+        execute: () => api.post("/assistant/chat", {
+          message: textToSend,
+          conversation_id: activeConversationId,
+          current_route: pathname,
+          project_id: resolvedProjectId
+        }),
       });
 
       const data = res.data;

@@ -2,6 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { groundedPocApi, type PocGroundingRun } from "@/lib/api";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 export const groundedPocKeys = {
   status: ["grounded-poc", "status"] as const,
@@ -77,8 +79,20 @@ export function useCreatePocRun(projectId: number | null) {
 
 export function useStartPocCapture(projectId: number | null) {
   const invalidate = useInvalidatePoc(projectId);
+  const { runAIAction } = useAIAction();
   return useMutation({
-    mutationFn: async (runId: number) => (await groundedPocApi.startCapture(runId)).data,
+    mutationFn: async (runId: number) => (
+      await runAIAction({
+        actionName: "start_grounded_capture",
+        title: "Preparing Application Discovery",
+        module: "Grounded Automation",
+        artifactType: "Discovery Evidence",
+        projectId: projectId ?? undefined,
+        stages: AI_PROCESSING_STAGES.applicationDiscovery,
+        successMessage: "Grounded evidence capture started.",
+        execute: () => groundedPocApi.startCapture(runId),
+      })
+    ).data,
     onSuccess: (data) => invalidate(data.grounding_run_id),
   });
 }
@@ -97,8 +111,20 @@ export function useConfirmPocStep(projectId: number | null) {
 
 export function useGeneratePocScript(projectId: number | null) {
   const invalidate = useInvalidatePoc(projectId);
+  const { runAIAction } = useAIAction();
   return useMutation({
-    mutationFn: async (runId: number) => (await groundedPocApi.generate(runId)).data,
+    mutationFn: async (runId: number) => (
+      await runAIAction({
+        actionName: "generate_grounded_script",
+        title: "Generating Script from Evidence",
+        module: "Grounded Automation",
+        artifactType: "Automation Script",
+        projectId: projectId ?? undefined,
+        stages: AI_PROCESSING_STAGES.scriptGeneration,
+        successMessage: "Grounded script generation started.",
+        execute: () => groundedPocApi.generate(runId),
+      })
+    ).data,
     onSuccess: (data) => invalidate(data.grounding_run_id),
   });
 }

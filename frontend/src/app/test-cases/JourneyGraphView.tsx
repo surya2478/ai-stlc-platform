@@ -55,6 +55,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerBody } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 type ScenarioKind = "positive" | "negative" | "boundary" | "recovery" | "regression" | "other";
 type InspectorTab = "overview" | "coverage" | "applications" | "evidence" | "automation" | "activity";
@@ -263,6 +265,7 @@ function deriveJourneys(
 }
 
 export function JourneyGraphView({ projectId }: Props) {
+  const { runAIAction } = useAIAction();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [requirements, setRequirements] = useState<Requirement[]>([]);
@@ -443,7 +446,16 @@ export function JourneyGraphView({ projectId }: Props) {
     if (!projectId || !selectedJourney?.requirements.length) return;
     setBusy("scenario"); setError(""); setNotice("");
     try {
-      const result = await testPlansApi.generateScenarios(projectId, selectedJourney.requirements.map((item) => item.id));
+      const result = await runAIAction({
+        actionName: "generate_missing_journey_scenarios",
+        title: "Building Journey Coverage",
+        module: "Journey Graph",
+        artifactType: "Test Scenarios",
+        projectId,
+        stages: AI_PROCESSING_STAGES.testCaseGeneration,
+        successMessage: "Missing journey scenarios are being generated.",
+        execute: () => testPlansApi.generateScenarios(projectId, selectedJourney.requirements.map((item) => item.id)),
+      });
       const data = result.data as Record<string, unknown>;
       setNotice(String(data.message || "Scenario generation was queued for this journey."));
     } catch (actionError) { setError(errorMessage(actionError, "Could not start scenario generation.")); }
@@ -496,7 +508,17 @@ export function JourneyGraphView({ projectId }: Props) {
     if (!candidates.length) { setError("This journey has no automation candidates to send to discovery."); return; }
     setBusy("discovery"); setError(""); setNotice("");
     try {
-      const result = await automationApi.discoverUi(projectId, candidates.map((item) => item.id), environment);
+      const result = await runAIAction({
+        actionName: "prepare_application_discovery",
+        title: "Preparing Application Discovery",
+        module: "Journey Graph",
+        artifactType: "Discovery Session",
+        projectId,
+        environmentId: environment,
+        stages: AI_PROCESSING_STAGES.applicationDiscovery,
+        successMessage: "Application discovery was queued successfully.",
+        execute: () => automationApi.discoverUi(projectId, candidates.map((item) => item.id), environment),
+      });
       setNotice(result.data.message || "Discovery review was queued.");
     } catch (actionError) { setError(errorMessage(actionError, "Could not send this journey to discovery review.")); }
     finally { setBusy(""); }

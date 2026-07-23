@@ -18,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody, DrawerFooter, DrawerClose
 } from "@/components/ui/drawer";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 // ── Constants and Select Options ──────────────────────────────────────────────
 const FILTERS = ["all", "draft", "pending_approval", "approved", "rejected", "synthetic", "manual", "masked", "reserved", "available", "expired"];
@@ -249,6 +251,7 @@ function messageFromError(error: unknown, fallback: string) {
 
 // ── Content Component ─────────────────────────────────────────────────────────
 function TestDataContent() {
+  const { runAIAction } = useAIAction();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -464,7 +467,20 @@ function TestDataContent() {
         }
       }
 
-      await testDataApi.generate(selectedProject, {
+      await runAIAction({
+        actionName: "generate_test_data",
+        title: "Processing Test Data",
+        module: "Test Data",
+        artifactType: "Test Dataset",
+        projectId: selectedProject,
+        requirementId: generateForm.linked_requirement_id || undefined,
+        testCaseId: generateForm.linked_test_case_id || undefined,
+        environmentId: generateForm.environment,
+        stages: AI_PROCESSING_STAGES.testData,
+        successMessage: generateForm.external_tool === "Faker"
+          ? `Generated ${recordCount} record(s) successfully.`
+          : "Test-data generation request created successfully.",
+        execute: () => testDataApi.generate(selectedProject, {
         name: generateForm.name.trim(),
         data_type: generateForm.data_type,
         telecom_domain: generateForm.telecom_domain,
@@ -485,6 +501,7 @@ function TestDataContent() {
         priority: generateForm.priority,
         expected_by_date: generateForm.expected_by_date || undefined,
         schema_json: schemaJson,
+        }),
       });
       setNotice(
         generateForm.external_tool === "Faker"

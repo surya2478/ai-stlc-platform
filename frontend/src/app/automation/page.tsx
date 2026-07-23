@@ -65,6 +65,8 @@ import { RunTriggerDialog, RunAllEligibleDialog, type RunTarget, type BatchRunCa
 import { RunDetailDrawer } from "@/app/execution/_components/RunDetailDrawer";
 import { TraceabilityDrawer, type TraceTarget } from "@/app/execution/_components/TraceabilityDrawer";
 import { RunVerdictBadge, formatDate, formatDuration } from "@/app/execution/_components/run-utils";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 // Status Chip Variant Mapping
 function getStatusVariant(status: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
@@ -118,6 +120,7 @@ const emptyMappingForm: MappingForm = {
 };
 
 function AutomationContent() {
+  const { runAIAction } = useAIAction();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -671,11 +674,20 @@ function AutomationContent() {
 
     setBulkDiscoverBusy(true);
     try {
-      const results = await Promise.allSettled(
-        Array.from(idsByEnvironment.entries()).map(([env, groupIds]) =>
-          automationApi.discoverUi(selectedProject, groupIds, env),
+      const results = await runAIAction({
+        actionName: "discover_automation_ui",
+        title: "Preparing Application Discovery",
+        module: "Automation Studio",
+        artifactType: "Discovery Sessions",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.applicationDiscovery,
+        successMessage: "Application discovery requests were queued.",
+        execute: () => Promise.allSettled(
+          Array.from(idsByEnvironment.entries()).map(([env, groupIds]) =>
+            automationApi.discoverUi(selectedProject, groupIds, env),
+          ),
         ),
-      );
+      });
       const failed = results.filter((r) => r.status === "rejected");
       if (failed.length === 0) {
         toast({

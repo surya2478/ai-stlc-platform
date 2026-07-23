@@ -45,10 +45,12 @@ import {
   type TestCaseSummary,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerBody } from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 import { JourneyGraphView } from "./JourneyGraphView";
 import { TestCaseApprovalView } from "./TestCaseApprovalView";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 type DrawerTab = "overview" | "cases" | "coverage" | "ai" | "activity";
 type Tone = "blue" | "emerald" | "red" | "purple" | "amber" | "slate";
@@ -359,6 +361,7 @@ function SummaryStrip({ items }: { items: SummaryItem[] }) {
 function ScenarioSelectionPanel({
   scenarios,
   requirementsById,
+  testCaseCountByScenarioId,
   selectedScenarioIds,
   setSelectedScenarioIds,
   generating,
@@ -367,6 +370,7 @@ function ScenarioSelectionPanel({
 }: {
   scenarios: TestScenario[];
   requirementsById: Map<number, Requirement>;
+  testCaseCountByScenarioId: Map<number, number>;
   selectedScenarioIds: number[];
   setSelectedScenarioIds: (updater: (prev: number[]) => number[]) => void;
   generating: boolean;
@@ -446,6 +450,7 @@ function ScenarioSelectionPanel({
                 {scenarios.map((scenario) => {
                   const req = scenario.requirement_id ? requirementsById.get(scenario.requirement_id) : undefined;
                   const checked = selectedSet.has(scenario.id);
+                  const generatedTestCaseCount = testCaseCountByScenarioId.get(scenario.id) ?? 0;
                   return (
                     <li key={scenario.id}>
                       <label className={cn("flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-slate-50", checked && "bg-blue-50/30")}>
@@ -462,6 +467,22 @@ function ScenarioSelectionPanel({
                             {req.requirement_id}
                           </span>
                         )}
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold",
+                            generatedTestCaseCount > 0
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-200 bg-slate-50 text-slate-500",
+                          )}
+                          title={
+                            generatedTestCaseCount > 0
+                              ? `${generatedTestCaseCount} test case${generatedTestCaseCount === 1 ? "" : "s"} generated from this scenario`
+                              : "No test cases generated from this scenario"
+                          }
+                        >
+                          {generatedTestCaseCount > 0 && <CheckCircle className="h-3 w-3" />}
+                          TCs: {generatedTestCaseCount > 0 ? `Y (${generatedTestCaseCount})` : "N"}
+                        </span>
                         <span className={cn("shrink-0", badgeClass(priorityTone(scenario.priority)))}>{scenario.priority}</span>
                       </label>
                     </li>
@@ -545,6 +566,7 @@ function findRequirementForCase(tc: TestCase, byKey: Map<string, Requirement>, b
 }
 
 function TestCasesContent() {
+  const { runAIAction, updateAIProcessing } = useAIAction();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -638,6 +660,14 @@ function TestCasesContent() {
     () => new Map(classifications.map((item) => [item.test_case_id, item])),
     [classifications],
   );
+  const testCaseCountByScenarioId = useMemo(() => {
+    const counts = new Map<number, number>();
+    testCases.forEach((testCase) => {
+      const scenarioId = testCase.linked_scenario_id ?? testCase.scenario_id;
+      if (scenarioId) counts.set(scenarioId, (counts.get(scenarioId) ?? 0) + 1);
+    });
+    return counts;
+  }, [testCases]);
 
   useEffect(() => {
     loadData();
@@ -722,7 +752,17 @@ function TestCasesContent() {
     setClassifyBusyId(id);
     setError("");
     try {
-      await automationClassificationApi.evaluate(selectedProject, [id]);
+      await runAIAction({
+        actionName: "classify_automation_eligibility",
+        title: "Classifying Automation Eligibility",
+        module: "Test Design",
+        artifactType: "Automation Classification",
+        projectId: selectedProject,
+        testCaseId: id,
+        stages: AI_PROCESSING_STAGES.automationClassification,
+        successMessage: "Automation classification is queued and ready to track.",
+        execute: () => automationClassificationApi.evaluate(selectedProject, [id]),
+      });
       setNotice("Classification queued — refresh in a moment to see the recommendation.");
       setActionMenu(null);
       await loadData();
@@ -737,7 +777,16 @@ function TestCasesContent() {
     setClassifyBusyId(classificationId);
     setError("");
     try {
-      await automationClassificationApi.reclassify(classificationId);
+      await runAIAction({
+        actionName: "reclassify_automation_eligibility",
+        title: "Reclassifying Automation Eligibility",
+        module: "Test Design",
+        artifactType: "Automation Classification",
+        projectId: selectedProject ?? undefined,
+        stages: AI_PROCESSING_STAGES.automationClassification,
+        successMessage: "Automation reclassification is queued.",
+        execute: () => automationClassificationApi.reclassify(classificationId),
+      });
       setNotice("Reclassification queued — refresh in a moment to see the updated recommendation.");
       setActionMenu(null);
       await loadData();
@@ -773,19 +822,31 @@ function TestCasesContent() {
     try {
       const scenarioIds = selectedScenarioIds.length ? selectedScenarioIds : scenarios.map((scenario) => scenario.id);
       const reqIds = scenarioIds.length ? undefined : requirements.map((req) => req.id);
+      await runAIAction({
+        actionName: "generate_test_cases",
+        title: "Generating Test Cases",
+        module: "Test Design",
+        artifactType: "Test Cases",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.testCaseGeneration,
+        successMessage: "Test cases generated successfully.",
+        execute: async () => {
       const res = await testCasesApi.generateCases(selectedProject, scenarioIds.length ? scenarioIds : undefined, reqIds, overrideQualityGate);
       const data = res.data as Record<string, unknown>;
       const agentRunId = typeof data.agent_run_id === "number" ? data.agent_run_id : null;
       if (agentRunId) {
+        updateAIProcessing({ status: "waiting", agentRunId: String(agentRunId), currentStage: "Waiting for the test-case agent" });
         setNotice("Test case generation is running...");
         for (let attempt = 0; attempt < 60; attempt += 1) {
           await sleep(attempt === 0 ? 1000 : 2000);
           const run = (await agentRunsApi.get(agentRunId)).data;
+          if (run.progress_message) {
+            updateAIProcessing({ status: "processing", currentStage: run.progress_message });
+          }
           if (run.status === "failed") {
-            setError(run.error_message || "Test case generation failed.");
             setNotice("");
             await loadData();
-            return;
+            throw new Error(run.error_message || "Test case generation failed.");
           }
           if (run.status === "completed") {
             const count = Number(run.output_data?.count ?? 0);
@@ -795,11 +856,14 @@ function TestCasesContent() {
           }
           setNotice(run.progress_message ? `Test case generation: ${run.progress_message}` : "Test case generation is running...");
         }
-        setNotice("Generation is still running. Refresh to check the latest status.");
+        throw new Error("Generation is still running. Check Agent Logs for progress.");
       } else {
         setNotice(String(data.message || "Test cases generated."));
         await loadData();
       }
+      return res;
+        },
+      });
     } catch (generateError) {
       setError(messageFromError(generateError, "Could not generate test cases."));
     } finally {
@@ -914,6 +978,7 @@ function TestCasesContent() {
         <ScenarioSelectionPanel
           scenarios={scenarios}
           requirementsById={requirementsById}
+          testCaseCountByScenarioId={testCaseCountByScenarioId}
           selectedScenarioIds={selectedScenarioIds}
           setSelectedScenarioIds={setSelectedScenarioIds}
           generating={generating}
@@ -1572,6 +1637,8 @@ function TestCaseEditorView({
   const [busyAction, setBusyAction] = useState<"save" | "validate" | "approval" | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const editorSearchParams = useSearchParams();
+  const [editorDrawerOpen, setEditorDrawerOpen] = useState(Boolean(editorSearchParams.get("case")));
   const [history, setHistory] = useState<TestCaseHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [draft, setDraft] = useState<EditorDraft>(() => draftFromCase(tc));
@@ -1860,7 +1927,7 @@ function TestCaseEditorView({
           </div>
         </div>
 
-        <div className="grid grid-cols-[430px_minmax(0,1fr)] gap-4">
+        <div className="min-w-0">
           <div className="min-w-0 space-y-3">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-extrabold text-slate-950">Editable Test Cases</h2>
@@ -1912,12 +1979,15 @@ function TestCaseEditorView({
                     <div className="py-16 text-center text-xs font-semibold text-slate-400">No test cases match the selected filters.</div>
                   ) : editorRows.map((row) => {
                     const rowReq = findRequirementForCase(row, requirementsByKey, requirementsById);
-                    const selected = tc?.id === row.id;
+                    const selected = editorDrawerOpen && selectedTestCase?.id === row.id;
                     const issue = traceabilityHealth(row) !== "Good" || reviewStatus(row) === "Needs Review";
                     return (
                       <button
                         key={row.id}
-                        onClick={() => setSelectedTestCase(row)}
+                        onClick={() => {
+                          setSelectedTestCase(row);
+                          setEditorDrawerOpen(true);
+                        }}
                         className={cn("grid w-full items-center px-3 py-3 text-left text-[10px] transition hover:bg-slate-50", selected && "border-l-2 border-[#1b59f8] bg-blue-50/30")}
                         style={{ gridTemplateColumns: EDITOR_TABLE_GRID }}
                       >
@@ -1944,12 +2014,21 @@ function TestCaseEditorView({
             </div>
           </div>
 
-          <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <Drawer
+            open={editorDrawerOpen && !!selectedTestCase}
+            onOpenChange={(open) => {
+              setEditorDrawerOpen(open);
+              if (!open) setSelectedTestCase(null);
+            }}
+          >
+            <DrawerContent size="2xl">
+              <DrawerBody className="space-y-0 p-4">
+                <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             {tc ? (
               <>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-extrabold text-slate-950">{tc.test_case_id}</h2>
+                    <DrawerTitle className="text-sm font-extrabold text-slate-950">{tc.test_case_id}</DrawerTitle>
                     <span className={badgeClass(dirty ? "purple" : "slate")}>{dirty ? "Editing" : tc.status.replace(/_/g, " ")}</span>
                     {dirty ? (
                       <span className="text-[10px] font-bold text-amber-600">Unsaved changes</span>
@@ -1958,7 +2037,15 @@ function TestCaseEditorView({
                     )}
                   </div>
                   <div className="flex gap-2 text-slate-500">
-                    <button aria-label="Close" onClick={() => setSelectedTestCase(null)}><X className="h-4 w-4" /></button>
+                    <button
+                      aria-label="Close"
+                      onClick={() => {
+                        setEditorDrawerOpen(false);
+                        setSelectedTestCase(null);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
                 <div className="mb-4 flex items-center gap-5 rounded-lg border border-slate-200 bg-slate-50/40 px-3 py-2 text-xs font-semibold text-slate-600">
@@ -2049,7 +2136,58 @@ function TestCaseEditorView({
             ) : (
               <div className="flex h-full items-center justify-center text-xs font-semibold text-slate-500">Select a test case to edit.</div>
             )}
-          </div>
+                </div>
+              </DrawerBody>
+              <DrawerFooter className="flex-col items-stretch bg-white">
+                {(uiNotice || uiError) && (
+                  <div className={cn(
+                    "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold",
+                    uiError ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700",
+                  )}>
+                    {uiError ? <AlertTriangle className="h-4 w-4 shrink-0" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
+                    <span className="flex-1">{uiError || uiNotice}</span>
+                    <button onClick={() => { setUiNotice(""); setUiError(""); }} aria-label="Dismiss message">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={saveDraft}
+                    disabled={!tc || busyAction !== null || !dirty}
+                    className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]"
+                  >
+                    {busyAction === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                    Save Draft
+                    {tc && dirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={validateCase}
+                    disabled={!tc || busyAction !== null}
+                    className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]"
+                  >
+                    {busyAction === "validate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                    Validate
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={sendToApproval}
+                    disabled={!tc || busyAction !== null || approvalBlockers.length > 0}
+                    title={approvalBlockers.length ? approvalBlockers.join(" ") : undefined}
+                    className="h-9 gap-2 bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]"
+                  >
+                    {busyAction === "approval" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
+                    Send to Approval
+                  </Button>
+                </div>
+              </DrawerFooter>
+            </DrawerContent>
+          </Drawer>
         </div>
       </section>
 

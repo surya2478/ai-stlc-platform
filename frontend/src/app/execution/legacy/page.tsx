@@ -61,6 +61,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 import { cn } from "@/lib/utils";
 
 type ExecutionTab = "manual" | "automation" | "ai";
@@ -1286,6 +1288,7 @@ function ManualWorkspace({
   activity: ManualActivity[];
   autoSaveMessage: string | null;
 }) {
+  const { runAIAction } = useAIAction();
   const selectedResult = selectedResults.find((result) => result.id === selectedResultId) || selectedResults[0];
   const selectedTestCase = selectedResult?.test_case_id ? testCaseById.get(selectedResult.test_case_id) : undefined;
   const steps = runnableStepList(selectedTestCase);
@@ -1330,10 +1333,19 @@ function ManualWorkspace({
           // best-effort screenshot fetch; fall through to text-only
         }
       }
-      const r = await executionApi.aiAssistStep(currentState.stepId, {
-        actualResult: currentState.actualResult,
-        comments: currentState.comments,
-        screenshot,
+      const r = await runAIAction({
+        actionName: "analyze_manual_execution_step",
+        title: "Analyzing Execution Evidence",
+        module: "Manual Execution",
+        artifactType: "Step Recommendation",
+        testCaseId: selectedResult.test_case_id,
+        stages: AI_PROCESSING_STAGES.failureDiagnosis,
+        successMessage: "Execution-step recommendation is ready.",
+        execute: () => executionApi.aiAssistStep(currentState.stepId!, {
+          actualResult: currentState.actualResult,
+          comments: currentState.comments,
+          screenshot,
+        }),
       });
       const mappedStatus: ManualStepStatus =
         r.data.suggested_status === "pass" ? "passed" :

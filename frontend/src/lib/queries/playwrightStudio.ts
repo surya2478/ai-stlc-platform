@@ -8,6 +8,8 @@ import {
   type StudioRun,
   type StudioRunCreatePayload,
 } from "@/lib/api";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 export const studioKeys = {
   runs: (projectId: number) => ["playwright-studio", "runs", projectId] as const,
@@ -61,19 +63,41 @@ export function useCreateStudioRun(projectId: number | null) {
 
 export function useStartStudioRun(projectId: number | null) {
   const invalidate = useInvalidateStudio(projectId);
+  const { runAIAction } = useAIAction();
   return useMutation({
-    mutationFn: async (runId: number) => (await playwrightStudioApi.startRun(runId)).data,
+    mutationFn: async (runId: number) => (
+      await runAIAction({
+        actionName: "start_playwright_studio",
+        title: "Preparing Application Discovery",
+        module: "Playwright AI Studio",
+        artifactType: "Studio Run",
+        projectId: projectId ?? undefined,
+        stages: AI_PROCESSING_STAGES.applicationDiscovery,
+        successMessage: "Playwright AI Studio started successfully.",
+        execute: () => playwrightStudioApi.startRun(runId),
+      })
+    ).data,
     onSuccess: (data) => invalidate(data.studio_run_id),
   });
 }
 
 export function useApproveStudioPlan(projectId: number | null) {
   const invalidate = useInvalidateStudio(projectId);
+  const { runAIAction } = useAIAction();
   return useMutation({
     mutationFn: async (vars: { runId: number; includedKeys?: string[] | null; notes?: string }) =>
-      (await playwrightStudioApi.approvePlan(vars.runId, {
-        included_keys: vars.includedKeys ?? null,
-        notes: vars.notes,
+      (await runAIAction({
+        actionName: "generate_studio_scripts",
+        title: "Generating Playwright Scripts",
+        module: "Playwright AI Studio",
+        artifactType: "Automation Scripts",
+        projectId: projectId ?? undefined,
+        stages: AI_PROCESSING_STAGES.scriptGeneration,
+        successMessage: "Studio script generation started.",
+        execute: () => playwrightStudioApi.approvePlan(vars.runId, {
+          included_keys: vars.includedKeys ?? null,
+          notes: vars.notes,
+        }),
       })).data,
     onSuccess: (data) => invalidate(data.studio_run_id),
   });

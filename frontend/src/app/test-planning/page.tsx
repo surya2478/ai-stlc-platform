@@ -39,6 +39,8 @@ import { useUserDirectory } from "@/hooks/useUserDirectory";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAIAction } from "@/hooks/useAIAction";
+import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -775,6 +777,7 @@ function ScenarioCard({
 // ── Main Content Component ───────────────────────────────────────────────────
 
 function TestPlanningContent() {
+  const { runAIAction, updateAIProcessing } = useAIAction();
   const { resolveUser } = useUserDirectory();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -854,6 +857,7 @@ function TestPlanningContent() {
 
       if (run.progress_message) {
         setAgentStatus(`${run.progress_message} (${run.progress_percent ?? 0}%)`);
+        updateAIProcessing({ status: "processing", currentStage: run.progress_message });
       }
 
       if (run.status === "completed") {
@@ -863,13 +867,12 @@ function TestPlanningContent() {
       }
 
       if (run.status === "failed") {
-        setAgentError(run.error_message || failedFallback);
         setAgentStatus(null);
-        return;
+        throw new Error(run.error_message || failedFallback);
       }
     }
 
-    setAgentStatus("Still running. Check Agent Logs for progress.");
+    throw new Error("Still running. Check Agent Logs for progress.");
   };
 
   const handleGeneratePlan = async () => {
@@ -877,15 +880,28 @@ function TestPlanningContent() {
     setAgentStatus("Generating test plan...");
     setAgentError(null);
     try {
+      await runAIAction({
+        actionName: "generate_test_plan",
+        title: "Generating Test Plan",
+        module: "Test Planning",
+        artifactType: "Test Plan",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.testPlanning,
+        successMessage: "Test plan generated successfully.",
+        execute: async () => {
       const res = await testPlansApi.generatePlan(selectedProject, selectedReqIds);
       const data = res.data as AgentTriggerResponse;
       if (data.agent_run_id) {
+        updateAIProcessing({ status: "waiting", agentRunId: String(data.agent_run_id), currentStage: data.message ?? "Waiting for the test-planning agent" });
         setAgentStatus(data.message ?? "Test plan generation queued.");
         await pollAgentRun(data.agent_run_id, "Test plan generated successfully.", "Test plan generation failed.");
       } else {
         setAgentStatus(`Test plan ${data.test_plan_id ?? ""} created successfully.`.trim());
         await loadData();
       }
+      return res;
+        },
+      });
     } catch (err: unknown) {
       setAgentError(getErrorMessage(err, "Failed to generate test plan"));
       setAgentStatus(null);
@@ -914,9 +930,19 @@ function TestPlanningContent() {
     setAgentStatus("Generating test scenarios...");
     setAgentError(null);
     try {
+      await runAIAction({
+        actionName: "generate_test_scenarios",
+        title: "Generating Test Scenarios",
+        module: "Test Planning",
+        artifactType: "Test Scenarios",
+        projectId: selectedProject,
+        stages: AI_PROCESSING_STAGES.testCaseGeneration,
+        successMessage: "Test scenarios generated successfully.",
+        execute: async () => {
       const res = await testPlansApi.generateScenarios(selectedProject, selectedReqIds, overrideQualityGate);
       const data = res.data as AgentTriggerResponse;
       if (data.agent_run_id) {
+        updateAIProcessing({ status: "waiting", agentRunId: String(data.agent_run_id), currentStage: data.message ?? "Waiting for the scenario agent" });
         setAgentStatus(data.message ?? "Test scenario generation queued.");
         await pollAgentRun(
           data.agent_run_id,
@@ -927,6 +953,9 @@ function TestPlanningContent() {
         setAgentStatus(data.message ?? "Scenarios generated successfully.");
         await loadData();
       }
+      return res;
+        },
+      });
     } catch (err: unknown) {
       const gateBlock = isQualityGateBlock(err);
       if (gateBlock && !overrideQualityGate) {
