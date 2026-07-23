@@ -9,7 +9,10 @@ session_service.
 """
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DBSession, require_entity_permission, require_permission
@@ -285,6 +288,49 @@ async def get_capture(session_id: int, capture_id: int, db: DBSession, current_u
     if capture is None or capture.session_id != session_id:
         raise HTTPException(status_code=404, detail="Capture not found in this session")
     return capture
+
+
+@router.get("/sessions/{session_id}/captures", response_model=list[DiscoveryCaptureOut])
+async def list_captures(session_id: int, action_id: int, db: DBSession, current_user: CurrentUser):
+    """One action's evidence trail (Phase 4) — screenshot + best-effort
+    console/network captures, if any were taken."""
+    _require_enabled()
+    session = await session_service.get_session_or_404(db, session_id)
+    await require_entity_permission(session, DISCOVERY_VIEW, current_user, db)
+    result = await db.execute(
+        select(DiscoveryCapture).where(
+            DiscoveryCapture.session_id == session_id, DiscoveryCapture.action_id == action_id,
+        )
+    )
+    return list(result.scalars().all())
+
+
+@router.get("/sessions/{session_id}/captures/{capture_id}/content")
+async def get_capture_content(session_id: int, capture_id: int, db: DBSession, current_user: CurrentUser):
+    """Text content of a console_log/network_log capture (Phase 4) — already
+    masked before being written to disk by capture_service. Screenshot
+    content isn't served here — that stays out of scope (Live Target View
+    is deliberately text-only for now)."""
+    _require_enabled()
+    session = await session_service.get_session_or_404(db, session_id)
+    await require_entity_permission(session, DISCOVERY_VIEW, current_user, db)
+    capture = await db.get(DiscoveryCapture, capture_id)
+    if capture is None or capture.session_id != session_id:
+        raise HTTPException(status_code=404, detail="Capture not found in this session")
+    if capture.capture_type not in ("console_log", "network_log"):
+        raise HTTPException(status_code=400, detail=f"Capture type '{capture.capture_type}' has no text content endpoint")
+    if not os.path.exists(capture.storage_path):
+        raise HTTPException(status_code=410, detail="Capture file is no longer available")
+
+    from app.services.discovery.capture_service import discovery_workspace_root
+
+    storage_root = os.path.realpath(discovery_workspace_root())
+    real_path = os.path.realpath(capture.storage_path)
+    if not real_path.startswith(storage_root + os.sep) and real_path != storage_root:
+        raise HTTPException(status_code=403, detail="Capture path is outside the managed workspace root")
+
+    with open(real_path, "r", encoding="utf-8") as f:
+        return PlainTextResponse(f.read())
 
 
 @router.get("/sessions/{session_id}/activity", response_model=list[DiscoverySessionEventOut])

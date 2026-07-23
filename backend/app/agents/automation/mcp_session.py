@@ -239,6 +239,22 @@ class MCPSession:
     async def console_messages(self, *, level: str = "info") -> str:
         return await self.call("browser_console_messages", {"level": level})
 
+    async def network_requests(self, *, static: bool = False) -> str:
+        return await self.call("browser_network_requests", {"static": static})
+
+    async def evaluate(self, *, function: str, element: str | None = None, target: str | None = None) -> str:
+        """Runs a fixed, developer-authored JS `function` — page-scoped, or
+        element-scoped when `element`+`target` (a snapshot ref) are given.
+        Callers must never interpolate page content or LLM output into
+        `function` itself (only `json.dumps`-escaped data values embedded in
+        an otherwise-fixed template) — `browser_evaluate` executes arbitrary
+        JS in the Playwright server process."""
+        args: dict[str, Any] = {"function": function}
+        if element is not None and target is not None:
+            args["element"] = element
+            args["target"] = target
+        return await self.call("browser_evaluate", args)
+
 
 _PII_PATTERNS = [
     re.compile(r"[\w.+-]+@[\w-]+\.[A-Za-z]{2,}"),  # email

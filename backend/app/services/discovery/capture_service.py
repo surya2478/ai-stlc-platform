@@ -19,6 +19,7 @@ component in `filename`).
 from __future__ import annotations
 
 import hashlib
+import logging
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -32,6 +33,10 @@ from app.agents.automation.mcp_session import MCPSession, MCPSessionConfig, mask
 from app.models.discovery_session import DiscoveryAction, DiscoveryCapture, DiscoveryCheckpoint, DiscoverySession
 from app.models.project_application import ProjectApplication
 from app.models.test_case import TestCase
+from app.services import locator_map_service
+from app.services.discovery import locator_ranking
+
+logger = logging.getLogger(__name__)
 
 
 def discovery_workspace_root() -> Path:
@@ -89,23 +94,83 @@ async def start_capture(db: AsyncSession, session: DiscoverySession) -> tuple[MC
     return mcp_session, output_dir, url
 
 
+async def _capture_optional_evidence(
+    db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path, *,
+    action: DiscoveryAction, label: str, now: datetime,
+) -> list[int]:
+    """Best-effort console/network evidence for one action (Phase 4) —
+    gated independently by `session.capture_options`, defaulting to on (the
+    P1-S4 contract's "capture ... network, APIs, console"). A fetch failure
+    here is logged and skipped, same as every other best-effort capture in
+    this module — it never fails the action itself."""
+    capture_options = session.capture_options or {}
+    ids: list[int] = []
+
+    if capture_options.get("console_capture", True):
+        try:
+            raw = mask_snapshot_text(await mcp_session.console_messages(level="info"))
+            path = output_dir / f"{label}_console.txt"
+            path.write_text(raw, encoding="utf-8")
+            capture = DiscoveryCapture(
+                session_id=session.id, project_id=session.project_id, action_id=action.id,
+                capture_type="console_log", storage_path=str(path), checksum=_checksum(str(path)),
+                source="playwright_mcp", captured_at=now, redaction_state="applied",
+            )
+            db.add(capture)
+            await db.flush()
+            ids.append(capture.id)
+        except Exception:
+            logger.warning("capture_service: console capture failed for session %s", session.id, exc_info=True)
+
+    if capture_options.get("network_capture", True):
+        try:
+            raw = mask_snapshot_text(await mcp_session.network_requests(static=False))
+            path = output_dir / f"{label}_network.txt"
+            path.write_text(raw, encoding="utf-8")
+            capture = DiscoveryCapture(
+                session_id=session.id, project_id=session.project_id, action_id=action.id,
+                capture_type="network_log", storage_path=str(path), checksum=_checksum(str(path)),
+                source="playwright_mcp", captured_at=now, redaction_state="applied",
+            )
+            db.add(capture)
+            await db.flush()
+            ids.append(capture.id)
+        except Exception:
+            logger.warning("capture_service: network capture failed for session %s", session.id, exc_info=True)
+
+    return ids
+
+
 async def _capture_evidence_and_persist_action(
     db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path, *,
     actor: str, action_family: str, target_semantic: str, sequence: int, label: str,
     test_step_ref: str | None = None, input_binding: dict | None = None,
-    provenance_call: str = "browser_snapshot",
+    provenance_call: str = "browser_snapshot", target_ref: str | None = None,
 ) -> DiscoveryAction:
     """Shared evidence-capture body for one real action: a snapshot +
     screenshot around whatever the caller already did (or is about to
-    describe), persisted as one DiscoveryAction + DiscoveryCapture pair.
-    Used by both the Guided step-walk (`capture_one_step`) and Free mode's
-    user-driven `perform_free_action` — the evidence contract is identical,
-    only who decided the action (system vs. user) differs.
+    describe), persisted as one DiscoveryAction + DiscoveryCapture pair,
+    plus (Phase 4) ranked/live-validated locator candidates for click/input
+    actions and best-effort console/network captures. Used by both the
+    Guided step-walk (`capture_one_step`) and Free/Agent-Driven mode's
+    user-driven actions — the evidence contract is identical, only who
+    decided the action (system vs. user) differs.
     """
     raw_snapshot = await mcp_session.snapshot()
     masked_snapshot = mask_snapshot_text(raw_snapshot)
     screenshot_path = await _capture_screenshot(mcp_session, output_dir, label=label)
     now = datetime.now(timezone.utc)
+
+    locator_result = None
+    if action_family in ("click", "input") and target_ref:
+        try:
+            locator_result = await locator_ranking.rank_and_validate(
+                mcp_session, raw_snapshot=raw_snapshot, target_ref=target_ref,
+                target_semantic=target_semantic, action_family=action_family,
+            )
+        except Exception:
+            logger.warning("capture_service: locator ranking failed for session %s", session.id, exc_info=True)
+    top_candidate = locator_result["candidates"][0] if locator_result and locator_result["candidates"] else None
 
     action = DiscoveryAction(
         session_id=session.id,
@@ -120,10 +185,13 @@ async def _capture_evidence_and_persist_action(
         post_state={"accessibility_snapshot_excerpt": masked_snapshot[:4000]},
         inclusion_state="included",
         provenance={"tool": "playwright_mcp", "call": provenance_call},
+        locator_evidence=locator_result,
+        locator_confidence=top_candidate["confidence"] if top_candidate else None,
     )
     db.add(action)
     await db.flush()
 
+    evidence_ids: list[int] = []
     if screenshot_path:
         capture = DiscoveryCapture(
             session_id=session.id, project_id=session.project_id, action_id=action.id,
@@ -132,7 +200,29 @@ async def _capture_evidence_and_persist_action(
         )
         db.add(capture)
         await db.flush()
-        action.evidence_refs = [capture.id]
+        evidence_ids.append(capture.id)
+
+    if action_family in ("click", "input", "navigate"):
+        evidence_ids += await _capture_optional_evidence(
+            db, session, mcp_session, output_dir, action=action, label=label, now=now,
+        )
+
+    if evidence_ids:
+        action.evidence_refs = evidence_ids
+
+    if top_candidate:
+        try:
+            fallback_locator = (
+                locator_result["candidates"][1]["locator"] if len(locator_result["candidates"]) > 1 else None
+            )
+            await locator_map_service.upsert_locator(
+                db, project_id=session.project_id, application_id=session.application_id,
+                page=locator_result.get("page_url") or "", element_name=locator_result["element_name"],
+                recommended_locator=top_candidate["locator"], recommended_strategy=top_candidate["strategy"],
+                fallback_locator=fallback_locator, confidence_score=top_candidate["confidence"],
+            )
+        except Exception:
+            logger.warning("capture_service: locator_map upsert failed for session %s", session.id, exc_info=True)
 
     await db.flush()
     return action
@@ -312,7 +402,7 @@ async def perform_free_action(
         db, session, mcp_session, output_dir,
         actor="user", action_family=action_family, target_semantic=semantic,
         sequence=next_sequence, label=f"free_{next_sequence}",
-        input_binding=input_binding, provenance_call=f"browser_{action_family}",
+        input_binding=input_binding, provenance_call=f"browser_{action_family}", target_ref=target_ref,
     )
 
 
@@ -347,7 +437,7 @@ async def perform_modified_step(
         actor="user", action_family=action_family, target_semantic=semantic,
         sequence=session.current_step_index, label=f"step_{session.current_step_index}_modified",
         test_step_ref=_step_ref(step), input_binding=input_binding,
-        provenance_call=f"browser_{action_family}",
+        provenance_call=f"browser_{action_family}", target_ref=target_ref,
     )
     action.inclusion_state = "corrected"
     action.correction_history = [{

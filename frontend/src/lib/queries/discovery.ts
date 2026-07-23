@@ -89,6 +89,22 @@ export function useDiscoveryActivity(sessionId: number | null) {
   });
 }
 
+export function useDiscoveryCaptures(sessionId: number | null, actionId: number | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["discovery", "captures", sessionId ?? -1, actionId ?? -1] as const,
+    queryFn: async () => (await discoveryApi.listCaptures(sessionId as number, actionId as number)).data,
+    enabled: enabled && sessionId !== null && sessionId > 0 && actionId !== null,
+  });
+}
+
+export function useCaptureContent(sessionId: number | null, captureId: number | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["discovery", "capture-content", sessionId ?? -1, captureId ?? -1] as const,
+    queryFn: async () => (await discoveryApi.getCaptureContent(sessionId as number, captureId as number)).data,
+    enabled: enabled && sessionId !== null && sessionId > 0 && captureId !== null,
+  });
+}
+
 function useInvalidateDiscovery(projectId: number | null) {
   const queryClient = useQueryClient();
   return (sessionId?: number) => {

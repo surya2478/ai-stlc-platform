@@ -22,6 +22,7 @@ from app.models.discovery_session import (
     DiscoverySession,
     DiscoverySessionEvent,
 )
+from app.models.locator_map import LocatorMapEntry
 from app.models.project_application import ProjectApplication
 from app.models.test_case import TestCase
 from app.services.discovery import capture_service, resume_validation_service, session_service
@@ -500,10 +501,22 @@ def test_record_free_action_idempotent_replay_does_not_requeue():
 
 class _FakeMCPSession:
     """Minimal stand-in for MCPSession — records what was called instead of
-    spawning a real @playwright/mcp subprocess."""
+    spawning a real @playwright/mcp subprocess. Defaults are backward
+    compatible with every pre-Phase-4 test (plain snapshot text with no
+    parseable elements, so locator ranking finds nothing and no test needed
+    to change); Phase 4 tests pass `snapshot_text`/`evaluate_responses` to
+    exercise the new ranking/console/network paths explicitly."""
 
-    def __init__(self):
+    def __init__(
+        self, snapshot_text="fake accessibility snapshot", evaluate_responses=None,
+        console_text="### Result\nTotal messages: 0 (Errors: 0, Warnings: 0)\n",
+        network_text="### Result\n\nNote: 0 static requests not shown.",
+    ):
         self.calls: list[tuple] = []
+        self._snapshot_text = snapshot_text
+        self._evaluate_responses = list(evaluate_responses or [])
+        self._console_text = console_text
+        self._network_text = network_text
 
     async def navigate(self, url):
         self.calls.append(("navigate", url))
@@ -515,7 +528,24 @@ class _FakeMCPSession:
         self.calls.append(("type_text", element, target, text))
 
     async def snapshot(self):
-        return "fake accessibility snapshot"
+        return self._snapshot_text
+
+    async def console_messages(self, *, level="info"):
+        self.calls.append(("console_messages", level))
+        return self._console_text
+
+    async def network_requests(self, *, static=False):
+        self.calls.append(("network_requests", static))
+        return self._network_text
+
+    async def evaluate(self, *, function, element=None, target=None):
+        self.calls.append(("evaluate", function, element, target))
+        if self._evaluate_responses:
+            response = self._evaluate_responses.pop(0)
+            if isinstance(response, Exception):
+                raise response
+            return response
+        return "### Result\nnull\n### Ran Playwright code\n```js\n```"
 
     async def call(self, tool_name, arguments):
         # perform_free_action's screenshot helper calls this, then looks
@@ -857,5 +887,90 @@ def test_perform_modified_step_returns_none_when_exhausted():
         db = _FakeDB(gets={(TestCase, 1): tc})
         action = await capture_service.perform_modified_step(db, session, mcp, output_dir=None, action_family="read")
         assert action is None
+
+    anyio.run(_run)
+
+
+# ── Phase 4: ranked fallback locators + network/console capture ─────────
+
+_SNAPSHOT_ONE_BUTTON = (
+    "### Page\n- Page URL: https://sit.example.com/checkout\n- Page Title: Checkout\n"
+    "### Snapshot\n```yaml\n- generic [ref=e1]:\n  - button \"Save\" [ref=e2]\n```\n"
+)
+_NULL_ATTRS_RESULT = (
+    '### Result\n{"id": null, "testidAttr": null, "testid": null, "ariaLabel": null, '
+    '"placeholder": null, "text": "", "tag": "button", "className": null}\n'
+    "### Ran Playwright code\n```js\n```"
+)
+
+
+def test_perform_free_action_click_sets_locator_evidence_and_upserts_locator_map(tmp_path):
+    async def _run():
+        session = _free_session()
+        mcp = _FakeMCPSession(snapshot_text=_SNAPSHOT_ONE_BUTTON, evaluate_responses=[_NULL_ATTRS_RESULT])
+        db = _FakeDB(responses=[None, None])  # next-sequence lookup, then locator_map lookup (no existing row)
+        action = await capture_service.perform_free_action(
+            db, session, mcp, output_dir=tmp_path, action_family="click",
+            target_ref="e2", target_semantic="Save",
+        )
+        assert action.locator_confidence == 90
+        assert action.locator_evidence["candidates"][0]["strategy"] == "role"
+
+        upserted = next(o for o in db.added if isinstance(o, LocatorMapEntry))
+        assert upserted.application_id == session.application_id
+        assert upserted.recommended_strategy == "role"
+        assert upserted.page == "https://sit.example.com/checkout"
+
+        capture_types = sorted(c.capture_type for c in db.added if isinstance(c, DiscoveryCapture))
+        assert capture_types == ["console_log", "network_log"]
+        assert len(action.evidence_refs) == 2
+        assert (tmp_path / "free_0_console.txt").exists()
+        assert (tmp_path / "free_0_network.txt").exists()
+
+    anyio.run(_run)
+
+
+def test_perform_free_action_read_never_gets_locator_ranking(tmp_path):
+    async def _run():
+        session = _free_session()
+        mcp = _FakeMCPSession(snapshot_text=_SNAPSHOT_ONE_BUTTON)
+        db = _FakeDB(responses=[None])
+        action = await capture_service.perform_free_action(
+            db, session, mcp, output_dir=tmp_path, action_family="read", target_semantic="Observed totals",
+        )
+        assert action.locator_evidence is None
+        assert action.locator_confidence is None
+        # "read" never changed the page — no console/network capture either.
+        assert not any(isinstance(o, DiscoveryCapture) for o in db.added)
+
+    anyio.run(_run)
+
+
+def test_perform_free_action_navigate_skips_capture_when_disabled(tmp_path):
+    async def _run():
+        session = _free_session(capture_options={"console_capture": False, "network_capture": False})
+        mcp = _FakeMCPSession()
+        db = _FakeDB(responses=[None])
+        action = await capture_service.perform_free_action(
+            db, session, mcp, output_dir=tmp_path, action_family="navigate", url="https://sit.example.com/checkout",
+        )
+        assert not action.evidence_refs
+        assert not any(isinstance(o, DiscoveryCapture) for o in db.added)
+
+    anyio.run(_run)
+
+
+def test_perform_modified_step_click_shares_locator_ranking_path(tmp_path):
+    async def _run():
+        session = _agent_session(current_step_index=0)
+        tc = _test_case(steps=[{"step_number": 1, "action": "Click save"}])
+        mcp = _FakeMCPSession(snapshot_text=_SNAPSHOT_ONE_BUTTON, evaluate_responses=[_NULL_ATTRS_RESULT])
+        db = _FakeDB(gets={(TestCase, 1): tc}, responses=[None])  # locator_map lookup only
+        action = await capture_service.perform_modified_step(
+            db, session, mcp, output_dir=tmp_path, action_family="click",
+            target_ref="e2", target_semantic="Save",
+        )
+        assert action.locator_evidence["candidates"][0]["strategy"] == "role"
+        assert action.locator_confidence == 90
 
     anyio.run(_run)

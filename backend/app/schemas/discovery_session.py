@@ -108,6 +108,7 @@ class DiscoveryActionOut(BaseModel):
     duration_ms: int | None
     evidence_refs: list
     locator_confidence: int | None
+    locator_evidence: dict | None = None
     inclusion_state: str
     issue_note: str | None
     reviewer_note: str | None

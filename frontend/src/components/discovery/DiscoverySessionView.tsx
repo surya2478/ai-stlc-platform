@@ -6,11 +6,11 @@ import {
   AlertTriangle, CheckCircle2, ChevronRight, Clock, Loader2, Pause, Play,
   Radar, RefreshCw, Square, StopCircle, XCircle,
 } from "lucide-react";
-import { applicationsApi, type ProjectApplication } from "@/lib/api";
+import { applicationsApi, type DiscoveryLocatorEvidence, type ProjectApplication } from "@/lib/api";
 import {
-  useCorrectDiscoveryAction, useCreateDiscoverySession, useCurrentStep, useDiscoveryActions, useDiscoveryActivity,
-  useDiscoveryCheckpoints, useDiscoveryReadiness, useDiscoverySession, useDiscoverySessions,
-  useEligibleTestCases, useIssueDiscoveryCommand, useRecordFreeAction,
+  useCaptureContent, useCorrectDiscoveryAction, useCreateDiscoverySession, useCurrentStep, useDiscoveryActions,
+  useDiscoveryActivity, useDiscoveryCaptures, useDiscoveryCheckpoints, useDiscoveryReadiness, useDiscoverySession,
+  useDiscoverySessions, useEligibleTestCases, useIssueDiscoveryCommand, useRecordFreeAction,
 } from "@/lib/queries/discovery";
 import { useToast } from "@/components/ui/toast";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +51,77 @@ function messageFromError(error: unknown, fallback: string) {
   }
   if (error instanceof Error && error.message) return error.message;
   return fallback;
+}
+
+function ActionLocators({ locatorEvidence }: { locatorEvidence: DiscoveryLocatorEvidence | null }) {
+  const [open, setOpen] = useState(false);
+  if (!locatorEvidence?.candidates?.length) return null;
+  return (
+    <div className="mt-1">
+      <button onClick={() => setOpen((v) => !v)} className="text-[10px] font-bold text-blue-600">
+        {open ? "Hide" : "Show"} Locators ({locatorEvidence.candidates.length})
+      </button>
+      {open && (
+        <div className="mt-1 space-y-1 rounded-lg border border-slate-100 bg-slate-50 p-2">
+          {locatorEvidence.candidates.map((c, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-1 text-[10px]">
+              <Badge variant="outline" className="text-[9px]">{c.strategy}</Badge>
+              <code className="rounded bg-white px-1 py-0.5 font-mono text-slate-600">{c.locator}</code>
+              <span className="text-slate-400">conf {c.confidence}</span>
+              <Badge variant={c.unique ? "success" : "warning"} className="text-[9px]">
+                {c.unique ? "Unique" : "Ambiguous"}
+              </Badge>
+              {!c.validated && <Badge variant="outline" className="text-[9px]">Unvalidated</Badge>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionEvidence({ sessionId, actionId }: { sessionId: number; actionId: number }) {
+  const [open, setOpen] = useState(false);
+  const [viewingCaptureId, setViewingCaptureId] = useState<number | null>(null);
+  const capturesQuery = useDiscoveryCaptures(sessionId, actionId, open);
+  const contentQuery = useCaptureContent(sessionId, viewingCaptureId, viewingCaptureId !== null);
+
+  const labelFor = (captureType: string) =>
+    captureType === "console_log" ? "Console" : captureType === "network_log" ? "Network" : "Screenshot";
+
+  return (
+    <div className="mt-1">
+      <button onClick={() => setOpen((v) => !v)} className="text-[10px] font-bold text-blue-600">
+        {open ? "Hide" : "Show"} Evidence
+      </button>
+      {open && (
+        <div className="mt-1 space-y-1">
+          {capturesQuery.isLoading && <p className="text-[10px] font-semibold text-slate-400">Loading…</p>}
+          <div className="flex flex-wrap gap-1">
+            {(capturesQuery.data ?? []).map((capture) => (
+              <Button
+                key={capture.id}
+                size="sm"
+                variant="outline"
+                className="h-6 px-2 text-[10px]"
+                disabled={capture.capture_type === "screenshot"}
+                title={capture.capture_type === "screenshot" ? "Screenshot viewing isn't available yet" : undefined}
+                onClick={() => setViewingCaptureId(capture.id)}
+              >
+                {labelFor(capture.capture_type)}
+              </Button>
+            ))}
+            {capturesQuery.data?.length === 0 && <p className="text-[10px] font-semibold text-slate-400">No evidence captured.</p>}
+          </div>
+          {viewingCaptureId !== null && (
+            <pre className="max-h-40 overflow-auto rounded-lg border border-slate-100 bg-slate-50 p-2 text-[10px] leading-relaxed text-slate-600">
+              {contentQuery.isLoading ? "Loading…" : contentQuery.data || "No content."}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function DiscoverySessionView({ projectId }: { projectId: number }) {
@@ -734,6 +805,8 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                               className="mt-1 h-6 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none"
                             />
                           )}
+                          <ActionLocators locatorEvidence={action.locator_evidence} />
+                          <ActionEvidence sessionId={session.id} actionId={action.id} />
                         </div>
                       ))}
                       {actionsQuery.data?.length === 0 && <p className="text-xs font-semibold text-slate-400">No actions captured yet.</p>}

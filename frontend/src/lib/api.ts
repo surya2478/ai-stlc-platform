@@ -3195,6 +3195,22 @@ export interface ReadinessResult {
   checks: ReadinessCheckResult[];
 }
 
+export interface DiscoveryLocatorCandidate {
+  strategy: string;
+  value: string;
+  locator: string;
+  confidence: number;
+  unique: boolean;
+  validated: boolean;
+}
+
+export interface DiscoveryLocatorEvidence {
+  element_name: string;
+  role: string | null;
+  page_url: string | null;
+  candidates: DiscoveryLocatorCandidate[];
+}
+
 export interface DiscoveryAction {
   id: number;
   session_id: number;
@@ -3208,11 +3224,23 @@ export interface DiscoveryAction {
   duration_ms: number | null;
   evidence_refs: number[];
   locator_confidence: number | null;
+  locator_evidence: DiscoveryLocatorEvidence | null;
   inclusion_state: string;
   issue_note: string | null;
   reviewer_note: string | null;
   input_binding: Record<string, unknown> | null;
   post_state: { accessibility_snapshot_excerpt?: string } & Record<string, unknown> | null;
+}
+
+export interface DiscoveryCapture {
+  id: number;
+  session_id: number;
+  capture_type: "screenshot" | "dom_snapshot" | "accessibility_tree" | "network_log" | "console_log" | "trace" | "video";
+  checksum: string | null;
+  source: string | null;
+  captured_at: string;
+  redaction_state: string;
+  retention_state: string;
 }
 
 export interface DiscoveryCheckpoint {
@@ -3283,4 +3311,8 @@ export const discoveryApi = {
     api.get<DiscoveryCheckpoint[]>(`/discovery/sessions/${sessionId}/checkpoints`),
   getActivity: (sessionId: number) =>
     api.get<DiscoverySessionEvent[]>(`/discovery/sessions/${sessionId}/activity`),
+  listCaptures: (sessionId: number, actionId: number) =>
+    api.get<DiscoveryCapture[]>(`/discovery/sessions/${sessionId}/captures`, { params: { action_id: actionId } }),
+  getCaptureContent: (sessionId: number, captureId: number) =>
+    api.get<string>(`/discovery/sessions/${sessionId}/captures/${captureId}/content`),
 };
