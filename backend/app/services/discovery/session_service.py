@@ -22,16 +22,22 @@ from sqlalchemy.orm import selectinload
 
 from app.models.discovery_session import (
     DISCOVERY_SESSION_TRANSITIONS,
+    DiscoveryAction,
+    DiscoveryCheckpoint,
     DiscoverySession,
     DiscoverySessionEvent,
 )
 from app.models.project_application import ProjectApplication
 from app.models.test_case import TestCase
 
-# Commands only meaningful for Supervised Agent-Driven mode — accepted by the
-# endpoint but explicitly refused in Phase 1 (Guided User Recording only),
-# per CLAUDE.md rule 7: disabled with an explanation, never silently ignored.
-_AGENT_DRIVEN_ONLY_COMMANDS = {"approve_next_action", "take_manual_control", "skip_action", "rollback"}
+# Commands only meaningful for Supervised Agent-Driven mode (Phase 3) —
+# routed to `issue_supervision_command`, which itself refuses them outside
+# that mode with an explanation, per CLAUDE.md rule 7: disabled with an
+# explanation, never silently ignored.
+_SUPERVISION_COMMANDS = {
+    "approve_next_action", "modify_next_action", "skip_action",
+    "take_manual_control", "return_control_to_agent", "rollback",
+}
 
 # Commands that request a state transition (validated against
 # DISCOVERY_SESSION_TRANSITIONS). "checkpoint" is deliberately absent — it
@@ -271,11 +277,10 @@ async def issue_command(
     if existing is not None:
         return session  # idempotent replay — no re-mutation
 
-    if command in _AGENT_DRIVEN_ONLY_COMMANDS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"'{command}' is only available in Supervised Agent-Driven mode, "
-                   "which is not implemented in Phase 1 (Guided User Recording only).",
+    if command in _SUPERVISION_COMMANDS:
+        return await issue_supervision_command(
+            db, session, command=command, user_id=user_id, idempotency_key=idempotency_key,
+            reason=reason, params=params,
         )
 
     # A live task is looping (and will notice `pending_command` on its next
@@ -380,16 +385,25 @@ async def record_free_action(
     input_text: str | None = None,
     url: str | None = None,
 ) -> DiscoverySession:
-    """Queue one Free User-Action Recording action (Section 5.2) for the
-    live capture task to perform on its next poll tick. Unlike lifecycle
-    commands this never transitions session status — the resulting
-    DiscoveryAction, once the task actually performs it, is itself the
-    audit record.
+    """Queue one ad-hoc action (Section 5.2) for the live capture task to
+    perform on its next poll tick. Unlike lifecycle commands this never
+    transitions session status — the resulting DiscoveryAction, once the
+    task actually performs it, is itself the audit record.
+
+    Valid in Free User-Action Recording mode always, and in Supervised
+    Agent-Driven mode only while `take_manual_control` is active (Section
+    10) — the same worker idle-loop branch handles both (see
+    discovery_tasks.py), since manual control is defined as "act like Free
+    mode until control is returned to the agent."
     """
-    if session.mode != "FREE_USER_ACTION":
+    manual_control_active = session.mode == "SUPERVISED_AGENT_DRIVEN" and bool(
+        (session.metadata_ or {}).get("manual_control")
+    )
+    if session.mode != "FREE_USER_ACTION" and not manual_control_active:
         raise HTTPException(
             status_code=400,
-            detail="Recording ad-hoc actions is only supported in Free User-Action Recording mode",
+            detail="Recording ad-hoc actions requires Free User-Action Recording mode, "
+                   "or Supervised Agent-Driven mode with manual control taken",
         )
     if session.status != "RECORDING":
         raise HTTPException(
@@ -417,3 +431,109 @@ async def record_free_action(
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def issue_supervision_command(
+    db: AsyncSession,
+    session: DiscoverySession,
+    *,
+    command: str,
+    user_id: int,
+    idempotency_key: str,
+    reason: str | None = None,
+    params: dict[str, Any] | None = None,
+) -> DiscoverySession:
+    """Phase 3 — Supervised Agent-Driven Recording controls (Section 10).
+    Only reachable via `issue_command`, which has already checked
+    idempotency before dispatching here.
+
+    approve_next_action / modify_next_action / skip_action queue a
+    `pending_command` for the live task to act on (same "DB is source of
+    truth, worker polls it" pattern as everything else) — they require an
+    active RECORDING session. take_manual_control / return_control_to_agent
+    just flip a `metadata_` flag the task checks every iteration; no task
+    action is needed for the flip itself. rollback is DB-only and therefore
+    only permitted from PAUSED (no live browser to resync — see the plan's
+    note on this being a deliberate Phase 3 simplification).
+    """
+    if session.mode != "SUPERVISED_AGENT_DRIVEN":
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{command}' is only available in Supervised Agent-Driven mode (this session is {session.mode})",
+        )
+
+    if command in ("approve_next_action", "modify_next_action", "skip_action"):
+        if session.status != "RECORDING":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Session must be RECORDING to {command} (currently '{session.status}')",
+            )
+        if command == "skip_action" and not (reason or "").strip():
+            raise HTTPException(status_code=400, detail="skip_action requires a reason")
+        if command == "modify_next_action" and not (params or {}).get("action_family"):
+            raise HTTPException(status_code=400, detail="modify_next_action requires 'action_family'")
+        session.pending_command = {
+            "command": command, "idempotency_key": idempotency_key, "issued_by": user_id,
+            "issued_at": datetime.now(timezone.utc).isoformat(), "reason": reason, "params": params or {},
+        }
+        await db.commit()
+        await db.refresh(session)
+        return session
+
+    if command in ("take_manual_control", "return_control_to_agent"):
+        if session.status != "RECORDING":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Session must be RECORDING to {command} (currently '{session.status}')",
+            )
+        metadata = dict(session.metadata_ or {})
+        metadata["manual_control"] = command == "take_manual_control"
+        session.metadata_ = metadata
+        await _record_event(
+            db, session, actor_id=user_id, actor_type="user", previous_state=session.status,
+            new_state=session.status, command=command, reason=reason, idempotency_key=idempotency_key,
+        )
+        await db.commit()
+        await db.refresh(session)
+        return session
+
+    if command == "rollback":
+        if session.status != "PAUSED":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Session must be PAUSED to roll back to a checkpoint (currently '{session.status}')",
+            )
+        if not (reason or "").strip():
+            raise HTTPException(status_code=400, detail="rollback requires a reason")
+        checkpoint_id = (params or {}).get("checkpoint_id")
+        if not checkpoint_id:
+            raise HTTPException(status_code=400, detail="rollback requires 'checkpoint_id'")
+        checkpoint = await db.get(DiscoveryCheckpoint, checkpoint_id)
+        if checkpoint is None or checkpoint.session_id != session.id:
+            raise HTTPException(status_code=404, detail="Checkpoint not found in this session")
+
+        position = checkpoint.action_position or 0
+        result = await db.execute(
+            select(DiscoveryAction).where(DiscoveryAction.session_id == session.id, DiscoveryAction.sequence >= position)
+        )
+        for action in result.scalars().all():
+            if action.inclusion_state == "rolled_back":
+                continue
+            action.correction_history = [*(action.correction_history or []), {
+                "previous_inclusion_state": action.inclusion_state,
+                "new_inclusion_state": "rolled_back",
+                "reason": reason,
+                "changed_by": user_id,
+            }]
+            action.inclusion_state = "rolled_back"
+        session.current_step_index = position
+        await _record_event(
+            db, session, actor_id=user_id, actor_type="user", previous_state=session.status,
+            new_state=session.status, command=command, reason=reason, idempotency_key=idempotency_key,
+            checkpoint_id=checkpoint.id,
+        )
+        await db.commit()
+        await db.refresh(session)
+        return session
+
+    raise HTTPException(status_code=400, detail=f"Unknown supervision command '{command}'")

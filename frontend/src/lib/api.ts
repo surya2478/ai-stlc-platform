@@ -3179,6 +3179,7 @@ export interface DiscoverySession {
   correlation_id: string | null;
   current_step_index: number;
   resume_state_classification: string | null;
+  metadata_: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -3265,6 +3266,8 @@ export const discoveryApi = {
   getSession: (sessionId: number) => api.get<DiscoverySession>(`/discovery/sessions/${sessionId}`),
   evaluateReadiness: (sessionId: number) =>
     api.post<ReadinessResult>(`/discovery/sessions/${sessionId}/readiness`),
+  getCurrentStep: (sessionId: number) =>
+    api.get<{ text: string | null; step_ref: string | null }>(`/discovery/sessions/${sessionId}/current-step`),
   issueCommand: (sessionId: number, payload: {
     command: string; idempotency_key: string; reason?: string | null; params?: Record<string, unknown>;
   }) => api.post<DiscoverySession>(`/discovery/sessions/${sessionId}/commands`, payload),

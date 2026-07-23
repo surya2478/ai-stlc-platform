@@ -214,15 +214,17 @@ def test_repeated_idempotency_key_replays_without_remutating_state():
 
 # ── agent-driven-only commands refused in Phase 1 ────────────────────────
 
-@pytest.mark.parametrize("command", ["approve_next_action", "take_manual_control", "skip_action", "rollback"])
-def test_agent_driven_only_commands_refused_in_phase_1(command):
+@pytest.mark.parametrize(
+    "command", ["approve_next_action", "modify_next_action", "skip_action", "take_manual_control", "rollback"],
+)
+def test_supervision_commands_refused_outside_agent_driven_mode(command):
     async def _run():
-        session = _session(status="RECORDING", mode="SUPERVISED_AGENT_DRIVEN")
+        session = _session(status="RECORDING", mode="GUIDED_USER")
         db = _FakeDB(responses=[None])  # idempotency lookup miss
         with pytest.raises(HTTPException) as exc_info:
             await session_service.issue_command(db, session, command=command, user_id=7, idempotency_key="key-1")
         assert exc_info.value.status_code == 400
-        assert "Phase 1" in exc_info.value.detail
+        assert "Supervised Agent-Driven" in exc_info.value.detail
 
     anyio.run(_run)
 
@@ -421,6 +423,36 @@ def test_record_free_action_rejected_outside_free_mode():
     anyio.run(_run)
 
 
+def test_record_free_action_rejected_in_agent_driven_mode_without_manual_control():
+    async def _run():
+        session = _session(mode="SUPERVISED_AGENT_DRIVEN", status="RECORDING", metadata_={})
+        db = _FakeDB()
+        with pytest.raises(HTTPException) as exc_info:
+            await session_service.record_free_action(
+                db, session, user_id=7, idempotency_key="k1", action_family="navigate", url="https://sit.example.com",
+            )
+        assert exc_info.value.status_code == 400
+
+    anyio.run(_run)
+
+
+def test_record_free_action_allowed_in_agent_driven_mode_with_manual_control():
+    """Regression coverage for a real gap caught before it shipped: the
+    worker loop already treats manual-control Agent-Driven sessions like
+    Free mode for perform_action, but record_free_action's mode gate had
+    not been widened to match — it would have rejected the very requests
+    the loop was built to handle."""
+    async def _run():
+        session = _session(mode="SUPERVISED_AGENT_DRIVEN", status="RECORDING", metadata_={"manual_control": True})
+        db = _FakeDB()
+        updated = await session_service.record_free_action(
+            db, session, user_id=7, idempotency_key="k1", action_family="navigate", url="https://sit.example.com",
+        )
+        assert updated.pending_command["command"] == "perform_action"
+
+    anyio.run(_run)
+
+
 def test_record_free_action_rejected_when_not_recording():
     async def _run():
         session = _session(mode="FREE_USER_ACTION", status="PAUSED")
@@ -595,5 +627,235 @@ def test_perform_free_action_sequence_increments_past_zero():
             db, session, mcp, output_dir=None, action_family="read", target_semantic="Second observation",
         )
         assert action.sequence == 1
+
+    anyio.run(_run)
+
+
+# ── Supervised Agent-Driven Recording (Phase 3) ──────────────────────────
+
+def _agent_session(**overrides) -> DiscoverySession:
+    defaults = {"mode": "SUPERVISED_AGENT_DRIVEN", "status": "RECORDING", "test_case_id": 1}
+    defaults.update(overrides)
+    return _session(**defaults)
+
+
+@pytest.mark.parametrize("command", ["approve_next_action", "modify_next_action", "skip_action"])
+def test_supervision_step_commands_queue_pending_command(command):
+    async def _run():
+        session = _agent_session()
+        db = _FakeDB(responses=[None])
+        kwargs = {"reason": "not applicable here"} if command == "skip_action" else {}
+        params = {"action_family": "click", "target_ref": "ref-1"} if command == "modify_next_action" else None
+        updated = await session_service.issue_command(
+            db, session, command=command, user_id=7, idempotency_key="k1", params=params, **kwargs,
+        )
+        assert updated.pending_command["command"] == command
+        assert updated.status == "RECORDING"  # these never transition session status
+
+    anyio.run(_run)
+
+
+@pytest.mark.parametrize("command", ["approve_next_action", "modify_next_action", "skip_action"])
+def test_supervision_step_commands_rejected_when_not_recording(command):
+    async def _run():
+        session = _agent_session(status="PAUSED")
+        db = _FakeDB(responses=[None])
+        kwargs = {"reason": "n/a"} if command == "skip_action" else {}
+        with pytest.raises(HTTPException) as exc_info:
+            await session_service.issue_command(db, session, command=command, user_id=7, idempotency_key="k1", **kwargs)
+        assert exc_info.value.status_code == 409
+
+    anyio.run(_run)
+
+
+def test_skip_action_requires_a_reason():
+    async def _run():
+        session = _agent_session()
+        db = _FakeDB(responses=[None])
+        with pytest.raises(HTTPException) as exc_info:
+            await session_service.issue_command(db, session, command="skip_action", user_id=7, idempotency_key="k1")
+        assert exc_info.value.status_code == 400
+
+    anyio.run(_run)
+
+
+def test_modify_next_action_requires_action_family():
+    async def _run():
+        session = _agent_session()
+        db = _FakeDB(responses=[None])
+        with pytest.raises(HTTPException) as exc_info:
+            await session_service.issue_command(
+                db, session, command="modify_next_action", user_id=7, idempotency_key="k1", params={},
+            )
+        assert exc_info.value.status_code == 400
+
+    anyio.run(_run)
+
+
+def test_take_manual_control_sets_metadata_flag():
+    async def _run():
+        session = _agent_session()
+        db = _FakeDB(responses=[None])
+        updated = await session_service.issue_command(
+            db, session, command="take_manual_control", user_id=7, idempotency_key="k1",
+        )
+        assert updated.metadata_["manual_control"] is True
+
+    anyio.run(_run)
+
+
+def test_return_control_to_agent_clears_metadata_flag():
+    async def _run():
+        session = _agent_session(metadata_={"manual_control": True})
+        db = _FakeDB(responses=[None])
+        updated = await session_service.issue_command(
+            db, session, command="return_control_to_agent", user_id=7, idempotency_key="k1",
+        )
+        assert updated.metadata_["manual_control"] is False
+
+    anyio.run(_run)
+
+
+def test_rollback_requires_paused_status():
+    async def _run():
+        session = _agent_session(status="RECORDING")
+        db = _FakeDB(responses=[None])
+        with pytest.raises(HTTPException) as exc_info:
+            await session_service.issue_command(
+                db, session, command="rollback", user_id=7, idempotency_key="k1", reason="bad path",
+                params={"checkpoint_id": 1},
+            )
+        assert exc_info.value.status_code == 409
+
+    anyio.run(_run)
+
+
+def test_rollback_requires_reason():
+    async def _run():
+        session = _agent_session(status="PAUSED")
+        db = _FakeDB(responses=[None])
+        with pytest.raises(HTTPException) as exc_info:
+            await session_service.issue_command(
+                db, session, command="rollback", user_id=7, idempotency_key="k1", params={"checkpoint_id": 1},
+            )
+        assert exc_info.value.status_code == 400
+
+    anyio.run(_run)
+
+
+def test_rollback_requires_checkpoint_id():
+    async def _run():
+        session = _agent_session(status="PAUSED")
+        db = _FakeDB(responses=[None])
+        with pytest.raises(HTTPException) as exc_info:
+            await session_service.issue_command(
+                db, session, command="rollback", user_id=7, idempotency_key="k1", reason="bad path", params={},
+            )
+        assert exc_info.value.status_code == 400
+
+    anyio.run(_run)
+
+
+def test_rollback_marks_later_actions_rolled_back_and_resets_step_index():
+    async def _run():
+        session = _agent_session(status="PAUSED", current_step_index=3)
+        checkpoint = DiscoveryCheckpoint(
+            id=9, session_id=1, project_id=1, sequence=0, state_at_checkpoint="PAUSED",
+            action_position=1, resumable=True, created_by_actor="system",
+        )
+        later_action = DiscoveryAction(
+            id=5, session_id=1, project_id=1, sequence=2, actor="agent", action_family="read",
+            occurred_at=datetime.now(timezone.utc), inclusion_state="included", correction_history=[],
+        )
+        db = _FakeDB(
+            responses=[None, [later_action]],
+            gets={(DiscoveryCheckpoint, 1): checkpoint},
+        )
+        updated = await session_service.issue_command(
+            db, session, command="rollback", user_id=7, idempotency_key="k1", reason="Data changed mid-run",
+            params={"checkpoint_id": 1},
+        )
+        assert updated.current_step_index == 1
+        assert later_action.inclusion_state == "rolled_back"
+        assert later_action.correction_history[-1]["reason"] == "Data changed mid-run"
+
+    anyio.run(_run)
+
+
+def test_get_current_step_returns_none_when_no_test_case():
+    async def _run():
+        session = _agent_session(test_case_id=None)
+        db = _FakeDB(gets={(TestCase, None): None})
+        step = await capture_service.get_current_step(db, session)
+        assert step is None
+
+    anyio.run(_run)
+
+
+def test_get_current_step_returns_text_and_ref():
+    async def _run():
+        session = _agent_session(current_step_index=0)
+        tc = _test_case(steps=[{"step_number": 1, "action": "Click login"}])
+        db = _FakeDB(gets={(TestCase, 1): tc})
+        step = await capture_service.get_current_step(db, session)
+        assert step == {"text": "Click login", "step_ref": "1"}
+
+    anyio.run(_run)
+
+
+def test_skip_current_step_records_skip_without_browser_call():
+    async def _run():
+        session = _agent_session(current_step_index=0)
+        tc = _test_case(steps=[{"step_number": 1, "action": "Click login"}])
+        db = _FakeDB(gets={(TestCase, 1): tc})
+        action = await capture_service.skip_current_step(db, session, reason="Login button not present in this build")
+        assert action.inclusion_state == "skipped"
+        assert action.issue_note == "Login button not present in this build"
+        assert session.current_step_index == 1
+        # No MCP interaction, no evidence — nothing happened in the browser
+        # (the model's JSONB default=list only applies on a real flush, not
+        # this fake one, so accept the unset None too).
+        assert not action.evidence_refs
+
+    anyio.run(_run)
+
+
+def test_skip_current_step_returns_none_when_exhausted():
+    async def _run():
+        session = _agent_session(current_step_index=1)
+        tc = _test_case(steps=[{"step_number": 1, "action": "Click login"}])
+        db = _FakeDB(gets={(TestCase, 1): tc})
+        action = await capture_service.skip_current_step(db, session, reason="n/a")
+        assert action is None
+
+    anyio.run(_run)
+
+
+def test_perform_modified_step_marks_corrected_and_links_to_step():
+    async def _run():
+        session = _agent_session(current_step_index=0)
+        tc = _test_case(steps=[{"step_number": 1, "action": "Click the sign-in link"}])
+        mcp = _FakeMCPSession()
+        db = _FakeDB(gets={(TestCase, 1): tc})
+        action = await capture_service.perform_modified_step(
+            db, session, mcp, output_dir=None, action_family="click", target_ref="ref-42",
+            target_semantic="Alternate sign-in button",
+        )
+        assert ("click", "Alternate sign-in button", "ref-42") in mcp.calls
+        assert action.inclusion_state == "corrected"
+        assert action.test_step_ref == "1"
+        assert session.current_step_index == 1
+
+    anyio.run(_run)
+
+
+def test_perform_modified_step_returns_none_when_exhausted():
+    async def _run():
+        session = _agent_session(current_step_index=1)
+        tc = _test_case(steps=[{"step_number": 1, "action": "Click login"}])
+        mcp = _FakeMCPSession()
+        db = _FakeDB(gets={(TestCase, 1): tc})
+        action = await capture_service.perform_modified_step(db, session, mcp, output_dir=None, action_family="read")
+        assert action is None
 
     anyio.run(_run)

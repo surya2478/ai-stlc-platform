@@ -138,26 +138,75 @@ async def _capture_evidence_and_persist_action(
     return action
 
 
+async def _get_steps(db: AsyncSession, session: DiscoverySession) -> list:
+    test_case = await db.get(TestCase, session.test_case_id) if session.test_case_id else None
+    return (test_case.steps or []) if test_case else []
+
+
+def _step_text(step) -> str:
+    return step.get("action") or step.get("description") or str(step) if isinstance(step, dict) else str(step)
+
+
+def _step_ref(step) -> str | None:
+    return str(step.get("step_number")) if isinstance(step, dict) and step.get("step_number") else None
+
+
+async def get_current_step(db: AsyncSession, session: DiscoverySession) -> dict | None:
+    """The step a Guided/Agent-Driven session would act on next, without
+    executing anything — used by Agent-Driven mode to show what it's about
+    to propose (Section 11.1's "current step, expected application state")
+    before the user approves/modifies/skips it."""
+    steps = await _get_steps(db, session)
+    if session.current_step_index >= len(steps):
+        return None
+    step = steps[session.current_step_index]
+    return {"text": _step_text(step), "step_ref": _step_ref(step)}
+
+
 async def capture_one_step(
-    db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path,
+    db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path, *, actor: str = "system",
 ) -> DiscoveryAction | None:
     """Captures real evidence (snapshot + screenshot) for the current guided
     step and advances `current_step_index`. Returns None once every step has
-    been captured."""
-    test_case = await db.get(TestCase, session.test_case_id) if session.test_case_id else None
-    steps = (test_case.steps or []) if test_case else []
+    been captured. `actor` defaults to "system" (Guided mode's unsupervised
+    auto-walk) — Agent-Driven's `approve_next_action` passes "agent" since
+    the same step is instead proposed and only executed once approved."""
+    steps = await _get_steps(db, session)
     if session.current_step_index >= len(steps):
         return None
 
     step = steps[session.current_step_index]
-    step_text = step.get("action") or step.get("description") or str(step) if isinstance(step, dict) else str(step)
 
     action = await _capture_evidence_and_persist_action(
         db, session, mcp_session, output_dir,
-        actor="system", action_family="read", target_semantic=step_text,
+        actor=actor, action_family="read", target_semantic=_step_text(step),
         sequence=session.current_step_index, label=f"step_{session.current_step_index}",
-        test_step_ref=str(step.get("step_number")) if isinstance(step, dict) and step.get("step_number") else None,
+        test_step_ref=_step_ref(step),
     )
+    session.current_step_index += 1
+    await db.flush()
+    return action
+
+
+async def skip_current_step(db: AsyncSession, session: DiscoverySession, *, reason: str) -> DiscoveryAction | None:
+    """Agent-Driven "Skip Next Action" (Section 10, reason required) —
+    records that the approved step was deliberately not performed. No
+    MCPSession call, no screenshot: nothing happened in the browser, so no
+    evidence is fabricated for it."""
+    steps = await _get_steps(db, session)
+    if session.current_step_index >= len(steps):
+        return None
+    step = steps[session.current_step_index]
+    now = datetime.now(timezone.utc)
+    action = DiscoveryAction(
+        session_id=session.id, project_id=session.project_id, sequence=session.current_step_index,
+        actor="user", test_step_ref=_step_ref(step), action_family="read",
+        target_semantic=_step_text(step)[:300], occurred_at=now,
+        inclusion_state="skipped", issue_note=reason,
+        provenance={"tool": "supervision", "call": "skip_action"},
+    )
+    db.add(action)
+    await db.flush()
     session.current_step_index += 1
     await db.flush()
     return action
@@ -184,6 +233,59 @@ class FreeActionError(ValueError):
     back to the caller as a recorded failure event, never silently dropped."""
 
 
+async def _execute_action_family(
+    mcp_session: MCPSession, *, action_family: str,
+    target_ref: str | None, target_semantic: str | None, input_text: str | None, url: str | None,
+) -> tuple[str, dict | None]:
+    """Performs one real browser call for the given action_family and
+    returns (semantic description, sanitized input_binding). Shared by
+    Free mode's `perform_free_action` and Agent-Driven's
+    `perform_modified_step` — both let the user name a concrete action
+    (never inferred/guessed), only who's allowed to invoke it and what
+    happens to the step queue afterward differs.
+    """
+    if action_family not in FREE_ACTION_FAMILIES:
+        raise FreeActionError(f"Unsupported action_family '{action_family}'")
+
+    if action_family == "navigate":
+        if not url:
+            raise FreeActionError("navigate requires 'url'")
+        await mcp_session.navigate(url)  # raises MCPSecurityError if host not allowed
+        return target_semantic or f"Navigate to {url}", {"url": url}
+    if action_family == "click":
+        if not target_ref:
+            raise FreeActionError("click requires 'target_ref'")
+        await mcp_session.click(element=target_semantic or target_ref, target=target_ref)
+        return target_semantic or f"Click {target_ref}", {"target_ref": target_ref}
+    if action_family == "input":
+        if not target_ref or input_text is None:
+            raise FreeActionError("input requires 'target_ref' and 'input_text'")
+        if _is_sensitive_field(target_semantic) or _is_sensitive_field(target_ref):
+            persisted_text = "[REDACTED - sensitive field]"
+        else:
+            persisted_text = mask_snapshot_text(input_text)[:500]
+        await mcp_session.type_text(element=target_semantic or target_ref, target=target_ref, text=input_text)
+        return target_semantic or f"Type into {target_ref}", {"target_ref": target_ref, "text": persisted_text}
+    # "read" — an explicit observation, no browser interaction
+    return target_semantic or "Observed current state", None
+
+
+async def _next_action_sequence(db: AsyncSession, session: DiscoverySession) -> int:
+    result = await db.execute(
+        select(DiscoveryAction.sequence)
+        .where(DiscoveryAction.session_id == session.id)
+        .order_by(DiscoveryAction.sequence.desc())
+        .limit(1)
+    )
+    existing_max_sequence = result.scalar_one_or_none()
+    # `existing_max_sequence or -1` would be wrong here: 0 is a legitimate
+    # first sequence number, and `0 or -1` evaluates to -1 in Python (0 is
+    # falsy), which silently reused sequence 0 for every action instead of
+    # incrementing — caught live when a second Free-mode action got
+    # persisted with the same sequence as the first.
+    return (existing_max_sequence + 1) if existing_max_sequence is not None else 0
+
+
 async def perform_free_action(
     db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path, *,
     action_family: str,
@@ -200,48 +302,11 @@ async def perform_free_action(
     behalf; `MCPSession.navigate`'s existing allowed-host check is the same
     single security boundary Guided mode relies on.
     """
-    if action_family not in FREE_ACTION_FAMILIES:
-        raise FreeActionError(f"Unsupported action_family '{action_family}'")
-
-    input_binding: dict | None = None
-    if action_family == "navigate":
-        if not url:
-            raise FreeActionError("navigate requires 'url'")
-        await mcp_session.navigate(url)  # raises MCPSecurityError if host not allowed
-        semantic = target_semantic or f"Navigate to {url}"
-        input_binding = {"url": url}
-    elif action_family == "click":
-        if not target_ref:
-            raise FreeActionError("click requires 'target_ref'")
-        await mcp_session.click(element=target_semantic or target_ref, target=target_ref)
-        semantic = target_semantic or f"Click {target_ref}"
-        input_binding = {"target_ref": target_ref}
-    elif action_family == "input":
-        if not target_ref or input_text is None:
-            raise FreeActionError("input requires 'target_ref' and 'input_text'")
-        if _is_sensitive_field(target_semantic) or _is_sensitive_field(target_ref):
-            persisted_text = "[REDACTED - sensitive field]"
-        else:
-            persisted_text = mask_snapshot_text(input_text)[:500]
-        await mcp_session.type_text(element=target_semantic or target_ref, target=target_ref, text=input_text)
-        semantic = target_semantic or f"Type into {target_ref}"
-        input_binding = {"target_ref": target_ref, "text": persisted_text}
-    else:  # "read" — an explicit user-triggered observation, no browser interaction
-        semantic = target_semantic or "Observed current state"
-
-    result = await db.execute(
-        select(DiscoveryAction.sequence)
-        .where(DiscoveryAction.session_id == session.id)
-        .order_by(DiscoveryAction.sequence.desc())
-        .limit(1)
+    semantic, input_binding = await _execute_action_family(
+        mcp_session, action_family=action_family, target_ref=target_ref,
+        target_semantic=target_semantic, input_text=input_text, url=url,
     )
-    existing_max_sequence = result.scalar_one_or_none()
-    # `existing_max_sequence or -1` would be wrong here: 0 is a legitimate
-    # first sequence number, and `0 or -1` evaluates to -1 in Python (0 is
-    # falsy), which silently reused sequence 0 for every action instead of
-    # incrementing — caught live when a second Free-mode action got
-    # persisted with the same sequence as the first.
-    next_sequence = (existing_max_sequence + 1) if existing_max_sequence is not None else 0
+    next_sequence = await _next_action_sequence(db, session)
 
     return await _capture_evidence_and_persist_action(
         db, session, mcp_session, output_dir,
@@ -249,6 +314,50 @@ async def perform_free_action(
         sequence=next_sequence, label=f"free_{next_sequence}",
         input_binding=input_binding, provenance_call=f"browser_{action_family}",
     )
+
+
+async def perform_modified_step(
+    db: AsyncSession, session: DiscoverySession, mcp_session: MCPSession, output_dir: Path, *,
+    action_family: str,
+    target_ref: str | None = None,
+    target_semantic: str | None = None,
+    input_text: str | None = None,
+    url: str | None = None,
+) -> DiscoveryAction | None:
+    """Agent-Driven "Modify Next Action" (Section 10) — the user substitutes
+    a concrete action for the currently proposed approved step instead of
+    approving it as-is. The step's own text in the approved test case is
+    never mutated (Section 3.1 — "approved steps are immutable during
+    execution"); this only records what was actually done, tagged
+    `corrected` and linked back to the step by `test_step_ref`, exactly the
+    same "reviewed capture change" the contract calls for.
+    """
+    steps = await _get_steps(db, session)
+    if session.current_step_index >= len(steps):
+        return None
+    step = steps[session.current_step_index]
+
+    semantic, input_binding = await _execute_action_family(
+        mcp_session, action_family=action_family, target_ref=target_ref,
+        target_semantic=target_semantic, input_text=input_text, url=url,
+    )
+
+    action = await _capture_evidence_and_persist_action(
+        db, session, mcp_session, output_dir,
+        actor="user", action_family=action_family, target_semantic=semantic,
+        sequence=session.current_step_index, label=f"step_{session.current_step_index}_modified",
+        test_step_ref=_step_ref(step), input_binding=input_binding,
+        provenance_call=f"browser_{action_family}",
+    )
+    action.inclusion_state = "corrected"
+    action.correction_history = [{
+        "previous_inclusion_state": "included",
+        "new_inclusion_state": "corrected",
+        "reason": f"Modified from proposed step: {_step_text(step)[:200]}",
+    }]
+    session.current_step_index += 1
+    await db.flush()
+    return action
 
 
 async def create_checkpoint(

@@ -1,4 +1,4 @@
-"""UI-015 Live Discovery Session — dedicated Celery task (Phase 1 + 2).
+"""UI-015 Live Discovery Session — dedicated Celery task (Phase 1 + 2 + 3).
 
 Not routed through `AGENT_REGISTRY` (agent_tasks.py) — this holds one
 `MCPSession` open across a step loop and checks `DiscoverySession.pending_command`
@@ -16,9 +16,16 @@ same as pause but skips graceful teardown.
 Guided mode auto-walks the approved step list every iteration. Free mode
 (Phase 2) has no step list — it idles, polling `pending_command` for a
 user-submitted `perform_action` request, and self-pauses after
-`_MAX_IDLE_ITERATIONS` of nothing happening so an abandoned Free session
-doesn't hold a worker slot forever (mirrors the same self-pause safety
-property Guided mode already has once its step list is exhausted).
+`_FREE_MODE_MAX_IDLE_ITERATIONS` of nothing happening so an abandoned Free
+session doesn't hold a worker slot forever.
+
+Agent-Driven mode (Phase 3) walks the same approved step list as Guided,
+but never auto-executes: it idles, proposing the current step and waiting
+for `approve_next_action` / `modify_next_action` / `skip_action`, with the
+same idle self-pause. `take_manual_control` flips a `metadata_` flag this
+loop checks every iteration — while set, an Agent-Driven session behaves
+exactly like Free mode's `perform_action` idle-wait instead of walking the
+step queue, until `return_control_to_agent` flips it back.
 """
 from __future__ import annotations
 
@@ -81,12 +88,19 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
             return {"status": "FAILED"}
 
         is_free_mode = session.mode == "FREE_USER_ACTION"
+        is_agent_driven = session.mode == "SUPERVISED_AGENT_DRIVEN"
         idle_iterations = 0
+
+        async def _self_pause() -> None:
+            await capture_service.create_checkpoint(db, session, state_at_checkpoint="PAUSED")
+            session.status = "PAUSED"
+            await db.commit()
 
         try:
             for _ in range(_MAX_STEPS_PER_INVOCATION):
                 await db.refresh(session)
                 command = (session.pending_command or {}).get("command")
+                manual_control = is_agent_driven and bool((session.metadata_ or {}).get("manual_control"))
 
                 if command == "pause":
                     await capture_service.create_checkpoint(db, session, state_at_checkpoint="PAUSED")
@@ -115,7 +129,7 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
                     await db.commit()
                     continue
 
-                if command == "perform_action" and is_free_mode:
+                if command == "perform_action" and (is_free_mode or manual_control):
                     params = dict((session.pending_command or {}).get("params") or {})
                     try:
                         await capture_service.perform_free_action(db, session, mcp_session, output_dir, **params)
@@ -136,14 +150,55 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
                     await db.commit()
                     continue
 
-                if is_free_mode:
-                    # No step list to auto-walk — wait for the user's next
-                    # action request, self-pausing if they've gone quiet.
+                if is_agent_driven and not manual_control:
+                    if command in ("approve_next_action", "modify_next_action", "skip_action"):
+                        try:
+                            if command == "approve_next_action":
+                                await capture_service.capture_one_step(db, session, mcp_session, output_dir, actor="agent")
+                            elif command == "modify_next_action":
+                                params = dict((session.pending_command or {}).get("params") or {})
+                                await capture_service.perform_modified_step(db, session, mcp_session, output_dir, **params)
+                            else:
+                                reason = (session.pending_command or {}).get("reason") or ""
+                                await capture_service.skip_current_step(db, session, reason=reason)
+                        except Exception as exc:
+                            logger.warning(
+                                "discovery_tasks: supervision command '%s' failed for session %s: %s",
+                                command, session.id, exc,
+                            )
+                            db.add(DiscoverySessionEvent(
+                                session_id=session.id, project_id=session.project_id, actor_type="system",
+                                previous_state=session.status, new_state=session.status,
+                                command=f"{command}_failed", reason=str(exc)[:500],
+                                occurred_at=datetime.now(timezone.utc),
+                            ))
+                        session.pending_command = None
+                        idle_iterations = 0
+                        await db.commit()
+                        continue
+
+                    current_step = await capture_service.get_current_step(db, session)
+                    if current_step is None:
+                        # Every approved step already approved/modified/
+                        # skipped — self-pause rather than auto-complete
+                        # (Section 15 requires explicit user confirmation).
+                        await _self_pause()
+                        break
                     idle_iterations += 1
                     if idle_iterations >= _FREE_MODE_MAX_IDLE_ITERATIONS:
-                        await capture_service.create_checkpoint(db, session, state_at_checkpoint="PAUSED")
-                        session.status = "PAUSED"
-                        await db.commit()
+                        await _self_pause()
+                        break
+                    await asyncio.sleep(_FREE_MODE_POLL_SECONDS)
+                    continue
+
+                if is_free_mode or manual_control:
+                    # No step list to auto-walk (Free mode), or the step
+                    # queue is deliberately bypassed (manual control) — wait
+                    # for the user's next action request, self-pausing if
+                    # they've gone quiet.
+                    idle_iterations += 1
+                    if idle_iterations >= _FREE_MODE_MAX_IDLE_ITERATIONS:
+                        await _self_pause()
                         break
                     await asyncio.sleep(_FREE_MODE_POLL_SECONDS)
                     continue
@@ -161,9 +216,7 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
                     # listening for. Guided mode still never auto-completes
                     # (Section 15 requires explicit user confirmation) —
                     # PAUSED, not COMPLETED.
-                    await capture_service.create_checkpoint(db, session, state_at_checkpoint="PAUSED")
-                    session.status = "PAUSED"
-                    await db.commit()
+                    await _self_pause()
                     break
                 await db.commit()
         finally:

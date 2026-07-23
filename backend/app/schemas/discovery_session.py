@@ -6,6 +6,11 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 
+class CurrentStepOut(BaseModel):
+    text: str | None
+    step_ref: str | None
+
+
 class EligibleTestCaseOut(BaseModel):
     test_case_id: int
     display_id: str
@@ -65,6 +70,7 @@ class DiscoverySessionOut(BaseModel):
     correlation_id: str | None
     current_step_index: int
     resume_state_classification: str | None
+    metadata_: dict | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -54,6 +54,15 @@ export function useDiscoveryReadiness(sessionId: number | null) {
   });
 }
 
+export function useCurrentStep(sessionId: number | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["discovery", "current-step", sessionId ?? -1],
+    queryFn: async () => (await discoveryApi.getCurrentStep(sessionId as number)).data,
+    enabled: enabled && sessionId !== null && sessionId > 0,
+    refetchInterval: 4000,
+  });
+}
+
 export function useDiscoveryActions(sessionId: number | null) {
   return useQuery({
     queryKey: discoveryKeys.actions(sessionId ?? -1),

@@ -22,6 +22,7 @@ from app.models.discovery_session import (
     DiscoverySessionEvent,
 )
 from app.schemas.discovery_session import (
+    CurrentStepOut,
     DiscoveryActionCorrectionRequest,
     DiscoveryActionOut,
     DiscoveryCaptureOut,
@@ -57,7 +58,9 @@ _COMMAND_PERMISSION = {
     "cancel": DISCOVERY_CONTROL_SESSION,
     "emergency_stop": DISCOVERY_EMERGENCY_STOP,
     "approve_next_action": DISCOVERY_CONTROL_SESSION,
+    "modify_next_action": DISCOVERY_CONTROL_SESSION,
     "take_manual_control": DISCOVERY_CONTROL_SESSION,
+    "return_control_to_agent": DISCOVERY_CONTROL_SESSION,
     "skip_action": DISCOVERY_CONTROL_SESSION,
     "rollback": DISCOVERY_CONTROL_SESSION,
 }
@@ -112,6 +115,17 @@ async def get_session(session_id: int, db: DBSession, current_user: CurrentUser)
     session = await session_service.get_session_or_404(db, session_id)
     await require_entity_permission(session, DISCOVERY_VIEW, current_user, db)
     return session
+
+
+@router.get("/sessions/{session_id}/current-step", response_model=CurrentStepOut)
+async def get_current_step(session_id: int, db: DBSession, current_user: CurrentUser):
+    """Agent-Driven mode's proposed-next-step (Section 11.1) — what the
+    supervision loop is about to act on, without executing anything."""
+    _require_enabled()
+    session = await session_service.get_session_or_404(db, session_id)
+    await require_entity_permission(session, DISCOVERY_VIEW, current_user, db)
+    step = await capture_service.get_current_step(db, session)
+    return CurrentStepOut(**step) if step else CurrentStepOut(text=None, step_ref=None)
 
 
 @router.post("/sessions/{session_id}/readiness", response_model=ReadinessResultOut)

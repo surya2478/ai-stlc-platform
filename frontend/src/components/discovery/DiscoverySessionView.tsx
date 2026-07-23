@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { applicationsApi, type ProjectApplication } from "@/lib/api";
 import {
-  useCorrectDiscoveryAction, useCreateDiscoverySession, useDiscoveryActions, useDiscoveryActivity,
+  useCorrectDiscoveryAction, useCreateDiscoverySession, useCurrentStep, useDiscoveryActions, useDiscoveryActivity,
   useDiscoveryCheckpoints, useDiscoveryReadiness, useDiscoverySession, useDiscoverySessions,
   useEligibleTestCases, useIssueDiscoveryCommand, useRecordFreeAction,
 } from "@/lib/queries/discovery";
@@ -96,6 +96,14 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
   const [freeActionTargetRef, setFreeActionTargetRef] = useState("");
   const [freeActionTargetSemantic, setFreeActionTargetSemantic] = useState("");
   const [freeActionInputText, setFreeActionInputText] = useState("");
+  const [skipReason, setSkipReason] = useState("");
+  const [rollbackCheckpointId, setRollbackCheckpointId] = useState("");
+  const [rollbackReason, setRollbackReason] = useState("");
+  const [showModifyForm, setShowModifyForm] = useState(false);
+
+  const isAgentDriven = session?.mode === "SUPERVISED_AGENT_DRIVEN";
+  const manualControl = Boolean(session?.metadata_?.manual_control);
+  const currentStepQuery = useCurrentStep(sessionIdParam, Boolean(isAgentDriven && session?.status === "RECORDING" && !manualControl));
 
   function setParam(key: string, value: string | null) {
     const params = new URLSearchParams(searchParams.toString());
@@ -172,6 +180,78 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
     }
   }
 
+  async function approveNextAction() {
+    try {
+      await issueCommand.mutateAsync({ command: "approve_next_action" });
+      toast({ title: "Approved — executing the proposed step" });
+    } catch (error) {
+      toast({ title: messageFromError(error, "Could not approve the next action"), variant: "error" });
+    }
+  }
+
+  async function skipNextAction() {
+    if (!skipReason.trim()) {
+      toast({ title: "A reason is required to skip a step", variant: "error" });
+      return;
+    }
+    try {
+      await issueCommand.mutateAsync({ command: "skip_action", reason: skipReason.trim() });
+      toast({ title: "Step skipped" });
+      setSkipReason("");
+    } catch (error) {
+      toast({ title: messageFromError(error, "Could not skip the next action"), variant: "error" });
+    }
+  }
+
+  async function modifyNextAction() {
+    if (freeActionFamily === "navigate" && !freeActionUrl.trim()) {
+      toast({ title: "Enter a URL to navigate to", variant: "error" });
+      return;
+    }
+    if ((freeActionFamily === "click" || freeActionFamily === "input") && !freeActionTargetRef.trim()) {
+      toast({ title: "Enter a target ref from the latest snapshot below", variant: "error" });
+      return;
+    }
+    try {
+      await issueCommand.mutateAsync({
+        command: "modify_next_action",
+        params: {
+          action_family: freeActionFamily,
+          url: freeActionFamily === "navigate" ? freeActionUrl.trim() : undefined,
+          target_ref: freeActionTargetRef.trim() || undefined,
+          target_semantic: freeActionTargetSemantic.trim() || undefined,
+          input_text: freeActionFamily === "input" ? freeActionInputText : undefined,
+        },
+      });
+      toast({ title: "Modified action queued for execution" });
+      setFreeActionUrl(""); setFreeActionTargetRef(""); setFreeActionTargetSemantic(""); setFreeActionInputText("");
+      setShowModifyForm(false);
+    } catch (error) {
+      toast({ title: messageFromError(error, "Could not modify the next action"), variant: "error" });
+    }
+  }
+
+  async function submitRollback() {
+    if (!rollbackCheckpointId) {
+      toast({ title: "Select a checkpoint to roll back to", variant: "error" });
+      return;
+    }
+    if (!rollbackReason.trim()) {
+      toast({ title: "A reason is required to roll back", variant: "error" });
+      return;
+    }
+    try {
+      await issueCommand.mutateAsync({
+        command: "rollback", reason: rollbackReason.trim(),
+        params: { checkpoint_id: Number(rollbackCheckpointId) },
+      });
+      toast({ title: "Rolled back to checkpoint" });
+      setRollbackReason("");
+    } catch (error) {
+      toast({ title: messageFromError(error, "Could not roll back"), variant: "error" });
+    }
+  }
+
   const readiness = readinessQuery.data;
   const canStart = session?.status === "NOT_STARTED";
   const canPause = session?.status === "RECORDING";
@@ -188,7 +268,8 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
 
   const latestAction = actionsQuery.data?.length ? actionsQuery.data[actionsQuery.data.length - 1] : undefined;
   const latestSnapshotExcerpt = latestAction?.post_state?.accessibility_snapshot_excerpt as string | undefined;
-  const canRecordFreeAction = session?.mode === "FREE_USER_ACTION" && session?.status === "RECORDING";
+  const canRecordFreeAction =
+    (session?.mode === "FREE_USER_ACTION" || (isAgentDriven && manualControl)) && session?.status === "RECORDING";
 
   return (
     <div className="space-y-4">
@@ -366,6 +447,16 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
             <Button size="sm" variant="destructive" disabled={!canEmergencyStop} onClick={() => runCommand("emergency_stop")} className="gap-1">
               <StopCircle className="h-3.5 w-3.5" /> Emergency Stop
             </Button>
+            {isAgentDriven && session.status === "RECORDING" && !manualControl && (
+              <Button size="sm" variant="outline" onClick={() => runCommand("take_manual_control")} className="gap-1">
+                Take Manual Control
+              </Button>
+            )}
+            {isAgentDriven && session.status === "RECORDING" && manualControl && (
+              <Button size="sm" variant="outline" onClick={() => runCommand("return_control_to_agent")} className="gap-1">
+                Return Control to Agent
+              </Button>
+            )}
           </div>
 
           {/* Three-region workspace */}
@@ -384,7 +475,94 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                   Step {session.current_step_index} captured
                 </div>
 
-                {session.mode === "FREE_USER_ACTION" && (
+                {isAgentDriven && session.status === "RECORDING" && !manualControl && (
+                  <div className="space-y-2 rounded-lg border border-violet-100 bg-violet-50 p-2">
+                    <div className="text-[11px] font-bold text-violet-700">Proposed Next Step</div>
+                    {currentStepQuery.data?.text ? (
+                      <>
+                        <p className="text-xs font-semibold text-slate-700">{currentStepQuery.data.text}</p>
+                        <div className="flex flex-wrap gap-1">
+                          <Button size="sm" onClick={approveNextAction} disabled={issueCommand.isPending} className="h-7 gap-1 text-[10px]">
+                            Approve
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setShowModifyForm((v) => !v)} className="h-7 gap-1 text-[10px]">
+                            Modify
+                          </Button>
+                        </div>
+
+                        {showModifyForm && (
+                          <div className="space-y-1 rounded border border-violet-200 bg-white p-1.5">
+                            <select
+                              value={freeActionFamily}
+                              onChange={(e) => setFreeActionFamily(e.target.value)}
+                              className="h-7 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none"
+                            >
+                              {FREE_ACTION_FAMILIES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                            </select>
+                            {freeActionFamily === "navigate" && (
+                              <input value={freeActionUrl} onChange={(e) => setFreeActionUrl(e.target.value)} placeholder="https://…"
+                                className="h-7 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none" />
+                            )}
+                            {(freeActionFamily === "click" || freeActionFamily === "input") && (
+                              <>
+                                <input value={freeActionTargetRef} onChange={(e) => setFreeActionTargetRef(e.target.value)} placeholder="Target ref"
+                                  className="h-7 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none" />
+                                <input value={freeActionTargetSemantic} onChange={(e) => setFreeActionTargetSemantic(e.target.value)} placeholder="Description"
+                                  className="h-7 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none" />
+                              </>
+                            )}
+                            {freeActionFamily === "input" && (
+                              <input value={freeActionInputText} onChange={(e) => setFreeActionInputText(e.target.value)} placeholder="Text to type"
+                                className="h-7 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none" />
+                            )}
+                            <Button size="sm" onClick={modifyNextAction} disabled={issueCommand.isPending} className="h-7 w-full text-[10px]">
+                              Execute Modified Action
+                            </Button>
+                          </div>
+                        )}
+
+                        <input
+                          value={skipReason}
+                          onChange={(e) => setSkipReason(e.target.value)}
+                          placeholder="Reason to skip this step"
+                          className="h-7 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none"
+                        />
+                        <Button size="sm" variant="outline" onClick={skipNextAction} disabled={issueCommand.isPending} className="h-7 w-full text-[10px]">
+                          Skip (reason required)
+                        </Button>
+                      </>
+                    ) : (
+                      <p className="text-[11px] font-semibold text-slate-500">No more approved steps — Stop or Complete the session.</p>
+                    )}
+                  </div>
+                )}
+
+                {isAgentDriven && session.status === "PAUSED" && (
+                  <div className="space-y-2 rounded-lg border border-amber-100 bg-amber-50 p-2">
+                    <div className="text-[11px] font-bold text-amber-700">Roll Back to Checkpoint</div>
+                    <select
+                      value={rollbackCheckpointId}
+                      onChange={(e) => setRollbackCheckpointId(e.target.value)}
+                      className="h-7 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none"
+                    >
+                      <option value="">Select checkpoint</option>
+                      {(checkpointsQuery.data ?? []).map((cp) => (
+                        <option key={cp.id} value={cp.id}>#{cp.sequence} · {cp.state_at_checkpoint}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={rollbackReason}
+                      onChange={(e) => setRollbackReason(e.target.value)}
+                      placeholder="Reason (required)"
+                      className="h-7 w-full rounded border border-slate-200 px-1.5 text-[10px] outline-none"
+                    />
+                    <Button size="sm" variant="outline" onClick={submitRollback} disabled={issueCommand.isPending} className="h-7 w-full text-[10px]">
+                      Confirm Roll Back
+                    </Button>
+                  </div>
+                )}
+
+                {(session.mode === "FREE_USER_ACTION" || isAgentDriven) && (
                   <div className="space-y-1 border-t border-slate-100 pt-2">
                     <div className="text-[11px] font-bold text-slate-500">Action Timeline</div>
                     {(actionsQuery.data ?? []).map((action) => (
