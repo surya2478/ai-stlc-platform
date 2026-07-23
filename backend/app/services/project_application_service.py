@@ -3,21 +3,43 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.project import Project
 from app.models.project_application import ProjectApplication, ProjectExternalDependency
+from app.models.project_membership import ProjectMembership
 from app.models.llm_settings import ProjectSettingAuditLog
 from app.models.requirement import Requirement
 from app.models.test_case import TestCase
 from app.schemas.applications import (
+    ApplicationMappingConflict,
     ProjectApplicationUpdate,
+    ProjectApplicationsSummary,
     ProjectApplicationsUpdateRequest,
     ProjectExternalDependencyUpdate,
     ProjectExternalDependenciesUpdateRequest,
 )
 
 _FALLBACK_ENVIRONMENTS = ["development", "staging", "production", "ci"]
+
+# The 8 canonical applications every project must be able to seed
+# idempotently (contract §11). Keys are given in the lowercase-slug form
+# ProjectApplicationUpdate.validate_key already normalizes every key to
+# (matching every other application in this system, e.g. "cust-portal") —
+# the contract's "APP-CUSTOMER-PORTAL" wording describes a display
+# convention, not the enforced storage format. Seeding never overwrites an
+# existing row for a key already present — see seed_canonical_applications().
+CANONICAL_APPLICATIONS = (
+    ("app-usp-direct", "USP Direct"),
+    ("app-b2b", "B2B"),
+    ("app-cim", "CIM"),
+    ("app-code", "CoDE"),
+    ("app-b2c", "B2C"),
+    ("app-sales-portal", "Sales Portal"),
+    ("app-smiles", "Smiles"),
+    ("app-mobile-app", "Mobile App"),
+)
 
 
 def _application_snapshot(app: ProjectApplication) -> dict[str, Any]:
@@ -30,9 +52,54 @@ def _application_snapshot(app: ProjectApplication) -> dict[str, Any]:
         "is_default": app.is_default,
         "environment_urls": app.environment_urls or {},
         "is_active": app.is_active,
+        "application_type": app.application_type,
+        "aliases": app.aliases or [],
+        "lifecycle_status": app.lifecycle_status,
+        "business_owner_id": app.business_owner_id,
+        "technical_owner_id": app.technical_owner_id,
+        "domain": app.domain,
+        "product_group": app.product_group,
+        "product": app.product,
+        "channel": app.channel,
         "updated_by": app.updated_by,
         "updated_at": app.updated_at.isoformat() if app.updated_at else None,
     }
+
+
+async def _validate_owner_references(
+    db: AsyncSession, project_id: int, updates: list[ProjectApplicationUpdate]
+) -> None:
+    """Owner references must be real, authorized project members — not
+    free-text names. `Project.owner_id` is always authorized even without an
+    explicit membership row (mirrors the RBAC check in api/deps.py)."""
+    owner_ids = {
+        owner_id
+        for item in updates
+        for owner_id in (item.business_owner_id, item.technical_owner_id)
+        if owner_id is not None
+    }
+    if not owner_ids:
+        return
+
+    result = await db.execute(
+        select(ProjectMembership.user_id).where(
+            ProjectMembership.project_id == project_id,
+            ProjectMembership.user_id.in_(owner_ids),
+            ProjectMembership.is_active.is_(True),
+        )
+    )
+    authorized_ids = set(result.scalars().all())
+
+    project = await db.get(Project, project_id)
+    if project and project.owner_id in owner_ids:
+        authorized_ids.add(project.owner_id)
+
+    unauthorized = owner_ids - authorized_ids
+    if unauthorized:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Owner reference(s) are not authorized members of this project: {sorted(unauthorized)}",
+        )
 
 
 def _dependency_snapshot(dep: ProjectExternalDependency) -> dict[str, Any]:
@@ -59,6 +126,17 @@ def _validate_application_updates(updates: list[ProjectApplicationUpdate]) -> No
     defaults = [item for item in updates if item.is_default and item.is_active]
     if len(defaults) > 1:
         raise HTTPException(status_code=400, detail="Only one application can be the default per project.")
+
+
+def _synced_lifecycle_status(lifecycle_status: str, is_active: bool) -> tuple[str, bool]:
+    """Keep lifecycle_status and is_active mutually consistent: a deprecated
+    or retired application cannot be active, and an inactive application
+    cannot claim the "active" lifecycle state."""
+    if lifecycle_status in ("deprecated", "retired"):
+        return lifecycle_status, False
+    if lifecycle_status == "active" and not is_active:
+        return "draft", is_active
+    return lifecycle_status, is_active
 
 
 async def list_applications(db: AsyncSession, project_id: int) -> list[ProjectApplication]:
@@ -206,6 +284,7 @@ async def update_project_applications(
     source: str = "ui",
 ) -> dict:
     _validate_application_updates(payload.applications)
+    await _validate_owner_references(db, project_id, payload.applications)
 
     existing = {item.key: item for item in await list_applications(db, project_id)}
     old_snapshot = [_application_snapshot(item) for item in existing.values()]
@@ -218,11 +297,21 @@ async def update_project_applications(
         if row is None:
             row = ProjectApplication(project_id=project_id, key=item.key, created_by=user_id)
             db.add(row)
+        lifecycle_status, is_active = _synced_lifecycle_status(item.lifecycle_status, item.is_active)
         row.name = item.name
         row.description = item.description
         row.environment_urls = item.environment_urls
-        row.is_active = item.is_active
-        row.is_default = item.is_default and item.is_active
+        row.is_active = is_active
+        row.is_default = item.is_default and is_active
+        row.application_type = item.application_type
+        row.aliases = item.aliases
+        row.lifecycle_status = lifecycle_status
+        row.business_owner_id = item.business_owner_id
+        row.technical_owner_id = item.technical_owner_id
+        row.domain = item.domain
+        row.product_group = item.product_group
+        row.product = item.product
+        row.channel = item.channel
         row.updated_by = user_id
 
     # Clear default on any untouched row when a new default was set in this payload.
@@ -245,6 +334,106 @@ async def update_project_applications(
     db.add(audit)
     await db.flush()
     return await build_project_applications_response(db, project_id)
+
+
+async def list_application_audit_log(db: AsyncSession, project_id: int, limit: int = 100) -> list[ProjectSettingAuditLog]:
+    """Real change history for the Application Registry (UI-014 History and
+    Activity inspector tabs) — the existing whole-payload before/after
+    snapshots written by update_project_applications /
+    update_project_external_dependencies / seed_canonical_applications.
+    Diffing down to a per-field view happens client-side."""
+    result = await db.execute(
+        select(ProjectSettingAuditLog)
+        .where(
+            ProjectSettingAuditLog.project_id == project_id,
+            ProjectSettingAuditLog.setting_type.in_(("applications", "external_dependencies")),
+        )
+        .order_by(ProjectSettingAuditLog.changed_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def build_registry_summary(db: AsyncSession, project_id: int) -> ProjectApplicationsSummary:
+    """Application Registry (UI-014) KPI aggregates. `discovery_ready` is a
+    disclosed proxy — the contract's own gate (>=1 active environment with a
+    valid URL) — not real discovery-session telemetry, since no discovery
+    subsystem exists yet. `mapping_conflicts` only considers applications
+    that actually have a product_group/product/channel mapped."""
+    applications = await list_applications(db, project_id)
+
+    active = [app for app in applications if app.is_active]
+    discovery_ready = [app for app in active if app.environment_urls]
+    environment_gaps = [app for app in active if not app.environment_urls]
+
+    conflict_groups: dict[tuple[str | None, str | None, str | None], list[int]] = {}
+    for app in active:
+        if not (app.product_group or app.product or app.channel):
+            continue
+        key = (app.product_group, app.product, app.channel)
+        conflict_groups.setdefault(key, []).append(app.id)
+    mapping_conflicts = [
+        ApplicationMappingConflict(
+            product_group=key[0], product=key[1], channel=key[2], application_ids=sorted(ids)
+        )
+        for key, ids in conflict_groups.items()
+        if len(ids) > 1
+    ]
+
+    usage_result = await db.execute(
+        select(TestCase.application_id, func.count(TestCase.id))
+        .where(TestCase.project_id == project_id, TestCase.application_id.isnot(None))
+        .group_by(TestCase.application_id)
+    )
+    mapping_usage = {app_id: count for app_id, count in usage_result.all()}
+
+    return ProjectApplicationsSummary(
+        project_id=project_id,
+        total_applications=len(applications),
+        active_applications=len(active),
+        discovery_ready=len(discovery_ready),
+        environment_gaps=len(environment_gaps),
+        mapping_conflicts=mapping_conflicts,
+        mapping_usage=mapping_usage,
+    )
+
+
+async def seed_canonical_applications(db: AsyncSession, project_id: int, user_id: int) -> dict:
+    """Idempotently seed the 8 canonical applications (contract §11) for a
+    project. Only keys not already present are inserted — an authorized
+    user's prior edits to an already-seeded row (or a row they created with
+    the same key) are never overwritten, since we simply omit that key from
+    the payload passed to update_project_applications."""
+    existing_keys = {item.key for item in await list_applications(db, project_id)}
+    missing = [
+        ProjectApplicationUpdate(key=key, name=name)
+        for key, name in CANONICAL_APPLICATIONS
+        if key not in existing_keys
+    ]
+    if not missing:
+        return await build_project_applications_response(db, project_id)
+
+    # Only the missing keys are submitted — update_project_applications
+    # leaves every row absent from the payload untouched, EXCEPT it clears
+    # is_default on untouched rows if the payload sets a new default. Since
+    # seeded rows never set is_default=True, that side effect never fires,
+    # so existing applications (including ones a user has since edited) are
+    # never read from the DB and never rewritten by this call.
+    payload = ProjectApplicationsUpdateRequest(
+        applications=[
+            ProjectApplicationUpdate(
+                key=item.key,
+                name=item.name,
+                description=None,
+                is_default=False,
+                environment_urls={},
+                is_active=True,
+            )
+            for item in missing
+        ],
+        change_reason="Seeded canonical applications",
+    )
+    return await update_project_applications(db, project_id=project_id, payload=payload, user_id=user_id, source="seed")
 
 
 async def update_project_external_dependencies(

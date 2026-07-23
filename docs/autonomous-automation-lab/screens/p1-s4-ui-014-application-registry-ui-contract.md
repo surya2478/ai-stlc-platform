@@ -10,11 +10,12 @@
 | Screen name | Application Registry |
 | Parent area | Application Discovery |
 | Proposed route | `/settings?project={projectId}&tab=applications` |
+| Implemented route | `/applications?project={projectId}` (standalone dense workspace — see §16 implementation note) |
 | Contextual entry | UI-012 Journey Graph, UI-013 Test Case Approval and AI Automation Studio |
 | Previous screen | UI-013 Test Case Approval |
 | Next screen | UI-015 Live Discovery Session |
 | Existing baseline | Project Settings `Applications & Environments`, project-application API and external-dependency API |
-| Implementation status | `CONTRACT_DRAFT_PENDING_REFERENCE_IMAGE` |
+| Implementation status | `IMPLEMENTED` |
 
 ## 1. Purpose
 
@@ -259,6 +260,224 @@ Action rules:
 - Start Discovery is disabled until mandatory registry and environment checks pass.
 - Backend validation and permission errors must be shown verbatim.
 
+## 10.1 Add / Edit Application form
+
+`Add Application` opens a large right-side drawer consistent with the governed inspectors used by UI-007 through UI-013. It must not use a small confirmation modal because application identity, environments, ownership, discovery readiness and dependencies require structured review.
+
+Recommended drawer width: `640–720px` on the approved desktop viewport, with a full-screen responsive form on smaller widths.
+
+The same form is reused for Edit Application. Edit mode loads persisted values and applies stable-key, default-state, lifecycle and downstream-impact restrictions.
+
+### Form header
+
+- Title: `Add Application` or `Edit Application`
+- Subtitle: `Register a stable application identity and governed discovery context.`
+- Project name and ID — read-only
+- Draft/validation state badge
+- Close action with unsaved-change confirmation
+- Optional `View Audit Log` in Edit mode
+
+### Form sections
+
+Use four compact steps or vertical accordion sections. All values must remain in one validated draft while the drawer is open.
+
+#### Step 1 — Identity
+
+Required fields:
+
+- **Application Name** — required, 2–200 characters
+- **Stable Key** — required, project-unique, uppercase recommendation such as `APP-CUSTOMER-PORTAL`
+- **Application Type** — required when the governed application-type model exists
+- **Description** — optional, maximum length enforced by backend
+- **Lifecycle State** — `Draft`, `Active`, `Deprecated` or `Retired` according to permission and policy
+- **Set as Project Default** — switch with unique-default warning
+- **Active** — permission-aware lifecycle control; archive/deprecate is preferred after downstream use exists
+
+Optional governed fields when persisted:
+
+- Aliases — repeatable values
+- External/system identifier
+- Effective from / effective to
+- Source/provenance
+
+Stable Key behavior:
+
+- The UI may suggest a key from the application name, but the backend creates/validates the canonical value.
+- The key remains editable only before initial persistence or before downstream references exist.
+- Duplicate keys display the conflicting application and block submission.
+- Application ID is backend-generated after save and is never created only in frontend state.
+
+#### Step 2 — Ownership and classification
+
+Required governance fields when the backend extension exists:
+
+- Business Owner — project-authorized user/team reference
+- Technical Owner — project-authorized user/team reference
+- Business Domain
+- Product Group / Product
+- Channel
+
+Optional relationships:
+
+- Customer Segment
+- Customer Type
+- Request Type / Sub Request Type
+- Supported journeys
+- Upstream applications
+- Downstream applications
+
+Interaction rules:
+
+- Owner fields search real authorized users/teams; free-text names are not accepted as ownership references.
+- Taxonomy selectors read approved taxonomy versions and show source/version.
+- Multi-select relationships display stable IDs and names.
+- Cross-project relationships are rejected.
+- Missing classification may allow `Save Draft` but blocks `Activate` or `Start Discovery` according to policy.
+
+#### Step 3 — Environments and access
+
+Display environments as repeatable compact cards or rows.
+
+Each environment contains:
+
+- Environment Name — required and unique within the application
+- Environment Type — for example SIT, QA, UAT, Staging or Production according to configured values
+- Base URL — absolute `http` or `https` URL
+- Health-check URL or strategy — optional until health monitoring is configured
+- Authentication Profile Reference — selector only; never credentials
+- Browser compatibility
+- Device / AVD compatibility
+- Framework / adapter compatibility
+- Environment restrictions or notes
+- Default environment marker where the governed model supports it
+- Active state
+
+Row actions:
+
+- Add Environment
+- Validate URL
+- Test Health Check
+- Duplicate Environment Configuration — removes secret/auth-profile bindings by default
+- Remove unsaved environment
+- Archive persisted environment with impact warning
+
+Rules:
+
+- An application may be saved as Draft without an environment.
+- At least one active governed environment with a valid URL is required for Discovery Ready.
+- Environment URL validation is performed by the backend and records result/timestamp.
+- URLs must not contain embedded credentials, tokens or sensitive query parameters.
+- Auth-profile contents are never returned to this form.
+- Production discovery requires explicit policy eligibility; an application being Active does not automatically authorize production discovery.
+
+#### Step 4 — Discovery, dependencies and review
+
+Discovery configuration when persisted:
+
+- Discovery Enabled
+- Supported modes: Guided User, Free User-Action and/or Agent-Driven
+- Supported surfaces: Web, Mobile, WebView, API and Network
+- Allowed host/domain list
+- Browser/device/AVD requirements
+- Evidence/redaction policy reference
+- Application-model status — read-only in Edit mode
+- Last discovery session — read-only
+
+External dependencies:
+
+- Service Name
+- Owning Application
+- Sandbox URL
+- Mock Strategy: `Intercept`, `Sandbox` or `Ignore`
+- Active state
+- Notes
+
+Final review summary:
+
+- Identity checks
+- Ownership/classification checks
+- Environment and URL checks
+- Authentication-reference checks
+- Discovery eligibility
+- Dependency validation
+- Default-application impact
+- Downstream usage/impact in Edit mode
+- Missing optional versus mandatory fields
+
+The final review must distinguish:
+
+- **Valid Draft** — record may be saved but is not discovery-ready
+- **Ready to Activate** — mandatory registry governance passes
+- **Discovery Ready** — active application, environment and discovery gates pass
+- **Blocked** — submission or requested lifecycle action is invalid
+
+### Form footer actions
+
+Persistent footer actions:
+
+- `Cancel`
+- `Save Draft`
+- `Validate`
+- Primary action: `Add Application`, `Save Changes` or `Activate Application` depending on mode and permission
+
+Behavior:
+
+- `Validate` runs backend validation without silently persisting lifecycle advancement.
+- `Save Draft` persists supported partial data and records the actor/source.
+- `Add Application` creates the canonical backend record and returns its stable numeric ID/key.
+- `Activate Application` is shown only when activation governance exists and all mandatory checks pass.
+- The drawer remains open on validation/API failure and focuses the first invalid section.
+- Successful creation closes the drawer, refreshes the registry and selects the created row.
+- Successful edit refreshes the inspector and preserves the current filters/page.
+- Double submission is prevented through disabled/busy state and backend idempotency where creation retries are possible.
+
+### Field-level validation
+
+- Application name cannot be blank.
+- Stable key is normalized and validated by the backend; invalid characters are identified.
+- Project-scoped stable key must be unique.
+- Exactly one active default application is allowed per project.
+- Every configured URL must be absolute `http` or `https`.
+- Environment names must be unique for the application.
+- Owner, taxonomy, auth-profile and related-application references must exist and belong to the permitted project/tenant scope.
+- Dependency sandbox URL follows the same URL/secret rules.
+- Archive/deprecate requires a reason and downstream impact review.
+- Unsupported fields must not be submitted until their backend schema exists.
+
+### Permission behavior
+
+- Users with view permission can inspect but cannot open the Add form.
+- `Add Application` and `Save Draft` require project-management/application-registry permission.
+- Default, lifecycle, ownership, health and discovery controls may require separate governed permissions as defined by RBAC.
+- Permission changes during editing are handled by the backend; the form preserves input and shows an authorization error without pretending the save succeeded.
+
+### Empty and failure states
+
+- Reference-data loading failures disable the affected selector and identify the unavailable service.
+- No approved taxonomy displays an honest missing-taxonomy message rather than sample options.
+- No auth profiles displays a contextual link to the authorized configuration page.
+- URL/health failures show exact sanitized backend results.
+- Concurrent update conflicts show the latest persisted version and require refresh/review before overwrite.
+- Partial environment/dependency failure must not create orphan frontend-only rows.
+
+### Backend implementation boundary
+
+The current project-application API can persist only:
+
+- key;
+- name;
+- description;
+- default state;
+- environment URL map;
+- active state.
+
+Therefore the first implementation must either:
+
+1. extend the database/schema/service/API for the remaining governed fields before rendering them as editable; or
+2. render only the supported fields and mark unavailable governance sections as `Not configured` without fake controls.
+
+Frontend metadata or local state must not be used as a substitute for persisted ownership, taxonomy, discovery, health, compatibility, lifecycle or history records.
+
 ## 11. Canonical application seeds
 
 The following approved applications must be supported through an idempotent seed or import process:
@@ -367,3 +586,12 @@ Expected image file:
 After approval, update the status to:
 
 `REFERENCE_IMAGE_APPROVED_READY_FOR_IMPLEMENTATION`
+
+## 17. Implementation notes (2026-07-22)
+
+- **Route**: implemented as a standalone `/applications` route (own `layout.tsx` + a new "Application Discovery" sidebar group) rather than inside the `/settings` tabbed shell, per §2's allowance to refine navigation. The reference image's KPI row + tabs + dense table + inspector density does not fit the Settings page's narrow two-column form shell. The existing `/settings` "Applications & Environments" tab is unchanged and now links out to the full registry; both read/write through the same `GET/PUT .../applications` and `PUT .../external-dependencies` endpoints — no duplicate application data store was created.
+- **Backend extension**: migration `039_project_application_governance_fields` added `application_type`, `aliases`, `lifecycle_status`, `business_owner_id`, `technical_owner_id`, `domain`, `product_group`, `product`, `channel` to `project_applications`, mirroring existing patterns (`created_by`/`updated_by` FK style, `Requirement.telecom_domain`-style plain string taxonomy fields). New endpoints: `GET .../applications/summary`, `GET .../applications/audit-log`, `POST .../applications/seed-canonical`.
+- **Deliberately not built** (rendered as explicit "Not configured" — no backing subsystem exists): health-check config/results, discovery capability/session tracking, AVD/browser/device compatibility, authentication-profile references, a separate approval-state workflow beyond `lifecycle_status`, participating journeys (no journey model exists anywhere in the backend).
+- **Disclosed proxies, not fabricated data**: "Discovery Ready" (KPI, queue tab, table column) uses the contract's own stated gate — active + at least one environment URL — labelled everywhere as a proxy, not real discovery telemetry. "Mapping Conflicts" is computed from the new `product_group`/`product`/`channel` columns. "Mapping Usage" uses the real, pre-existing `TestCase.application_id` FK.
+- **History/Activity tabs**: read from the existing `ProjectSettingAuditLog` whole-payload snapshots (no new versioned-history table), diffed client-side per application into a field-level history view and a human-readable activity feed.
+- Canonical seed (§11) is idempotent (`POST .../applications/seed-canonical`) — verified live: seeding twice never overwrites or duplicates rows.

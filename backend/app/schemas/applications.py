@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 _KEY_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 MOCK_STRATEGIES = ("intercept", "sandbox", "ignore")
+LIFECYCLE_STATUSES = ("draft", "active", "deprecated", "retired")
 
 
 def _validate_absolute_url(value: str, field: str) -> str:
@@ -28,6 +29,15 @@ class ProjectApplicationOut(BaseModel):
     is_default: bool
     environment_urls: dict[str, str]
     is_active: bool
+    application_type: str | None = None
+    aliases: list[str] = []
+    lifecycle_status: str = "active"
+    business_owner_id: int | None = None
+    technical_owner_id: int | None = None
+    domain: str | None = None
+    product_group: str | None = None
+    product: str | None = None
+    channel: str | None = None
     created_by: int | None = None
     updated_by: int | None = None
     created_at: datetime | None = None
@@ -41,6 +51,15 @@ class ProjectApplicationUpdate(BaseModel):
     is_default: bool = False
     environment_urls: dict[str, str] = {}
     is_active: bool = True
+    application_type: str | None = None
+    aliases: list[str] = []
+    lifecycle_status: str = "active"
+    business_owner_id: int | None = None
+    technical_owner_id: int | None = None
+    domain: str | None = None
+    product_group: str | None = None
+    product: str | None = None
+    channel: str | None = None
 
     @field_validator("key")
     @classmethod
@@ -62,6 +81,27 @@ class ProjectApplicationUpdate(BaseModel):
                 raise ValueError("environment name cannot be blank")
             cleaned[env] = _validate_absolute_url(url, f"environment_urls[{env}]")
         return cleaned
+
+    @field_validator("lifecycle_status")
+    @classmethod
+    def validate_lifecycle_status(cls, value: str) -> str:
+        value = (value or "active").strip().lower()
+        if value not in LIFECYCLE_STATUSES:
+            raise ValueError(f"lifecycle_status must be one of {LIFECYCLE_STATUSES}, got: {value!r}")
+        return value
+
+    @field_validator("aliases")
+    @classmethod
+    def validate_aliases(cls, value: list[str]) -> list[str]:
+        cleaned = [alias.strip() for alias in value if alias and alias.strip()]
+        # Preserve order while dropping duplicates.
+        seen: set[str] = set()
+        deduped = []
+        for alias in cleaned:
+            if alias not in seen:
+                seen.add(alias)
+                deduped.append(alias)
+        return deduped
 
 
 class ProjectApplicationsUpdateRequest(BaseModel):
@@ -115,3 +155,44 @@ class ProjectApplicationsResponse(BaseModel):
     available_environments: list[str]
     last_updated: datetime | None
     updated_by: int | None
+
+
+class ApplicationMappingConflict(BaseModel):
+    product_group: str | None = None
+    product: str | None = None
+    channel: str | None = None
+    application_ids: list[int]
+
+
+class ProjectSettingAuditLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int
+    setting_type: str
+    old_value: dict | None = None
+    new_value: dict | None = None
+    changed_by: int | None = None
+    changed_at: datetime
+    source: str
+    change_reason: str | None = None
+
+
+class ProjectApplicationsSummary(BaseModel):
+    """Registry KPI aggregates. Every count here is computed from persisted
+    data — `discovery_ready` is an explicitly disclosed proxy (the contract's
+    own gate: at least one active environment with a valid URL), not real
+    discovery telemetry, since no discovery-session subsystem exists yet.
+    `health_tracked` is always False today; the frontend must render an
+    honest "Not tracked" state rather than inventing a health number.
+    """
+
+    project_id: int
+    total_applications: int
+    active_applications: int
+    discovery_ready: int
+    discovery_ready_is_proxy: bool = True
+    environment_gaps: int
+    mapping_conflicts: list[ApplicationMappingConflict]
+    health_tracked: bool = False
+    mapping_usage: dict[int, int]

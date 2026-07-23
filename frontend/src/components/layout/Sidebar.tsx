@@ -11,6 +11,7 @@ import {
   Hand, Cpu, Sparkles, Gauge, Table2, Video, Target,
   Radar,
   GitBranch,
+  Boxes,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -68,6 +69,12 @@ const NAV_ITEMS: NavGroup[] = [
       { label: "Defects", href: "/defects", icon: Bug },
       { label: "Reports", href: "/reports", icon: BarChart3 },
       { label: "Coverage Matrix", href: "/coverage-matrix", icon: Table2 },
+    ],
+  },
+  {
+    group: "Application Discovery",
+    items: [
+      { label: "Application Registry", href: "/applications", icon: Boxes },
     ],
   },
   {

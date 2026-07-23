@@ -27,7 +27,7 @@ DrawerOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 interface DrawerContentProps
   extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
-  size?: "default" | "sm" | "lg" | "xl" | "full";
+  size?: "default" | "sm" | "lg" | "xl" | "2xl" | "full";
 }
 
 const DrawerContent = React.forwardRef<
@@ -38,6 +38,7 @@ const DrawerContent = React.forwardRef<
     default: "max-w-md w-full",
     sm: "max-w-sm w-full",
     lg: "max-w-lg w-full",
+    "2xl": "max-w-2xl w-full",
     xl: "max-w-xl w-full",
     full: "max-w-full w-full",
   };

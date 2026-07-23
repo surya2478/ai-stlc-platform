@@ -1,0 +1,317 @@
+Phase 0 — Assessment and contract baseline
+No functional screens.
+Section	Scope	Deliverables
+P0-S1	Baseline reconciliation	Requirement traceability and current-code mapping
+P0-S2	Architecture contracts	Module, API, event, database and adapter contracts
+P0-S3	Delivery controls	Feature flags, migration strategy, rollback and approval workflow
+P0-S4	UI foundation	Navigation model, shared components and mockup standards
+P0-S5	Verification baseline	Existing test results, compatibility gates and evidence format
+
+Phase 1 — Grounded Web PoC
+Total: 20 screens
+P1-S1 — Command Centre Foundation
+1 screen
+Executive Overview
+Scope:
+AAF lifecycle status
+Active projects and journeys
+Readiness, execution and evidence summaries
+Alerts requiring action
+Links into Phase 1 workflows
+P1-S2 — Requirement Intelligence Core
+3 screens
+Requirement Intake
+Requirement Analysis
+Requirement Traceability
+Scope:
+Document upload and parsing
+Source provenance
+Ambiguity detection
+Complete telecom classification
+Taxonomy references
+Requirement-to-test traceability
+P1-S3 — Test Design and Approval
+4 screens
+Generated Test Cases
+Test Case Editor
+Journey Graph
+Test Case Approval
+Scope:
+Positive, negative, boundary and recovery scenarios
+Taxonomy-enriched generation
+Evidence requirements
+Application mapping
+Independent review and approval
+Discovery eligibility gate
+P1-S4 — Application Discovery
+4 screens
+Application Registry
+Live Discovery Session
+Application Model
+API and Network Explorer
+Scope:
+Stable application IDs
+Environment resolution
+Discovery session launcher
+Grounded browser capture
+Screens, elements and locator evidence
+API and network relationships
+Versioned application model
+P1-S5 — Automation Studio Core
+5 implementation screens
+Automation Workspace
+Live Recorder
+Automation IR Editor
+Script Editor
+Validation and Review
+Scope:
+Guided, free and supervised agent-driven recording
+Complete recording controls
+Framework-neutral Automation IR
+Playwright compilation
+Static, security and evidence review
+Live replay and approval
+Important: the design approval package will show all 6 Automation Studio pages together, including Framework Configuration. Framework Configuration implementation remains in Phase 2.
+P1-S6 — Test Data Selection
+1 screen
+Data Search and Selection
+Scope:
+Scenario eligibility
+Data masking
+Reservation
+Initial lease handling
+Data lineage
+Execution binding
+P1-S7 — Execution and Evidence
+2 screens
+Live Execution Monitor
+Execution Report and Evidence
+Scope:
+Readiness gating
+Execution progress
+Pause, resume, stop and cancel
+Deterministic assertions
+Evidence quorum
+PASS, FAIL, INCONCLUSIVE and BLOCKED results
+Requirement-to-evidence lineage
+Phase 1 count
+Section	Screens
+P1-S1	1
+P1-S2	3
+P1-S3	4
+P1-S4	4
+P1-S5	5
+P1-S6	1
+P1-S7	2
+Total	20
+
+Phase 2 — Enterprise Core
+Total: 18 screens
+P2-S1 — Operational Command Centre
+3 screens
+Environment Health
+AVD Operations
+Live Executions
+Scope:
+Service dependency health
+AVD fleet overview
+Capacity and utilisation
+Enterprise execution aggregation
+Environment and infrastructure incidents
+P2-S2 — Requirement Governance
+1 screen
+Requirement Review and Approval
+Scope:
+Requirement quality review
+Classification corrections
+Approval history
+Change-impact initiation
+Controlled publication
+P2-S3 — Framework and Reusable Assets
+3 screens
+Framework Configuration
+Reusable Asset Catalogue
+Asset Versions and Impact
+Scope:
+Completes the six-page Automation Studio module
+Playwright, Katalon, Appium and UiPath configuration
+Approved framework baselines
+Reusable components
+Versions, dependencies and rollback
+Impacted script identification
+P2-S4 — Existing Script Maintenance
+4 screens
+Script Inventory
+Static Analysis
+Dynamic Health
+Maintenance Campaigns
+Scope:
+Katalon and Appium repository ingestion
+Script classification and health
+Duplicate and orphan detection
+Locator and dependency analysis
+Risk-based weekly maintenance
+Controlled repair and pull-request workflow
+P2-S5 — Test Data Lifecycle
+3 screens
+Data Creation and Certification
+Lease Operations
+Capacity, Cleanup and Quarantine
+Scope:
+Synthetic and negative data generation
+Certification
+Lease heartbeat and expiry
+Cleanup and repair
+Dirty-data quarantine
+Capacity forecasting
+Combined with Phase 1 Data Search and Selection, this completes the required four Test Data Fabric pages.
+P2-S6 — Script Dependency Graph
+1 screen
+Script Dependency Graph
+Scope:
+Script, keyword, locator and library relationships
+Requirement and test coverage
+Shared-component centrality
+Change-impact traversal
+Maintenance campaign input
+P2-S7 — Execution Planning and Assignment
+3 screens
+Execution Planner
+Intelligent Scheduler and Queue
+Run Details and Assignments
+Scope:
+Readiness, test-data and capability gates
+Framework and AVD compatibility
+Priority and business criticality
+Worker assignment
+Step-level execution
+Rerouting and capacity decisions
+Phase 2 count
+Section	Screens
+P2-S1	3
+P2-S2	1
+P2-S3	3
+P2-S4	4
+P2-S5	3
+P2-S6	1
+P2-S7	3
+Total	18
+
+Cumulative total after Phase 2: 38 screens.
+Phase 3 — Autonomous Enterprise
+Total: 20 screens
+P3-S1 — Taxonomy and GraphRAG
+4 screens
+Taxonomy Explorer
+Taxonomy Ingestion
+Retrieval Workbench
+Taxonomy Governance and Coverage
+Scope:
+Canonical telecom hierarchy
+Version and effective-date management
+Conflict detection
+Domain approval
+Hybrid vector and graph retrieval
+Source and traversal transparency
+Coverage-gap reporting
+P3-S2 — Graph Engineering
+5 screens
+Agent and Work Graph
+Telecom Knowledge Graph
+Application and Journey Graph
+Environment and AVD Graph
+Evidence, Causality and Impact
+Scope:
+Agent permissions and delegation
+Versioned workflow graphs
+Telecom ontology
+Application and journey relationships
+Environment dependencies
+Evidence causality
+Multi-hop impact analysis
+Combined with the Phase 2 Script Dependency Graph, this completes the required six Graph Engineering pages.
+P3-S3 — Healing and Defect Intelligence
+4 screens
+Failure Diagnosis
+Healing Proposals
+Defect Candidates
+Replay and Retest
+Scope:
+Rules-first failure classification
+Controlled healing proposals
+Impact analysis
+Differential validation
+Rollback points
+Human defect approval
+Replay capsules and retesting
+P3-S4 — Reporting and Release Governance
+2 screens
+Reports and Analytics
+Release Quality Gate
+Scope:
+Management reporting
+Engineering reporting
+Telecom operations reporting
+Automation health
+Deterministic release decisions
+Evidence and risk thresholds
+P3-S5 — Administration and Governance
+4 screens
+Policy and Autonomy Control
+Agent, Model, Prompt and Tool Registry
+Integration and Adapter Administration
+Audit, Security and Retention
+Scope:
+Autonomy levels
+Global and project kill switches
+Tool and network allow-lists
+Model and prompt versioning
+Adapter maturity
+Immutable audit
+PII controls
+Retention policies
+P3-S6 — Alerts and Incidents
+1 screen
+Alerts and Incidents
+Scope:
+Environment incidents
+Capacity alerts
+Policy violations
+Evidence failures
+Agent escalation
+AVD failures
+Security and governance alerts
+Phase 3 count
+Section	Screens
+P3-S1	4
+P3-S2	5
+P3-S3	4
+P3-S4	2
+P3-S5	4
+P3-S6	1
+Total	20
+
+Final screen reconciliation
+Phase	Sections	Screens	Cumulative
+Phase 1	7	20	20
+Phase 2	7	18	38
+Phase 3	6	20	58
+Total	20 implementation sections	58	58
+
+Standard workflow for every section
+Each section will pass through these checkpoints:
+Screen inventory and requirements.
+Image mockup for every screen.
+Key interaction and state variants.
+Your design approval.
+Database and API contract approval.
+Backend implementation.
+Frontend implementation.
+Security, RBAC, audit and feature flags.
+Unit, API, frontend and migration tests.
+Working screenshots and test evidence.
+Section acceptance.
+Next section begins.
+After you approve this breakdown, I will create:
+docs/autonomous-automation-lab/nxtqa-aaf-implementation-tracker.md
+It will include section status, screen checklists, dependencies, migrations, APIs, approval dates, test evidence, risks, rollback notes and change-control history.

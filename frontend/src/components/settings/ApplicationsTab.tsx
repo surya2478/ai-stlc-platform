@@ -212,10 +212,18 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
               </p>
             </div>
           </div>
-          <Button size="sm" disabled={savingApps} onClick={saveApplications}>
-            {savingApps ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save Applications
-          </Button>
+          <div className="flex items-center gap-2">
+            <a
+              href={`/applications?project=${projectId}`}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-[#1b59f8] hover:bg-slate-50"
+            >
+              Open full Application Registry →
+            </a>
+            <Button size="sm" disabled={savingApps} onClick={saveApplications}>
+              {savingApps ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Save Applications
+            </Button>
+          </div>
         </div>
 
         <div className="p-5 space-y-4">
