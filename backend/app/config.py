@@ -209,6 +209,17 @@ class Settings(BaseSettings):
     grounded_capture_max_steps: int = 30
     grounded_capture_max_minutes: int = 20
 
+    # ── Test Automation Classification & Routing (P1-S3 extension) ───────────
+    # Governed, policy-driven automation-candidate classification for test
+    # cases (UI-010-013). Master switch: every /automation-classifications
+    # route 404s when off, same isolation pattern as grounded_automation_enabled.
+    automation_classification_enabled: bool = False
+    # Deterministic-only mode when off: policy resolution, deterministic
+    # rules, capability resolution and scoring still run; the LLM
+    # recommendation step is skipped in favor of the policy's own routing
+    # defaults (see classification_agent.py::_deterministic_only_recommendation).
+    automation_classification_agent_enabled: bool = False
+
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days
     retention_rag_events_days: int = 180      # purge RAG retrieval audit events older than N days

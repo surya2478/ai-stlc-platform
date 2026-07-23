@@ -30,6 +30,8 @@ import {
 } from "lucide-react";
 import {
   applicationsApi,
+  automationClassificationApi,
+  isClassificationDisabled,
   projectsApi,
   requirementsApi,
   reviewsApi,
@@ -44,15 +46,17 @@ import {
   type ProjectRole,
   type Requirement,
   type TestCase,
+  type TestCaseAutomationClassification,
   type TestCaseHistory,
   type TestScenario,
   type UserAccount,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 
 type Tone = "blue" | "emerald" | "amber" | "red" | "purple" | "slate";
-type InspectorTab = "review" | "traceability" | "test-case" | "evidence" | "history" | "activity";
+type InspectorTab = "review" | "traceability" | "test-case" | "evidence" | "history" | "activity" | "automation";
 type QueueTab = "all" | "ready" | "pending" | "changes" | "approved" | "rejected" | "blocked";
 type CheckState = "pass" | "warning" | "blocker";
 
@@ -64,6 +68,7 @@ type ApprovalRow = {
   application?: ProjectApplication;
   review?: ArtifactReview;
   approval?: ApprovalAction;
+  classification?: TestCaseAutomationClassification;
   journeyId: string;
   journeyName: string;
   validationScore: number;
@@ -75,6 +80,29 @@ type ApprovalRow = {
   blockers: GovernanceCheck[];
   status: "Ready" | "Pending Review" | "Changes Requested" | "Approved" | "Rejected" | "Blocked";
 };
+
+function classificationCheckState(
+  testCase: TestCase,
+  classification: TestCaseAutomationClassification | undefined,
+  enabled: boolean,
+): GovernanceCheck {
+  if (!enabled) {
+    return { key: "automation_classification", label: "Automation classification approved", state: "pass", detail: "Classification capability not enabled for this project" };
+  }
+  if (!testCase.automation_candidate) {
+    return { key: "automation_classification", label: "Automation classification approved", state: "pass", detail: "Not an automation candidate" };
+  }
+  if (!classification) {
+    return { key: "automation_classification", label: "Automation classification approved", state: "blocker", detail: "Not yet classified" };
+  }
+  if (classification.test_case_version !== testCase.version) {
+    return { key: "automation_classification", label: "Automation classification approved", state: "blocker", detail: "Classification stale — test case changed since last classified" };
+  }
+  if (classification.review_status !== "APPROVED") {
+    return { key: "automation_classification", label: "Automation classification approved", state: "blocker", detail: `${classification.candidate_status} · ${classification.review_status.replace("_", " ").toLowerCase()}` };
+  }
+  return { key: "automation_classification", label: "Automation classification approved", state: "pass", detail: `${classification.candidate_status} · v${classification.version} approved` };
+}
 
 const GRID = "34px 72px 112px minmax(150px,1fr) 72px 92px 62px 88px 70px 78px 90px 102px 64px 90px 34px";
 const PAGE_SIZE = 10;
@@ -232,11 +260,14 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
   const [applications, setApplications] = useState<ProjectApplication[]>([]);
   const [reviews, setReviews] = useState<ArtifactReview[]>([]);
   const [approvals, setApprovals] = useState<ApprovalAction[]>([]);
+  const [classifications, setClassifications] = useState<TestCaseAutomationClassification[]>([]);
+  const [classificationsEnabled, setClassificationsEnabled] = useState(true);
   const [memberships, setMemberships] = useState<ProjectMembership[]>([]);
   const [roles, setRoles] = useState<ProjectRole[]>([]);
   const [users, setUsers] = useState<UserAccount[]>([]);
   const [me, setMe] = useState<UserAccount | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   const [history, setHistory] = useState<TestCaseHistory[]>([]);
   const [reviewHistory, setReviewHistory] = useState<ArtifactReview[]>([]);
   const [tab, setTab] = useState<QueueTab>("all");
@@ -288,6 +319,17 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
       setLastRefreshed(new Date());
     } catch (loadError) { setError(errorMessage(loadError, "Could not load the test-case approval queue.")); }
     finally { setLoading(false); }
+
+    // Loaded separately from the Promise.all above: a 404 here just means
+    // AUTOMATION_CLASSIFICATION_ENABLED is off and must not break the rest
+    // of the (already working) approval queue.
+    try {
+      const clsRes = await automationClassificationApi.listForProject(projectId);
+      setClassifications(clsRes.data); setClassificationsEnabled(true);
+    } catch (clsError) {
+      setClassifications([]);
+      setClassificationsEnabled(!isClassificationDisabled(clsError));
+    }
   }, [projectId]);
 
   useEffect(() => { void loadData(); }, [loadData]);
@@ -309,6 +351,10 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
   const myMembership = me ? activeMembershipByUser.get(me.id) : undefined;
   const myRole = myMembership ? roleByName.get(myMembership.role) : me ? roleByName.get(me.role) : undefined;
   const canApprove = Boolean(me?.is_superuser || myRole?.permissions.includes("approve_test_cases"));
+  const canEvaluateClassification = Boolean(me?.is_superuser || myRole?.permissions.includes("automation_classification.evaluate"));
+  const canReviewClassification = Boolean(me?.is_superuser || myRole?.permissions.includes("automation_classification.review"));
+  const canApproveClassification = Boolean(me?.is_superuser || myRole?.permissions.includes("automation_classification.approve"));
+  const classificationByTestCaseId = useMemo(() => new Map(classifications.map((item) => [item.test_case_id, item])), [classifications]);
 
   const rows = useMemo<ApprovalRow[]>(() => testCases.map((testCase) => {
     const requirement = (testCase.requirement_id ? requirementById.get(testCase.requirement_id) : undefined) || (testCase.linked_requirement_id ? requirementById.get(testCase.linked_requirement_id) : undefined) || (testCase.linked_requirement_key ? requirementByKey.get(testCase.linked_requirement_key) : undefined);
@@ -323,6 +369,7 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
     const journey = journeyFor(requirement, testCase);
     const validationScore = contentValidation(testCase);
     const journeyCoverage = coverageFor(requirement, scenarios);
+    const classification = classificationByTestCaseId.get(testCase.id);
     const checks: GovernanceCheck[] = [
       { key: "requirement", label: "Requirement approved", state: requirement?.status === "approved" ? "pass" : "blocker", detail: requirement ? `${requirement.requirement_id}: ${requirement.status}` : "No linked requirement" },
       { key: "scenario", label: "Scenario approved", state: scenario?.status === "approved" ? "pass" : "blocker", detail: scenario ? `${scenario.scenario_id}: ${scenario.status}` : "No linked scenario" },
@@ -333,6 +380,7 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
       { key: "discovery", label: "Discovery eligibility evaluated", state: discovery === "Not required" || isDiscoveryEvaluated(discovery) ? "pass" : "blocker", detail: discovery },
       { key: "review", label: "Independent review passed", state: review?.verdict === "pass" ? "pass" : review ? "blocker" : "warning", detail: review ? `${review.verdict.replace("_", " ")} · ${review.overall_score ?? "No score"}` : "No persisted independent review" },
       { key: "policy", label: "Policy & reviewer permissions", state: canApprove ? "pass" : "blocker", detail: canApprove ? "Approval permission confirmed" : "Approval permission not confirmed" },
+      classificationCheckState(testCase, classification, classificationsEnabled),
     ];
     const blockers = checks.filter((item) => item.state === "blocker" || (item.key === "review" && item.state === "warning"));
     const approvalDecision = normal(approval?.decision);
@@ -344,8 +392,8 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
     else if (persisted === "blocked" || blockers.length) status = "Blocked";
     else if (["pending approval", "pending", "pending review"].includes(persisted)) status = "Pending Review";
     else status = "Ready";
-    return { testCase, requirement, scenario, application, review, approval, journeyId: journey.id, journeyName: journey.name, validationScore, journeyCoverage, evidence, discovery, reviewer, checks, blockers, status };
-  }), [appById, approvals, canApprove, requirementById, requirementByKey, reviews, scenarioById, scenarios, testCases, userById]);
+    return { testCase, requirement, scenario, application, review, approval, classification, journeyId: journey.id, journeyName: journey.name, validationScore, journeyCoverage, evidence, discovery, reviewer, checks, blockers, status };
+  }), [appById, approvals, canApprove, classificationByTestCaseId, classificationsEnabled, requirementById, requirementByKey, reviews, scenarioById, scenarios, testCases, userById]);
 
   const selected = rows.find((item) => item.testCase.id === selectedId) || rows[0];
 
@@ -451,8 +499,8 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
 
   if (!projectId) return <Empty>Select a project to load Test Case Approval.</Empty>;
 
-  return <div className="flex min-h-full gap-3 pb-3">
-    <main className="min-w-0 flex-1 space-y-3">
+  return <div className="min-h-full pb-3">
+    <main className="space-y-3">
       <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-500"><span>e&amp; STLC</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-[#1b59f8]">Test Planning</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-slate-800">Test Case Approval</span></div>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-[270px] flex-1 items-start gap-3"><span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-purple-100 bg-purple-50 text-purple-600"><FileCheck2 className="h-4 w-4" /></span><div><div className="flex items-center gap-2"><h1 className="text-xl font-black text-slate-950">Test Case Approval</h1><Badge tone="purple">P1-S3 UI-013</Badge></div><p className="mt-1 text-[10px] font-semibold text-slate-500">Independently review and approve validated test cases before discovery and execution.</p></div></div>
@@ -471,8 +519,8 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
         <Kpi label="Rejected / Blocked" value={counts.rejected + counts.blocked} detail="Rejected or unresolved blockers" icon={XCircle} tone="red" />
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm"><div className="mb-3 flex items-center justify-between"><h2 className="text-[10px] font-extrabold uppercase tracking-wide text-slate-700">Approval Readiness Check</h2><span className="text-[9px] font-bold text-[#1b59f8]">Persisted project records</span></div><div className="grid grid-cols-4 gap-2 2xl:grid-cols-8">
-        {["requirement", "scenario", "validation", "journey", "application", "evidence", "discovery", "policy"].map((key) => { const item = readiness(key); const label = rows[0]?.checks.find((check) => check.key === key)?.label || key; return <div key={key} className="flex min-w-0 gap-2"><span className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full", item.good ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")}>{item.good ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}</span><div className="min-w-0"><p className="text-[8px] font-bold leading-3 text-slate-700">{label}</p><p className="mt-1 text-[9px] font-extrabold text-slate-900">{item.passed}/{item.total}</p></div></div>; })}
+      <section className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm"><div className="mb-3 flex items-center justify-between"><h2 className="text-[10px] font-extrabold uppercase tracking-wide text-slate-700">Approval Readiness Check</h2><span className="text-[9px] font-bold text-[#1b59f8]">Persisted project records</span></div><div className="grid grid-cols-4 gap-2 2xl:grid-cols-9">
+        {["requirement", "scenario", "validation", "journey", "application", "evidence", "discovery", "policy", "automation_classification"].map((key) => { const item = readiness(key); const label = rows[0]?.checks.find((check) => check.key === key)?.label || key; return <div key={key} className="flex min-w-0 gap-2"><span className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full", item.good ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")}>{item.good ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}</span><div className="min-w-0"><p className="text-[8px] font-bold leading-3 text-slate-700">{label}</p><p className="mt-1 text-[9px] font-extrabold text-slate-900">{item.passed}/{item.total}</p></div></div>; })}
       </div></section>
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -485,20 +533,22 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
         </div>
 
         <div className="overflow-x-auto"><div className="min-w-[1250px]"><div className="grid items-center border-b border-slate-200 bg-slate-50 px-2 py-2 text-[8px] font-extrabold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: GRID }}><span><input aria-label="Select visible test cases" type="checkbox" checked={pageRows.length > 0 && pageRows.every((row) => selectedIds.has(row.testCase.id))} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); pageRows.forEach((row) => event.target.checked ? next.add(row.testCase.id) : next.delete(row.testCase.id)); return next; })} /></span><span>TC ID</span><span>Requirement<br />ID / PPM ID</span><span>Title</span><span>Test type</span><span>Scenario class</span><span>Priority</span><span>Journey coverage</span><span>Validation</span><span>Evidence</span><span>Review status</span><span>Reviewer</span><span>SLA / age</span><span>Updated</span><span /></div>
-          {loading ? <div className="flex h-40 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-blue-600" /></div> : pageRows.length ? pageRows.map((row) => <div key={row.testCase.id} onClick={() => setSelectedId(row.testCase.id)} className={cn("relative grid min-h-[54px] cursor-pointer items-center border-b border-slate-100 px-2 py-2 text-[9px] font-semibold text-slate-600 hover:bg-blue-50/40", selected?.testCase.id === row.testCase.id && "bg-blue-50/50 ring-1 ring-inset ring-blue-400")} style={{ gridTemplateColumns: GRID }}><span onClick={(event) => event.stopPropagation()}><input aria-label={`Select ${row.testCase.test_case_id}`} type="checkbox" checked={selectedIds.has(row.testCase.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); event.target.checked ? next.add(row.testCase.id) : next.delete(row.testCase.id); return next; })} /></span><button className="text-left font-extrabold text-[#1b59f8]">{row.testCase.test_case_id}</button><span><strong className="block text-slate-800">{row.requirement?.requirement_id || "Unlinked"}</strong><span className="text-[8px] text-slate-500">{ppmId(row.requirement)}</span></span><span className="pr-2 font-bold leading-3 text-slate-800">{row.testCase.title}</span><span className="text-blue-700">{row.testCase.test_type || "Unassigned"}</span><span className="truncate pr-1">{scenarioClass(row.scenario, row.testCase)}</span><span><Badge tone={normal(row.testCase.priority).includes("high") ? "red" : normal(row.testCase.priority).includes("medium") ? "amber" : "emerald"}>{row.testCase.priority}</Badge></span><span className="pr-2"><span className="mb-1 block font-bold text-slate-800">{row.journeyCoverage}%</span><Progress value={row.journeyCoverage} tone={row.journeyCoverage >= 80 ? "emerald" : "amber"} /></span><span><span className={cn("flex h-7 w-7 items-center justify-center rounded-full border text-[9px] font-black", row.validationScore === 100 ? "border-emerald-300 text-emerald-700" : "border-amber-300 text-amber-700")}>{row.validationScore}</span></span><span><Badge tone={row.evidence.length ? "emerald" : "red"}>{row.evidence.length ? "Complete" : "Missing"}</Badge></span><span><Badge tone={statusTone(row.status)}>{row.status}</Badge></span><span className="flex items-center gap-1"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[7px] font-black text-white">{row.reviewer ? row.reviewer.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2) : "—"}</span><span className="truncate">{row.reviewer?.full_name || "Unassigned"}</span></span><span className={cn("font-bold", ageLabel(row.testCase.updated_at).startsWith("0") ? "text-emerald-600" : "text-red-600")}>{ageLabel(row.testCase.updated_at)}</span><span>{shortDate(row.testCase.updated_at)}</span><span className="relative" onClick={(event) => event.stopPropagation()}><button aria-label={`Actions for ${row.testCase.test_case_id}`} onClick={() => setActionMenu(actionMenu === row.testCase.id ? null : row.testCase.id)} className="flex h-7 w-7 items-center justify-center rounded border border-slate-200"><MoreVertical className="h-3.5 w-3.5" /></button>{actionMenu === row.testCase.id && <div className="absolute right-0 top-8 z-30 w-36 rounded-md border border-slate-200 bg-white p-1 shadow-xl"><button onClick={() => { setSelectedId(row.testCase.id); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[9px] font-bold hover:bg-slate-50">Open review</button><button onClick={() => router.push(`/test-cases?project=${projectId}&view=editor&case=${row.testCase.id}`)} className="w-full rounded px-2 py-1.5 text-left text-[9px] font-bold hover:bg-slate-50">Open editor</button></div>}</span></div>) : <div className="p-8 text-center text-[10px] font-semibold text-slate-500">No test cases match the selected filters.</div>}
+          {loading ? <div className="flex h-40 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-blue-600" /></div> : pageRows.length ? pageRows.map((row) => <div key={row.testCase.id} onClick={() => { setSelectedId(row.testCase.id); setInspectorOpen(true); }} className={cn("relative grid min-h-[54px] cursor-pointer items-center border-b border-slate-100 px-2 py-2 text-[9px] font-semibold text-slate-600 hover:bg-blue-50/40", selected?.testCase.id === row.testCase.id && "bg-blue-50/50 ring-1 ring-inset ring-blue-400")} style={{ gridTemplateColumns: GRID }}><span onClick={(event) => event.stopPropagation()}><input aria-label={`Select ${row.testCase.test_case_id}`} type="checkbox" checked={selectedIds.has(row.testCase.id)} onChange={(event) => setSelectedIds((current) => { const next = new Set(current); event.target.checked ? next.add(row.testCase.id) : next.delete(row.testCase.id); return next; })} /></span><button className="text-left font-extrabold text-[#1b59f8]">{row.testCase.test_case_id}</button><span><strong className="block text-slate-800">{row.requirement?.requirement_id || "Unlinked"}</strong><span className="text-[8px] text-slate-500">{ppmId(row.requirement)}</span></span><span className="pr-2 font-bold leading-3 text-slate-800">{row.testCase.title}</span><span className="text-blue-700">{row.testCase.test_type || "Unassigned"}</span><span className="truncate pr-1">{scenarioClass(row.scenario, row.testCase)}</span><span><Badge tone={normal(row.testCase.priority).includes("high") ? "red" : normal(row.testCase.priority).includes("medium") ? "amber" : "emerald"}>{row.testCase.priority}</Badge></span><span className="pr-2"><span className="mb-1 block font-bold text-slate-800">{row.journeyCoverage}%</span><Progress value={row.journeyCoverage} tone={row.journeyCoverage >= 80 ? "emerald" : "amber"} /></span><span><span className={cn("flex h-7 w-7 items-center justify-center rounded-full border text-[9px] font-black", row.validationScore === 100 ? "border-emerald-300 text-emerald-700" : "border-amber-300 text-amber-700")}>{row.validationScore}</span></span><span><Badge tone={row.evidence.length ? "emerald" : "red"}>{row.evidence.length ? "Complete" : "Missing"}</Badge></span><span><Badge tone={statusTone(row.status)}>{row.status}</Badge></span><span className="flex items-center gap-1"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[7px] font-black text-white">{row.reviewer ? row.reviewer.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2) : "—"}</span><span className="truncate">{row.reviewer?.full_name || "Unassigned"}</span></span><span className={cn("font-bold", ageLabel(row.testCase.updated_at).startsWith("0") ? "text-emerald-600" : "text-red-600")}>{ageLabel(row.testCase.updated_at)}</span><span>{shortDate(row.testCase.updated_at)}</span><span className="relative" onClick={(event) => event.stopPropagation()}><button aria-label={`Actions for ${row.testCase.test_case_id}`} onClick={() => setActionMenu(actionMenu === row.testCase.id ? null : row.testCase.id)} className="flex h-7 w-7 items-center justify-center rounded border border-slate-200"><MoreVertical className="h-3.5 w-3.5" /></button>{actionMenu === row.testCase.id && <div className="absolute right-0 top-8 z-30 w-36 rounded-md border border-slate-200 bg-white p-1 shadow-xl"><button onClick={() => { setSelectedId(row.testCase.id); setInspectorOpen(true); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[9px] font-bold hover:bg-slate-50">Open review</button><button onClick={() => router.push(`/test-cases?project=${projectId}&view=editor&case=${row.testCase.id}`)} className="w-full rounded px-2 py-1.5 text-left text-[9px] font-bold hover:bg-slate-50">Open editor</button></div>}</span></div>) : <div className="p-8 text-center text-[10px] font-semibold text-slate-500">No test cases match the selected filters.</div>}
         </div></div>
         <div className="flex items-center justify-between px-3 py-2 text-[9px] font-semibold text-slate-500"><span>Showing {filtered.length ? (page - 1) * PAGE_SIZE + 1 : 0} to {Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} test cases</span><div className="flex items-center gap-1"><button aria-label="Previous page" disabled={page === 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="flex h-7 w-7 items-center justify-center rounded border disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" /></button><span className="flex h-7 min-w-7 items-center justify-center rounded bg-[#1b59f8] px-2 font-bold text-white">{page}</span><span>of {pageCount}</span><button aria-label="Next page" disabled={page === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} className="flex h-7 w-7 items-center justify-center rounded border disabled:opacity-40"><ChevronRight className="h-3.5 w-3.5" /></button><span className="ml-2 rounded border px-2 py-1.5">{PAGE_SIZE} / page</span></div></div>
       </section>
     </main>
 
-    <aside className="sticky top-0 h-[calc(100vh-90px)] w-[380px] shrink-0 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/70 shadow-sm 2xl:w-[420px]">
-      {selected ? <>
-        <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-3 pt-3"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2"><strong className="text-sm text-slate-900">{selected.testCase.test_case_id}</strong><Badge tone={statusTone(selected.status)}>{selected.status}</Badge></div><p className="mt-2 text-[11px] font-extrabold text-slate-800">{selected.testCase.title}</p></div><button aria-label="Close inspector" onClick={() => setSelectedId(null)}><X className="h-4 w-4 text-slate-500" /></button></div><div className="mt-3 flex gap-3 overflow-x-auto">{(["review", "traceability", "test-case", "evidence", "history", "activity"] as InspectorTab[]).map((item) => <button key={item} onClick={() => setInspectorTab(item)} className={cn("border-b-2 px-0.5 pb-2 text-[9px] font-extrabold capitalize", inspectorTab === item ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500")}>{item.replace("-", " ")}</button>)}</div></div>
+    <Drawer open={inspectorOpen && !!selected} onOpenChange={setInspectorOpen}>
+    <DrawerContent size="lg" className="bg-slate-50/70">
+      {selected && <div className="flex-1 overflow-y-auto">
+        <div className="sticky top-0 z-20 border-b border-slate-200 bg-white px-3 pt-3"><div className="flex items-start justify-between gap-2"><div><div className="flex items-center gap-2"><DrawerTitle className="text-sm text-slate-900">{selected.testCase.test_case_id}</DrawerTitle><Badge tone={statusTone(selected.status)}>{selected.status}</Badge></div><p className="mt-2 text-[11px] font-extrabold text-slate-800">{selected.testCase.title}</p></div><button aria-label="Close inspector" onClick={() => setInspectorOpen(false)}><X className="h-4 w-4 text-slate-500" /></button></div><div className="mt-3 flex gap-3 overflow-x-auto">{(["review", "traceability", "test-case", "evidence", "automation", "history", "activity"] as InspectorTab[]).map((item) => <button key={item} onClick={() => setInspectorTab(item)} className={cn("border-b-2 px-0.5 pb-2 text-[9px] font-extrabold capitalize", inspectorTab === item ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500")}>{item.replace("-", " ")}</button>)}</div></div>
         <div className="space-y-2 p-3">
           {inspectorTab === "review" && <ReviewInspector row={selected} history={history} approvals={approvals.filter((item) => item.entity_id === selected.testCase.id)} onTrace={() => setInspectorTab("traceability")} />}
           {inspectorTab === "traceability" && <TraceabilityInspector row={selected} projectId={projectId} router={router} />}
           {inspectorTab === "test-case" && <TestCaseInspector row={selected} onEdit={() => router.push(`/test-cases?project=${projectId}&view=editor&case=${selected.testCase.id}`)} />}
           {inspectorTab === "evidence" && <EvidenceInspector row={selected} />}
+          {inspectorTab === "automation" && <ClassificationInspector row={selected} enabled={classificationsEnabled} canEvaluate={canEvaluateClassification} canReview={canReviewClassification} canApprove={canApproveClassification} onChanged={() => void loadData()} />}
           {inspectorTab === "history" && <HistoryInspector history={history} approvals={approvals.filter((item) => item.entity_id === selected.testCase.id)} users={userById} />}
           {inspectorTab === "activity" && <ActivityInspector row={selected} history={history} reviews={reviewHistory} approvals={approvals.filter((item) => item.entity_id === selected.testCase.id)} users={userById} />}
 
@@ -511,8 +561,9 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
             <div className="mt-2 grid grid-cols-1 gap-2 2xl:grid-cols-3"><Button variant="outline" onClick={() => setInspectorTab("traceability")} className="h-9 text-[9px] font-bold"><Link2 className="mr-1 h-3.5 w-3.5" />View Full Trace</Button><Button variant="outline" onClick={() => setInspectorTab("activity")} className="h-9 text-[9px] font-bold"><History className="mr-1 h-3.5 w-3.5" />View Audit Log</Button><Button variant="outline" onClick={exportSelected} className="h-9 text-[9px] font-bold"><Download className="mr-1 h-3.5 w-3.5" />Export Test Case</Button></div>
           </Panel>
         </div>
-      </> : <div className="p-6"><Empty>Select a test case to open the approval inspector.</Empty></div>}
-    </aside>
+      </div>}
+    </DrawerContent>
+    </Drawer>
   </div>;
 }
 
@@ -546,6 +597,101 @@ function EvidenceInspector({ row }: { row: ApprovalRow }) {
   const dependencies = metadataStrings(row.testCase.metadata_, "evidence_dependencies");
   const owner = metadataString(row.testCase.metadata_, "evidence_owner");
   return <><Panel title="Required Evidence Types">{row.evidence.length ? <div className="flex flex-wrap gap-2">{row.evidence.map((item) => <Badge key={item} tone="purple">{item}</Badge>)}</div> : <Empty>No evidence requirements are attached. This is an approval blocker.</Empty>}</Panel><Panel title="Evidence Policy Status"><CheckList checks={[row.checks.find((item) => item.key === "evidence")!]} /></Panel><Panel title="Missing Evidence Requirements">{row.evidence.length ? <p className="text-[9px] font-semibold text-emerald-700">No missing declared evidence type.</p> : <p className="text-[9px] font-semibold text-red-700">Required evidence types must be declared before approval.</p>}</Panel><Panel title="Execution / Application Dependencies">{dependencies.length ? <ul className="list-disc space-y-1 pl-4 text-[9px] font-semibold text-slate-700">{dependencies.map((item) => <li key={item}>{item}</li>)}</ul> : <Empty>No persisted evidence dependency recorded.</Empty>}</Panel><Panel title="Evidence Owner"><LabelValue label="Owner" value={owner || "Unassigned"} /></Panel></>;
+}
+
+const CLASSIFICATION_DECISIONS: Array<{ key: "approve" | "approve_conditional" | "not_recommended" | "defer" | "request_changes"; label: string; reasonRequired: boolean; tone: string }> = [
+  { key: "approve", label: "Approve Automation Classification", reasonRequired: false, tone: "bg-emerald-500 text-white" },
+  { key: "approve_conditional", label: "Approve as Conditional", reasonRequired: true, tone: "border-amber-300 text-amber-700" },
+  { key: "not_recommended", label: "Mark Not Recommended", reasonRequired: true, tone: "border-red-300 text-red-700" },
+  { key: "defer", label: "Defer", reasonRequired: true, tone: "border-slate-300 text-slate-700" },
+  { key: "request_changes", label: "Request Changes", reasonRequired: true, tone: "border-blue-300 text-blue-700" },
+];
+
+function ClassificationInspector({ row, enabled, canEvaluate, canApprove, onChanged }: { row: ApprovalRow; enabled: boolean; canEvaluate: boolean; canReview: boolean; canApprove: boolean; onChanged: () => void }) {
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const [decisionKey, setDecisionKey] = useState<typeof CLASSIFICATION_DECISIONS[number]["key"] | null>(null);
+  const [reason, setReason] = useState("");
+  const classification = row.classification;
+  const projectId = row.testCase.project_id;
+
+  async function runEvaluate() {
+    if (!projectId) return;
+    setBusy("evaluate"); setError("");
+    try {
+      await automationClassificationApi.evaluate(projectId, [row.testCase.id]);
+      onChanged();
+    } catch (evalError) { setError(errorMessage(evalError, "Could not queue classification.")); }
+    finally { setBusy(""); }
+  }
+
+  async function runReclassify() {
+    if (!classification) return;
+    setBusy("reclassify"); setError("");
+    try {
+      await automationClassificationApi.reclassify(classification.id);
+      onChanged();
+    } catch (evalError) { setError(errorMessage(evalError, "Could not queue reclassification.")); }
+    finally { setBusy(""); }
+  }
+
+  async function submitDecision(key: typeof CLASSIFICATION_DECISIONS[number]["key"]) {
+    if (!classification) return;
+    setBusy(key); setError("");
+    try {
+      if (key === "approve") await automationClassificationApi.approve(classification.id, reason.trim() || undefined);
+      else if (key === "approve_conditional") await automationClassificationApi.approveConditional(classification.id, reason.trim());
+      else if (key === "not_recommended") await automationClassificationApi.reject(classification.id, reason.trim());
+      else if (key === "defer") await automationClassificationApi.defer(classification.id, reason.trim());
+      else await automationClassificationApi.requestChanges(classification.id, reason.trim());
+      setDecisionKey(null); setReason(""); onChanged();
+    } catch (decisionError) { setError(errorMessage(decisionError, "Could not record the classification decision.")); }
+    finally { setBusy(""); }
+  }
+
+  if (!enabled) return <Empty>Automation classification is not enabled for this project.</Empty>;
+  if (!row.testCase.automation_candidate) return <Empty>This test case is not marked as an automation candidate — classification is not applicable.</Empty>;
+
+  return <>
+    {error && <div role="alert" className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-bold text-red-700"><span className="flex items-center gap-2"><AlertTriangle className="h-3.5 w-3.5" />{error}</span><button aria-label="Dismiss error" onClick={() => setError("")}><X className="h-3.5 w-3.5" /></button></div>}
+
+    {!classification ? <Panel title="Automation Classification"><Empty>This test case has not been classified yet.</Empty>{canEvaluate && <Button onClick={() => void runEvaluate()} disabled={Boolean(busy)} className="mt-2 h-9 w-full bg-[#1b59f8] text-[9px] font-bold text-white"><Bot className="mr-1 h-3.5 w-3.5" />Classify Now</Button>}</Panel> : <>
+      <div className="grid grid-cols-4 gap-2 rounded-lg border border-slate-200 bg-white p-3 text-[9px]">
+        <LabelValue label="Candidate status" value={classification.candidate_status} />
+        <LabelValue label="Review status" value={classification.review_status.replace(/_/g, " ")} />
+        <LabelValue label="Policy" value={`v${classification.policy_version ?? "—"}`} />
+        <LabelValue label="Classification version" value={`v${classification.version}${classification.is_stale ? " (stale)" : ""}`} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 2xl:grid-cols-2">
+        <Panel title="Recommended Automation Route">
+          <LabelValue label="Primary adapter" value={classification.primary_adapter || "Not resolved"} />
+          <div className="mt-2"><LabelValue label="Supporting adapters" value={classification.supporting_adapters.length ? classification.supporting_adapters.join(", ") : "None"} /></div>
+          <div className="mt-2"><LabelValue label="Discovery required" value={classification.discovery_required ? `Yes · ${classification.recommended_discovery_mode || "mode not set"}` : "No"} /></div>
+        </Panel>
+        <Panel title="Complexity & Automation Value">
+          <div className="grid grid-cols-2 gap-3"><div><p className="text-[8px] font-semibold text-slate-500">Complexity</p><p className="mt-1 text-lg font-black text-slate-900">{classification.complexity_score ?? "—"}</p></div><div><p className="text-[8px] font-semibold text-slate-500">Automation value</p><p className="mt-1 text-lg font-black text-slate-900">{classification.automation_value_score ?? "—"}</p></div></div>
+        </Panel>
+      </div>
+
+      <Panel title="Mandatory & Optional Validators">
+        <div className="flex flex-wrap gap-1">{classification.mandatory_validators.map((item) => <Badge key={item} tone="red">{item}</Badge>)}{classification.optional_validators.map((item) => <Badge key={item} tone="blue">{item}</Badge>)}{!classification.mandatory_validators.length && !classification.optional_validators.length && <Badge tone="slate">None declared</Badge>}</div>
+      </Panel>
+
+      <Panel title="Deterministic Blockers">{classification.deterministic_blockers.length ? <ul className="list-disc space-y-1 pl-4 text-[9px] font-semibold text-red-600">{classification.deterministic_blockers.map((item, index) => <li key={`${item.code}-${index}`}>{item.label}: {item.detail}</li>)}</ul> : <p className="text-[9px] font-semibold text-emerald-700">No deterministic blockers.</p>}</Panel>
+
+      <Panel title="Required Evidence">
+        <div className="flex flex-wrap gap-1">{classification.required_evidence.length ? classification.required_evidence.map((item) => <Badge key={item} tone="purple">{item}</Badge>) : <Badge tone="slate">None declared</Badge>}</div>
+      </Panel>
+
+      {canEvaluate && <div><Button variant="outline" onClick={() => void runReclassify()} disabled={Boolean(busy)} className="h-8 gap-1.5 text-[9px] font-bold"><RefreshCw className={cn("h-3.5 w-3.5", busy === "reclassify" && "animate-spin")} />Reclassify</Button></div>}
+
+      {canApprove && <Panel title="Classification Decision" className="border-amber-200 bg-amber-50/40">
+        {decisionKey && <div className="mb-2 rounded-md border border-slate-200 bg-white p-2"><label className="text-[9px] font-extrabold text-slate-700">Reason {CLASSIFICATION_DECISIONS.find((item) => item.key === decisionKey)?.reasonRequired ? "(required)" : "(optional)"}</label><textarea aria-label="Classification decision reason" value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 h-16 w-full resize-none rounded border border-slate-200 p-2 text-[10px]" /><div className="mt-2 flex gap-2"><Button onClick={() => void submitDecision(decisionKey)} disabled={Boolean(busy) || (CLASSIFICATION_DECISIONS.find((item) => item.key === decisionKey)?.reasonRequired && !reason.trim())} className="h-8 flex-1 bg-[#1b59f8] text-[9px] font-bold text-white">Confirm</Button><Button variant="outline" onClick={() => { setDecisionKey(null); setReason(""); }} className="h-8 text-[9px] font-bold">Cancel</Button></div></div>}
+        <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3">{CLASSIFICATION_DECISIONS.map((item) => <Button key={item.key} variant={item.key === "approve" ? "default" : "outline"} onClick={() => setDecisionKey(item.key)} disabled={Boolean(busy) || classification.review_status === "APPROVED"} className={cn("h-9 text-[9px] font-bold", item.tone)}>{item.label}</Button>)}</div>
+      </Panel>}
+    </>}
+  </>;
 }
 
 function HistoryInspector({ history, approvals, users }: { history: TestCaseHistory[]; approvals: ApprovalAction[]; users: Map<number, UserAccount> }) {

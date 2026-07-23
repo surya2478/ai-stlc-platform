@@ -33,6 +33,7 @@ from app.agents.requirement.url_analysis_agent import URLAnalysisAgent
 from app.agents.test_planning.planning_agent import TestPlanningAgent
 from app.agents.test_planning.scenario_agent import TestScenarioAgent
 from app.agents.test_planning.scenario_review_agent import ScenarioReviewAgent
+from app.agents.test_classification.classification_agent import TestClassificationAgent
 from app.agents.test_planning.test_case_agent import TestCaseDevelopmentAgent
 from app.agents.test_planning.test_case_review_agent import TestCaseReviewAgent
 from app.database import AsyncSessionLocal
@@ -66,6 +67,7 @@ from app.services.script_compiler import locator_policy
 from app.services import requirement_service
 from app.services.display_id_service import display_id, temporary_id
 from app.services.project_application_service import resolve_default_application, resolve_environment_url
+from app.services.test_classification import classification_service
 from app.services.project_llm_settings_service import list_settings, resolve_project_llm_routes
 from app.services import traceability_service
 from app.worker.celery_app import celery_app
@@ -237,6 +239,22 @@ async def _defect_analysis(input_data: dict[str, Any]) -> Any:
     )
 
 
+async def _test_classification(input_data: dict[str, Any]) -> Any:
+    return await TestClassificationAgent().run(
+        test_case=input_data.get("test_case") or {},
+        requirement=input_data.get("requirement"),
+        scenario=input_data.get("scenario"),
+        application=input_data.get("application"),
+        policy_rules=input_data.get("policy_rules") or {},
+        deterministic_blockers=input_data.get("deterministic_blockers") or [],
+        deterministic_warnings=input_data.get("deterministic_warnings") or [],
+        routing_default_adapter=input_data.get("routing_default_adapter"),
+        routing_default_mandatory_validators=input_data.get("routing_default_mandatory_validators") or [],
+        routing_default_optional_validators=input_data.get("routing_default_optional_validators") or [],
+        agent_enabled=input_data.get("agent_enabled", True),
+    )
+
+
 async def _test_reporting(input_data: dict[str, Any]) -> Any:
     return await TestReportingAgent().run(
         metrics=input_data["metrics"],
@@ -269,6 +287,7 @@ AGENT_REGISTRY: dict[str, AgentCallable] = {
     "test_execution": _test_execution,
     "defect_analysis": _defect_analysis,
     "test_reporting": _test_reporting,
+    "test_classification": _test_classification,
 }
 
 
@@ -396,6 +415,10 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     "test_execution": AgentSpec(timeout_seconds=300.0, module_scope="execution"),
     "defect_analysis": AgentSpec(timeout_seconds=180.0, module_scope="defect"),
     "test_reporting": AgentSpec(timeout_seconds=180.0, module_scope="reporting"),
+    # Not auto-chained after test_case/test_case_review — classification is
+    # explicitly triggered per test case (UI-010 Classify/Reclassify row
+    # action), not implied by generation.
+    "test_classification": AgentSpec(timeout_seconds=90.0, module_scope="test_classification"),
 }
 
 
@@ -2004,6 +2027,9 @@ async def _persist_agent_artifacts(
             agent_run_id=run.id,
         )
         return {"report_id": report.id, "report_ref": report.report_id}
+
+    if agent_name == "test_classification":
+        return await classification_service.persist_classification_result(db, run, input_data, data)
 
     return None
 

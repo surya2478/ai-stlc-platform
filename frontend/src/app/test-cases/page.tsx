@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import {
   agentRunsApi,
+  automationClassificationApi,
+  isClassificationDisabled,
   projectsApi,
   requirementsApi,
   reviewsApi,
@@ -32,14 +34,18 @@ import {
   testCasesApi,
   usersApi,
   type ArtifactReview,
+  type AutomationClassificationPolicy,
+  type ClassificationPolicySimulateResponse,
   type CoverageMatrixEntry,
   type Requirement,
   type TestCase,
+  type TestCaseAutomationClassification,
   type TestCaseHistory,
   type TestScenario,
   type TestCaseSummary,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerBody } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 import { JourneyGraphView } from "./JourneyGraphView";
 import { TestCaseApprovalView } from "./TestCaseApprovalView";
@@ -253,6 +259,13 @@ function statusTone(status: string): Tone {
   if (status === "Generated" || status === "Approved") return "blue";
   if (status === "Needs Review") return "amber";
   if (status === "Rejected" || status === "Blocked") return "red";
+  return "slate";
+}
+
+function classificationStatusTone(status: string): Tone {
+  if (status === "RECOMMENDED" || status === "APPROVED") return "emerald";
+  if (status === "CONDITIONAL" || status === "DEFERRED" || status === "POLICY_STALE" || status === "RECLASSIFICATION_REQUIRED") return "amber";
+  if (status === "NOT_RECOMMENDED" || status === "BLOCKED") return "red";
   return "slate";
 }
 
@@ -560,6 +573,11 @@ function TestCasesContent() {
   const [coverageByCase, setCoverageByCase] = useState<Map<number, CoverageMatrixEntry>>(new Map());
   const [scenarioReviews, setScenarioReviews] = useState<ArtifactReview[]>([]);
   const [scenariosById, setScenariosById] = useState<Map<number, TestScenario>>(new Map());
+  const [classifications, setClassifications] = useState<TestCaseAutomationClassification[]>([]);
+  const [classificationsEnabled, setClassificationsEnabled] = useState(true);
+  const [actionMenu, setActionMenu] = useState<number | null>(null);
+  const [classifyBusyId, setClassifyBusyId] = useState<number | null>(null);
+  const [policyDrawerTestCase, setPolicyDrawerTestCase] = useState<TestCase | null>(null);
 
   useEffect(() => {
     projectsApi.list().then((res) => {
@@ -603,7 +621,23 @@ function TestCasesContent() {
     } finally {
       setLoading(false);
     }
+
+    // Loaded separately: a 404 here just means AUTOMATION_CLASSIFICATION_ENABLED
+    // is off and must not break the rest of the (already working) screen.
+    try {
+      const clsRes = await automationClassificationApi.listForProject(selectedProject);
+      setClassifications(clsRes.data);
+      setClassificationsEnabled(true);
+    } catch (clsError) {
+      setClassifications([]);
+      setClassificationsEnabled(!isClassificationDisabled(clsError));
+    }
   }, [selectedProject]);
+
+  const classificationByTestCaseId = useMemo(
+    () => new Map(classifications.map((item) => [item.test_case_id, item])),
+    [classifications],
+  );
 
   useEffect(() => {
     loadData();
@@ -681,6 +715,38 @@ function TestCasesContent() {
   const selectedScenario = scenarioForCase(selectedTestCase, scenariosById);
   const selectedReview = reviewForCase(selectedTestCase, scenarioReviews);
   const selectedEligibility = (selectedTestCase?.metadata_ as { automation_eligibility?: { verdict?: string; reason?: string; automation_style?: string; agent_run_id?: number } } | undefined)?.automation_eligibility;
+  const selectedClassification = selectedTestCase ? classificationByTestCaseId.get(selectedTestCase.id) : undefined;
+
+  async function classifyTestCase(id: number) {
+    if (!selectedProject) return;
+    setClassifyBusyId(id);
+    setError("");
+    try {
+      await automationClassificationApi.evaluate(selectedProject, [id]);
+      setNotice("Classification queued — refresh in a moment to see the recommendation.");
+      setActionMenu(null);
+      await loadData();
+    } catch (classifyError) {
+      setError(messageFromError(classifyError, "Could not queue classification."));
+    } finally {
+      setClassifyBusyId(null);
+    }
+  }
+
+  async function reclassifyTestCase(classificationId: number) {
+    setClassifyBusyId(classificationId);
+    setError("");
+    try {
+      await automationClassificationApi.reclassify(classificationId);
+      setNotice("Reclassification queued — refresh in a moment to see the updated recommendation.");
+      setActionMenu(null);
+      await loadData();
+    } catch (classifyError) {
+      setError(messageFromError(classifyError, "Could not queue reclassification."));
+    } finally {
+      setClassifyBusyId(null);
+    }
+  }
 
   async function sendCaseToApproval(id: number) {
     try {
@@ -778,13 +844,17 @@ function TestCasesContent() {
         setActiveTab={setActiveTab}
         loading={loading}
         setSelectedTestCase={setSelectedTestCase}
+        selectedProject={selectedProject}
+        classifications={classifications}
+        classificationsEnabled={classificationsEnabled}
+        onClassificationsChanged={loadData}
       />
     );
   }
 
   return (
-    <div className="flex min-h-full gap-6">
-      <section className="min-w-0 flex-1 space-y-5 pb-4">
+    <div className="min-h-full">
+      <section className="space-y-5 pb-4">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           <span>e&amp; STLC</span>
           <ChevronRight className="h-3 w-3 text-slate-300" />
@@ -930,12 +1000,16 @@ function TestCasesContent() {
               {filtered.map((tc) => {
                 const req = findRequirementForCase(tc, requirementsByKey, requirementsById);
                 const selected = selectedTestCase?.id === tc.id;
+                const classification = classificationByTestCaseId.get(tc.id);
                 return (
-                  <button
+                  <div
                     key={tc.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedTestCase(tc)}
+                    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedTestCase(tc); }}
                     className={cn(
-                      "grid w-full items-center px-4 py-3 text-left text-[11px] transition hover:bg-slate-50",
+                      "grid w-full cursor-pointer items-center px-4 py-3 text-left text-[11px] transition hover:bg-slate-50",
                       selected && "border-l-2 border-[#1b59f8] bg-blue-50/25",
                     )}
                     style={{ gridTemplateColumns: TABLE_GRID }}
@@ -949,17 +1023,42 @@ function TestCasesContent() {
                     <span><span className={badgeClass(testType(tc) === "Positive" ? "emerald" : testType(tc) === "Negative" ? "red" : "purple")}>{testType(tc)}</span></span>
                     <span><span className={badgeClass("slate")}>{scenarioClass(tc)}</span></span>
                     <span><span className={badgeClass(priorityTone(tc.priority))}>{tc.priority}</span></span>
-                    <span><span className={badgeClass(tc.automation_candidate ? "emerald" : "red")}>{tc.automation_candidate ? "Yes" : "No"}</span></span>
+                    <span>
+                      {tc.automation_candidate && classificationsEnabled && classification ? (
+                        <span className={badgeClass(classificationStatusTone(classification.candidate_status))}>{classification.candidate_status.replace(/_/g, " ")}</span>
+                      ) : (
+                        <span className={badgeClass(tc.automation_candidate ? "emerald" : "red")}>{tc.automation_candidate ? "Yes" : "No"}</span>
+                      )}
+                    </span>
                     <span className="font-semibold text-slate-600">{dataDependency(tc)}</span>
                     <span><span className={badgeClass(statusTone(reviewStatus(tc)))}>{reviewStatus(tc)}</span></span>
                     <span><span className={badgeClass(traceabilityHealth(tc) === "Good" ? "emerald" : "amber")}>{traceabilityHealth(tc)}</span></span>
                     <span className="font-semibold text-slate-500">{displayDate(tc.created_at)}</span>
-                    <span className="flex justify-end">
-                      <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500">
+                    <span className="relative flex justify-end" onClick={(event) => event.stopPropagation()}>
+                      <button
+                        aria-label={`Actions for ${tc.test_case_id}`}
+                        onClick={() => setActionMenu(actionMenu === tc.id ? null : tc.id)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                      >
                         <MoreHorizontal className="h-4 w-4" />
-                      </span>
+                      </button>
+                      {actionMenu === tc.id && (
+                        <div className="absolute right-0 top-9 z-30 w-52 rounded-md border border-slate-200 bg-white p-1 shadow-xl">
+                          {tc.automation_candidate && classificationsEnabled && (
+                            classification ? (
+                              <button onClick={() => void reclassifyTestCase(classification.id)} disabled={classifyBusyId === classification.id} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50">Reclassify</button>
+                            ) : (
+                              <button onClick={() => void classifyTestCase(tc.id)} disabled={classifyBusyId === tc.id} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50">Classify</button>
+                            )
+                          )}
+                          <button onClick={() => { setSelectedTestCase(tc); setDrawerTab("ai"); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50">View Recommendation</button>
+                          <button onClick={() => { setSelectedTestCase(tc); setDrawerTab("ai"); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50">View Matched Rules</button>
+                          <button onClick={() => { setPolicyDrawerTestCase(tc); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50">Open Classification Policy</button>
+                          <button onClick={() => { openInEditor(tc.id); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50">Send to Test Case Editor</button>
+                        </div>
+                      )}
                     </span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -972,13 +1071,14 @@ function TestCasesContent() {
         </div>
       </section>
 
-      <aside className="sticky top-0 h-[calc(100vh-6rem)] w-[390px] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        {selectedTestCase ? (
+      <Drawer open={!!selectedTestCase} onOpenChange={(open) => !open && setSelectedTestCase(null)}>
+        <DrawerContent size="xl">
+        {selectedTestCase && (
           <div className="flex h-full flex-col">
             <div className="border-b border-slate-100 p-5">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-lg font-extrabold text-slate-950">{selectedTestCase.test_case_id}</span>
+                  <DrawerTitle className="font-mono text-lg font-extrabold text-slate-950">{selectedTestCase.test_case_id}</DrawerTitle>
                   <span className={badgeClass("blue")}>Generated</span>
                 </div>
                 <div className="flex items-center gap-2 text-slate-500">
@@ -1127,17 +1227,81 @@ function TestCasesContent() {
               )}
 
               {drawerTab === "ai" && (
-                <DrawerCard title="AI Info" icon={Bot}>
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <InfoPair label="Generation Run" value={selectedTestCase.agent_run_id ? `#${selectedTestCase.agent_run_id}` : "—"} />
-                    <InfoPair label="Generated At" value={displayDateTime(selectedTestCase.created_at)} />
-                    <InfoPair label="Automation Eligibility" value={selectedEligibility?.verdict ? selectedEligibility.verdict : "Not assessed"} />
-                    <InfoPair label="Automation Style" value={selectedEligibility?.automation_style || "—"} />
-                  </div>
-                  {selectedEligibility?.reason && (
-                    <p className="mt-3 text-xs font-semibold text-slate-500">{selectedEligibility.reason}</p>
+                <>
+                  <DrawerCard title="AI Info" icon={Bot}>
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <InfoPair label="Generation Run" value={selectedTestCase.agent_run_id ? `#${selectedTestCase.agent_run_id}` : "—"} />
+                      <InfoPair label="Generated At" value={displayDateTime(selectedTestCase.created_at)} />
+                    </div>
+                  </DrawerCard>
+
+                  <DrawerCard title="Automation Classification" icon={ShieldCheck}>
+                    {!classificationsEnabled ? (
+                      <p className="text-xs font-semibold text-slate-400">Automation classification is not enabled for this project.</p>
+                    ) : !selectedTestCase.automation_candidate ? (
+                      <p className="text-xs font-semibold text-slate-400">Not marked as an automation candidate.</p>
+                    ) : !selectedClassification ? (
+                      <div className="space-y-3">
+                        <p className="text-xs font-semibold text-slate-400">Not yet classified.</p>
+                        <Button size="sm" onClick={() => void classifyTestCase(selectedTestCase.id)} disabled={classifyBusyId === selectedTestCase.id} className="h-8 text-xs font-bold">Classify Now</Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4 text-xs">
+                          <InfoPair label="Candidate status" value={selectedClassification.candidate_status.replace(/_/g, " ")} />
+                          <InfoPair label="Review status" value={selectedClassification.review_status.replace(/_/g, " ")} />
+                          <InfoPair label="Primary adapter" value={selectedClassification.primary_adapter || "Not resolved"} />
+                          <InfoPair label="Discovery required" value={selectedClassification.discovery_required ? (selectedClassification.recommended_discovery_mode || "Yes") : "No"} />
+                          <InfoPair label="Complexity score" value={selectedClassification.complexity_score != null ? String(selectedClassification.complexity_score) : "—"} />
+                          <InfoPair label="Automation value score" value={selectedClassification.automation_value_score != null ? String(selectedClassification.automation_value_score) : "—"} />
+                          <InfoPair label="Policy version" value={selectedClassification.policy_version ? `v${selectedClassification.policy_version}` : "—"} />
+                          <InfoPair label="Last classified" value={displayDateTime(selectedClassification.updated_at)} />
+                        </div>
+                        <div>
+                          <p className="mb-1 text-xs font-bold text-slate-700">Supporting adapters / validators</p>
+                          <div className="flex flex-wrap gap-1">
+                            {[...selectedClassification.supporting_adapters, ...selectedClassification.mandatory_validators, ...selectedClassification.optional_validators].length ? (
+                              <>
+                                {selectedClassification.mandatory_validators.map((item) => <span key={`m-${item}`} className={badgeClass("red")}>{item}</span>)}
+                                {selectedClassification.optional_validators.map((item) => <span key={`o-${item}`} className={badgeClass("blue")}>{item}</span>)}
+                                {selectedClassification.supporting_adapters.map((item) => <span key={`s-${item}`} className={badgeClass("slate")}>{item}</span>)}
+                              </>
+                            ) : <span className={badgeClass("slate")}>None declared</span>}
+                          </div>
+                        </div>
+                        {selectedClassification.deterministic_blockers.length > 0 && (
+                          <div>
+                            <p className="mb-1 text-xs font-bold text-red-700">Deterministic blockers</p>
+                            <ul className="list-disc space-y-1 pl-4 text-xs font-semibold text-red-600">
+                              {selectedClassification.deterministic_blockers.map((item, index) => <li key={`${item.code}-${index}`}>{item.label}: {item.detail}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {selectedClassification.matched_rules.length > 0 && (
+                          <div>
+                            <p className="mb-1 text-xs font-bold text-slate-700">Matched rules</p>
+                            <pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[10px] text-slate-700">{JSON.stringify(selectedClassification.matched_rules, null, 2)}</pre>
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => void reclassifyTestCase(selectedClassification.id)} disabled={classifyBusyId === selectedClassification.id} className="h-8 text-xs font-bold">Reclassify</Button>
+                          <Button size="sm" variant="outline" onClick={() => setPolicyDrawerTestCase(selectedTestCase)} className="h-8 text-xs font-bold">View Policy</Button>
+                        </div>
+                      </div>
+                    )}
+                  </DrawerCard>
+
+                  {selectedEligibility?.verdict && (
+                    <DrawerCard title="Legacy AI Automation Note" icon={Sparkles}>
+                      <p className="text-xs font-semibold text-slate-500">Superseded by the Automation Classification above once this test case is classified.</p>
+                      <div className="mt-2 grid grid-cols-2 gap-4 text-xs">
+                        <InfoPair label="Automation Eligibility" value={selectedEligibility.verdict} />
+                        <InfoPair label="Automation Style" value={selectedEligibility.automation_style || "—"} />
+                      </div>
+                      {selectedEligibility.reason && <p className="mt-3 text-xs font-semibold text-slate-500">{selectedEligibility.reason}</p>}
+                    </DrawerCard>
                   )}
-                </DrawerCard>
+                </>
               )}
 
               {drawerTab === "activity" && (
@@ -1163,13 +1327,95 @@ function TestCasesContent() {
               </div>
             </div>
           </div>
-        ) : (
-          <div className="flex h-full items-center justify-center p-6 text-center text-xs font-semibold text-slate-500">
-            Select a generated test case to inspect coverage, AI rationale, and handoff actions.
+        )}
+        </DrawerContent>
+      </Drawer>
+
+      <ClassificationPolicyDrawer testCase={policyDrawerTestCase} onClose={() => setPolicyDrawerTestCase(null)} />
+    </div>
+  );
+}
+
+function ClassificationPolicyDrawer({ testCase, onClose }: { testCase: TestCase | null; onClose: () => void }) {
+  const [policy, setPolicy] = useState<AutomationClassificationPolicy | null>(null);
+  const [simulation, setSimulation] = useState<ClassificationPolicySimulateResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!testCase || !testCase.project_id) { setPolicy(null); setSimulation(null); return; }
+    setLoading(true); setError("");
+    Promise.all([
+      automationClassificationApi.effectivePolicy(testCase.project_id, testCase.application_id ?? undefined),
+      automationClassificationApi.simulatePolicy(testCase.project_id, testCase.id),
+    ])
+      .then(([policyRes, simRes]) => { setPolicy(policyRes.data); setSimulation(simRes.data); })
+      .catch((loadError) => setError(messageFromError(loadError, "Could not load the effective classification policy.")))
+      .finally(() => setLoading(false));
+  }, [testCase]);
+
+  return (
+    <Drawer open={!!testCase} onOpenChange={(open) => !open && onClose()}>
+      <DrawerContent size="lg">
+        {testCase && (
+          <div className="flex h-full flex-col">
+            <DrawerHeader>
+              <DrawerTitle className="text-sm text-slate-900">Classification Policy — {testCase.test_case_id}</DrawerTitle>
+            </DrawerHeader>
+            <DrawerBody>
+              {loading ? (
+                <div className="flex items-center justify-center py-16 text-xs font-bold text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />Loading policy...</div>
+              ) : error ? (
+                <p className="text-xs font-semibold text-red-600">{error}</p>
+              ) : !policy ? (
+                <p className="text-xs font-semibold text-slate-400">No published policy resolved for this project.</p>
+              ) : (
+                <div className="space-y-4">
+                  <DrawerCard title="Effective Policy" icon={ShieldCheck}>
+                    <div className="grid grid-cols-2 gap-4 text-xs">
+                      <InfoPair label="Code" value={policy.code} />
+                      <InfoPair label="Version" value={`v${policy.version}`} />
+                      <InfoPair label="Status" value={policy.status} />
+                      <InfoPair label="Scope" value={policy.application_id ? "Application" : policy.project_id ? "Project" : "Enterprise"} />
+                    </div>
+                  </DrawerCard>
+                  {simulation && (
+                    <DrawerCard title="Simulation Result For This Test Case" icon={Bot}>
+                      <div className="space-y-3 text-xs">
+                        <InfoPair label="Routing default adapter" value={simulation.routing_default_adapter || "Not resolved"} />
+                        <div>
+                          <p className="mb-1 font-bold text-slate-700">Default mandatory / optional validators</p>
+                          <div className="flex flex-wrap gap-1">
+                            {simulation.routing_default_mandatory_validators.map((item) => <span key={`m-${item}`} className={badgeClass("red")}>{item}</span>)}
+                            {simulation.routing_default_optional_validators.map((item) => <span key={`o-${item}`} className={badgeClass("blue")}>{item}</span>)}
+                            {!simulation.routing_default_mandatory_validators.length && !simulation.routing_default_optional_validators.length && <span className={badgeClass("slate")}>None declared</span>}
+                          </div>
+                        </div>
+                        {simulation.deterministic_blockers.length > 0 && (
+                          <div>
+                            <p className="mb-1 font-bold text-red-700">Would block</p>
+                            <ul className="list-disc space-y-1 pl-4 font-semibold text-red-600">{simulation.deterministic_blockers.map((item, index) => <li key={`${item.code}-${index}`}>{item.label}: {item.detail}</li>)}</ul>
+                          </div>
+                        )}
+                        {simulation.deterministic_warnings.length > 0 && (
+                          <div>
+                            <p className="mb-1 font-bold text-amber-700">Advisory warnings</p>
+                            <ul className="list-disc space-y-1 pl-4 font-semibold text-amber-600">{simulation.deterministic_warnings.map((item, index) => <li key={`${item.code}-${index}`}>{item.label}: {item.detail}</li>)}</ul>
+                          </div>
+                        )}
+                      </div>
+                    </DrawerCard>
+                  )}
+                  <DrawerCard title="Routing Matrix (Raw Policy Rules)" icon={FileText}>
+                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[10px] text-slate-700">{JSON.stringify(policy.rules, null, 2)}</pre>
+                  </DrawerCard>
+                </div>
+              )}
+            </DrawerBody>
           </div>
         )}
-      </aside>
-    </div>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -1227,6 +1473,10 @@ function TestCaseEditorView({
   setActiveTab,
   loading,
   setSelectedTestCase,
+  selectedProject,
+  classifications,
+  classificationsEnabled,
+  onClassificationsChanged,
 }: {
   testCases: TestCase[];
   filtered: TestCase[];
@@ -1254,6 +1504,10 @@ function TestCaseEditorView({
   setActiveTab: (value: string) => void;
   loading: boolean;
   setSelectedTestCase: (value: TestCase | null) => void;
+  selectedProject: number | null;
+  classifications: TestCaseAutomationClassification[];
+  classificationsEnabled: boolean;
+  onClassificationsChanged: () => void | Promise<void>;
 }) {
   const tc = selectedTestCase || testCases[0] || null;
   const req = tc ? findRequirementForCase(tc, requirementsByKey, requirementsById) || selectedRequirement : selectedRequirement;
@@ -1261,6 +1515,21 @@ function TestCaseEditorView({
   const preconditions = tc?.preconditions ?? [];
   const scenario = scenarioForCase(tc, scenariosById);
   const review = reviewForCase(tc, scenarioReviews);
+  const classification = tc ? classifications.find((item) => item.test_case_id === tc.id) : undefined;
+  const [canReviewClassification, setCanReviewClassification] = useState(false);
+  useEffect(() => {
+    if (!selectedProject) { setCanReviewClassification(false); return; }
+    let cancelled = false;
+    Promise.all([usersApi.me(), projectsApi.memberships(selectedProject), projectsApi.roles()])
+      .then(([meRes, membershipRes, roleRes]) => {
+        if (cancelled) return;
+        const membership = membershipRes.data.find((item) => item.is_active && item.user_id === meRes.data.id);
+        const role = roleRes.data.find((item) => item.role === (membership?.role || meRes.data.role));
+        setCanReviewClassification(Boolean(meRes.data.is_superuser || role?.permissions.includes("automation_classification.review")));
+      })
+      .catch(() => setCanReviewClassification(false));
+    return () => { cancelled = true; };
+  }, [selectedProject]);
   const reviewFindings = review?.findings ?? [];
   const reviewSuggestions = (review?.findings ?? [])
     .map((f) => f.suggestion)
@@ -1302,6 +1571,7 @@ function TestCaseEditorView({
   const [uiError, setUiError] = useState("");
   const [busyAction, setBusyAction] = useState<"save" | "validate" | "approval" | null>(null);
   const [showMore, setShowMore] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [history, setHistory] = useState<TestCaseHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [draft, setDraft] = useState<EditorDraft>(() => draftFromCase(tc));
@@ -1463,8 +1733,8 @@ function TestCaseEditorView({
   }
 
   return (
-    <div className="grid min-h-full grid-cols-[minmax(0,1fr)_300px] gap-5 pb-3">
-      <section className="min-w-0 space-y-4">
+    <div className="min-h-full pb-3">
+      <section className="space-y-4">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           <span>e&amp; STLC</span>
           <ChevronRight className="h-3 w-3 text-slate-300" />
@@ -1523,6 +1793,10 @@ function TestCaseEditorView({
               </div>
             )}
             </div>
+            <Button variant="outline" size="sm" onClick={() => setInspectorOpen(true)} disabled={!tc} className="h-9 gap-2 border-slate-200 text-xs font-bold">
+              <ShieldCheck className="h-4 w-4" />
+              Inspector
+            </Button>
           </div>
         </div>
 
@@ -1779,8 +2053,13 @@ function TestCaseEditorView({
         </div>
       </section>
 
-      <aside className="sticky top-0 h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-5 text-sm font-extrabold text-slate-950">Test Case Inspector</h2>
+      <Drawer open={inspectorOpen} onOpenChange={setInspectorOpen}>
+      <DrawerContent size="lg">
+      <DrawerHeader>
+        <DrawerTitle>Test Case Inspector</DrawerTitle>
+        <button aria-label="Close" onClick={() => setInspectorOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+      </DrawerHeader>
+      <DrawerBody>
         <InspectorCard title="Traceability">
           <div className="grid grid-cols-[1fr_18px_1fr_18px_1fr] items-center gap-2 text-center text-[10px] font-bold">
             <TraceBox label="Requirement" value={`${tc?.linked_requirement_key || req?.requirement_id || "—"}\n${ppmFromRequirement(req)}`} />
@@ -1790,6 +2069,13 @@ function TestCaseEditorView({
             <TraceBox label="Test Case" value={tc?.test_case_id || "—"} />
           </div>
         </InspectorCard>
+        <AutomationReadinessCard
+          classification={classification}
+          enabled={classificationsEnabled}
+          canReview={canReviewClassification}
+          automationCandidate={Boolean(tc?.automation_candidate)}
+          onSaved={onClassificationsChanged}
+        />
         <InspectorCard title="Validation Findings" badge={reviewFindings.length ? `${reviewFindings.length} finding${reviewFindings.length === 1 ? "" : "s"}` : undefined}>
           {reviewFindings.length ? (
             <div className="space-y-3 text-xs font-semibold text-slate-700">
@@ -1856,7 +2142,9 @@ function TestCaseEditorView({
             </p>
           )}
         </div>
-      </aside>
+      </DrawerBody>
+      </DrawerContent>
+      </Drawer>
     </div>
   );
 }
@@ -1920,6 +2208,139 @@ function EditorSection({ title, action, onAction, children }: { title: string; a
       </div>
       {children}
     </section>
+  );
+}
+
+function AutomationReadinessCard({
+  classification,
+  enabled,
+  canReview,
+  automationCandidate,
+  onSaved,
+}: {
+  classification: TestCaseAutomationClassification | undefined;
+  enabled: boolean;
+  canReview: boolean;
+  automationCandidate: boolean;
+  onSaved: () => void | Promise<void>;
+}) {
+  const [primaryAdapter, setPrimaryAdapter] = useState("");
+  const [mandatoryText, setMandatoryText] = useState("");
+  const [optionalText, setOptionalText] = useState("");
+  const [discoveryRequired, setDiscoveryRequired] = useState(false);
+  const [discoveryMode, setDiscoveryMode] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setPrimaryAdapter(classification?.primary_adapter || "");
+    setMandatoryText(classification?.mandatory_validators.join(", ") || "");
+    setOptionalText(classification?.optional_validators.join(", ") || "");
+    setDiscoveryRequired(classification?.discovery_required || false);
+    setDiscoveryMode(classification?.recommended_discovery_mode || "");
+    setReason("");
+    setError("");
+  }, [classification?.id]);
+
+  if (!enabled || !automationCandidate) return null;
+  if (!classification) {
+    return (
+      <InspectorCard title="Automation Readiness">
+        <p className="text-xs font-semibold text-slate-400">This test case has not been classified yet. Run classification from Generated Test Cases first.</p>
+      </InspectorCard>
+    );
+  }
+
+  const locked = classification.review_status === "APPROVED";
+  const dirty =
+    primaryAdapter !== (classification.primary_adapter || "") ||
+    mandatoryText !== classification.mandatory_validators.join(", ") ||
+    optionalText !== classification.optional_validators.join(", ") ||
+    discoveryRequired !== classification.discovery_required ||
+    discoveryMode !== (classification.recommended_discovery_mode || "");
+
+  async function save() {
+    if (!classification) return;
+    setBusy(true);
+    setError("");
+    try {
+      const corrections: Record<string, unknown> = {};
+      if (primaryAdapter !== (classification.primary_adapter || "")) corrections.primary_adapter = primaryAdapter || null;
+      const mandatory = splitLines(mandatoryText.replace(/,/g, "\n"));
+      if (mandatory.join(", ") !== classification.mandatory_validators.join(", ")) corrections.mandatory_validators = mandatory;
+      const optional = splitLines(optionalText.replace(/,/g, "\n"));
+      if (optional.join(", ") !== classification.optional_validators.join(", ")) corrections.optional_validators = optional;
+      if (discoveryRequired !== classification.discovery_required) corrections.discovery_required = discoveryRequired;
+      if (discoveryMode !== (classification.recommended_discovery_mode || "")) corrections.recommended_discovery_mode = discoveryMode || null;
+      await automationClassificationApi.review(classification.id, corrections, reason.trim() || undefined);
+      await onSaved();
+    } catch (saveError) {
+      setError(messageFromError(saveError, "Could not save the automation-readiness correction."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <InspectorCard title="Automation Readiness" badge={classification.candidate_status.replace(/_/g, " ")}>
+      <div className="space-y-3 text-xs">
+        <div className="grid grid-cols-2 gap-4">
+          <InfoPair label="Candidate status" value={classification.candidate_status.replace(/_/g, " ")} />
+          <InfoPair label="Review status" value={classification.review_status.replace(/_/g, " ")} />
+        </div>
+        {locked && <p className="text-[11px] font-semibold text-amber-600">This classification is already approved and immutable — reclassify from Generated Test Cases to make further changes.</p>}
+        {error && <p className="text-[11px] font-semibold text-red-600">{error}</p>}
+
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-bold text-slate-500">Primary adapter</span>
+          <input value={primaryAdapter} onChange={(e) => setPrimaryAdapter(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-slate-200 px-2 text-xs disabled:bg-slate-50" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-bold text-slate-500">Mandatory validators (comma-separated)</span>
+          <input value={mandatoryText} onChange={(e) => setMandatoryText(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-slate-200 px-2 text-xs disabled:bg-slate-50" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-bold text-slate-500">Optional validators (comma-separated)</span>
+          <input value={optionalText} onChange={(e) => setOptionalText(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-slate-200 px-2 text-xs disabled:bg-slate-50" />
+        </label>
+        <div className="flex items-center gap-2">
+          <input id="discovery-required" type="checkbox" checked={discoveryRequired} onChange={(e) => setDiscoveryRequired(e.target.checked)} disabled={!canReview || locked} />
+          <label htmlFor="discovery-required" className="text-[10px] font-bold text-slate-500">Discovery required</label>
+        </div>
+        {discoveryRequired && (
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-bold text-slate-500">Discovery mode</span>
+            <select value={discoveryMode} onChange={(e) => setDiscoveryMode(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-slate-200 px-2 text-xs disabled:bg-slate-50">
+              <option value="">Select mode</option>
+              <option value="GUIDED_USER">Guided User Recording</option>
+              <option value="FREE_USER_ACTION">Free User Action</option>
+              <option value="SUPERVISED_AGENT">Supervised Agent</option>
+            </select>
+          </label>
+        )}
+
+        {classification.deterministic_blockers.length > 0 && (
+          <div>
+            <p className="mb-1 text-[10px] font-bold text-red-600">Known blockers</p>
+            <ul className="list-disc space-y-1 pl-4 text-[11px] font-semibold text-red-600">
+              {classification.deterministic_blockers.map((item, index) => <li key={`${item.code}-${index}`}>{item.label}: {item.detail}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {canReview && !locked && dirty && (
+          <>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-bold text-slate-500">Reason for correction</span>
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} className="h-16 w-full resize-none rounded border border-slate-200 p-2 text-xs" />
+            </label>
+            <Button size="sm" onClick={() => void save()} disabled={busy} className="h-8 text-xs font-bold">Save Correction</Button>
+          </>
+        )}
+        {!canReview && <p className="text-[10px] font-semibold text-slate-400">You do not have permission to correct the automation classification.</p>}
+      </div>
+    </InspectorCard>
   );
 }
 

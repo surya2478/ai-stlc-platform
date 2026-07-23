@@ -519,6 +519,7 @@ export interface TestCase {
   last_status_updated_by?: number | null;
   last_status_updated_at?: string | null;
   status: string;
+  version: number;
   metadata_?: Record<string, unknown>;
   agent_run_id?: number | null;
   scenario_id?: number;
@@ -526,6 +527,8 @@ export interface TestCase {
   created_at: string;
   updated_at: string;
 }
+
+export type ApplicationLifecycleStatus = "draft" | "active" | "deprecated" | "retired";
 
 export interface ProjectApplication {
   id?: number | null;
@@ -536,28 +539,102 @@ export interface ProjectApplication {
   is_default: boolean;
   environment_urls: Record<string, string>;
   is_active: boolean;
+  application_type?: string | null;
+  aliases: string[];
+  lifecycle_status: ApplicationLifecycleStatus;
+  business_owner_id?: number | null;
+  technical_owner_id?: number | null;
+  domain?: string | null;
+  product_group?: string | null;
+  product?: string | null;
+  channel?: string | null;
   created_by?: number | null;
   updated_by?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
 
+export interface ProjectApplicationUpdatePayload {
+  key: string;
+  name: string;
+  description?: string | null;
+  is_default?: boolean;
+  environment_urls?: Record<string, string>;
+  is_active?: boolean;
+  application_type?: string | null;
+  aliases?: string[];
+  lifecycle_status?: ApplicationLifecycleStatus;
+  business_owner_id?: number | null;
+  technical_owner_id?: number | null;
+  domain?: string | null;
+  product_group?: string | null;
+  product?: string | null;
+  channel?: string | null;
+}
+
+export interface ProjectExternalDependency {
+  id?: number | null;
+  project_id: number;
+  application_id?: number | null;
+  service_name: string;
+  note?: string | null;
+  sandbox_url?: string | null;
+  mock_strategy: "intercept" | "sandbox" | "ignore";
+  is_active: boolean;
+  created_by?: number | null;
+  updated_by?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ProjectExternalDependencyUpdatePayload {
+  id?: number | null;
+  application_id?: number | null;
+  service_name: string;
+  note?: string | null;
+  sandbox_url?: string | null;
+  mock_strategy?: "intercept" | "sandbox" | "ignore";
+  is_active?: boolean;
+}
+
 export interface ProjectApplicationsResponse {
   project_id: number;
   applications: ProjectApplication[];
-  external_dependencies: Array<{
-    id?: number | null;
-    project_id: number;
-    application_id?: number | null;
-    service_name: string;
-    note?: string | null;
-    sandbox_url?: string | null;
-    mock_strategy: string;
-    is_active: boolean;
-  }>;
+  external_dependencies: ProjectExternalDependency[];
   available_environments: string[];
   last_updated?: string | null;
   updated_by?: number | null;
+}
+
+export interface ApplicationMappingConflict {
+  product_group?: string | null;
+  product?: string | null;
+  channel?: string | null;
+  application_ids: number[];
+}
+
+export interface ProjectApplicationsSummary {
+  project_id: number;
+  total_applications: number;
+  active_applications: number;
+  discovery_ready: number;
+  discovery_ready_is_proxy: boolean;
+  environment_gaps: number;
+  mapping_conflicts: ApplicationMappingConflict[];
+  health_tracked: boolean;
+  mapping_usage: Record<number, number>;
+}
+
+export interface ProjectSettingAuditLogEntry {
+  id: number;
+  project_id: number;
+  setting_type: string;
+  old_value: Record<string, any> | null;
+  new_value: Record<string, any> | null;
+  changed_by: number | null;
+  changed_at: string;
+  source: string;
+  change_reason: string | null;
 }
 
 export interface TestCaseSummary {
@@ -880,6 +957,26 @@ export const projectsApi = {
 export const applicationsApi = {
   getForProject: (projectId: number) =>
     api.get<ProjectApplicationsResponse>(`/projects/${projectId}/applications`),
+  summary: (projectId: number) =>
+    api.get<ProjectApplicationsSummary>(`/projects/${projectId}/applications/summary`),
+  update: (projectId: number, applications: ProjectApplicationUpdatePayload[], changeReason?: string) =>
+    api.put<ProjectApplicationsResponse>(`/projects/${projectId}/applications`, {
+      applications,
+      change_reason: changeReason,
+    }),
+  updateDependencies: (
+    projectId: number,
+    dependencies: ProjectExternalDependencyUpdatePayload[],
+    changeReason?: string
+  ) =>
+    api.put<ProjectApplicationsResponse>(`/projects/${projectId}/external-dependencies`, {
+      dependencies,
+      change_reason: changeReason,
+    }),
+  seedCanonical: (projectId: number) =>
+    api.post<ProjectApplicationsResponse>(`/projects/${projectId}/applications/seed-canonical`, {}),
+  auditLog: (projectId: number) =>
+    api.get<ProjectSettingAuditLogEntry[]>(`/projects/${projectId}/applications/audit-log`),
 };
 
 export const usersApi = {
@@ -1117,6 +1214,163 @@ export const testCasesApi = {
     },
   ) => api.post<TestCaseBulkUpdateResult>(`/test-cases/projects/${projectId}/bulk-update`, payload),
 };
+
+// ── Test Automation Classification & Routing (P1-S3 extension) ──────────────
+// Governed, policy-driven automation-candidate classification. Every field
+// here is either persisted from the deterministic rules engine, the
+// governed classification agent, or a human reviewer/approver — never a
+// static frontend list. See docs/test-automation-classification-routing-
+// implementation-prompt.md. Disabled server-side unless
+// AUTOMATION_CLASSIFICATION_ENABLED=true (every route 404s).
+
+export type AutomationCandidateStatus =
+  | "NOT_EVALUATED"
+  | "RECOMMENDED"
+  | "CONDITIONAL"
+  | "NOT_RECOMMENDED"
+  | "BLOCKED"
+  | "DEFERRED"
+  | "APPROVED"
+  | "POLICY_STALE"
+  | "RECLASSIFICATION_REQUIRED";
+
+export type ClassificationReviewStatus =
+  | "PENDING_REVIEW"
+  | "CHANGES_REQUESTED"
+  | "REVIEWED"
+  | "APPROVED"
+  | "REJECTED";
+
+export interface ClassificationRuleFinding {
+  code: string;
+  label: string;
+  detail: string;
+}
+
+export interface ScoreFactor {
+  factor: string;
+  weight: number;
+  score: number;
+  category?: string | null;
+}
+
+export interface AutomationClassificationPolicy {
+  id: number;
+  project_id: number | null;
+  application_id: number | null;
+  code: string;
+  name: string;
+  version: number;
+  parent_policy_id: number | null;
+  status: "draft" | "published" | "archived";
+  rules: Record<string, unknown>;
+  created_by?: number | null;
+  published_by?: number | null;
+  published_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TestCaseAutomationClassification {
+  id: number;
+  project_id: number;
+  test_case_id: number;
+  test_case_version: number;
+  version: number;
+  parent_classification_id: number | null;
+  is_current: boolean;
+  candidate_status: AutomationCandidateStatus;
+  primary_adapter: string | null;
+  supporting_adapters: string[];
+  mandatory_validators: string[];
+  optional_validators: string[];
+  discovery_required: boolean;
+  recommended_discovery_mode: "GUIDED_USER" | "FREE_USER_ACTION" | "SUPERVISED_AGENT" | null;
+  complexity_score: number | null;
+  automation_value_score: number | null;
+  score_factors: ScoreFactor[];
+  required_evidence: string[];
+  required_capabilities: string[];
+  deterministic_blockers: ClassificationRuleFinding[];
+  advisory_warnings: unknown[];
+  matched_rules: unknown[];
+  policy_id: number | null;
+  policy_version: number | null;
+  agent_run_id: number | null;
+  review_status: ClassificationReviewStatus;
+  reviewed_by: number | null;
+  reviewed_at: string | null;
+  approved_by: number | null;
+  approved_at: string | null;
+  decision_reason: string | null;
+  created_at: string;
+  updated_at: string;
+  is_stale: boolean;
+}
+
+export interface ClassificationPolicySimulateResponse {
+  policy: AutomationClassificationPolicy;
+  deterministic_blockers: ClassificationRuleFinding[];
+  deterministic_warnings: ClassificationRuleFinding[];
+  routing_default_adapter: string | null;
+  routing_default_mandatory_validators: string[];
+  routing_default_optional_validators: string[];
+}
+
+export interface ClassificationEvaluateResponseItem {
+  test_case_id: number;
+  agent_run_id: number;
+  status: string;
+}
+
+export const automationClassificationApi = {
+  // Every route 404s when AUTOMATION_CLASSIFICATION_ENABLED is off — callers
+  // should treat a 404 from listForProject as "feature disabled, show
+  // Not Evaluated" rather than a hard load error (see isClassificationDisabled).
+  listForProject: (projectId: number) =>
+    api.get<TestCaseAutomationClassification[]>(`/automation-classifications/projects/${projectId}`),
+  effectivePolicy: (projectId: number, applicationId?: number) =>
+    api.get<AutomationClassificationPolicy>(`/automation-classifications/projects/${projectId}/policies/effective`, {
+      params: applicationId ? { application_id: applicationId } : undefined,
+    }),
+  simulatePolicy: (projectId: number, testCaseId: number) =>
+    api.post<ClassificationPolicySimulateResponse>(`/automation-classifications/projects/${projectId}/policies/simulate`, {
+      test_case_id: testCaseId,
+    }),
+  evaluate: (projectId: number, testCaseIds: number[]) =>
+    api.post<{ project_id: number; results: ClassificationEvaluateResponseItem[] }>(
+      `/automation-classifications/projects/${projectId}/evaluate`,
+      { test_case_ids: testCaseIds },
+    ),
+  getForTestCase: (testCaseId: number) =>
+    api.get<TestCaseAutomationClassification>(`/automation-classifications/test-cases/${testCaseId}`),
+  get: (classificationId: number) =>
+    api.get<TestCaseAutomationClassification>(`/automation-classifications/${classificationId}`),
+  review: (classificationId: number, corrections: Record<string, unknown>, reason?: string) =>
+    api.post<TestCaseAutomationClassification>(`/automation-classifications/${classificationId}/review`, {
+      corrections,
+      reason,
+    }),
+  reclassify: (classificationId: number) =>
+    api.post<ClassificationEvaluateResponseItem>(`/automation-classifications/${classificationId}/reclassify`),
+  approve: (classificationId: number, reason?: string) =>
+    api.post<TestCaseAutomationClassification>(`/automation-classifications/${classificationId}/approve`, { reason }),
+  approveConditional: (classificationId: number, reason: string) =>
+    api.post<TestCaseAutomationClassification>(`/automation-classifications/${classificationId}/approve-conditional`, { reason }),
+  reject: (classificationId: number, reason: string) =>
+    api.post<TestCaseAutomationClassification>(`/automation-classifications/${classificationId}/reject`, { reason }),
+  defer: (classificationId: number, reason: string) =>
+    api.post<TestCaseAutomationClassification>(`/automation-classifications/${classificationId}/defer`, { reason }),
+  requestChanges: (classificationId: number, reason: string) =>
+    api.post<TestCaseAutomationClassification>(`/automation-classifications/${classificationId}/request-changes`, { reason }),
+};
+
+// True when an automation-classification call 404'd because the feature
+// flag is off (isolated-namespace pattern, same as grounded_automation) —
+// distinct from a real load failure the UI should surface as an error.
+export function isClassificationDisabled(error: unknown): boolean {
+  return (error as { response?: { status?: number } } | undefined)?.response?.status === 404;
+}
 
 // ── Test Suites ─────────────────────────────────────────────────────────────────
 // A named tag test cases are assigned to via `TestCase.test_suite_id` — one

@@ -57,6 +57,27 @@ EXECUTION_RUN_AI_ASSISTED = "execution.run_ai_assisted"
 EXECUTION_VIEW_LIVE_RUNS = "execution.view_live_runs"
 EXECUTION_CREATE_DEFECT_DRAFT = "execution.create_defect_draft"
 
+# ─── Test Automation Classification & Routing (P1-S3 extension) ─────────────
+AUTOMATION_CLASSIFICATION_VIEW = "automation_classification.view"
+AUTOMATION_CLASSIFICATION_EVALUATE = "automation_classification.evaluate"
+AUTOMATION_CLASSIFICATION_REVIEW = "automation_classification.review"
+AUTOMATION_CLASSIFICATION_APPROVE = "automation_classification.approve"
+AUTOMATION_CLASSIFICATION_OVERRIDE = "automation_classification.override"
+AUTOMATION_CLASSIFICATION_SIMULATE_POLICY = "automation_classification.simulate_policy"
+AUTOMATION_CLASSIFICATION_MANAGE_POLICY = "automation_classification.manage_policy"
+
+_GRANULAR_CLASSIFICATION_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        AUTOMATION_CLASSIFICATION_VIEW,
+        AUTOMATION_CLASSIFICATION_EVALUATE,
+        AUTOMATION_CLASSIFICATION_REVIEW,
+        AUTOMATION_CLASSIFICATION_APPROVE,
+        AUTOMATION_CLASSIFICATION_OVERRIDE,
+        AUTOMATION_CLASSIFICATION_SIMULATE_POLICY,
+        AUTOMATION_CLASSIFICATION_MANAGE_POLICY,
+    }
+)
+
 _GRANULAR_AUTOMATION_PERMISSIONS: frozenset[str] = frozenset(
     {
         AUTOMATION_VIEW,
@@ -78,7 +99,7 @@ _GRANULAR_EXECUTION_PERMISSIONS: frozenset[str] = frozenset(
     }
 )
 GRANULAR_PERMISSIONS: frozenset[str] = (
-    _GRANULAR_AUTOMATION_PERMISSIONS | _GRANULAR_EXECUTION_PERMISSIONS
+    _GRANULAR_AUTOMATION_PERMISSIONS | _GRANULAR_EXECUTION_PERMISSIONS | _GRANULAR_CLASSIFICATION_PERMISSIONS
 )
 
 ALL_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -120,16 +141,18 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
     """
     extra: set[Permission] = set()
     if VIEW_PROJECT in base:
-        extra.update({AUTOMATION_VIEW, EXECUTION_VIEW_LIVE_RUNS})
+        extra.update({AUTOMATION_VIEW, EXECUTION_VIEW_LIVE_RUNS, AUTOMATION_CLASSIFICATION_VIEW})
     if GENERATE_AUTOMATION in base:
         extra.update({
             AUTOMATION_GENERATE_SCRIPT,
             AUTOMATION_EDIT_DRAFT,
             AUTOMATION_CONFIGURE_EXTERNAL_CONNECTOR,
             AUTOMATION_RUN_SANDBOX,
+            AUTOMATION_CLASSIFICATION_EVALUATE,
+            AUTOMATION_CLASSIFICATION_REVIEW,
         })
     if APPROVE_TEST_CASES in base:
-        extra.update({AUTOMATION_REVIEW_SCRIPT, AUTOMATION_APPROVE_SCRIPT})
+        extra.update({AUTOMATION_REVIEW_SCRIPT, AUTOMATION_APPROVE_SCRIPT, AUTOMATION_CLASSIFICATION_APPROVE})
     if EXECUTE_TESTS in base:
         extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})
     if RAISE_DEFECTS in base:
@@ -138,6 +161,10 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
         # Release-report approvers are the natural "Environment Owner" for
         # the automation approval chain's PROD_SANITY gate.
         extra.add(AUTOMATION_APPROVE_ENVIRONMENT)
+    if MANAGE_PROJECT in base:
+        # Phase-1 policy drawer editing/simulation and separation-of-duty
+        # override — not the future UI-055 admin screen, just this drawer.
+        extra.update({AUTOMATION_CLASSIFICATION_MANAGE_POLICY, AUTOMATION_CLASSIFICATION_SIMULATE_POLICY, AUTOMATION_CLASSIFICATION_OVERRIDE})
     return base | frozenset(extra)
 
 

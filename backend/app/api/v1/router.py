@@ -9,7 +9,7 @@ from app.api.v1.endpoints import (
     test_data, automation, execution, defects,
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
     applications, reviews, playwright_studio, mcp_connections, video,
-    grounded_poc,
+    grounded_poc, automation_classification,
 )
 
 api_router = APIRouter()
@@ -45,5 +45,10 @@ api_router.include_router(video.router, prefix="/video", tags=["Video"])
 # /status) 404s unless GROUNDED_AUTOMATION_ENABLED=true.
 api_router.include_router(
     grounded_poc.router, prefix="/poc/grounded-automation", tags=["Grounded Automation PoC"]
+)
+# Test Automation Classification & Routing (P1-S3 extension) — isolated
+# namespace; every route 404s unless AUTOMATION_CLASSIFICATION_ENABLED=true.
+api_router.include_router(
+    automation_classification.router, prefix="/automation-classifications", tags=["Automation Classification"]
 )
 

@@ -289,13 +289,31 @@ Screens: **Generated Test Cases**, **Test Case Editor**, **Journey Graph**, **Te
 
 - [ ] Generate positive, negative, boundary, exception, concurrency, timeout, rollback, recovery, duplicate, partial-failure, asynchronous-callback and data-inconsistency scenarios.
 - [ ] Preserve classifications, taxonomy references and source evidence.
-- [ ] Define preconditions, steps, expected results, data needs, evidence needs, application roles and automation preference.
+- [x] Define preconditions, steps, expected results, data needs, evidence needs, application roles and automation preference.
 - [ ] Detect duplicates and missing coverage.
 - [ ] Require an independent approval decision.
 - [ ] Validate mappings to stable Application Registry IDs.
 - [ ] Route missing applications to onboarding and ambiguous mappings to mapping review.
 - [ ] Disable Proceed to Discovery until mandatory mappings are valid.
 - [ ] Prevent URLs and credentials from entering approved test cases.
+
+**Test Automation Classification & Routing (2026-07-23):** governed, policy-driven automation
+candidacy classification extending all 4 P1-S3 screens end to end — deterministic rules engine
++ governed LangGraph classification agent (advisory only, never overrides a blocker) +
+capability resolver (against real `MCPConnection` rows, never a static list) + weighted scoring,
+producing immutable versioned `TestCaseAutomationClassification` records with a reviewer
+correction stage (UI-011) and an independent approval gate (UI-013) separate from test-case
+approval itself. New backend: migration `040_automation_classification.py`, 4 tables, `/api/v1/
+automation-classifications/*` (flag-gated, isolated namespace, disabled by default), permissions
+`automation_classification.*`. UI-010 shows classification status + a policy/simulation drawer,
+UI-011 adds an Automation Readiness reviewer-correction panel, UI-012 adds an Automation
+inspector tab + graph node status dots, UI-013 adds a governance check + full decision panel
+(Approve / Approve Conditional / Not Recommended / Defer / Request Changes). Verified live
+against real project-1 data with the flag on and off (see
+`docs/test-automation-classification-routing-implementation-prompt.md` for the full spec).
+Explicitly out of scope this pass: UI-015 wiring (needs this contract, not yet consumed) and the
+Phase 3 policy-administration screens (UI-055/056/057) — Phase 1 only has the read/simulate/
+limited-edit drawer described above.
 
 ### P1-S4 Application Discovery - 4 screens
 
@@ -540,7 +558,7 @@ Use `-` for not applicable and add approval/evidence links when work starts.
 | UI-011 | 1 | P1-S3 | Test Case Editor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-012 | 1 | P1-S3 | Journey Graph | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-013 | 1 | P1-S3 | Test Case Approval | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
-| UI-014 | 1 | P1-S4 | Application Registry | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| UI-014 | 1 | P1-S4 | Application Registry | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-015 | 1 | P1-S4 | Live Discovery Session | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-016 | 1 | P1-S4 | Application Model | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-017 | 1 | P1-S4 | API and Network Explorer | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |

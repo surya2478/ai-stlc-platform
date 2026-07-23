@@ -143,6 +143,7 @@ class TestCaseOut(BaseModel):
     last_status_updated_by: int | None = None
     last_status_updated_at: datetime | None = None
     status: str
+    version: int = 1
     agent_run_id: int | None = None
     metadata_: dict[str, Any] | None = None
     created_at: datetime

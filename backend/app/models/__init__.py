@@ -56,5 +56,11 @@ from app.models.locator_map import LocatorMapEntry  # noqa: F401
 from app.models.studio_run import StudioRun  # noqa: F401
 from app.models.mcp_connection import MCPConnection  # noqa: F401
 from app.models.grounded_poc import PocGroundingRun, PocStateEvidence  # noqa: F401
+from app.models.automation_classification import (  # noqa: F401
+    AutomationClassificationPolicy,
+    TestCaseAutomationClassification,
+    ClassificationFieldCorrection,
+    ClassificationAuditEvent,
+)
 
 

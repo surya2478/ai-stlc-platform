@@ -78,4 +78,10 @@ class MCPConnection(TimestampMixin, Base):
     # runtime instead of a user-supplied server.
     is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # Stable machine-readable key (e.g. "OMS_MCP", "BILLING_MCP", "KAFKA_MCP")
+    # that automation-classification policy rules reference by name instead
+    # of matching on the free-text `name` column. Nullable/admin-set — a
+    # connection with no key is simply not resolvable as a policy validator.
+    capability_key: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+
     project: Mapped["Project"] = relationship("Project")

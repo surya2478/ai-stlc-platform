@@ -326,3 +326,58 @@ class AiAssistSuggestion(LLMBaseModel):
         except (TypeError, ValueError):
             return 0
         return max(0, min(100, n))
+
+
+class ClassificationAgentLLMOutput(LLMBaseModel):
+    """LLM output for the Test Classification Agent — advisory only. The
+    caller (classification_service.persist_classification_result) always
+    applies deterministic blockers and capability-resolution results on top
+    of this; the agent's `candidate_status` here can be downgraded but never
+    used to override a blocker (constraint: "Do not let the AI agent make
+    the final approval decision").
+    """
+    candidate_status: str = "NOT_RECOMMENDED"
+    # RECOMMENDED | CONDITIONAL | NOT_RECOMMENDED | BLOCKED | DEFERRED
+    primary_adapter: str | None = None
+    supporting_adapters: list[str] = Field(default_factory=list)
+    mandatory_validators: list[str] = Field(default_factory=list)
+    optional_validators: list[str] = Field(default_factory=list)
+    discovery_required: bool = False
+    recommended_discovery_mode: str | None = None
+    # GUIDED_USER | FREE_USER_ACTION | SUPERVISED_AGENT
+    reasons: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    matched_rules: list[str] = Field(default_factory=list)
+    confidence: int = 0  # advisory only — never used as an approval criterion
+
+    _normalize_lists = field_validator(
+        "supporting_adapters", "mandatory_validators", "optional_validators",
+        "reasons", "assumptions", "warnings", "matched_rules",
+        mode="before",
+    )(_string_list)
+
+    @field_validator("candidate_status", mode="before")
+    @classmethod
+    def _normalize_candidate_status(cls, value: Any) -> str:
+        raw = str(value or "").strip().upper().replace(" ", "_")
+        allowed = {"RECOMMENDED", "CONDITIONAL", "NOT_RECOMMENDED", "BLOCKED", "DEFERRED"}
+        return raw if raw in allowed else "NOT_RECOMMENDED"
+
+    @field_validator("recommended_discovery_mode", mode="before")
+    @classmethod
+    def _normalize_discovery_mode(cls, value: Any) -> str | None:
+        if not value:
+            return None
+        raw = str(value).strip().upper().replace(" ", "_")
+        allowed = {"GUIDED_USER", "FREE_USER_ACTION", "SUPERVISED_AGENT"}
+        return raw if raw in allowed else None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _clamp_agent_confidence(cls, value: Any) -> int:
+        try:
+            n = int(round(float(value)))
+        except (TypeError, ValueError):
+            return 0
+        return max(0, min(100, n))

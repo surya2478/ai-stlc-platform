@@ -36,6 +36,8 @@ import {
 import {
   applicationsApi,
   automationApi,
+  automationClassificationApi,
+  isClassificationDisabled,
   requirementsApi,
   reviewsApi,
   scenariosApi,
@@ -47,13 +49,15 @@ import {
   type ProjectApplication,
   type Requirement,
   type TestCase,
+  type TestCaseAutomationClassification,
   type TestScenario,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerBody } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 
 type ScenarioKind = "positive" | "negative" | "boundary" | "recovery" | "regression" | "other";
-type InspectorTab = "overview" | "coverage" | "applications" | "evidence" | "activity";
+type InspectorTab = "overview" | "coverage" | "applications" | "evidence" | "automation" | "activity";
 type NodeType = "requirement" | "journey" | "scenario" | "test_case" | "application" | "evidence" | "gap";
 type Severity = "high" | "medium" | "low" | "info";
 
@@ -268,6 +272,8 @@ export function JourneyGraphView({ projectId }: Props) {
   const [availableEnvironments, setAvailableEnvironments] = useState<string[]>([]);
   const [reviews, setReviews] = useState<ArtifactReview[]>([]);
   const [approvals, setApprovals] = useState<ApprovalAction[]>([]);
+  const [classifications, setClassifications] = useState<TestCaseAutomationClassification[]>([]);
+  const [classificationsEnabled, setClassificationsEnabled] = useState(true);
   const [selectedJourneyId, setSelectedJourneyId] = useState("");
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -329,9 +335,25 @@ export function JourneyGraphView({ projectId }: Props) {
     } finally {
       setLoading(false);
     }
+
+    // Loaded separately: a 404 here just means AUTOMATION_CLASSIFICATION_ENABLED
+    // is off and must not break the rest of the (already working) graph.
+    try {
+      const clsRes = await automationClassificationApi.listForProject(projectId);
+      setClassifications(clsRes.data);
+      setClassificationsEnabled(true);
+    } catch (clsError) {
+      setClassifications([]);
+      setClassificationsEnabled(!isClassificationDisabled(clsError));
+    }
   }, [environment, projectId]);
 
   useEffect(() => { void loadData(); }, [loadData]);
+
+  const classificationByTestCaseId = useMemo(
+    () => new Map(classifications.map((item) => [item.test_case_id, item])),
+    [classifications],
+  );
 
   const journeys = useMemo(() => deriveJourneys(requirements, scenarios, testCases, applications), [applications, requirements, scenarios, testCases]);
 
@@ -509,8 +531,8 @@ export function JourneyGraphView({ projectId }: Props) {
   if (!projectId) return <div className="flex h-64 items-center justify-center text-sm font-semibold text-slate-500">Select a project to load its journey graph.</div>;
 
   return (
-    <div className="flex min-h-full gap-4">
-      <section className="min-w-0 flex-1 space-y-2 pb-4">
+    <div className="min-h-full">
+      <section className="space-y-2 pb-4">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           <span>e&amp; STLC</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-[#1b59f8]">Test Planning</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-slate-800">Journey Graph</span>
         </div>
@@ -587,7 +609,7 @@ export function JourneyGraphView({ projectId }: Props) {
                   <Connector label="has" hidden={showGapsOnly} />
                   <GraphColumn title="Scenarios" hidden={showGapsOnly}>{scenarioBuckets.filter((bucket) => matchesGraph(bucket.kind)).slice(0, 6).map((bucket) => <GraphNode key={bucket.kind} type="scenario" title={bucket.kind[0].toUpperCase() + bucket.kind.slice(1)} detail={`${bucket.items.length} scenario${bucket.items.length === 1 ? "" : "s"}`} scenario={bucket.kind} onClick={() => { const scenario = bucket.items[0]; const gap = selectedJourney.gaps.find((item) => item.kind === `missing_${bucket.kind}_scenario`); if (scenario) selectNode("scenario", scenario.scenario_id, scenario.title, scenario); else if (gap) selectNode("gap", gap.id, gap.label, gap); }} />)}</GraphColumn>
                   <Connector label="validates" hidden={showGapsOnly} />
-                  <GraphColumn title="Test Cases" hidden={showGapsOnly}>{selectedJourney.testCases.filter((item) => matchesGraph(`${item.test_case_id} ${item.title}`)).slice(0, 5).map((item) => <GraphNode key={item.id} type="test_case" title={item.test_case_id} detail={item.title} onClick={() => selectNode("test_case", item.test_case_id, item.title, item)} />)}<MoreCount count={selectedJourney.testCases.length - 5} /></GraphColumn>
+                  <GraphColumn title="Test Cases" hidden={showGapsOnly}>{selectedJourney.testCases.filter((item) => matchesGraph(`${item.test_case_id} ${item.title}`)).slice(0, 5).map((item) => <GraphNode key={item.id} type="test_case" title={item.test_case_id} detail={item.title} classificationStatus={classificationsEnabled ? classificationByTestCaseId.get(item.id)?.candidate_status : undefined} onClick={() => selectNode("test_case", item.test_case_id, item.title, item)} />)}<MoreCount count={selectedJourney.testCases.length - 5} /></GraphColumn>
                   <Connector label="covers" hidden={showGapsOnly || !showApplicationLinks} />
                   <GraphColumn title="Applications" hidden={showGapsOnly || !showApplicationLinks}>{selectedJourney.applications.filter((item) => matchesGraph(`${item.key} ${item.name}`)).slice(0, 4).map((item) => <GraphNode key={item.key} type="application" title={item.name} detail={item.description || item.key} onClick={() => selectNode("application", item.key, item.name, item)} />)}{!selectedJourney.applications.length && <EmptyNode label="No mapped application" />}</GraphColumn>
                   <Connector label="requires evidence" hidden={showGapsOnly || !showEvidenceLinks} />
@@ -610,14 +632,22 @@ export function JourneyGraphView({ projectId }: Props) {
         </div>
       </section>
 
-      {inspectorOpen && <aside className="w-[338px] shrink-0 self-start rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-start justify-between border-b border-slate-100 p-4"><div><div className="flex items-center gap-2"><h2 className="text-sm font-extrabold text-slate-950">{selectedNode?.id || selectedJourney?.id || "Journey"}</h2><span className={cn("rounded-md border px-2 py-0.5 text-[9px] font-bold", selectedJourney?.gaps.length ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700")}>{selectedJourney?.gaps.length ? "Needs Review" : "Ready"}</span></div><p className="mt-2 text-xs font-bold text-slate-800">{selectedNode?.label || selectedJourney?.name || "No journey selected"}</p></div><button aria-label="Close inspector" onClick={() => setInspectorOpen(false)} className="text-slate-500"><X className="h-4 w-4" /></button></div>
-        <div className="grid grid-cols-5 border-b border-slate-100 px-2">{(["overview", "coverage", "applications", "evidence", "activity"] as InspectorTab[]).map((tab) => <button key={tab} onClick={() => setInspectorTab(tab)} className={cn("border-b-2 px-1 py-3 text-[9px] font-bold capitalize", inspectorTab === tab ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500")}>{tab}</button>)}</div>
-        <div className="max-h-[calc(100vh-190px)] space-y-3 overflow-y-auto p-3">
+      <Drawer open={inspectorOpen} onOpenChange={setInspectorOpen}>
+      <DrawerContent size="lg">
+        <DrawerHeader>
+          <div>
+            <div className="flex items-center gap-2"><DrawerTitle>{selectedNode?.id || selectedJourney?.id || "Journey"}</DrawerTitle><span className={cn("rounded-md border px-2 py-0.5 text-[9px] font-bold", selectedJourney?.gaps.length ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700")}>{selectedJourney?.gaps.length ? "Needs Review" : "Ready"}</span></div>
+            <p className="mt-2 text-xs font-bold text-slate-800">{selectedNode?.label || selectedJourney?.name || "No journey selected"}</p>
+          </div>
+          <button aria-label="Close inspector" onClick={() => setInspectorOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+        </DrawerHeader>
+        <div className="grid grid-cols-6 border-b border-slate-100 px-2 shrink-0">{(["overview", "coverage", "applications", "evidence", "automation", "activity"] as InspectorTab[]).map((tab) => <button key={tab} onClick={() => setInspectorTab(tab)} className={cn("border-b-2 px-1 py-3 text-[9px] font-bold capitalize", inspectorTab === tab ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500")}>{tab}</button>)}</div>
+        <DrawerBody className="space-y-3">
           {selectedJourney && inspectorTab === "overview" && <OverviewInspector journey={selectedJourney} selectedNode={selectedNode} reviews={reviews} />}
           {selectedJourney && inspectorTab === "coverage" && <CoverageInspector journey={selectedJourney} unlinkedCases={unlinkedCases} linkFormOpen={linkFormOpen} setLinkFormOpen={setLinkFormOpen} linkCaseId={linkCaseId} setLinkCaseId={setLinkCaseId} linkScenarioId={linkScenarioId} setLinkScenarioId={setLinkScenarioId} onLink={linkExistingCase} busy={busy} />}
           {selectedJourney && inspectorTab === "applications" && <ApplicationsInspector projectId={projectId} journey={selectedJourney} applications={applications} availableEnvironments={availableEnvironments} environment={environment} setEnvironment={setEnvironment} mappingFormOpen={mappingFormOpen} setMappingFormOpen={setMappingFormOpen} applicationId={applicationId} setApplicationId={setApplicationId} onResolve={resolveMapping} busy={busy} />}
           {selectedJourney && inspectorTab === "evidence" && <EvidenceInspector journey={selectedJourney} evidenceFormOpen={evidenceFormOpen} setEvidenceFormOpen={setEvidenceFormOpen} evidenceText={evidenceText} setEvidenceText={setEvidenceText} onSave={saveEvidenceRequirement} busy={busy} />}
+          {selectedJourney && inspectorTab === "automation" && <AutomationInspector journey={selectedJourney} selectedNode={selectedNode} classifications={classificationByTestCaseId} enabled={classificationsEnabled} />}
           {selectedJourney && inspectorTab === "activity" && <ActivityInspector journey={selectedJourney} reviews={reviews} approvals={approvals} />}
 
           {selectedJourney && <>
@@ -633,8 +663,9 @@ export function JourneyGraphView({ projectId }: Props) {
             {selectedJourney.gaps.length > 0 && <p className="-mt-2 text-center text-[9px] font-semibold text-red-600">Cannot proceed until blockers are resolved</p>}
           </>}
           <Panel title="Gap Summary (All Journeys)" action="View all" onAction={() => { setCoverageFilter("gaps"); setQuery(""); }}><div className="grid grid-cols-4 gap-2"><GapCount label="High" value={journeys.flatMap((item) => item.gaps).filter((gap) => gap.severity === "high").length} tone="red" /><GapCount label="Medium" value={journeys.flatMap((item) => item.gaps).filter((gap) => gap.severity === "medium").length} tone="amber" /><GapCount label="Low" value={journeys.flatMap((item) => item.gaps).filter((gap) => gap.severity === "low").length} tone="yellow" /><GapCount label="Info" value={journeys.flatMap((item) => item.gaps).filter((gap) => gap.severity === "info").length} tone="blue" /></div></Panel>
-        </div>
-      </aside>}
+        </DrawerBody>
+      </DrawerContent>
+      </Drawer>
     </div>
   );
 }
@@ -660,9 +691,24 @@ function GraphColumn({ title, children, hidden }: { title: string; children: Rea
 
 function Connector({ label, hidden }: { label: string; hidden?: boolean }) { return <div className={cn("pt-12 text-center", hidden && "opacity-15")}><p className="-ml-5 mb-1 w-16 text-[7px] font-semibold text-slate-500">{label}</p><div className="border-t border-dashed border-slate-400" /></div>; }
 
-function GraphNode({ type, title, detail, selected, scenario, onClick }: { type: NodeType; title: string; detail: string; selected?: boolean; scenario?: ScenarioKind; onClick: () => void }) {
+const CLASSIFICATION_DOT_TONE: Record<string, string> = {
+  RECOMMENDED: "bg-emerald-500",
+  APPROVED: "bg-emerald-500",
+  CONDITIONAL: "bg-amber-500",
+  DEFERRED: "bg-amber-500",
+  POLICY_STALE: "bg-amber-500",
+  RECLASSIFICATION_REQUIRED: "bg-amber-500",
+  NOT_RECOMMENDED: "bg-red-500",
+  BLOCKED: "bg-red-500",
+  NOT_EVALUATED: "bg-slate-300",
+};
+
+function GraphNode({ type, title, detail, selected, scenario, classificationStatus, onClick }: { type: NodeType; title: string; detail: string; selected?: boolean; scenario?: ScenarioKind; classificationStatus?: string; onClick: () => void }) {
   const scenarioTone = scenario === "negative" ? "border-red-300 bg-red-50" : scenario === "boundary" ? "border-amber-300 bg-amber-50" : scenario === "recovery" ? "border-purple-300 bg-purple-50" : scenario === "regression" ? "border-blue-300 bg-blue-50" : "";
-  return <button onClick={onClick} className={cn("w-full rounded-md border p-1.5 text-left transition hover:ring-2 hover:ring-blue-100", NODE_TONES[type], scenarioTone, selected && "ring-2 ring-blue-200")}><p className="truncate text-[8px] font-extrabold">{title}</p>{detail.split("\n").map((line, index) => <p key={`${line}-${index}`} className="line-clamp-1 text-[7px] font-semibold opacity-75">{line}</p>)}</button>;
+  return <button onClick={onClick} className={cn("relative w-full rounded-md border p-1.5 text-left transition hover:ring-2 hover:ring-blue-100", NODE_TONES[type], scenarioTone, selected && "ring-2 ring-blue-200")}>
+    {classificationStatus && <span title={`Automation classification: ${classificationStatus.replace(/_/g, " ")}`} className={cn("absolute right-1 top-1 h-1.5 w-1.5 rounded-full", CLASSIFICATION_DOT_TONE[classificationStatus] || "bg-slate-300")} />}
+    <p className="truncate pr-2 text-[8px] font-extrabold">{title}</p>{detail.split("\n").map((line, index) => <p key={`${line}-${index}`} className="line-clamp-1 text-[7px] font-semibold opacity-75">{line}</p>)}
+  </button>;
 }
 
 function EmptyNode({ label, tone = "slate" }: { label: string; tone?: "slate" | "red" }) { return <div className={cn("rounded-md border border-dashed p-2 text-center text-[8px] font-bold", tone === "red" ? "border-red-300 bg-red-50 text-red-600" : "border-slate-300 text-slate-400")}>{label}</div>; }
@@ -709,6 +755,47 @@ function ApplicationsInspector({ projectId, journey, applications, availableEnvi
 function EvidenceInspector({ journey, evidenceFormOpen, setEvidenceFormOpen, evidenceText, setEvidenceText, onSave, busy }: { journey: JourneyRecord; evidenceFormOpen: boolean; setEvidenceFormOpen: (value: boolean) => void; evidenceText: string; setEvidenceText: (value: string) => void; onSave: () => void; busy: string }) {
   const evidence = Array.from(new Set(journey.testCases.flatMap(evidenceRequirements)));
   return <><Panel title="Evidence Requirements"><div className="space-y-2">{evidence.map((item) => <div key={item} className="flex items-start gap-2 rounded-md border border-purple-100 bg-purple-50/50 p-2 text-[10px] font-semibold text-slate-700"><FileCheck2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-600" />{item}</div>)}{!evidence.length && <p className="text-[10px] font-semibold text-red-600">No evidence requirements are attached.</p>}</div></Panel><button aria-label="Open evidence requirement form" onClick={() => setEvidenceFormOpen(!evidenceFormOpen)} className="flex items-center gap-1 text-[10px] font-bold text-[#1b59f8]"><Plus className="h-3.5 w-3.5" />Add Evidence Requirement</button>{evidenceFormOpen && <Panel title="New Evidence Requirement"><textarea aria-label="Evidence requirement" value={evidenceText} onChange={(event) => setEvidenceText(event.target.value)} placeholder="Describe the required screenshot, log, trace or audit evidence." className="min-h-20 w-full rounded-md border border-slate-200 p-2 text-[10px] outline-none focus:border-blue-300" /><Button onClick={onSave} disabled={!evidenceText.trim() || busy === "evidence"} className="mt-2 h-9 w-full bg-[#1b59f8] text-[10px] font-bold text-white">Save Evidence Requirement</Button></Panel>}</>;
+}
+
+function AutomationInspector({ journey, selectedNode, classifications, enabled }: { journey: JourneyRecord; selectedNode: SelectedNode | null; classifications: Map<number, TestCaseAutomationClassification>; enabled: boolean }) {
+  if (!enabled) return <Panel title="Automation Classification"><p className="text-[10px] font-semibold text-slate-400">Automation classification is not enabled for this project.</p></Panel>;
+
+  const focusedCase = selectedNode?.type === "test_case" ? journey.testCases.find((item) => item.test_case_id === selectedNode.id) : undefined;
+  const focusedClassification = focusedCase ? classifications.get(focusedCase.id) : undefined;
+
+  if (focusedCase) {
+    if (!focusedClassification) {
+      return <Panel title={`Automation Classification — ${focusedCase.test_case_id}`}><p className="text-[10px] font-semibold text-slate-400">Not yet classified. Classify from Generated Test Cases.</p></Panel>;
+    }
+    return <>
+      <Panel title={`Automation Classification — ${focusedCase.test_case_id}`}>
+        <div className="grid grid-cols-2 gap-3"><InfoPair label="Candidate status" value={focusedClassification.candidate_status.replace(/_/g, " ")} /><InfoPair label="Primary adapter" value={focusedClassification.primary_adapter || "Not resolved"} /><InfoPair label="Discovery" value={focusedClassification.discovery_required ? (focusedClassification.recommended_discovery_mode || "Required") : "Not required"} /><InfoPair label="Policy version" value={focusedClassification.policy_version ? `v${focusedClassification.policy_version}` : "—"} /></div>
+      </Panel>
+      <Panel title="Mandatory / Optional Validators"><div className="flex flex-wrap gap-1.5">{focusedClassification.mandatory_validators.map((item) => <span key={`m-${item}`} className="rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[9px] font-bold text-red-700">{item}</span>)}{focusedClassification.optional_validators.map((item) => <span key={`o-${item}`} className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-bold text-blue-700">{item}</span>)}{!focusedClassification.mandatory_validators.length && !focusedClassification.optional_validators.length && <span className="text-[9px] font-semibold text-slate-400">None declared</span>}</div></Panel>
+      {focusedClassification.deterministic_blockers.length > 0 && <Panel title="Missing Capabilities / Blockers" tone="red"><ul className="list-disc space-y-1 pl-4 text-[9px] font-semibold text-red-700">{focusedClassification.deterministic_blockers.map((item, index) => <li key={`${item.code}-${index}`}>{item.label}: {item.detail} — remediate before discovery.</li>)}</ul></Panel>}
+      {focusedClassification.required_evidence.length > 0 && <Panel title="Required Evidence"><div className="flex flex-wrap gap-1.5">{focusedClassification.required_evidence.map((item) => <span key={item} className="rounded-md border border-purple-200 bg-purple-50 px-2 py-0.5 text-[9px] font-bold text-purple-700">{item}</span>)}</div></Panel>}
+    </>;
+  }
+
+  return <Panel title="Automation Classification — Journey Summary">
+    <div className="space-y-2">
+      {journey.testCases.filter((item) => item.automation_candidate).map((item) => {
+        const cls = classifications.get(item.id);
+        return <div key={item.id} className="flex items-center justify-between text-[10px] font-semibold">
+          <span className="text-slate-700">{item.test_case_id}</span>
+          <span className={cn("rounded-md px-2 py-0.5 font-bold", classificationBadgeTone(cls?.candidate_status))}>{cls ? cls.candidate_status.replace(/_/g, " ") : "Not evaluated"}</span>
+        </div>;
+      })}
+      {!journey.testCases.some((item) => item.automation_candidate) && <p className="text-[10px] font-semibold text-slate-400">No automation candidates in this journey.</p>}
+    </div>
+  </Panel>;
+}
+
+function classificationBadgeTone(status: string | undefined): string {
+  if (status === "RECOMMENDED" || status === "APPROVED") return "bg-emerald-50 text-emerald-700";
+  if (status === "CONDITIONAL" || status === "DEFERRED" || status === "POLICY_STALE" || status === "RECLASSIFICATION_REQUIRED") return "bg-amber-50 text-amber-700";
+  if (status === "NOT_RECOMMENDED" || status === "BLOCKED") return "bg-red-50 text-red-700";
+  return "bg-slate-100 text-slate-500";
 }
 
 function ActivityInspector({ journey, reviews, approvals }: { journey: JourneyRecord; reviews: ArtifactReview[]; approvals: ApprovalAction[] }) {
