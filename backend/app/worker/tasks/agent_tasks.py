@@ -321,12 +321,13 @@ def agent_role(agent_name: str) -> str:
     return spec.llm_role or role_for_scope(spec.module_scope)
 
 # Timeouts reflect real observed cost: LLM-only generators stay near the
-# original 120s default; multi-call graphs (URL/code analysis crawl multiple
-# pages/files) and the execution runner (spawns a real subprocess) get more
-# headroom. Reviewer/MCP-grounded agents added in later phases should be
-# registered here with their own timeout rather than relying on the default.
+# original 120s default, while multi-call agents get more headroom. Requirement
+# intake can make several sequential model calls for a single document and has
+# been observed exceeding 120s even when every call succeeds.
+# Reviewer/MCP-grounded agents added in later phases should be registered here
+# with their own timeout rather than relying on the default.
 AGENT_SPECS: dict[str, AgentSpec] = {
-    "requirement_intake": AgentSpec(timeout_seconds=120.0, module_scope="requirement"),
+    "requirement_intake": AgentSpec(timeout_seconds=300.0, module_scope="requirement"),
     "requirement_quality": AgentSpec(timeout_seconds=180.0, module_scope="requirement_review"),
     "requirement_enrichment": AgentSpec(timeout_seconds=120.0, module_scope="requirement"),
     "ui_image_analysis": AgentSpec(timeout_seconds=180.0, module_scope="requirement"),

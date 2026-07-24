@@ -556,6 +556,10 @@ def test_get_agent_spec_returns_registered_spec():
     assert spec.timeout_seconds == 300.0
     assert spec.module_scope == "execution"
 
+    intake_spec = agent_tasks.get_agent_spec("requirement_intake")
+    assert intake_spec.timeout_seconds == 300.0
+    assert intake_spec.module_scope == "requirement"
+
 
 def test_chain_on_success_enqueues_configured_next_agent(monkeypatch):
     run = AgentRun(id=1, project_id=7, triggered_by=3, agent_name="fake", status="pending")

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bell,
   Bot,
@@ -206,7 +206,7 @@ function ActionRow({ label, href, button }: { label: string; href: string; butto
   );
 }
 
-export default function ExecutiveOverviewPage() {
+function ExecutiveOverviewContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -562,5 +562,13 @@ export default function ExecutiveOverviewPage() {
         </Card>
       </section>
     </div>
+  );
+}
+
+export default function ExecutiveOverviewPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading command centre...</div>}>
+      <ExecutiveOverviewContent />
+    </Suspense>
   );
 }

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
-  FileText, Upload, Bot, CheckCircle, XCircle, RefreshCw, AlertTriangle, Star, Trash2, X, Plug, Search, Download, Plus, Settings, ChevronRight, Loader2, ShieldCheck, Clock, Globe, GitBranch, BarChart2, ChevronDown, ClipboardPaste, Braces, Layers3, CircleDot, Link2, Filter
+  FileText, Upload, Bot, CheckCircle, XCircle, RefreshCw, AlertTriangle, Star, Trash2, X, Plug, Search, Download, Plus, Settings, ChevronRight, Loader2, ShieldCheck, Clock, Globe, GitBranch, BarChart2, ChevronDown, ClipboardPaste, Braces, Layers3, CircleDot, Link2, Filter, Sparkles
 } from "lucide-react";
 import {
   requirementsApi,
@@ -2425,8 +2425,8 @@ function RequirementsContent() {
                       <h2 className="text-xs font-bold uppercase tracking-wide text-slate-900">Analysis Workflow</h2>
                       <p className="mt-0.5 text-[10px] font-semibold text-slate-400">Grounded analysis from intake-ready requirements through clarification and traceability readiness</p>
                     </div>
-                    <Button variant="outline" size="sm" disabled={agentRunning || analysisRows.length === 0} onClick={() => runQualityAgent(analysisRows.map((row) => row.requirement.id))} className="h-7 border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-650">
-                      <Bot className="mr-1 h-3.5 w-3.5" />Run Analysis
+                    <Button variant="ai" size="sm" disabled={agentRunning || analysisRows.length === 0} onClick={() => runQualityAgent(analysisRows.map((row) => row.requirement.id))} className="h-9 gap-2 px-3 text-xs font-bold">
+                      <Sparkles className="h-4 w-4" />Run Analysis
                     </Button>
                   </div>
                   <div className="grid gap-1.5 md:grid-cols-3 xl:grid-cols-6">
