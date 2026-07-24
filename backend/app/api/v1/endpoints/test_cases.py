@@ -3,7 +3,7 @@
 The legacy API exposes test cases under /test-plans/cases. These aliases provide
 the cleaner /test-cases contract while using the same service and RBAC rules.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from app.api.deps import (
     CurrentUser,
@@ -14,6 +14,11 @@ from app.api.deps import (
     require_project_access,
 )
 from app.core import audit_logger
+from app.schemas.test_case_import import (
+    TestCaseImportConfirmRequest,
+    TestCaseImportConfirmResponse,
+    TestCaseImportPreviewResponse,
+)
 from app.schemas.test_plan import (
     TestCaseBulkUpdateRequest,
     TestCaseBulkUpdateResult,
@@ -23,7 +28,7 @@ from app.schemas.test_plan import (
     TestCaseSummaryOut,
     TestCaseUpdate,
 )
-from app.services import test_plan_service
+from app.services import test_case_import_service, test_plan_service
 from app.services.rbac_service import APPROVE_TEST_CASES, SYNC_JIRA
 
 router = APIRouter()
@@ -127,6 +132,53 @@ async def bulk_update_test_cases(
         )
 
     return result
+
+
+@router.post("/projects/{project_id}/import/preview", response_model=TestCaseImportPreviewResponse, status_code=201)
+async def preview_test_case_import(
+    project_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+):
+    """Parse an uploaded CSV/XLSX against the UAT template's 22-column format
+    and return a preview (resolved taxonomy links, per-row errors/warnings)
+    without writing anything. Call .../import/confirm with the returned
+    preview_token to actually create the test cases."""
+    await require_permission(APPROVE_TEST_CASES, project_id, current_user, db)
+    preview = await test_case_import_service.create_import_preview(db, project_id, current_user.id, file)
+    await db.commit()
+    return TestCaseImportPreviewResponse(
+        preview_token=preview.preview_token,
+        filename=preview.filename,
+        file_type=preview.file_type,
+        detected_columns=preview.detected_columns_json or [],
+        row_count=preview.row_count,
+        preview_rows=(preview.resolved_rows_json or [])[:20],
+        validation_errors=preview.validation_errors_json or [],
+        validation_warnings=preview.validation_warnings_json or [],
+        can_import=preview.can_import,
+    )
+
+
+@router.post("/projects/{project_id}/import/confirm", response_model=TestCaseImportConfirmResponse, status_code=201)
+async def confirm_test_case_import(
+    project_id: int,
+    body: TestCaseImportConfirmRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    await require_permission(APPROVE_TEST_CASES, project_id, current_user, db)
+    created_ids, imported_count, skipped_count = await test_case_import_service.confirm_import(
+        db, project_id, current_user, body.preview_token
+    )
+    await db.commit()
+    return TestCaseImportConfirmResponse(
+        imported_count=imported_count,
+        skipped_count=skipped_count,
+        created_test_case_ids=created_ids,
+        validation_summary={"imported": imported_count, "skipped": skipped_count},
+    )
 
 
 @router.post("/{tc_id}/sync-jira", response_model=TestCaseJiraSyncOut, status_code=202)

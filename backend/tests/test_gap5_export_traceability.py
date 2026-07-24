@@ -76,6 +76,21 @@ def _tc(**kwargs):
     tc.external_tc_id = kwargs.get("external_tc_id", None)
     tc.external_tc_url = kwargs.get("external_tc_url", None)
     tc.created_at = kwargs.get("created_at", datetime(2025, 1, 1, 12, 0, 0))
+    # UAT template fields (migration 042). Mirrors the real TestCase model's
+    # resolved-name properties (e.g. domain_name falls back to telecom_domain
+    # when no taxonomy FK is set) — a bare MagicMock has no such property, so
+    # the fixture must reproduce that fallback explicitly.
+    tc.channel_name = kwargs.get("channel_name", None)
+    tc.domain_name = kwargs.get("domain_name", tc.telecom_domain)
+    tc.area_of_test_name = kwargs.get("area_of_test_name", None)
+    tc.product_name = kwargs.get("product_name", tc.product)
+    tc.sub_request_type_name = kwargs.get("sub_request_type_name", None)
+    tc.test_case_type_name = kwargs.get("test_case_type_name", tc.test_type)
+    tc.test_case_complexity_name = kwargs.get("test_case_complexity_name", None)
+    tc.test_case_objective = kwargs.get("test_case_objective", None)
+    tc.atc_test_case = kwargs.get("atc_test_case", None)
+    tc.is_critical = kwargs.get("is_critical", False)
+    tc.ppm_id = kwargs.get("ppm_id", None)
     return tc
 
 
@@ -293,7 +308,7 @@ async def test_export_csv_empty_project():
     assert isinstance(result, str)
     rows = list(csv.reader(io.StringIO(result)))
     assert len(rows) == 1  # header only
-    assert "TC ID" in rows[0]
+    assert "Test Case ID" in rows[0]
 
 
 @pytest.mark.anyio
@@ -461,12 +476,12 @@ async def test_excel_structure():
     result = await export_test_cases_excel(db, project_id=1)
     wb = load_workbook(io.BytesIO(result))
     ws = wb.active
-    # 24 columns as defined in export_service
-    assert ws.max_column == 24
+    # 22 UAT template columns + 13 platform-specific extras
+    assert ws.max_column == 35
     # Freeze pane should be A2
     assert ws.freeze_panes == "A2"
-    # Header row 1, first cell should be "TC ID"
-    assert ws.cell(row=1, column=1).value == "TC ID"
+    # Header row 1, first cell should be "ID" (UAT template's first column)
+    assert ws.cell(row=1, column=1).value == "ID"
 
 
 # ── EC-10: Chain — requirement with no downstream artifacts ──────────────────

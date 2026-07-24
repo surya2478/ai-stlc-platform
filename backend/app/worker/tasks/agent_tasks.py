@@ -67,6 +67,7 @@ from app.services.script_compiler import locator_policy
 from app.services import requirement_service
 from app.services.display_id_service import display_id, temporary_id
 from app.services.project_application_service import resolve_default_application, resolve_environment_url
+from app.services.taxonomy_resolver import TaxonomyResolver, resolve_generated_test_case_taxonomy
 from app.services.test_classification import classification_service
 from app.services.project_llm_settings_service import list_settings, resolve_project_llm_routes
 from app.services import traceability_service
@@ -1366,10 +1367,12 @@ async def _persist_agent_artifacts(
         # Environment tag before enqueueing (see trigger_test_case_agent in
         # test_plans.py) — carry it through onto the created test case.
         env_map = {s.get("id"): s.get("test_environment") for s in scenarios}
+        taxonomy_resolver = TaxonomyResolver(db)
         created = []
         for tc_data in data.get("test_cases", []):
             db_sc_id = scenario_id_map.get(tc_data.get("_source_scenario_id"))
             db_req_id = req_id_map.get(db_sc_id)
+            taxonomy_fields = await resolve_generated_test_case_taxonomy(taxonomy_resolver, tc_data)
             tc = TestCase(
                 project_id=run.project_id,
                 scenario_id=db_sc_id,
@@ -1389,6 +1392,7 @@ async def _persist_agent_artifacts(
                 test_phase=env_map.get(db_sc_id),
                 status="draft",
                 agent_run_id=run.id,
+                **taxonomy_fields,
             )
             db.add(tc)
             await db.flush()

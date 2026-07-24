@@ -35,11 +35,16 @@ Judge whether that set of test cases, TAKEN TOGETHER, adequately covers the scen
 do not judge each test case in isolation.
 
 Evaluate the test case set against these dimensions (score 1-5):
-1. STEP_QUALITY — steps are atomic, actionable, and unambiguous (not vague or merged)
+1. STEP_QUALITY — steps are atomic, actionable, and unambiguous (not vague or merged).
+   Also judge `objective` here: it must state the full intent of the test case, not
+   just repeat `title` verbatim or read as generic filler.
 2. DATA_READINESS — test data needed to execute each case is present and concrete
 3. EXPECTED_RESULT_CLARITY — expected results are specific and verifiable, not generic
 4. PHASE_FIT — test_type/priority/severity assignments fit the scenario's environment
-   and risk level
+   and risk level. Also judge `complexity` here: Low/Medium/High must be consistent
+   with the actual number of steps, preconditions, and branching in the test case —
+   flag a "Low" complexity case with heavy multi-step setup, or a "High" complexity
+   case that's really a single trivial check.
 5. COVERAGE — the scenario's positive path AND its negative/boundary aspects (per
    scenario_type and coverage_mapping) are each represented by at least one test case
 
@@ -120,11 +125,13 @@ class TestCaseReviewAgent(BaseReviewerAgent):
                     {
                         "test_case_id": tc.get("test_case_id"),
                         "title": tc.get("title"),
+                        "objective": tc.get("objective"),
                         "preconditions": tc.get("preconditions", []),
                         "steps": tc.get("steps", []),
                         "expected_result": tc.get("expected_result"),
                         "priority": tc.get("priority"),
                         "test_type": tc.get("test_type"),
+                        "complexity": tc.get("complexity"),
                     }
                     for tc in scenario_tcs
                 ],

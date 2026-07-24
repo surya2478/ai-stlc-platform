@@ -12,7 +12,7 @@ from app.api.deps import CurrentUser, DBSession, require_entity_permission, requ
 from app.config import get_settings
 from app.models.requirement import Requirement
 from app.models.artifact_lineage import ArtifactLineage
-from app.models.test_plan import TestPlan
+from app.models.test_plan import PlanTestCase, TestPlan
 from app.models.test_scenario import TestScenario
 from app.models.test_case import TestCase
 from app.models.project import Project
@@ -23,12 +23,14 @@ from app.schemas.test_plan import (
     AgentPlanTrigger, AgentCaseTrigger,
 )
 from app.schemas.common import MessageResponse
+from app.schemas.plan_enrollment import PlanTestCaseCreate, PlanTestCaseOut, PlanTestCaseReorder, PlanTestCaseUpdate
 from app.schemas.requirement import ApprovalRequest
-from app.services import agent_run_service, approval_service, artifact_review_service, test_plan_service, traceability_service
+from app.services import agent_run_service, approval_service, artifact_review_service, plan_enrollment_service, test_plan_service, traceability_service
 from app.services import project_application_service
 from app.services.agent_dispatch_service import enqueue_agent_run
 from app.services.display_id_service import display_id, temporary_id
 from app.services.rbac_service import APPROVE_TEST_CASES, APPROVE_TEST_PLANS, SYNC_JIRA
+from app.services.taxonomy_resolver import TaxonomyResolver, resolve_generated_test_case_taxonomy
 from app.agents.test_planning.planning_agent import TestPlanningAgent
 from app.agents.test_planning.scenario_agent import TestScenarioAgent
 from app.agents.test_planning.test_case_agent import TestCaseDevelopmentAgent
@@ -268,6 +270,83 @@ async def approve_test_plan(
     )
     await db.commit()
     return plan
+
+
+# ── Test Case Enrollment (plan-time Environment / Tester / Planned Sequence) ──
+
+def _enrollment_to_out(e: PlanTestCase) -> PlanTestCaseOut:
+    return PlanTestCaseOut(
+        id=e.id,
+        test_plan_id=e.test_plan_id,
+        test_case_id=e.test_case_id,
+        test_case_display_id=e.test_case.test_case_id if e.test_case else None,
+        test_case_title=e.test_case.title if e.test_case else None,
+        environment_id=e.environment_id,
+        environment_name=e.environment.name if e.environment else None,
+        tester_user_id=e.tester_user_id,
+        planned_execution_sequence=e.planned_execution_sequence,
+        order_index=e.order_index,
+        created_by=e.created_by,
+        created_at=e.created_at,
+        updated_at=e.updated_at,
+    )
+
+
+async def _get_plan_or_404(plan_id: int, db: DBSession, current_user, permission=APPROVE_TEST_PLANS) -> TestPlan:
+    plan = await test_plan_service.get_test_plan(db, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Test plan not found")
+    await require_entity_permission(plan, permission, current_user, db)
+    return plan
+
+
+@router.get("/{plan_id}/cases", response_model=list[PlanTestCaseOut])
+async def list_plan_test_cases(plan_id: int, db: DBSession, current_user: CurrentUser):
+    await _get_plan_or_404(plan_id, db, current_user)
+    enrollments = await plan_enrollment_service.list_enrollments(db, plan_id)
+    return [_enrollment_to_out(e) for e in enrollments]
+
+
+@router.post("/{plan_id}/cases", response_model=PlanTestCaseOut, status_code=201)
+async def enroll_plan_test_case(
+    plan_id: int, data: PlanTestCaseCreate, db: DBSession, current_user: CurrentUser
+):
+    plan = await _get_plan_or_404(plan_id, db, current_user)
+    enrollment = await plan_enrollment_service.enroll_test_case(db, plan, data, current_user.id)
+    await db.commit()
+    enrollments = await plan_enrollment_service.list_enrollments(db, plan_id)
+    return _enrollment_to_out(next(e for e in enrollments if e.id == enrollment.id))
+
+
+@router.patch("/{plan_id}/cases/{enrollment_id}", response_model=PlanTestCaseOut)
+async def update_plan_test_case(
+    plan_id: int, enrollment_id: int, data: PlanTestCaseUpdate, db: DBSession, current_user: CurrentUser
+):
+    await _get_plan_or_404(plan_id, db, current_user)
+    await plan_enrollment_service.update_enrollment(db, plan_id, enrollment_id, data)
+    await db.commit()
+    enrollments = await plan_enrollment_service.list_enrollments(db, plan_id)
+    return _enrollment_to_out(next(e for e in enrollments if e.id == enrollment_id))
+
+
+@router.post("/{plan_id}/cases/reorder", response_model=list[PlanTestCaseOut])
+async def reorder_plan_test_cases(
+    plan_id: int, data: PlanTestCaseReorder, db: DBSession, current_user: CurrentUser
+):
+    await _get_plan_or_404(plan_id, db, current_user)
+    enrollments = await plan_enrollment_service.reorder_enrollments(db, plan_id, data)
+    await db.commit()
+    return [_enrollment_to_out(e) for e in enrollments]
+
+
+@router.delete("/{plan_id}/cases/{enrollment_id}", response_model=MessageResponse)
+async def unenroll_plan_test_case(
+    plan_id: int, enrollment_id: int, db: DBSession, current_user: CurrentUser
+):
+    await _get_plan_or_404(plan_id, db, current_user)
+    await plan_enrollment_service.unenroll_test_case(db, plan_id, enrollment_id)
+    await db.commit()
+    return MessageResponse(message="Test case removed from plan")
 
 
 # ── Scenarios ─────────────────────────────────────────────────────────────────
@@ -877,6 +956,15 @@ async def trigger_test_case_agent(
         app_ctx = application_context_cache[req_id]
         sc["application_url"] = app_ctx["url"]
         sc["ui_analysis"] = app_ctx["ui_analysis"]
+        # Domain/Channel/Product/Area of Test are inherited deterministically
+        # from the project's configured application (see
+        # test_case_agent.py's _generate_test_cases, which stamps these onto
+        # each generated test case as _inherited_* — never LLM-generated).
+        sc["application_id"] = app_ctx["application_id"]
+        sc["domain"] = app_ctx["domain"]
+        sc["channel"] = app_ctx["channel"]
+        sc["product"] = app_ctx["product"]
+        sc["product_group"] = app_ctx["product_group"]
         # Carry the parent requirement's Environment tag + generation notes
         # into the test-case prompt (same fields injected on the scenario
         # side in trigger_scenario_agent above).
@@ -927,12 +1015,14 @@ async def trigger_test_case_agent(
     req_id_map = {s["id"]: s["_source_requirement_id"] for s in scenarios}
 
     created_ids = []
+    taxonomy_resolver = TaxonomyResolver(db)
     for i, tc_data in enumerate(agent_result.data.get("test_cases", [])):
         src_sc_id = tc_data.get("_source_scenario_id")
         db_sc_id = scenario_id_map.get(src_sc_id) if src_sc_id else None
         db_req_id = req_id_map.get(db_sc_id) if db_sc_id else None
 
         parent_req = requirements_by_id.get(db_req_id)
+        taxonomy_fields = await resolve_generated_test_case_taxonomy(taxonomy_resolver, tc_data)
         tc = TestCase(
             project_id=body.project_id,
             scenario_id=db_sc_id,
@@ -956,6 +1046,7 @@ async def trigger_test_case_agent(
             metadata_={"tags": tc_data.get("tags")} if tc_data.get("tags") else None,
             status="draft",
             agent_run_id=agent_run.id,
+            **taxonomy_fields,
         )
         db.add(tc)
         await db.flush()

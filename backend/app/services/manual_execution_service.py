@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
+from app.models.defect import DefectDraft
 from app.models.execution import ExecutionResult, ExecutionRun, ManualStepResult
 from app.models.test_case import TestCase
 from app.models.test_data import TestDataRecord
@@ -100,11 +101,28 @@ async def list_steps_for_result(
     return list(res.scalars().all())
 
 
+async def get_result_with_run(
+    db: AsyncSession, result_id: int
+) -> tuple[ExecutionResult, ExecutionRun] | None:
+    """Return the ExecutionResult plus its parent run, or None if missing."""
+    result = await db.get(ExecutionResult, result_id)
+    if not result:
+        return None
+    run = await db.get(ExecutionRun, result.execution_run_id)
+    if not run:
+        return None
+    return result, run
+
+
 async def load_manual_run(db: AsyncSession, run_id: int) -> ExecutionRun | None:
     res = await db.execute(
         select(ExecutionRun)
         .where(ExecutionRun.id == run_id)
-        .options(selectinload(ExecutionRun.results).selectinload(ExecutionResult.manual_steps))
+        .options(
+            selectinload(ExecutionRun.results).selectinload(ExecutionResult.manual_steps),
+            selectinload(ExecutionRun.results).selectinload(ExecutionResult.tested_by),
+            selectinload(ExecutionRun.results).selectinload(ExecutionResult.blocking_defect),
+        )
     )
     return res.scalar_one_or_none()
 
@@ -277,6 +295,36 @@ async def update_step(
         await db.flush()
 
     return step
+
+
+async def update_result_uat_fields(
+    db: AsyncSession,
+    result: ExecutionResult,
+    *,
+    user_id: int,
+    status: str | None,
+    tested_by_id: int | None,
+    sit_status: str | None,
+    blocking_defect_id: int | None,
+    other_reason: str | None,
+) -> ExecutionResult:
+    """Apply the UAT template's per-result tracking fields: Overall Status
+    outcome, Tested By (defaults to the acting user when not explicitly
+    provided), SIT status, and Blocking Snag ID / Other Reason."""
+    if status is not None:
+        result.status = status
+    result.tested_by_id = tested_by_id if tested_by_id is not None else user_id
+    if sit_status is not None:
+        result.sit_status = sit_status
+    if blocking_defect_id is not None:
+        defect = await db.get(DefectDraft, blocking_defect_id)
+        if defect is None or defect.project_id != result.project_id:
+            raise HTTPException(status_code=422, detail="Defect not found in this project")
+        result.blocking_defect_id = blocking_defect_id
+    if other_reason is not None:
+        result.other_reason = other_reason
+    await db.flush()
+    return result
 
 
 # ── Evidence ─────────────────────────────────────────────────────────────────

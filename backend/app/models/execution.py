@@ -108,14 +108,36 @@ class ExecutionResult(TimestampMixin, Base):
     logs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
+    # UAT template fields (migration 042). `status` above already carries the
+    # Overall Status outcome — extended with 'passed_with_snag' via
+    # ck_execution_results_status. These are per-result, not per-run,
+    # because a single run's ExecutionRun.triggered_by is the run initiator,
+    # not necessarily who executed this specific test case's UAT step.
+    tested_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    sit_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    blocking_defect_id: Mapped[int | None] = mapped_column(
+        ForeignKey("defect_drafts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    other_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     execution_run: Mapped["ExecutionRun"] = relationship("ExecutionRun", back_populates="results")
     test_case: Mapped["TestCase | None"] = relationship("TestCase", back_populates="execution_results")
+    tested_by: Mapped["User | None"] = relationship("User", foreign_keys=[tested_by_id])
+    blocking_defect: Mapped["DefectDraft | None"] = relationship("DefectDraft", foreign_keys=[blocking_defect_id])
     manual_steps: Mapped[list["ManualStepResult"]] = relationship(
         "ManualStepResult",
         back_populates="execution_result",
         cascade="all, delete-orphan",
         order_by="ManualStepResult.step_number",
     )
+
+    @property
+    def tested_by_name(self) -> str | None:
+        return self.tested_by.full_name if self.tested_by else None
+
+    @property
+    def blocking_defect_display_id(self) -> str | None:
+        return self.blocking_defect.defect_id if self.blocking_defect else None
 
 
 class ManualStepResult(TimestampMixin, Base):

@@ -131,6 +131,33 @@ class SubRequestType(_TaxonomyCommonMixin, Base):
     )
 
 
+class TestCaseType(_TaxonomyCommonMixin, Base):
+    """Controlled vocabulary for the UAT template's Test Case Type column."""
+
+    __tablename__ = "test_case_types"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "code", name="uq_test_case_types_org_code"),
+    )
+
+
+class TestCaseComplexity(_TaxonomyCommonMixin, Base):
+    """Controlled vocabulary for the UAT template's Test Case Complexity column."""
+
+    __tablename__ = "test_case_complexities"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "code", name="uq_test_case_complexities_org_code"),
+    )
+
+
+class Environment(_TaxonomyCommonMixin, Base):
+    """Controlled vocabulary for plan-time / execution-time Environment (SIT, QA, UAT, ...)."""
+
+    __tablename__ = "environments"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "code", name="uq_environments_org_code"),
+    )
+
+
 # ── Many-to-many edges (system↔product, sub-request-type↔{product,system}) ───
 #
 # Modelled as a single polymorphic table so future M:N edges can be added
@@ -185,5 +212,8 @@ __all__ = [
     "Product",
     "System",
     "SubRequestType",
+    "TestCaseType",
+    "TestCaseComplexity",
+    "Environment",
     "TaxonomyRelationship",
 ]

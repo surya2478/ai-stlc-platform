@@ -149,6 +149,29 @@ class TestCaseOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # UAT template fields (migration 042). `*_id` are the taxonomy-governed
+    # source of truth; `*_name` is the resolved display value (falls back to
+    # the legacy free-text column when no taxonomy FK is set — see the
+    # TestCase model's `channel_name`/`domain_name`/etc. properties).
+    channel_id: int | None = None
+    channel_name: str | None = None
+    domain_id: int | None = None
+    domain_name: str | None = None
+    area_of_test_id: int | None = None
+    area_of_test_name: str | None = None
+    product_id: int | None = None
+    product_name: str | None = None
+    sub_request_type_id: int | None = None
+    sub_request_type_name: str | None = None
+    test_case_type_id: int | None = None
+    test_case_type_name: str | None = None
+    test_case_complexity_id: int | None = None
+    test_case_complexity_name: str | None = None
+    test_case_objective: str | None = None
+    atc_test_case: str | None = None
+    is_critical: bool = False
+    ppm_id: str | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -195,6 +218,19 @@ class TestCaseUpdate(BaseModel):
     approval_status: str | None = None
     metadata_: dict[str, Any] | None = None
     comment: str | None = None
+
+    # UAT template fields (migration 042).
+    channel_id: int | None = None
+    domain_id: int | None = None
+    area_of_test_id: int | None = None
+    product_id: int | None = None
+    sub_request_type_id: int | None = None
+    test_case_type_id: int | None = None
+    test_case_complexity_id: int | None = None
+    test_case_objective: str | None = None
+    atc_test_case: str | None = None
+    is_critical: bool | None = None
+    ppm_id: str | None = None
 
 
 # ── Bulk update ───────────────────────────────────────────────────────────────

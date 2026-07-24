@@ -3,6 +3,7 @@ from collections import Counter
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.models.execution import ExecutionRun, ExecutionResult
 from app.models.test_case import TestCase
@@ -128,6 +129,7 @@ async def list_results(
     result = await db.execute(
         select(ExecutionResult)
         .where(ExecutionResult.execution_run_id == execution_run_id)
+        .options(selectinload(ExecutionResult.tested_by), selectinload(ExecutionResult.blocking_defect))
         .order_by(ExecutionResult.created_at.asc())
     )
     return list(result.scalars().all())

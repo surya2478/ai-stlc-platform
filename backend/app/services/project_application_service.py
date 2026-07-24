@@ -186,7 +186,24 @@ async def resolve_application_context(
     actual page the requirement came from) and its ui_analysis, then the
     project's default ProjectApplication URL, else nothing (callers must
     instruct the user to configure one).
+
+    Also resolves the project's default application's classification fields
+    (application_id, domain, channel, product, product_group) regardless of
+    which URL source was used — these are project/application-level facts,
+    not tied to a specific scraped page, and let callers deterministically
+    inherit Domain/Channel/Product/Area of Test onto generated test cases
+    instead of asking the LLM to guess them (there's no per-requirement
+    application link today, only a project default).
     """
+    application = await resolve_default_application(db, project_id)
+    app_fields = {
+        "application_id": application.id if application else None,
+        "domain": application.domain if application else None,
+        "channel": application.channel if application else None,
+        "product": application.product if application else None,
+        "product_group": application.product_group if application else None,
+    }
+
     metadata = (requirement.metadata_ or {}) if requirement else {}
     source_url = metadata.get("source_url")
     if isinstance(source_url, str) and source_url.strip():
@@ -194,9 +211,9 @@ async def resolve_application_context(
             "url": source_url.strip(),
             "source": "requirement",
             "ui_analysis": metadata.get("ui_analysis"),
+            **app_fields,
         }
 
-    application = await resolve_default_application(db, project_id)
     if application and application.environment_urls:
         # Text grounding doesn't need per-environment precision — pick any
         # configured URL; the execution-time chain (automation_tasks.py)
@@ -207,9 +224,9 @@ async def resolve_application_context(
             None,
         )
         if url:
-            return {"url": url, "source": "project_default", "ui_analysis": None}
+            return {"url": url, "source": "project_default", "ui_analysis": None, **app_fields}
 
-    return {"url": None, "source": None, "ui_analysis": None}
+    return {"url": None, "source": None, "ui_analysis": None, **app_fields}
 
 
 async def build_test_case_application_context(db: AsyncSession, tc: TestCase) -> dict:

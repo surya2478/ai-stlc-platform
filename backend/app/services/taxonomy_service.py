@@ -10,16 +10,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.taxonomy import (
+    Environment,
     Product,
     ProductGroup,
     QADomain,
     SubRequestType,
     System,
     TaxonomyRelationship,
+    TestCaseComplexity,
+    TestCaseType,
 )
 from app.models.user import User
 from app.schemas.taxonomy import (
     RELATION_ENDPOINTS,
+    EnvironmentCreate,
+    EnvironmentUpdate,
     ProductCreate,
     ProductGroupCreate,
     ProductGroupUpdate,
@@ -33,6 +38,10 @@ from app.schemas.taxonomy import (
     TaxonomyEntity,
     TaxonomyRelationshipCreate,
     TaxonomyTree,
+    TestCaseComplexityCreate,
+    TestCaseComplexityUpdate,
+    TestCaseTypeCreate,
+    TestCaseTypeUpdate,
 )
 from app.services.rbac_service import is_platform_admin
 
@@ -285,6 +294,39 @@ class SubRequestTypeService(_FlatTaxonomyService):
         return await self._update(entity_id, data, user)
 
 
+class TestCaseTypeService(_FlatTaxonomyService):
+    model = TestCaseType
+    label = "Test Case Type"
+
+    async def create(self, data: TestCaseTypeCreate, user: User) -> TestCaseType:
+        return await self._create(data, user)
+
+    async def update(self, entity_id: int, data: TestCaseTypeUpdate, user: User) -> TestCaseType:
+        return await self._update(entity_id, data, user)
+
+
+class TestCaseComplexityService(_FlatTaxonomyService):
+    model = TestCaseComplexity
+    label = "Test Case Complexity"
+
+    async def create(self, data: TestCaseComplexityCreate, user: User) -> TestCaseComplexity:
+        return await self._create(data, user)
+
+    async def update(self, entity_id: int, data: TestCaseComplexityUpdate, user: User) -> TestCaseComplexity:
+        return await self._update(entity_id, data, user)
+
+
+class EnvironmentService(_FlatTaxonomyService):
+    model = Environment
+    label = "Environment"
+
+    async def create(self, data: EnvironmentCreate, user: User) -> Environment:
+        return await self._create(data, user)
+
+    async def update(self, entity_id: int, data: EnvironmentUpdate, user: User) -> Environment:
+        return await self._update(entity_id, data, user)
+
+
 # ── Relationships (polymorphic M:N) ──────────────────────────────────────────
 
 
@@ -375,15 +417,33 @@ class TaxonomyTreeService:
         systems = (await self.db.execute(sys_stmt)).scalars().all()
         sub_request_types = (await self.db.execute(srt_stmt)).scalars().all()
 
+        tct_stmt = select(TestCaseType).order_by(TestCaseType.sort_order, TestCaseType.name)
+        tcc_stmt = select(TestCaseComplexity).order_by(TestCaseComplexity.sort_order, TestCaseComplexity.name)
+        env_stmt = select(Environment).order_by(Environment.sort_order, Environment.name)
+        if active_only:
+            tct_stmt = tct_stmt.where(TestCaseType.is_active.is_(True))
+            tcc_stmt = tcc_stmt.where(TestCaseComplexity.is_active.is_(True))
+            env_stmt = env_stmt.where(Environment.is_active.is_(True))
+
+        test_case_types = (await self.db.execute(tct_stmt)).scalars().all()
+        test_case_complexities = (await self.db.execute(tcc_stmt)).scalars().all()
+        environments = (await self.db.execute(env_stmt)).scalars().all()
+
         from app.schemas.taxonomy import (
             QADomainTreeNode,
             ProductGroupTreeNode,
             ProductTreeNode,
             SystemRead,
             SubRequestTypeRead,
+            TestCaseTypeRead,
+            TestCaseComplexityRead,
+            EnvironmentRead,
         )
 
         return TaxonomyTree(
+            test_case_types=[TestCaseTypeRead.model_validate(t) for t in test_case_types],
+            test_case_complexities=[TestCaseComplexityRead.model_validate(t) for t in test_case_complexities],
+            environments=[EnvironmentRead.model_validate(e) for e in environments],
             qa_domains=[
                 QADomainTreeNode(
                     id=d.id,
@@ -424,6 +484,9 @@ __all__ = [
     "ProductService",
     "SystemService",
     "SubRequestTypeService",
+    "TestCaseTypeService",
+    "TestCaseComplexityService",
+    "EnvironmentService",
     "TaxonomyRelationshipService",
     "TaxonomyTreeService",
     "require_taxonomy_admin",

@@ -213,6 +213,11 @@ class TestCaseLLMOutput(LLMBaseModel):
     scenario_title: str = ""
     test_case_id: str = ""
     title: str = "Untitled test case"
+    # Fuller UAT-template "Test Case Objective" — a one-sentence statement of
+    # intent, distinct from the short `title` above (e.g. title "Verify login
+    # rejects bad password", objective "Verify the login form rejects an
+    # incorrect password with a clear inline error and no session created").
+    objective: str = ""
     preconditions: list[str] = Field(default_factory=list)
     test_data: dict[str, Any] = Field(default_factory=dict)
     steps: list[TestCaseStepLLMOutput] = Field(default_factory=list)
@@ -220,7 +225,13 @@ class TestCaseLLMOutput(LLMBaseModel):
     bdd_scenario: str = ""
     priority: str = "Medium"
     severity: str = "Medium"
-    test_type: str = "functional"
+    # test_type: one of the UAT taxonomy's controlled values — see
+    # TESTCASE_SYSTEM in test_case_agent.py for the exact closed vocabulary
+    # (Positive | Negative | Edge / Boundary | Regression).
+    test_type: str = "Positive"
+    # complexity: Low | Medium | High — the UAT template's Test Case
+    # Complexity column; a same-weight-class judgment call as priority/severity.
+    complexity: str = "Medium"
     automation_candidate: bool = False
 
     _normalize_lists = field_validator("preconditions", mode="before")(_string_list)

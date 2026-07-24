@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.integrations.automation.framework_adapters import (
     assess_framework_fit,
@@ -1360,6 +1361,7 @@ async def execution_history(db: AsyncSession, *, test_case_id: int) -> list[Exec
     stmt = (
         select(ExecutionResult)
         .where(ExecutionResult.test_case_id == test_case_id)
+        .options(selectinload(ExecutionResult.tested_by), selectinload(ExecutionResult.blocking_defect))
         .order_by(ExecutionResult.created_at.desc())
         .limit(100)
     )

@@ -22,6 +22,7 @@ from app.schemas.execution import (
     AiRunStart,
     ExecutionDashboardResponse,
     ExecutionResultOut,
+    ExecutionResultUATUpdate,
     ExecutionRunOut,
     ManualResultDetail,
     ManualRunDetail,
@@ -635,6 +636,36 @@ async def update_manual_step(
     await db.commit()
     await db.refresh(updated)
     return ManualStepResultOut.model_validate(manual_execution_service.serialize_step(updated))
+
+
+@router.patch("/manual/results/{result_id}/uat", response_model=ExecutionResultOut)
+async def update_manual_result_uat_fields(
+    result_id: int,
+    body: ExecutionResultUATUpdate,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """UAT template tracking fields for a single ExecutionResult: Overall
+    Status outcome (incl. 'Passed with Snag'), Tested By, SIT status, and
+    Blocking Snag ID / Other Reason. Distinct from the step-level roll-up."""
+    bundle = await manual_execution_service.get_result_with_run(db, result_id)
+    if not bundle:
+        raise HTTPException(status_code=404, detail="Execution result not found")
+    result, run = bundle
+    await require_permission(EXECUTE_TESTS, run.project_id, current_user, db)
+    updated = await manual_execution_service.update_result_uat_fields(
+        db,
+        result,
+        user_id=current_user.id,
+        status=body.status,
+        tested_by_id=body.tested_by_id,
+        sit_status=body.sit_status,
+        blocking_defect_id=body.blocking_defect_id,
+        other_reason=body.other_reason,
+    )
+    await db.commit()
+    await db.refresh(updated, attribute_names=["tested_by", "blocking_defect"])
+    return ExecutionResultOut.model_validate(updated)
 
 
 @router.post("/manual/steps/{step_id}/evidence", response_model=ManualStepResultOut, status_code=201)

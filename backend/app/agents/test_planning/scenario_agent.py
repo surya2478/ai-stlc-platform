@@ -224,6 +224,14 @@ class TestScenarioAgent(BaseAgent):
         for e in errors:
             self.log("warning", "warning", e)
 
+        if not scenarios and errors:
+            return AgentRunResult(
+                success=False,
+                error="Scenario generation failed for all requirements. " + "; ".join(errors),
+                data={"scenarios": [], "count": 0},
+                logs=self._logs,
+            )
+
         return AgentRunResult(
             success=True,
             data={"scenarios": scenarios, "count": len(scenarios)},

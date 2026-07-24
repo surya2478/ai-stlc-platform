@@ -197,6 +197,51 @@ class SubRequestTypeRead(_TaxonomyBase):
     pass
 
 
+# ── Test Case Type ───────────────────────────────────────────────────────────
+
+
+class TestCaseTypeCreate(_TaxonomyCreateBase):
+    pass
+
+
+class TestCaseTypeUpdate(_TaxonomyUpdateBase):
+    pass
+
+
+class TestCaseTypeRead(_TaxonomyBase):
+    pass
+
+
+# ── Test Case Complexity ─────────────────────────────────────────────────────
+
+
+class TestCaseComplexityCreate(_TaxonomyCreateBase):
+    pass
+
+
+class TestCaseComplexityUpdate(_TaxonomyUpdateBase):
+    pass
+
+
+class TestCaseComplexityRead(_TaxonomyBase):
+    pass
+
+
+# ── Environment ───────────────────────────────────────────────────────────────
+
+
+class EnvironmentCreate(_TaxonomyCreateBase):
+    pass
+
+
+class EnvironmentUpdate(_TaxonomyUpdateBase):
+    pass
+
+
+class EnvironmentRead(_TaxonomyBase):
+    pass
+
+
 # ── Relationships ────────────────────────────────────────────────────────────
 
 
@@ -261,6 +306,9 @@ class TaxonomyTree(BaseModel):
     qa_domains: list[QADomainTreeNode] = Field(default_factory=list)
     systems: list[SystemRead] = Field(default_factory=list)
     sub_request_types: list[SubRequestTypeRead] = Field(default_factory=list)
+    test_case_types: list[TestCaseTypeRead] = Field(default_factory=list)
+    test_case_complexities: list[TestCaseComplexityRead] = Field(default_factory=list)
+    environments: list[EnvironmentRead] = Field(default_factory=list)
 
 
 __all__ = [
@@ -283,6 +331,15 @@ __all__ = [
     "SubRequestTypeCreate",
     "SubRequestTypeUpdate",
     "SubRequestTypeRead",
+    "TestCaseTypeCreate",
+    "TestCaseTypeUpdate",
+    "TestCaseTypeRead",
+    "TestCaseComplexityCreate",
+    "TestCaseComplexityUpdate",
+    "TestCaseComplexityRead",
+    "EnvironmentCreate",
+    "EnvironmentUpdate",
+    "EnvironmentRead",
     "TaxonomyRelationshipCreate",
     "TaxonomyRelationshipRead",
     "ProductTreeNode",

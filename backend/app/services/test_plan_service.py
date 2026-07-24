@@ -20,10 +20,32 @@ from app.models.test_case import TestCase, TestCaseHistory
 from app.models.project_application import ProjectApplication
 from app.models.requirement import Requirement
 from app.models.test_suite import TestSuite
+from app.models.taxonomy import (
+    Product,
+    ProductGroup,
+    QADomain,
+    SubRequestType,
+    System,
+    TestCaseComplexity,
+    TestCaseType,
+)
 from app.models.artifact_lineage import ArtifactLineage
 from app.models.agent import AgentRun
 from app.schemas.test_plan import TestPlanUpdate, TestCaseUpdate
 from app.worker.tasks import jira_tasks
+
+
+# Taxonomy FK fields on TestCase, each validated against its master table by
+# existence + is_active (org-wide master data, not project-scoped).
+_TAXONOMY_FK_FIELDS: dict[str, type] = {
+    "channel_id": System,
+    "domain_id": QADomain,
+    "area_of_test_id": ProductGroup,
+    "product_id": Product,
+    "sub_request_type_id": SubRequestType,
+    "test_case_type_id": TestCaseType,
+    "test_case_complexity_id": TestCaseComplexity,
+}
 
 
 STATUS_VALUES = {"draft", "pending_approval", "approved", "rejected", "automated"}
@@ -72,7 +94,31 @@ AUDITED_FIELDS = {
     "metadata_",
     "requirement_id",
     "scenario_id",
+    "channel_id",
+    "domain_id",
+    "area_of_test_id",
+    "product_id",
+    "sub_request_type_id",
+    "test_case_type_id",
+    "test_case_complexity_id",
+    "test_case_objective",
+    "atc_test_case",
+    "is_critical",
+    "ppm_id",
 }
+
+
+_TESTCASE_EAGER_LOADS = (
+    selectinload(TestCase.requirement),
+    selectinload(TestCase.test_suite),
+    selectinload(TestCase.channel),
+    selectinload(TestCase.domain),
+    selectinload(TestCase.area_of_test),
+    selectinload(TestCase.taxonomy_product),
+    selectinload(TestCase.taxonomy_sub_request_type),
+    selectinload(TestCase.taxonomy_test_case_type),
+    selectinload(TestCase.taxonomy_test_case_complexity),
+)
 
 
 # ── Test Plan ─────────────────────────────────────────────────────────────────
@@ -185,7 +231,7 @@ async def list_test_cases(
 ) -> list[TestCase]:
     stmt = (
         select(TestCase)
-        .options(selectinload(TestCase.requirement), selectinload(TestCase.test_suite))
+        .options(*_TESTCASE_EAGER_LOADS)
         .where(TestCase.project_id == project_id)
         .order_by(TestCase.created_at.desc())
     )
@@ -208,7 +254,7 @@ async def list_test_cases(
 async def get_test_case(db: AsyncSession, tc_id: int) -> TestCase | None:
     result = await db.execute(
         select(TestCase)
-        .options(selectinload(TestCase.requirement), selectinload(TestCase.test_suite))
+        .options(*_TESTCASE_EAGER_LOADS)
         .where(TestCase.id == tc_id)
     )
     return result.scalar_one_or_none()
@@ -323,6 +369,12 @@ async def _validate_test_case_update(db: AsyncSession, tc: TestCase, data: dict[
         requested_requirement_id = data.get("requirement_id", tc.requirement_id)
         if scenario.requirement_id is not None and requested_requirement_id != scenario.requirement_id:
             raise HTTPException(status_code=422, detail="Scenario is not linked to the selected requirement")
+
+    for field, model in _TAXONOMY_FK_FIELDS.items():
+        if field in data and data[field] is not None:
+            entity = await db.get(model, data[field])
+            if entity is None or not entity.is_active:
+                raise HTTPException(status_code=422, detail=f"Invalid or inactive {field}")
 
     mode = data.get("execution_mode", tc.execution_mode)
     eligible = data.get("automation_eligible", tc.automation_eligible)

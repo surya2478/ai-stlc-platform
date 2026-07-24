@@ -7,6 +7,15 @@ from pydantic import BaseModel, Field, model_validator
 
 ManualStepStatus = Literal["not_run", "in_progress", "passed", "failed", "blocked", "skipped"]
 
+# UAT template "Overall Status" outcome vocabulary — matches
+# ck_execution_results_status (migration 042 added 'passed_with_snag').
+OverallStatus = Literal["pending", "pass", "fail", "skip", "error", "blocked", "not_run", "running", "passed_with_snag"]
+
+# Assumption flagged in the implementation plan: no existing SIT concept on
+# ExecutionResult, so this is a small Python-validated set rather than a
+# migrated enum. Adjust here (no new migration needed) if QA's real usage differs.
+SitStatus = Literal["not_started", "passed", "failed", "n_a"]
+
 
 class ExecutionResultOut(BaseModel):
     id: int
@@ -34,10 +43,28 @@ class ExecutionResultOut(BaseModel):
     raw_result_json: dict[str, Any] | None = None
     logs: list | None = None
     metadata_: dict[str, Any] | None = None
+    # UAT template fields (migration 042).
+    tested_by_id: int | None = None
+    tested_by_name: str | None = None
+    sit_status: str | None = None
+    blocking_defect_id: int | None = None
+    blocking_defect_display_id: str | None = None
+    other_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ExecutionResultUATUpdate(BaseModel):
+    """Plan-confirmed per-result UAT tracking fields: Overall Status outcome,
+    Tested By, SIT status, and Blocking Snag ID / Other Reason. Distinct from
+    ManualStepUpdate, which only tracks the per-step roll-up."""
+    status: OverallStatus | None = None
+    tested_by_id: int | None = None
+    sit_status: SitStatus | None = None
+    blocking_defect_id: int | None = None
+    other_reason: str | None = Field(default=None, max_length=2000)
 
 
 class ExecutionRunOut(BaseModel):

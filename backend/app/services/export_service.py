@@ -27,11 +27,13 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.defect import DefectDraft
 from app.models.execution import ExecutionResult, ExecutionRun
 from app.models.requirement import Requirement
 from app.models.test_case import TestCase
+from app.models.test_plan import PlanTestCase
 from app.models.test_scenario import TestScenario
 
 # ── Excel cell helpers ──────────────────────────────────────────────────────
@@ -94,11 +96,160 @@ async def _fetch_all_test_cases(
     include_drafts: bool = False,
 ) -> list[TestCase]:
     """Return all test cases for *project_id*, optionally including drafts."""
-    stmt = select(TestCase).where(TestCase.project_id == project_id)
+    stmt = (
+        select(TestCase)
+        .where(TestCase.project_id == project_id)
+        .options(
+            selectinload(TestCase.channel),
+            selectinload(TestCase.domain),
+            selectinload(TestCase.area_of_test),
+            selectinload(TestCase.taxonomy_product),
+            selectinload(TestCase.taxonomy_sub_request_type),
+            selectinload(TestCase.taxonomy_test_case_type),
+            selectinload(TestCase.taxonomy_test_case_complexity),
+        )
+    )
     if not include_drafts:
         stmt = stmt.where(TestCase.status == "approved")
     stmt = stmt.order_by(TestCase.id)
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def _fetch_latest_execution_map(
+    db: AsyncSession, tc_ids: list[int]
+) -> dict[int, ExecutionResult]:
+    """Return {test_case_id: most-recent ExecutionResult} for the UAT
+    template's Overall Status / Tested By / SIT / Blocking Snag columns —
+    these are execution-level facts (see the implementation plan's
+    confirmed decision), resolved here for display rather than stored
+    redundantly on TestCase."""
+    if not tc_ids:
+        return {}
+    stmt = (
+        select(ExecutionResult)
+        .where(ExecutionResult.test_case_id.in_(tc_ids))
+        .options(
+            selectinload(ExecutionResult.tested_by),
+            selectinload(ExecutionResult.blocking_defect),
+        )
+        .order_by(ExecutionResult.test_case_id, ExecutionResult.created_at.desc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    latest: dict[int, ExecutionResult] = {}
+    for er in rows:
+        if er.test_case_id is not None and er.test_case_id not in latest:
+            latest[er.test_case_id] = er
+    return latest
+
+
+async def _fetch_plan_enrollment_map(
+    db: AsyncSession, tc_ids: list[int]
+) -> dict[int, PlanTestCase]:
+    """Return {test_case_id: most-recent plan enrollment} for the UAT
+    template's plan-time Environment / Planned Execution Sequence columns."""
+    if not tc_ids:
+        return {}
+    stmt = (
+        select(PlanTestCase)
+        .where(PlanTestCase.test_case_id.in_(tc_ids))
+        .options(selectinload(PlanTestCase.environment))
+        .order_by(PlanTestCase.test_case_id, PlanTestCase.id.desc())
+    )
+    rows = (await db.execute(stmt)).scalars().all()
+    latest: dict[int, PlanTestCase] = {}
+    for enrollment in rows:
+        if enrollment.test_case_id not in latest:
+            latest[enrollment.test_case_id] = enrollment
+    return latest
+
+
+_OVERALL_STATUS_DISPLAY = {
+    "pending": "Not Executed",
+    "not_run": "Not Executed",
+    "running": "In Progress",
+    "pass": "Passed",
+    "passed_with_snag": "Passed with Snag",
+    "fail": "Failed",
+    "error": "Failed",
+    "skip": "Skipped",
+    "blocked": "Blocked",
+}
+
+
+def _template_row(
+    tc: TestCase,
+    latest_result: ExecutionResult | None,
+    enrollment: PlanTestCase | None,
+) -> list[Any]:
+    """Build one row in the UAT template's 22-column order (docs/autonomous-
+    automation-lab/test-case_template.xlsx). Values are raw (str/bool/None);
+    callers coerce for their target format (Excel cell vs CSV field)."""
+    overall_status = _OVERALL_STATUS_DISPLAY.get(
+        (latest_result.status if latest_result else None) or "not_run", "Not Executed"
+    )
+    return [
+        tc.id,
+        tc.domain_name,
+        tc.channel_name,
+        tc.product_name,
+        tc.area_of_test_name,
+        tc.test_case_id,
+        enrollment.environment.name if enrollment and enrollment.environment else None,
+        tc.sub_request_type_name,
+        tc.test_case_objective or tc.title,
+        _list_to_text(tc.preconditions),
+        _steps_to_text(tc.steps),
+        tc.expected_result,
+        tc.atc_test_case,
+        tc.test_case_type_name,
+        tc.test_case_complexity_name,
+        latest_result.tested_by_name if latest_result else None,
+        tc.jira_issue_key or tc.ppm_id,
+        overall_status,
+        (latest_result.blocking_defect_display_id if latest_result else None)
+        or (latest_result.other_reason if latest_result else None),
+        latest_result.sit_status if latest_result else None,
+        enrollment.planned_execution_sequence if enrollment else None,
+        tc.is_critical,
+    ]
+
+
+_TEMPLATE_HEADERS = [
+    "ID", "Domain", "Channel", "Product", "Area of Test", "Test Case ID",
+    "Environment", "Sub Request Type", "Test Case Objective", "Pre-Requisites",
+    "Test Steps", "Expected Results", "ATC Test Case", "Test Case Type",
+    "Test Case Complexity", "Tested By", "JIRA ID or PPM", "Overall Status",
+    "Blocking Snag ID / Other Reason", "SIT", "Planned Execution Sequence",
+    "Critical TC Mapping",
+]
+
+# Platform-specific columns kept after the 22 template columns so existing
+# consumers of these fields (traceability lineage, legacy automation
+# metadata) don't silently lose data.
+_PLATFORM_EXTRA_HEADERS = [
+    "Priority", "Severity", "BDD Scenario", "Approval Status",
+    "Requirement ID", "Requirement Title", "Scenario ID", "Scenario Title",
+    "Test Phase", "Product Group", "External TC ID", "External TC URL",
+    "Created At",
+]
+
+
+def _platform_extra_row(tc: TestCase, req: Requirement | None, scen: TestScenario | None) -> list[Any]:
+    return [
+        tc.priority,
+        tc.severity,
+        tc.bdd_scenario,
+        getattr(tc, "approval_status", None),
+        req.requirement_id if req else None,
+        req.title if req else None,
+        scen.scenario_id if scen else None,
+        scen.title if scen else None,
+        tc.test_phase,
+        tc.product_group,
+        tc.external_tc_id,
+        tc.external_tc_url,
+        tc.created_at.isoformat() if tc.created_at else None,
+    ]
 
 
 async def _fetch_requirement_map(
@@ -121,12 +272,23 @@ async def _fetch_scenario_map(
 
 
 # ── Excel styling helpers ───────────────────────────────────────────────────
+#
+# Matches the source workbook's look (docs/autonomous-automation-lab/
+# test-case_template.xlsx, sheet "UAT Test Cases"): header row alternates
+# between bright green (#92D050) and dusty rose (#D99694, the workbook's
+# theme accent2 tinted 40%) per column, bold white Calibri 12, wrapped text.
+# Data rows: Calibri 11, white background, thin border, wrapped text.
 
-def _make_header_style():
-    """Return openpyxl styling objects — imported lazily to avoid hard dep."""
+_TEMPLATE_HEADER_COLORS = ("92D050", "D99694")
+
+
+def _make_header_style(col_index: int = 1):
+    """Return openpyxl styling objects — imported lazily to avoid hard dep.
+    `col_index` (1-based) picks which of the two alternating header colors."""
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=10)
-    header_fill = PatternFill(fill_type="solid", fgColor="1B59F8")
+    header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=12)
+    fill_color = _TEMPLATE_HEADER_COLORS[(col_index - 1) % 2]
+    header_fill = PatternFill(fill_type="solid", fgColor=fill_color)
     header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
     thin = Side(border_style="thin", color="D0D7DE")
     header_border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -134,12 +296,8 @@ def _make_header_style():
 
 
 def _style_header_row(ws, row: int, num_cols: int) -> None:
-    from openpyxl.styles import Alignment, Border, Side
-    header_font, header_fill, header_align, header_border = _make_header_style()
-    thin = Side(border_style="thin", color="D0D7DE")
-    cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    cell_align = Alignment(vertical="top", wrap_text=True)
     for col in range(1, num_cols + 1):
+        header_font, header_fill, header_align, header_border = _make_header_style(col)
         cell = ws.cell(row=row, column=col)
         cell.font = header_font
         cell.fill = header_fill
@@ -148,12 +306,16 @@ def _style_header_row(ws, row: int, num_cols: int) -> None:
 
 
 def _style_data_row(ws, row: int, num_cols: int) -> None:
-    from openpyxl.styles import Alignment, Border, Side
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    data_font = Font(name="Calibri", size=11)
+    data_fill = PatternFill(fill_type="solid", fgColor="FFFFFF")
     thin = Side(border_style="thin", color="D0D7DE")
     cell_border = Border(left=thin, right=thin, top=thin, bottom=thin)
     cell_align = Alignment(vertical="top", wrap_text=True)
     for col in range(1, num_cols + 1):
         cell = ws.cell(row=row, column=col)
+        cell.font = data_font
+        cell.fill = data_fill
         cell.alignment = cell_align
         cell.border = cell_border
 
@@ -166,13 +328,9 @@ async def export_test_cases_excel(
     include_drafts: bool = False,
 ) -> bytes:
     """
-    Return an Excel workbook (bytes) with one row per test case.
-
-    Columns:
-      TC ID | Title | Test Type | Priority | Severity | Automation | BDD | Steps |
-      Preconditions | Expected Result | Status | Req ID | Req Title | Scenario ID |
-      Scenario Title | Telecom Domain | Test Phase | Product Group | Product |
-      Jira Key | External TC ID | External URL | Created At
+    Return an Excel workbook (bytes) with one row per test case, columns
+    matching the UAT template's 22-field order (docs/autonomous-automation-
+    lab/test-case_template.xlsx) followed by platform-specific extras.
     """
     from openpyxl import Workbook
     from openpyxl.utils import get_column_letter
@@ -180,23 +338,17 @@ async def export_test_cases_excel(
     test_cases = await _fetch_all_test_cases(db, project_id, include_drafts)
     req_map = await _fetch_requirement_map(db, project_id)
     scen_map = await _fetch_scenario_map(db, project_id)
+    tc_ids = [tc.id for tc in test_cases]
+    latest_result_map = await _fetch_latest_execution_map(db, tc_ids)
+    enrollment_map = await _fetch_plan_enrollment_map(db, tc_ids)
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Test Cases"
 
-    headers = [
-        "TC ID", "Title", "Test Type", "Priority", "Severity",
-        "Automation Candidate", "BDD Scenario", "Steps", "Preconditions",
-        "Expected Result", "Status", "Approval Status",
-        "Requirement ID", "Requirement Title",
-        "Scenario ID", "Scenario Title",
-        "Telecom Domain", "Test Phase", "Product Group", "Product",
-        "Jira Issue Key", "External TC ID", "External TC URL",
-        "Created At",
-    ]
+    headers = _TEMPLATE_HEADERS + _PLATFORM_EXTRA_HEADERS
 
-    ws.row_dimensions[1].height = 32
+    ws.row_dimensions[1].height = 30
     for col_idx, header in enumerate(headers, 1):
         ws.cell(row=1, column=col_idx, value=header)
     _style_header_row(ws, 1, len(headers))
@@ -204,49 +356,26 @@ async def export_test_cases_excel(
     for row_idx, tc in enumerate(test_cases, 2):
         req = req_map.get(tc.requirement_id) if tc.requirement_id else None
         scen = scen_map.get(tc.scenario_id) if tc.scenario_id else None
+        latest_result = latest_result_map.get(tc.id)
+        enrollment = enrollment_map.get(tc.id)
 
-        row_data = [
-            _safe_str(tc.test_case_id),
-            _safe_str(tc.title),
-            _safe_str(tc.test_type or "functional"),
-            _safe_str(tc.priority),
-            _safe_str(tc.severity),
-            "Yes" if tc.automation_candidate else "No",
-            _safe_str(tc.bdd_scenario),
-            _safe_str(_steps_to_text(tc.steps)),
-            _safe_str(_list_to_text(tc.preconditions)),
-            _safe_str(tc.expected_result),
-            _safe_str(tc.status),
-            _safe_str(getattr(tc, "approval_status", "")),
-            _safe_str(req.requirement_id if req else ""),
-            _safe_str(req.title if req else ""),
-            _safe_str(scen.scenario_id if scen else ""),
-            _safe_str(scen.title if scen else ""),
-            _safe_str(tc.telecom_domain),
-            _safe_str(tc.test_phase),
-            _safe_str(tc.product_group),
-            _safe_str(tc.product),
-            _safe_str(tc.jira_issue_key),
-            _safe_str(tc.external_tc_id),
-            _safe_str(tc.external_tc_url),
-            _safe_str(tc.created_at.isoformat() if tc.created_at else ""),
+        row_data = [_safe_str(v) for v in _template_row(tc, latest_result, enrollment)] + [
+            _safe_str(v) for v in _platform_extra_row(tc, req, scen)
         ]
 
         for col_idx, value in enumerate(row_data, 1):
             ws.cell(row=row_idx, column=col_idx, value=value)
         _style_data_row(ws, row_idx, len(headers))
 
-    # Set column widths
+    # Set column widths — 22 template columns first, then platform extras.
     col_widths = [
-        14, 50, 16, 12, 12,
-        18, 60, 60, 40,
-        40, 14, 16,
-        16, 40,
-        14, 40,
-        18, 16, 18, 16,
-        16, 20, 40,
-        22,
-    ]
+        8, 16, 16, 18, 18, 24,
+        14, 18, 40, 36,
+        50, 40, 18, 16,
+        18, 18, 18, 16,
+        28, 12, 20,
+        14,
+    ] + [12, 12, 40, 16, 16, 40, 14, 40, 14, 18, 20, 40, 22]
     for idx, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(idx)].width = width
 
@@ -263,52 +392,30 @@ async def export_test_cases_csv(
     project_id: int,
     include_drafts: bool = False,
 ) -> str:
-    """Return a plain CSV string of all test cases."""
+    """Return a plain CSV string of all test cases, columns matching the
+    UAT template's 22-field order followed by platform-specific extras."""
     test_cases = await _fetch_all_test_cases(db, project_id, include_drafts)
     req_map = await _fetch_requirement_map(db, project_id)
     scen_map = await _fetch_scenario_map(db, project_id)
+    tc_ids = [tc.id for tc in test_cases]
+    latest_result_map = await _fetch_latest_execution_map(db, tc_ids)
+    enrollment_map = await _fetch_plan_enrollment_map(db, tc_ids)
 
     buf = io.StringIO()
     writer = csv.writer(buf, dialect="excel")
-
-    writer.writerow([
-        "TC ID", "Title", "Test Type", "Priority", "Severity",
-        "Automation Candidate", "BDD Scenario", "Steps", "Preconditions",
-        "Expected Result", "Status", "Approval Status",
-        "Requirement ID", "Requirement Title", "Scenario ID", "Scenario Title",
-        "Telecom Domain", "Test Phase", "Product Group", "Product",
-        "Jira Issue Key", "External TC ID", "External TC URL", "Created At",
-    ])
+    writer.writerow(_TEMPLATE_HEADERS + _PLATFORM_EXTRA_HEADERS)
 
     for tc in test_cases:
         req = req_map.get(tc.requirement_id) if tc.requirement_id else None
         scen = scen_map.get(tc.scenario_id) if tc.scenario_id else None
-        writer.writerow([
-            tc.test_case_id or "",
-            tc.title or "",
-            tc.test_type or "functional",
-            tc.priority or "",
-            tc.severity or "",
-            "Yes" if tc.automation_candidate else "No",
-            tc.bdd_scenario or "",
-            _steps_to_text(tc.steps),
-            _list_to_text(tc.preconditions),
-            tc.expected_result or "",
-            tc.status or "",
-            getattr(tc, "approval_status", "") or "",
-            req.requirement_id if req else "",
-            req.title if req else "",
-            scen.scenario_id if scen else "",
-            scen.title if scen else "",
-            tc.telecom_domain or "",
-            tc.test_phase or "",
-            tc.product_group or "",
-            tc.product or "",
-            tc.jira_issue_key or "",
-            tc.external_tc_id or "",
-            tc.external_tc_url or "",
-            tc.created_at.isoformat() if tc.created_at else "",
-        ])
+        latest_result = latest_result_map.get(tc.id)
+        enrollment = enrollment_map.get(tc.id)
+
+        row = [
+            ("Yes" if v else "No") if isinstance(v, bool) else (v if v is not None else "")
+            for v in _template_row(tc, latest_result, enrollment) + _platform_extra_row(tc, req, scen)
+        ]
+        writer.writerow(row)
 
     return buf.getvalue()
 

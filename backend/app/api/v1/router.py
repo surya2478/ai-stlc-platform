@@ -9,7 +9,7 @@ from app.api.v1.endpoints import (
     test_data, automation, execution, defects,
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
     applications, reviews, playwright_studio, mcp_connections, video,
-    grounded_poc, automation_classification, discovery,
+    grounded_poc, automation_classification, discovery, taxonomy,
 )
 
 api_router = APIRouter()
@@ -41,6 +41,7 @@ api_router.include_router(reviews.router, prefix="/reviews", tags=["Reviews"])
 api_router.include_router(playwright_studio.router, prefix="/playwright-studio", tags=["Playwright AI Studio"])
 api_router.include_router(mcp_connections.router, prefix="/mcp-connections", tags=["MCP Connections"])
 api_router.include_router(video.router, prefix="/video", tags=["Video"])
+api_router.include_router(taxonomy.router, prefix="/taxonomy", tags=["Taxonomy"])
 # Grounded Automation PoC — isolated namespace; every route (except
 # /status) 404s unless GROUNDED_AUTOMATION_ENABLED=true.
 api_router.include_router(
