@@ -98,3 +98,30 @@
     transform: translateX(310%);
   }
 }
+
+/* Authenticated workspace typography — aligned with Executive Overview. */
+.app-content {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.app-content h1 {
+  font-size: 1.5rem !important;
+  line-height: 2rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.025em !important;
+}
+
+.app-content h2,
+.app-content h3 {
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+  font-weight: 600 !important;
+  letter-spacing: normal !important;
+}
+
+.app-content h1 + p {
+  font-size: 0.875rem !important;
+  line-height: 1.25rem !important;
+  font-weight: 400 !important;
+}

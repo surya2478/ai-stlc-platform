@@ -99,7 +99,7 @@ export function AIProcessingModal({
           className="fixed left-1/2 top-1/2 z-[91] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white shadow-2xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 motion-reduce:animate-none"
         >
           <div className="p-6">
-            <div className="flex items-start justify-between gap-4">
+            <div className="relative flex justify-center">
               <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border", toneClasses[presentation.tone])}>
                 {active ? (
                   <div className="relative">
@@ -111,22 +111,24 @@ export function AIProcessingModal({
                 )}
               </div>
               {!active && (
-                <button aria-label="Close AI processing" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                <button aria-label="Close AI processing" onClick={onClose} className="absolute right-0 top-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
                   <X className="h-4 w-4" />
                 </button>
               )}
             </div>
 
-            <p className={cn("mt-5 text-[10px] font-extrabold uppercase tracking-[0.18em]", labelToneClasses[presentation.tone])}>
-              {presentation.label}
-            </p>
-            <DialogPrimitive.Title className="mt-1 text-xl font-extrabold tracking-tight text-slate-950">
-              {active ? "AI is Working" : presentation.title}
-            </DialogPrimitive.Title>
-            <p className="mt-2 text-sm font-bold text-slate-800">{context.title}</p>
-            <DialogPrimitive.Description id="ai-processing-description" className="mt-2 text-xs font-medium leading-5 text-slate-500">
-              {message}
-            </DialogPrimitive.Description>
+            <div className="text-center">
+              <p className={cn("mt-5 text-[10px] font-extrabold uppercase tracking-[0.18em]", labelToneClasses[presentation.tone])}>
+                {presentation.label}
+              </p>
+              <DialogPrimitive.Title className="mt-1 text-xl font-extrabold tracking-tight text-slate-950">
+                {active ? "AI is Working" : presentation.title}
+              </DialogPrimitive.Title>
+              <p className="mt-2 text-sm font-bold text-slate-800">{context.title}</p>
+              <DialogPrimitive.Description id="ai-processing-description" className="mt-2 text-xs font-medium leading-5 text-slate-500">
+                {message}
+              </DialogPrimitive.Description>
+            </div>
 
             {active && (
               <div className="mt-5 overflow-hidden rounded-xl border border-violet-100 bg-violet-50/50">
@@ -156,7 +158,7 @@ export function AIProcessingModal({
               context.jobId ||
               context.agentRunId ||
               context.correlationId) && (
-              <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[10px]">
+              <div className="mt-4 grid [grid-template-columns:repeat(auto-fit,minmax(7rem,1fr))] gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[10px]">
                 {context.errorCategory && <Meta label="Category" value={context.errorCategory} />}
                 {context.projectId && <Meta label="Project" value={String(context.projectId)} />}
                 {context.requirementId && <Meta label="Requirement" value={String(context.requirementId)} />}
@@ -189,7 +191,7 @@ export function AIProcessingModal({
 
 function Meta({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 text-center">
       <span className="block font-bold uppercase tracking-wide text-slate-400">{label}</span>
       <span className="mt-0.5 block truncate font-mono font-semibold text-slate-700">{value}</span>
     </div>

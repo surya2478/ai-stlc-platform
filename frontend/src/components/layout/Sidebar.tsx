@@ -7,8 +7,8 @@ import {
   LayoutDashboard, FileText, ClipboardList,
   TestTube2, Play, Bug, BarChart3, Settings,
   Bot, ChevronRight, ChevronDown, Users, Database,
-  ChevronLeft, Brain, BookOpen, ShieldCheck,
-  Hand, Cpu, Sparkles, Gauge, Table2, Video, Target,
+  ChevronLeft, BookOpen, ShieldCheck,
+  Hand, Cpu, Sparkles, Gauge, Target,
   Radar,
   GitBranch,
   Boxes,
@@ -68,7 +68,6 @@ const NAV_ITEMS: NavGroup[] = [
       },
       { label: "Defects", href: "/defects", icon: Bug },
       { label: "Reports", href: "/reports", icon: BarChart3 },
-      { label: "Coverage Matrix", href: "/coverage-matrix", icon: Table2 },
     ],
   },
   {
@@ -79,16 +78,10 @@ const NAV_ITEMS: NavGroup[] = [
     ],
   },
   {
-    group: "Intelligence",
-    items: [
-      { label: "AI Quality Intelligence", href: "/agents", icon: Brain },
-      { label: "RAG Knowledge", href: "/agents/logs", icon: BookOpen },
-    ],
-  },
-  {
     group: "Operations",
     items: [
       { label: "AI Agents", href: "/agents", icon: Bot },
+      { label: "Agent Run Logs", href: "/agents/logs", icon: BookOpen },
       { label: "Resource Intelligence", href: "/resource-intelligence", icon: Users },
     ],
   },
@@ -97,7 +90,6 @@ const NAV_ITEMS: NavGroup[] = [
     items: [
       { label: "Project Settings", href: "/settings", icon: Settings },
       { label: "Users & Roles", href: "/users", icon: Users },
-      { label: "AI Video Maker", href: "/video_generator.html", icon: Video },
     ],
   },
 ];

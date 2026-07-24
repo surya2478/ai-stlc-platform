@@ -4,7 +4,7 @@ export default function AutonomousLabLayout({ children }: { children: React.Reac
   return (
     <div className="flex min-h-screen bg-slate-50">
       <Sidebar />
-      <main className="flex-1 overflow-x-hidden p-6">{children}</main>
+      <main className="app-content flex-1 overflow-x-hidden p-6">{children}</main>
     </div>
   );
 }

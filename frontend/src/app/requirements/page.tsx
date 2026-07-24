@@ -15,6 +15,7 @@ import {
   traceabilityApi,
   exportApi,
   type Requirement,
+  type RequirementQualityReview,
   type RequirementCoverage,
   type RequirementTraceabilityChain,
   type TraceabilityMatrixRow,
@@ -24,6 +25,7 @@ import {
   type JiraIssue,
   type JiraIssueFilters,
   type JiraIssuePage,
+  type ApprovalAction,
 } from "@/lib/api";
 import { AuditStamp } from "@/components/ui/AuditStamp";
 import { useUserDirectory } from "@/hooks/useUserDirectory";
@@ -36,6 +38,7 @@ import {
 } from "@/components/ui/drawer";
 import { useAIAction } from "@/hooks/useAIAction";
 import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
+import { terminalAIStatus } from "@/lib/ai-processing-status";
 
 // Status Chip Variant Mapping
 function getStatusVariant(status: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
@@ -414,11 +417,68 @@ type RequirementReviewRow = {
   traceabilityHealth: TraceabilityHealth;
   traceabilityScore: number;
   reviewStatus: ReviewStatus;
+  reviewerId: number | null;
   reviewer: string;
+  dueAt: string | null;
+  slaStatus: "on_track" | "at_risk" | "overdue" | "complete" | "unassigned";
   slaAge: string;
   readyForApproval: boolean;
   blockers: string[];
 };
+
+function formatRelativeTime(value?: string | null): string {
+  if (!value) return "Unknown";
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "Unknown";
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(value).toLocaleDateString();
+}
+
+function reviewActionLabel(actionType: string): string {
+  const action = actionType.replace(/_requirement$/, "");
+  const labels: Record<string, string> = {
+    approve: "approved",
+    reject: "rejected",
+    request_changes: "requested changes",
+    send_to_analysis: "sent to analysis",
+    send_to_traceability: "sent to traceability",
+    send_to_review: "sent to review",
+    send_back_to_analysis: "sent back to analysis",
+    send_back_to_traceability: "sent back to traceability",
+    request_clarification: "requested clarification",
+    resolve_clarification: "resolved clarification",
+  };
+  return labels[action] || action.replace(/_/g, " ");
+}
+
+function getReviewSla(
+  dueAtValue: unknown,
+  terminal: boolean,
+): { dueAt: string | null; status: RequirementReviewRow["slaStatus"]; label: string } {
+  if (terminal) return { dueAt: null, status: "complete", label: "Completed" };
+  if (!dueAtValue) return { dueAt: null, status: "unassigned", label: "Not assigned" };
+  const dueAt = String(dueAtValue);
+  const dueTimestamp = new Date(dueAt).getTime();
+  if (!Number.isFinite(dueTimestamp)) return { dueAt: null, status: "unassigned", label: "Not assigned" };
+  const remainingMs = dueTimestamp - Date.now();
+  const absoluteHours = Math.max(1, Math.ceil(Math.abs(remainingMs) / 3_600_000));
+  if (remainingMs < 0) {
+    return {
+      dueAt,
+      status: "overdue",
+      label: absoluteHours >= 24 ? `${Math.ceil(absoluteHours / 24)}d overdue` : `${absoluteHours}h overdue`,
+    };
+  }
+  const label = absoluteHours >= 24 ? `${Math.ceil(absoluteHours / 24)}d left` : `${absoluteHours}h left`;
+  return { dueAt, status: absoluteHours <= 24 ? "at_risk" : "on_track", label };
+}
 
 // Hoisted outside component to avoid SWC `as const` ambiguity inside JSX
 const EXPORT_MENU_OPTIONS: Array<["test-cases-excel" | "test-cases-csv" | "test-cases-xray" | "matrix-excel", string, string]> = [
@@ -430,7 +490,7 @@ const EXPORT_MENU_OPTIONS: Array<["test-cases-excel" | "test-cases-csv" | "test-
 
 function RequirementsContent() {
   const { runAIAction, updateAIProcessing } = useAIAction();
-  const { resolveUser } = useUserDirectory();
+  const { resolveUser, currentUser } = useUserDirectory();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -448,10 +508,20 @@ function RequirementsContent() {
   const [workspaceView, setWorkspaceView] = useState<RequirementsWorkspaceView>("intake");
   const [analysisFilter, setAnalysisFilter] = useState<AnalysisStatus | "all">("all");
   const [analysisSearch, setAnalysisSearch] = useState("");
+  const [analysisOverviewDetail, setAnalysisOverviewDetail] = useState<"quality" | "issues" | "domains" | null>(null);
+  const [selectedQualityReviews, setSelectedQualityReviews] = useState<RequirementQualityReview[]>([]);
+  const [qualityReviewsLoading, setQualityReviewsLoading] = useState(false);
   const [traceabilityFilter, setTraceabilityFilter] = useState<TraceabilityHealth | "all">("all");
   const [traceabilitySearch, setTraceabilitySearch] = useState("");
   const [traceabilityMatrix, setTraceabilityMatrix] = useState<TraceabilityMatrixRow[]>([]);
   const [matrixLoading, setMatrixLoading] = useState(false);
+  const [approvalActions, setApprovalActions] = useState<ApprovalAction[]>([]);
+  const [reviewFilter, setReviewFilter] = useState<ReviewStatus | "all">("all");
+  const [reviewSearch, setReviewSearch] = useState("");
+  const [reviewDomainFilter, setReviewDomainFilter] = useState("all");
+  const [reviewOwnerFilter, setReviewOwnerFilter] = useState("all");
+  const [reviewerFilter, setReviewerFilter] = useState("all");
+  const [showReadinessRules, setShowReadinessRules] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [tab, setTab] = useState<IntakeTab>("documents");
@@ -515,7 +585,7 @@ function RequirementsContent() {
   const [resolutionDraft, setResolutionDraft] = useState("");
   const [markMissingResolved, setMarkMissingResolved] = useState(false);
   const [systemsDraft, setSystemsDraft] = useState("");
-  const [classificationDraft, setClassificationDraft] = useState({ domain: "", journey: "", application: "", requestType: "", testType: "", riskLevel: "Medium" });
+  const [classificationDraft, setClassificationDraft] = useState({ domain: "", journey: "", application: "", requestType: "", testType: "", riskLevel: "" });
   // Test Environment + Generation Notes — tester-set context for AI test-case
   // generation, editable per requirement in the Details tab.
   const [genEnvDraft, setGenEnvDraft] = useState("");
@@ -599,6 +669,25 @@ function RequirementsContent() {
     loadTraceabilityMatrix();
   }, [loadTraceabilityMatrix]);
 
+  const loadApprovalActions = useCallback(async () => {
+    if (!selectedProject) return;
+    try {
+      const res = await traceabilityApi.approvals(selectedProject, {
+        entity_type: "requirement",
+        page: 1,
+        page_size: 200,
+      });
+      setApprovalActions(res.data);
+    } catch (err) {
+      console.error("Failed to load requirement approval history:", err);
+      setApprovalActions([]);
+    }
+  }, [selectedProject]);
+
+  useEffect(() => {
+    loadApprovalActions();
+  }, [loadApprovalActions]);
+
   // Poll documents list if any document is in "uploaded" or "processing" state
   useEffect(() => {
     if (!selectedProject || documents.length === 0) return;
@@ -626,6 +715,13 @@ function RequirementsContent() {
     setJiraError(null);
     setSelectedReq(null);
     setNotes("");
+    setReviewFilter("all");
+    setReviewSearch("");
+    setReviewDomainFilter("all");
+    setReviewOwnerFilter("all");
+    setReviewerFilter("all");
+    setAnalysisOverviewDetail(null);
+    setSelectedQualityReviews([]);
   }, [selectedProject]);
 
   const loadJiraConnections = useCallback(async (options?: { preserveFeedback?: boolean }) => {
@@ -723,11 +819,18 @@ function RequirementsContent() {
       zeroCountError?: string;
     },
   ) => {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
+    while (true) {
       await new Promise((resolve) => setTimeout(resolve, 1500));
       try {
         const res = await agentRunsApi.get(runId);
         const run = res.data;
+        const terminalStatus = terminalAIStatus(run.status);
+        if (terminalStatus) {
+          const message = run.error_message || failedFallback;
+          setAgentStatus("");
+          updateAIProcessing({ status: terminalStatus, currentStage: run.status, errorCategory: "AI processing failed", errorMessage: message });
+          throw new Error(message);
+        }
         if (run.progress_message) {
           setAgentStatus(`${run.progress_message} (${run.progress_percent ?? 0}%)`);
           updateAIProcessing({ status: "processing", currentStage: run.progress_message });
@@ -743,15 +846,11 @@ function RequirementsContent() {
           await loadData();
           return;
         }
-        if (run.status === "failed") {
-          setAgentStatus("");
-          throw new Error(run.error_message || failedFallback);
-        }
       } catch (err) {
         console.error("Error polling agent run:", err);
+        throw err;
       }
     }
-    throw new Error("Still running. Check Agent Logs for progress.");
   };
 
   const runIntakeAgent = async (docId: number) => {
@@ -1016,7 +1115,7 @@ function RequirementsContent() {
       application: selectedReq.product || selectedReq.product_group || "",
       requestType: selectedReq.sub_request_type || "",
       testType: selectedReq.test_phase || "",
-      riskLevel: selectedReq.risk_level || "Medium",
+      riskLevel: selectedReq.risk_level || "",
     });
     setAnalysisDialog(kind);
   };
@@ -1097,7 +1196,7 @@ function RequirementsContent() {
     setReviewLoading(true);
     try {
       await requirementsApi.approve(selectedReq.id, action, notes || undefined);
-      await loadData();
+      await Promise.all([loadData(), loadApprovalActions()]);
       setSelectedReq(null);
       setNotes("");
     } finally {
@@ -1306,6 +1405,13 @@ function RequirementsContent() {
       .then((res) => setCoverage(res.data))
       .catch(() => setCoverage(null))
       .finally(() => setCoverageLoading(false));
+    setSelectedQualityReviews([]);
+    setQualityReviewsLoading(true);
+    requirementsApi
+      .qualityReviews(req.id)
+      .then((res) => setSelectedQualityReviews(res.data))
+      .catch(() => setSelectedQualityReviews([]))
+      .finally(() => setQualityReviewsLoading(false));
     // GAP-5: reset traceability chain (loaded on tab switch)
     setTraceChain(null);
     setTraceError(null);
@@ -1471,18 +1577,17 @@ function RequirementsContent() {
         || asTextList(meta.conflicts).length;
       const taxonomyReady = Boolean(requirement.telecom_domain || requirement.qa_domain || requirement.business_process)
         && Boolean(requirement.product || requirement.product_group || requirement.sub_request_type);
-      const riskLevel = requirement.risk_level || (requirement.risks?.length ? "High" : "Medium");
+      const riskLevel = requirement.risk_level || "Not assessed";
       const status = getAnalysisStatus(requirement, duplicateCount > 0);
       const qualityScore = getRequirementQualityScore(requirement);
-      const progress = status === "analyzed"
-        ? 100
-        : status === "needs_clarification" || status === "needs_revision"
-          ? 65
-          : status === "blocked" || status === "failed"
-            ? 25
-            : status === "stale_source"
-              ? 70
-              : 0;
+      const qualityVerdict = (requirement.quality_verdict || "").toLowerCase();
+      const completedAnalysisGates = [
+        Boolean(requirement.quality_verdict),
+        missingInfoCount === 0,
+        taxonomyReady,
+        qualityVerdict === "pass",
+      ].filter(Boolean).length;
+      const progress = status === "analyzed" ? 100 : completedAnalysisGates * 25;
       const blockers = [
         ...(["needs_revision", "fail"].includes((requirement.quality_verdict || "").toLowerCase())
           ? ["Quality analysis must reach a Pass verdict before traceability. Revise the requirement and re-run Analysis."]
@@ -1541,6 +1646,36 @@ function RequirementsContent() {
       { title: "Duplicates / Conflicts", icon: GitBranch, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: duplicatesAndConflicts.toLocaleString(), sublabel: "Review", footer: "Resolution required" },
     ];
   }, [analysisRows]);
+
+  const scoredAnalysisRows = useMemo(
+    () => analysisRows.filter((row) => row.qualityScore !== null),
+    [analysisRows],
+  );
+
+  const analysisQualityAverage = useMemo(
+    () => scoredAnalysisRows.length
+      ? Math.round(scoredAnalysisRows.reduce((sum, row) => sum + (row.qualityScore as number), 0) / scoredAnalysisRows.length)
+      : null,
+    [scoredAnalysisRows],
+  );
+
+  const analysisDomainDistribution = useMemo(() => Object.entries(
+    analysisRows.reduce<Record<string, number>>((groups, row) => {
+      const key = row.requirement.telecom_domain || row.requirement.qa_domain || row.requirement.business_process || "Unclassified";
+      groups[key] = (groups[key] || 0) + 1;
+      return groups;
+    }, {}),
+  ).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])), [analysisRows]);
+
+  const classifiedAnalysisCount = useMemo(
+    () => analysisRows.filter((row) => row.requirement.telecom_domain || row.requirement.qa_domain || row.requirement.business_process).length,
+    [analysisRows],
+  );
+
+  const analysisRowsWithIssues = useMemo(
+    () => analysisRows.filter((row) => row.blockers.length > 0 || row.ambiguityCount > 0 || row.missingInfoCount > 0 || row.duplicateCount > 0 || row.conflictCount > 0),
+    [analysisRows],
+  );
 
   const traceabilityRows = useMemo<RequirementTraceabilityRow[]>(() => {
     const matrixByRequirementId = new Map(traceabilityMatrix.map((row) => [row.requirement.id, row]));
@@ -1624,8 +1759,16 @@ function RequirementsContent() {
   }, [traceabilityRows]);
 
   const reviewRows = useMemo<RequirementReviewRow[]>(() => {
+    const decisionsByRequirement = new Map<number, ApprovalAction>();
+    approvalActions.forEach((action) => {
+      if (!decisionsByRequirement.has(action.entity_id) && ["approved", "rejected"].includes(action.decision)) {
+        decisionsByRequirement.set(action.entity_id, action);
+      }
+    });
     return requirementsByStage.review.map((requirement) => {
       const meta = metadataRecord(requirement);
+      const terminal = ["approved", "rejected"].includes((requirement.status || "").toLowerCase());
+      const decision = decisionsByRequirement.get(requirement.id);
       const analysisStatus = getAnalysisStatus(requirement, duplicateRequirementIds.has(requirement.id));
       const traceValidated = meta.traceability_validated === true || requirement.readiness_status === "pending_review" || ["approved", "rejected"].includes(requirement.status);
       const traceScore = traceValidated ? 100 : 0;
@@ -1651,6 +1794,9 @@ function RequirementsContent() {
             : readyForApproval
               ? "ready"
               : "pending";
+      const assignedReviewerId = Number(meta.assigned_reviewer_id || 0) || null;
+      const reviewerId = assignedReviewerId ?? (terminal ? decision?.user_id ?? null : null);
+      const sla = getReviewSla(meta.review_due_at, terminal);
 
       return {
         requirement,
@@ -1660,13 +1806,74 @@ function RequirementsContent() {
         traceabilityHealth: traceValidated ? "fully_traced" : "not_traced",
         traceabilityScore: traceScore,
         reviewStatus,
-        reviewer: meta.assigned_reviewer_id ? resolveUser(Number(meta.assigned_reviewer_id)) : "Unassigned",
-        slaAge: meta.review_due_at ? new Date(String(meta.review_due_at)).toLocaleDateString() : "Not assigned",
+        reviewerId,
+        reviewer: reviewerId ? resolveUser(reviewerId) : "Unassigned",
+        dueAt: sla.dueAt,
+        slaStatus: sla.status,
+        slaAge: sla.label,
         readyForApproval,
         blockers,
       };
     });
-  }, [duplicateRequirementIds, requirementsByStage.review, resolveUser, selectedProjectPpmId]);
+  }, [approvalActions, duplicateRequirementIds, requirementsByStage.review, resolveUser, selectedProjectPpmId]);
+
+  const reviewDomains = useMemo(() => Array.from(new Set(
+    reviewRows.map((row) => row.requirement.telecom_domain || row.requirement.qa_domain || row.requirement.business_process).filter(Boolean) as string[],
+  )).sort(), [reviewRows]);
+
+  const reviewOwners = useMemo(() => Array.from(new Set(reviewRows.map((row) => row.owner))).sort(), [reviewRows]);
+  const reviewReviewers = useMemo(() => Array.from(new Set(reviewRows.map((row) => row.reviewer))).sort(), [reviewRows]);
+
+  const filteredReviewRows = useMemo(() => {
+    const query = reviewSearch.trim().toLowerCase();
+    return reviewRows.filter((row) => {
+      const domain = row.requirement.telecom_domain || row.requirement.qa_domain || row.requirement.business_process || "";
+      return (reviewFilter === "all" || row.reviewStatus === reviewFilter)
+        && (reviewDomainFilter === "all" || domain === reviewDomainFilter)
+        && (reviewOwnerFilter === "all" || row.owner === reviewOwnerFilter)
+        && (reviewerFilter === "all" || row.reviewer === reviewerFilter)
+        && (!query
+          || row.requirement.requirement_id.toLowerCase().includes(query)
+          || row.requirement.title.toLowerCase().includes(query)
+          || row.ppmId.toLowerCase().includes(query)
+          || row.owner.toLowerCase().includes(query)
+          || row.reviewer.toLowerCase().includes(query));
+    });
+  }, [reviewDomainFilter, reviewFilter, reviewOwnerFilter, reviewRows, reviewSearch, reviewerFilter]);
+
+  const reviewerWorkload = useMemo(() => {
+    const activeRows = reviewRows.filter((row) => !["approved", "rejected"].includes(row.reviewStatus));
+    const counts = activeRows.reduce<Map<string, number>>((result, row) => {
+      result.set(row.reviewer, (result.get(row.reviewer) || 0) + 1);
+      return result;
+    }, new Map());
+    return Array.from(counts, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [reviewRows]);
+
+  const reviewSlaStats = useMemo(() => {
+    const activeRows = reviewRows.filter((row) => !["approved", "rejected"].includes(row.reviewStatus) && row.slaStatus !== "unassigned");
+    const total = activeRows.length;
+    return ([
+      ["On Track", "on_track", "bg-emerald-500"],
+      ["At Risk", "at_risk", "bg-amber-500"],
+      ["Overdue", "overdue", "bg-red-500"],
+    ] as const).map(([label, status, color]) => {
+      const count = activeRows.filter((row) => row.slaStatus === status).length;
+      return { label, count, color, percentage: total ? Math.round((count / total) * 100) : 0 };
+    });
+  }, [reviewRows]);
+
+  const recentReviewActivity = useMemo(() => approvalActions
+    .filter((action) => requirementsByStage.review.some((requirement) => requirement.id === action.entity_id))
+    .slice(0, 5)
+    .map((action) => {
+      const requirement = requirementsByStage.review.find((item) => item.id === action.entity_id);
+      return {
+        id: action.id,
+        text: `${requirement?.requirement_id || `Requirement #${action.entity_id}`} ${reviewActionLabel(action.action_type)} by ${resolveUser(action.user_id)}`,
+        when: formatRelativeTime(action.created_at),
+      };
+    }), [approvalActions, requirementsByStage.review, resolveUser]);
 
   const reviewStats = useMemo(() => {
     const total = reviewRows.length;
@@ -1901,7 +2108,7 @@ function RequirementsContent() {
                       ["Missing Information", reviewRows.filter((row) => row.blockers.some((blocker) => blocker.toLowerCase().includes("missing"))).length.toString(), AlertTriangle, "text-amber-600"],
                       ["Duplicates Resolved", `${reviewRows.length ? Math.round((reviewRows.filter((row) => !row.blockers.some((blocker) => blocker.toLowerCase().includes("duplicate"))).length / reviewRows.length) * 100) : 0}%`, CheckCircle, "text-emerald-600"],
                       ["Mandatory Evidence", `${reviewRows.filter((row) => row.traceabilityHealth === "fully_traced").length} / ${reviewRows.length}`, ShieldCheck, "text-emerald-600"],
-                      ["Policy & Permissions", "Compliant", CheckCircle, "text-emerald-600"],
+                      ["Policy & Permissions", currentUser ? (currentUser.is_superuser ? "Platform admin" : currentUser.role) : "Checking…", CheckCircle, "text-emerald-600"],
                     ] as const).map(([label, value, Icon, tone]) => (
                       <div key={label} className="flex items-start gap-2">
                         <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} />
@@ -1914,8 +2121,18 @@ function RequirementsContent() {
                   </div>
                   <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-[11px] font-semibold text-blue-700">
                     <span>Requirements must pass all readiness checks to be eligible for approval.</span>
-                    <button className="font-bold">View readiness rules <ChevronRight className="inline h-3 w-3" /></button>
+                    <button onClick={() => setShowReadinessRules((value) => !value)} className="font-bold">
+                      {showReadinessRules ? "Hide readiness rules" : "View readiness rules"} <ChevronRight className={cn("inline h-3 w-3 transition-transform", showReadinessRules && "rotate-90")} />
+                    </button>
                   </div>
+                  {showReadinessRules && (
+                    <div className="mt-2 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[10px] font-semibold text-slate-600 md:grid-cols-2">
+                      <span>• Requirement analysis must pass without unresolved missing information.</span>
+                      <span>• Duplicate candidates and classification gaps must be resolved.</span>
+                      <span>• Application/system mapping and traceability validation are mandatory.</span>
+                      <span>• Approval and rejection are permission-checked and recorded in the audit history.</span>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1930,9 +2147,16 @@ function RequirementsContent() {
                     ["rejected", "Rejected"],
                     ["blocked", "Blocked"],
                   ] as Array<[ReviewStatus | "all", string]>).map(([status, label]) => (
-                    <button key={status} className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-900">
+                    <button
+                      key={status}
+                      onClick={() => setReviewFilter(status)}
+                      className={cn(
+                        "rounded-lg px-3 py-1.5 text-[11px] font-bold transition-colors",
+                        reviewFilter === status ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900",
+                      )}
+                    >
                       {label}
-                      <span className="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-600">{status === "all" ? reviewRows.length : reviewRows.filter((row) => row.reviewStatus === status).length}</span>
+                      <span className={cn("ml-1 rounded-full px-1.5 py-0.5 text-[9px]", reviewFilter === status ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600")}>{status === "all" ? reviewRows.length : reviewRows.filter((row) => row.reviewStatus === status).length}</span>
                     </button>
                   ))}
                 </div>
@@ -1944,11 +2168,24 @@ function RequirementsContent() {
               <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input placeholder="Search by REQ ID, PPM ID, title, owner..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={reviewSearch} onChange={(event) => setReviewSearch(event.target.value)} placeholder="Search by REQ ID, PPM ID, title, owner..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
                 </div>
-                {["Review Status", "Domain", "Owner", "Reviewer", "More Filters"].map((label) => (
-                  <button key={label} className="flex h-9 min-w-[120px] items-center justify-between rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-500">{label}<ChevronDown className="h-3.5 w-3.5" /></button>
-                ))}
+                <select aria-label="Review Status" value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value as ReviewStatus | "all")} className="h-9 min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-500">
+                  <option value="all">All review statuses</option>
+                  <option value="ready">Ready</option><option value="pending">Pending</option><option value="changes_requested">Changes Requested</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="blocked">Blocked</option>
+                </select>
+                <select aria-label="Domain" value={reviewDomainFilter} onChange={(event) => setReviewDomainFilter(event.target.value)} className="h-9 min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-500">
+                  <option value="all">All domains</option>
+                  {reviewDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}
+                </select>
+                <select aria-label="Owner" value={reviewOwnerFilter} onChange={(event) => setReviewOwnerFilter(event.target.value)} className="h-9 min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-500">
+                  <option value="all">All owners</option>
+                  {reviewOwners.map((owner) => <option key={owner} value={owner}>{owner}</option>)}
+                </select>
+                <select aria-label="Reviewer" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} className="h-9 min-w-[130px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-500">
+                  <option value="all">All reviewers</option>
+                  {reviewReviewers.map((reviewer) => <option key={reviewer} value={reviewer}>{reviewer}</option>)}
+                </select>
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -1959,7 +2196,7 @@ function RequirementsContent() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-                    {reviewRows.map((row) => (
+                    {filteredReviewRows.map((row) => (
                       <tr key={row.requirement.id} onClick={() => { handleOpenReqDetail(row.requirement); setDrawerTab("details"); }} className="cursor-pointer transition-colors hover:bg-slate-50/70">
                         <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#1b59f8]">{row.requirement.requirement_id}</td>
                         <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-slate-600">{row.ppmId}</td>
@@ -1968,19 +2205,59 @@ function RequirementsContent() {
                         <td className="px-3 py-3"><div className="min-w-[100px]"><div className="mb-1 flex justify-between text-[10px] font-bold"><span>{traceHealthLabel(row.traceabilityHealth)}</span><span>{row.traceabilityScore}/100</span></div><div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full rounded-full", row.traceabilityScore >= 80 ? "bg-emerald-500" : row.traceabilityScore >= 50 ? "bg-amber-500" : "bg-red-500")} style={{ width: `${row.traceabilityScore}%` }} /></div></div></td>
                         <td className="px-3 py-3"><Badge variant={reviewStatusBadgeVariant(row.reviewStatus)}>{reviewStatusLabel(row.reviewStatus)}</Badge></td>
                         <td className="px-3 py-3"><span className="inline-flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">{row.reviewer.slice(0, 2).toUpperCase()}</span>{row.reviewer}</span></td>
-                        <td className={cn("px-3 py-3 font-bold", row.slaAge.includes("ago") ? "text-red-600" : row.slaAge.includes("left") ? "text-emerald-600" : "text-slate-400")}>{row.slaAge}</td>
+                        <td className={cn("px-3 py-3 font-bold", row.slaStatus === "overdue" ? "text-red-600" : row.slaStatus === "at_risk" ? "text-amber-600" : row.slaStatus === "on_track" ? "text-emerald-600" : "text-slate-400")}>{row.slaAge}</td>
                         <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
                         <td className="px-3 py-3 text-right"><Button variant="outline" size="sm" className="h-7 px-2 text-[10px] font-bold">...</Button></td>
                       </tr>
                     ))}
+                    {filteredReviewRows.length === 0 && (
+                      <tr><td colSpan={10} className="px-4 py-8 text-center text-xs font-semibold text-slate-400">No requirements match the selected review filters.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
 
               <div className="grid gap-3 xl:grid-cols-3">
-                <Card className="border-slate-200 shadow-sm"><CardContent className="p-3"><div className="mb-2 flex justify-between"><h3 className="text-xs font-bold text-slate-900">Review Workload</h3><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div><div className="flex items-center gap-4"><div className="flex h-24 w-24 items-center justify-center rounded-full bg-[conic-gradient(#2563eb_0_35%,#ef4444_35%_55%,#10b981_55%_75%,#f59e0b_75%_90%,#94a3b8_90%_100%)] p-3"><div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white"><span className="text-xl font-bold text-slate-900">{reviewRows.filter((row) => row.reviewStatus === "pending").length}</span><span className="text-[9px] font-bold text-slate-400">Pending</span></div></div><div className="flex-1 space-y-1.5 text-[11px] font-semibold text-slate-600">{["Ayesha", "Rahul", "Karan", "Meera", "Unassigned"].map((name) => <div key={name} className="flex justify-between"><span>{name}</span><span>{reviewRows.filter((row) => row.reviewer === name).length}</span></div>)}</div></div></CardContent></Card>
-                <Card className="border-slate-200 shadow-sm"><CardContent className="p-3"><div className="mb-2 flex justify-between"><h3 className="text-xs font-bold text-slate-900">Review SLA Status</h3><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div><div className="space-y-3 text-[11px] font-semibold text-slate-600">{[["On Track", reviewRows.filter((row) => row.slaAge.includes("left")).length, "bg-emerald-500"], ["At Risk", reviewRows.filter((row) => row.slaAge.includes("h")).length, "bg-amber-500"], ["Overdue", reviewRows.filter((row) => row.slaAge.includes("ago")).length, "bg-red-500"]].map(([label, count, color]) => <div key={label as string}><div className="mb-1 flex justify-between"><span>{label}</span><span>{count as number}</span></div><div className="h-1.5 rounded-full bg-slate-100"><div className={cn("h-full rounded-full", color as string)} style={{ width: `${Math.min(100, Number(count) * 18)}%` }} /></div></div>)}</div></CardContent></Card>
-                <Card className="border-slate-200 shadow-sm"><CardContent className="p-3"><div className="mb-2 flex justify-between"><h3 className="text-xs font-bold text-slate-900">Recent Review Activity</h3><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div><div className="space-y-2 text-[11px] font-semibold text-slate-600">{reviewRows.slice(0, 5).map((row, index) => <div key={row.requirement.id} className="flex justify-between gap-2"><span className="truncate">{row.requirement.requirement_id} {reviewStatusLabel(row.reviewStatus).toLowerCase()} by {row.reviewer}</span><span className="shrink-0 text-slate-400">{index + 1}h ago</span></div>)}</div></CardContent></Card>
+                <Card className="border-slate-200 shadow-sm">
+                  <CardContent className="p-3">
+                    <h3 className="mb-2 text-xs font-bold text-slate-900">Review Workload</h3>
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="flex h-24 w-24 items-center justify-center rounded-full p-3"
+                        style={{ background: `conic-gradient(#2563eb 0 ${reviewRows.length ? Math.round((reviewRows.filter((row) => !["approved", "rejected"].includes(row.reviewStatus)).length / reviewRows.length) * 100) : 0}%, #e2e8f0 0 100%)` }}
+                      >
+                        <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
+                          <span className="text-xl font-bold text-slate-900">{reviewRows.filter((row) => !["approved", "rejected"].includes(row.reviewStatus)).length}</span>
+                          <span className="text-[9px] font-bold text-slate-400">Open reviews</span>
+                        </div>
+                      </div>
+                      <div className="flex-1 space-y-1.5 text-[11px] font-semibold text-slate-600">
+                        {reviewerWorkload.map(({ name, count }) => <div key={name} className="flex justify-between"><span>{name}</span><span>{count}</span></div>)}
+                        {reviewerWorkload.length === 0 && <div className="text-slate-400">No open reviewer assignments.</div>}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-slate-200 shadow-sm">
+                  <CardContent className="p-3">
+                    <h3 className="mb-2 text-xs font-bold text-slate-900">Review SLA Status</h3>
+                    <div className="space-y-3 text-[11px] font-semibold text-slate-600">
+                      {reviewSlaStats.map(({ label, count, color, percentage }) => <div key={label}><div className="mb-1 flex justify-between"><span>{label}</span><span>{count}</span></div><div className="h-1.5 rounded-full bg-slate-100"><div className={cn("h-full rounded-full", color)} style={{ width: `${percentage}%` }} /></div></div>)}
+                      {reviewRows.some((row) => row.slaStatus === "unassigned" && !["approved", "rejected"].includes(row.reviewStatus)) && (
+                        <div className="flex justify-between text-slate-400"><span>Due date not assigned</span><span>{reviewRows.filter((row) => row.slaStatus === "unassigned" && !["approved", "rejected"].includes(row.reviewStatus)).length}</span></div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-slate-200 shadow-sm">
+                  <CardContent className="p-3">
+                    <h3 className="mb-2 text-xs font-bold text-slate-900">Recent Review Activity</h3>
+                    <div className="space-y-2 text-[11px] font-semibold text-slate-600">
+                      {recentReviewActivity.map((activity) => <div key={activity.id} className="flex justify-between gap-2"><span className="truncate">{activity.text}</span><span className="shrink-0 text-slate-400">{activity.when}</span></div>)}
+                      {recentReviewActivity.length === 0 && <div className="text-slate-400">No requirement governance activity recorded.</div>}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           )}
@@ -2248,21 +2525,32 @@ function RequirementsContent() {
                   <CardContent className="p-3">
                     <div className="mb-3 flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-900">Analysis Quality Overview</h3>
-                      <button className="text-[10px] font-bold text-[#1b59f8]">View details</button>
+                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "quality" ? null : "quality")} className="text-[10px] font-bold text-[#1b59f8]">{analysisOverviewDetail === "quality" ? "Hide details" : "View details"}</button>
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-purple-400 p-2">
                         <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
-                          <span className="text-xl font-bold text-slate-900">{analysisRows.length ? Math.round(analysisRows.reduce((sum, row) => sum + (row.qualityScore ?? 0), 0) / analysisRows.length) : 0}</span>
+                          <span className="text-xl font-bold text-slate-900">{analysisQualityAverage ?? "—"}</span>
                           <span className="text-[9px] font-bold text-slate-400">/100</span>
                         </div>
                       </div>
                       <div className="min-w-0 flex-1 space-y-2 text-[11px] font-semibold text-slate-600">
-                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />High Quality</span><span>{analysisRows.filter((row) => (row.qualityScore ?? 0) >= 80).length}</span></div>
-                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-amber-500" />Medium Quality</span><span>{analysisRows.filter((row) => (row.qualityScore ?? 0) >= 50 && (row.qualityScore ?? 0) < 80).length}</span></div>
-                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-red-500" />Low Quality</span><span>{analysisRows.filter((row) => (row.qualityScore ?? 0) < 50).length}</span></div>
+                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />High Quality</span><span>{scoredAnalysisRows.filter((row) => (row.qualityScore as number) >= 80).length}</span></div>
+                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-amber-500" />Medium Quality</span><span>{scoredAnalysisRows.filter((row) => (row.qualityScore as number) >= 50 && (row.qualityScore as number) < 80).length}</span></div>
+                        <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-red-500" />Low Quality</span><span>{scoredAnalysisRows.filter((row) => (row.qualityScore as number) < 50).length}</span></div>
+                        <div className="flex justify-between gap-3 text-slate-400"><span>Not scored</span><span>{analysisRows.length - scoredAnalysisRows.length}</span></div>
                       </div>
                     </div>
+                    {analysisOverviewDetail === "quality" && (
+                      <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto border-t border-slate-100 pt-3 text-[10px] font-semibold text-slate-600">
+                        {analysisRows.map((row) => (
+                          <button key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-50">
+                            <span className="min-w-0 truncate"><span className="mr-2 font-mono font-bold text-[#1b59f8]">{row.requirement.requirement_id}</span>{row.requirement.title}</span>
+                            <span className="shrink-0 font-bold text-slate-800">{row.qualityScore === null ? "Not scored" : `${row.qualityScore}/100`}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -2270,7 +2558,7 @@ function RequirementsContent() {
                   <CardContent className="p-3">
                     <div className="mb-3 flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-900">Top Issues</h3>
-                      <button className="text-[10px] font-bold text-[#1b59f8]">View all</button>
+                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "issues" ? null : "issues")} className="text-[10px] font-bold text-[#1b59f8]">{analysisOverviewDetail === "issues" ? "Hide all" : "View all"}</button>
                     </div>
                     <div className="space-y-2 text-[11px] font-semibold text-slate-600">
                       <div className="flex justify-between gap-3"><span className="truncate">Missing Acceptance Criteria</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => !row.requirement.acceptance_criteria?.length).length}</span></div>
@@ -2279,6 +2567,17 @@ function RequirementsContent() {
                       <div className="flex justify-between gap-3"><span className="truncate">Incomplete Taxonomy</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => !row.taxonomyReady).length}</span></div>
                       <div className="flex justify-between gap-3"><span className="truncate">Conflicting Requirements</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => row.conflictCount > 0 || row.duplicateCount > 0).length}</span></div>
                     </div>
+                    {analysisOverviewDetail === "issues" && (
+                      <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto border-t border-slate-100 pt-3 text-[10px] font-semibold text-slate-600">
+                        {analysisRowsWithIssues.map((row) => (
+                          <button key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="block w-full rounded-md px-2 py-1.5 text-left hover:bg-slate-50">
+                            <div className="truncate font-bold text-slate-800">{row.requirement.requirement_id} · {row.requirement.title}</div>
+                            <div className="mt-0.5 truncate text-slate-400">{row.blockers.join(" · ")}</div>
+                          </button>
+                        ))}
+                        {analysisRowsWithIssues.length === 0 && <div className="text-slate-400">No analysis issues are currently recorded.</div>}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -2286,25 +2585,31 @@ function RequirementsContent() {
                   <CardContent className="p-3">
                     <div className="mb-3 flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-900">Domains Distribution</h3>
-                      <button className="text-[10px] font-bold text-[#1b59f8]">View details</button>
+                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "domains" ? null : "domains")} className="text-[10px] font-bold text-[#1b59f8]">{analysisOverviewDetail === "domains" ? "Hide details" : "View details"}</button>
                     </div>
                     <div className="flex items-center gap-4">
-                      <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-[conic-gradient(#2563eb_0_25%,#ef4444_25%_45%,#f59e0b_45%_62%,#14b8a6_62%_82%,#94a3b8_82%_100%)] p-3">
+                      <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-3" style={{ background: `conic-gradient(#2563eb 0 ${analysisRows.length ? Math.round((classifiedAnalysisCount / analysisRows.length) * 100) : 0}%, #94a3b8 0 100%)` }}>
                         <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
                           <span className="text-lg font-bold text-slate-900">{analysisRows.length}</span>
                           <span className="text-[9px] font-bold text-slate-400">Total</span>
                         </div>
                       </div>
                       <div className="min-w-0 flex-1 space-y-2 text-[11px] font-semibold text-slate-600">
-                        {Object.entries(analysisRows.reduce<Record<string, number>>((groups, row) => {
-                          const key = row.requirement.telecom_domain || row.requirement.qa_domain || row.requirement.business_process || "Unclassified";
-                          groups[key] = (groups[key] || 0) + 1;
-                          return groups;
-                        }, {})).slice(0, 5).map(([domain, count]) => (
+                        {analysisDomainDistribution.slice(0, 5).map(([domain, count]) => (
                           <div key={domain} className="flex justify-between gap-3"><span className="truncate">{domain}</span><span className="font-bold text-slate-900">{count}</span></div>
                         ))}
                       </div>
                     </div>
+                    {analysisOverviewDetail === "domains" && (
+                      <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3 text-[10px] font-semibold text-slate-600">
+                        {analysisDomainDistribution.map(([domain, count]) => (
+                          <div key={domain} className="flex items-center justify-between gap-3">
+                            <span className="truncate">{domain}</span>
+                            <span className="font-bold text-slate-800">{count} ({analysisRows.length ? ((count / analysisRows.length) * 100).toFixed(1) : "0.0"}%)</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -3444,7 +3749,12 @@ function RequirementsContent() {
                 {drawerTab === "details" && workspaceView === "review" && (() => {
                   const row = reviewRows.find((item) => item.requirement.id === selectedReq.id);
                   const reviewMeta = metadataRecord(selectedReq);
-                  const workflowHistory = Array.isArray(reviewMeta.workflow_history) ? reviewMeta.workflow_history as Array<Record<string, unknown>> : [];
+                  const selectedApprovalActions = approvalActions.filter((action) => action.entity_id === selectedReq.id);
+                  const reviewerAction = selectedApprovalActions.find((action) => action.user_id === row?.reviewerId);
+                  const reviewerRole = reviewerAction?.actor_role
+                    || (currentUser && row?.reviewerId === currentUser.id ? currentUser.role : null)
+                    || "Not recorded";
+                  const assignedAt = reviewMeta.review_assigned_at ? String(reviewMeta.review_assigned_at) : null;
                   const qualityScore = getRequirementQualityScore(selectedReq);
                   const readinessItems = [
                     ["Analysis completed", row?.analysisStatus === "analyzed" ? (qualityScore === null ? "Passed" : `${qualityScore}/100`) : "Pending", row?.analysisStatus === "analyzed"],
@@ -3452,7 +3762,7 @@ function RequirementsContent() {
                     ["Missing information", row?.blockers.some((blocker) => blocker.toLowerCase().includes("missing")) ? "Open" : "0", !row?.blockers.some((blocker) => blocker.toLowerCase().includes("missing"))],
                     ["Duplicates resolved", row?.blockers.some((blocker) => blocker.toLowerCase().includes("duplicate")) ? "No" : "Yes", !row?.blockers.some((blocker) => blocker.toLowerCase().includes("duplicate"))],
                     ["Traceability gate", row?.traceabilityHealth === "fully_traced" ? "Validated" : "Pending", row?.traceabilityHealth === "fully_traced"],
-                    ["Policy & permissions", "Enforced", true],
+                    ["Policy & permissions", currentUser ? (currentUser.is_superuser ? "Platform admin" : currentUser.role) : "Checking…", Boolean(currentUser?.is_active)],
                   ] as const;
                   return (
                     <div className="space-y-3 text-xs">
@@ -3482,18 +3792,21 @@ function RequirementsContent() {
                         <h4 className="mb-3 text-xs font-bold text-slate-800">Reviewer Information</h4>
                         <div className="grid grid-cols-2 gap-3 text-[11px] font-semibold text-slate-600">
                           <div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">{(row?.reviewer || "NA").slice(0, 2).toUpperCase()}</span><span>{row?.reviewer}</span></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">Role</div><div className="font-bold text-slate-700">QA Lead</div></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">Assigned On</div><div className="font-bold text-slate-700">{selectedReq.updated_at ? new Date(selectedReq.updated_at).toLocaleString("en-US", { month: "short", day: "numeric" }) : "-"}</div></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">SLA / Due In</div><div className={cn("font-bold", row?.slaAge.includes("ago") ? "text-red-600" : "text-emerald-600")}>{row?.slaAge}</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Role</div><div className="font-bold text-slate-700">{reviewerRole}</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">Assigned On</div><div className="font-bold text-slate-700">{assignedAt ? new Date(assignedAt).toLocaleString("en-US", { month: "short", day: "numeric" }) : "Not recorded"}</div></div>
+                          <div><div className="text-[9px] font-bold text-slate-400">SLA / Due In</div><div className={cn("font-bold", row?.slaStatus === "overdue" ? "text-red-600" : row?.slaStatus === "at_risk" ? "text-amber-600" : row?.slaStatus === "on_track" ? "text-emerald-600" : "text-slate-400")}>{row?.slaAge}</div></div>
                         </div>
                       </section>
 
                       <section className="rounded-xl border border-slate-200 bg-white p-3">
-                        <div className="mb-3 flex items-center justify-between"><h4 className="text-xs font-bold text-slate-800">Approval History</h4><button className="text-[10px] font-bold text-[#1b59f8]">View all</button></div>
+                        <h4 className="mb-3 text-xs font-bold text-slate-800">Approval History</h4>
                         <div className="space-y-2 text-[11px] font-semibold text-slate-600">
-                          {workflowHistory.length ? workflowHistory.slice(-4).reverse().map((entry, index) => (
-                            <div key={`${String(entry.action)}-${index}`} className="flex items-center justify-between gap-3"><span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#1b59f8]" />{String(entry.action || "Workflow updated").replace(/_/g, " ")}</span><span className="text-slate-400">{String(entry.to || "")}</span></div>
-                          )) : <div className="text-slate-400">No workflow transition history is recorded for this legacy requirement.</div>}
+                          {selectedApprovalActions.length ? selectedApprovalActions.slice(0, 5).map((entry) => (
+                            <div key={entry.id} className="flex items-center justify-between gap-3">
+                              <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#1b59f8]" />{reviewActionLabel(entry.action_type)} by {resolveUser(entry.user_id)}</span>
+                              <span className="text-slate-400">{formatRelativeTime(entry.created_at)}</span>
+                            </div>
+                          )) : <div className="text-slate-400">No audited approval or workflow history is recorded.</div>}
                         </div>
                       </section>
 
@@ -3515,7 +3828,8 @@ function RequirementsContent() {
                 {drawerTab === "details" && workspaceView === "analysis" && (() => {
                   const row = analysisRows.find((item) => item.requirement.id === selectedReq.id);
                   const qualityMeta = metadataRecord(selectedReq).quality_review as Record<string, any> | undefined;
-                  const acceptanceCriteria = selectedReq.acceptance_criteria?.length ? selectedReq.acceptance_criteria : ["Acceptance criteria not captured yet."];
+                  const latestQualityReview = selectedQualityReviews[0];
+                  const acceptanceCriteria = selectedReq.acceptance_criteria || [];
                   const impactedSystems = [
                     ...(selectedReq.systems_impacted || []),
                     ...(selectedReq.impacted_interfaces || []),
@@ -3524,13 +3838,14 @@ function RequirementsContent() {
                   const missingInfoItems = [
                     ...asTextList(selectedReq.missing_information),
                     ...asTextList(qualityMeta?.missing_information),
+                    ...asTextList(latestQualityReview?.missing_details),
                   ].filter((item, index, items) => items.indexOf(item) === index);
                   return (
                     <div className="space-y-3 text-xs">
                       <section className="border-b border-slate-100 pb-3">
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><ShieldCheck className="h-3.5 w-3.5 text-[#1b59f8]" />Grounded Summary</h4>
-                          <Badge variant="warning" className="text-[9px]">AI Confidence {row?.qualityScore ?? 0}%</Badge>
+                          <Badge variant={row?.qualityScore === null ? "outline" : "warning"} className="text-[9px]">Quality score {row?.qualityScore === null || row?.qualityScore === undefined ? "Not recorded" : `${row.qualityScore}/100`}</Badge>
                         </div>
                         <p className="text-[11px] font-semibold leading-relaxed text-slate-600">{selectedReq.summary || selectedReq.title}</p>
                       </section>
@@ -3547,6 +3862,7 @@ function RequirementsContent() {
                               <span className="leading-snug">{criterion}</span>
                             </li>
                           ))}
+                          {acceptanceCriteria.length === 0 && <li className="text-[10px] font-semibold text-slate-400">No acceptance criteria are recorded.</li>}
                         </ul>
                         <button onClick={() => openAnalysisDialog("acceptance")} className="mt-2 text-[10px] font-bold text-[#1b59f8]">+ Add / Edit</button>
                       </section>
@@ -3599,7 +3915,7 @@ function RequirementsContent() {
                             ["Application", selectedReq.product || selectedReq.product_group || "Not mapped"],
                             ["Request Type", selectedReq.sub_request_type || selectedReq.jira_issue_type || "Not classified"],
                             ["Test Type", selectedReq.test_phase || "Not specified"],
-                            ["Risk Level", row?.riskLevel || selectedReq.risk_level || "Medium"],
+                            ["Risk Level", selectedReq.risk_level || "Not assessed"],
                           ] as const).map(([label, value]) => (
                             <div key={label}>
                               <div className="text-[9px] font-bold text-slate-400">{label}</div>
@@ -3625,12 +3941,34 @@ function RequirementsContent() {
 
                       <section className="border-b border-slate-100 pb-3">
                         <h4 className="mb-2 text-xs font-bold text-slate-800">AI Analysis Details</h4>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
-                          <div><div className="text-[9px] font-bold text-slate-400">Model</div><div className="font-bold text-slate-700">{String(qualityMeta?.model || "Not recorded")}</div></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">Prompt Version</div><div className="font-bold text-slate-700">{String(qualityMeta?.prompt_version || "Not recorded")}</div></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">Analysis Tool</div><div className="font-bold text-slate-700">Requirement Analyzer</div></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">Analyzed At</div><div className="font-bold text-slate-700">{selectedReq.updated_at ? new Date(selectedReq.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Pending"}</div></div>
-                        </div>
+                        {qualityReviewsLoading ? (
+                          <div className="text-[10px] font-semibold text-slate-400"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />Loading persisted quality review…</div>
+                        ) : latestQualityReview ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+                              <div><div className="text-[9px] font-bold text-slate-400">Model</div><div className="font-bold text-slate-700">{String(qualityMeta?.model || "Not recorded")}</div></div>
+                              <div><div className="text-[9px] font-bold text-slate-400">Prompt Version</div><div className="font-bold text-slate-700">{String(qualityMeta?.prompt_version || "Not recorded")}</div></div>
+                              <div><div className="text-[9px] font-bold text-slate-400">Agent Run</div><div className="font-bold text-slate-700">{latestQualityReview.agent_run_id ? `#${latestQualityReview.agent_run_id}` : "Not recorded"}</div></div>
+                              <div><div className="text-[9px] font-bold text-slate-400">Analyzed At</div><div className="font-bold text-slate-700">{latestQualityReview.created_at ? new Date(latestQualityReview.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Not recorded"}</div></div>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              {([
+                                ["Completeness", latestQualityReview.completeness_score],
+                                ["Clarity", latestQualityReview.clarity_score],
+                                ["Testability", latestQualityReview.testability_score],
+                                ["Acceptance criteria", latestQualityReview.acceptance_criteria_score],
+                                ["Interface readiness", latestQualityReview.interface_readiness_score],
+                                ["Domain completeness", latestQualityReview.telecom_domain_completeness],
+                              ] as const).map(([label, value]) => (
+                                <div key={label} className="rounded-lg border border-slate-100 bg-slate-50 p-2">
+                                  <div className="text-[9px] font-bold text-slate-400">{label}</div>
+                                  <div className="mt-0.5 font-bold text-slate-700">{value === null || value === undefined ? "Not recorded" : Number(value).toFixed(1)}</div>
+                                </div>
+                              ))}
+                            </div>
+                            {selectedQualityReviews.length > 1 && <div className="mt-2 text-[9px] font-semibold text-slate-400">{selectedQualityReviews.length} persisted review runs; latest shown.</div>}
+                          </>
+                        ) : <div className="text-[10px] font-semibold text-slate-400">No persisted quality-review run is available for this requirement.</div>}
                       </section>
 
                       <section className="space-y-2">
@@ -3965,6 +4303,7 @@ function RequirementsContent() {
         const missingInfoItems = [
           ...asTextList(selectedReq.missing_information),
           ...asTextList(qualityMeta?.missing_information),
+          ...asTextList(selectedQualityReviews[0]?.missing_details),
         ].filter((item, index, items) => items.indexOf(item) === index);
         const dialogTitle = analysisDialog === "acceptance" ? "Edit Acceptance Criteria"
           : analysisDialog === "issues" ? "Analysis Issues & Missing Information"

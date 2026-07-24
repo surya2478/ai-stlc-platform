@@ -19,12 +19,6 @@ import {
   type Project, type ExecutionRun, type AgentRun, type Requirement,
   type TestCase, type TestDataItem, type TestPlan, type DefectDraft, type DashboardMetrics
 } from "@/lib/api";
-import {
-  AI_QUALITY_MOCK, RAG_KNOWLEDGE_MOCK, QUALITY_GATES_MOCK, TRACEABILITY_MOCK,
-  NEXT_BEST_ACTIONS_MOCK, AI_AGENTS_MOCK, AI_AGENT_STATS_MOCK,
-  DOMAIN_QUALITY_MOCK, EXECUTION_TREND_MOCK, DEFECT_AGING_MOCK,
-  type QualityGateStatus, type AgentStatus
-} from "@/lib/dashboard-mock";
 import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -96,6 +90,11 @@ function Sparkline({ data, color = "#8b5cf6" }: { data: number[]; color?: string
 }
 
 // ── Quality gate status badge ─────────────────────────────────────────────────
+type QualityGateStatus = "Passed" | "Failed" | "Pending";
+type AgentStatus = "Active" | "Running" | "Waiting" | "Completed";
+type ActionVariant = "high" | "ai" | "warning" | "critical";
+type DashboardAction = { title: string; label: string; variant: ActionVariant; href: string };
+
 function GateBadge({ status }: { status: QualityGateStatus }) {
   const map: Record<QualityGateStatus, string> = {
     Passed: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -130,7 +129,6 @@ function AgentPill({ status }: { status: AgentStatus }) {
     Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
     Running: "bg-blue-50 text-blue-700 border-blue-200",
     Waiting: "bg-amber-50 text-amber-700 border-amber-200",
-    Scheduled: "bg-violet-50 text-violet-700 border-violet-200",
     Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   };
   return (
@@ -142,7 +140,7 @@ function AgentPill({ status }: { status: AgentStatus }) {
 
 // ── NBA Tile Card (icon-left, title+badge right) ──────────────────────────────
 function NBACard({ action, href }: {
-  action: typeof NEXT_BEST_ACTIONS_MOCK[number];
+  action: DashboardAction;
   href: string;
 }) {
   const labelStyle = action.variant === "high"     ? "text-blue-600 bg-blue-50 border-blue-200"
@@ -453,7 +451,7 @@ function DashboardContent() {
           (d as { name: string; Passed: number; Failed: number; InProgress?: number; Blocked?: number }).InProgress ?? 0,
       }));
     }
-    if (execRuns.length === 0) return EXECUTION_TREND_MOCK;
+    if (execRuns.length === 0) return [];
     return execRuns.slice(0, 7).reverse().map(run => ({
       name: run.execution_id.split("-")[1] || run.execution_id,
       Passed: run.passed,
@@ -475,7 +473,6 @@ function DashboardContent() {
 
   // ── Defect aging (from real defects or mock) ────────────────────────────────
   const defectAging = useMemo(() => {
-    if (defects.length === 0) return DEFECT_AGING_MOCK;
     const now = Date.now();
     const buckets = [
       { label: "0-2 days",  max: 2,  color: "#10b981" },
@@ -484,13 +481,12 @@ function DashboardContent() {
       { label: ">15 days",  max: Infinity, color: "#ef4444" },
     ];
     const total = defects.length || 1;
-    let prev = 0;
-    return buckets.map(b => {
+    return buckets.map((b, index) => {
+      const min = index === 0 ? 0 : buckets[index - 1].max;
       const count = defects.filter(d => {
         const age = (now - new Date(d.created_at).getTime()) / 86400000;
-        return age > prev && age <= b.max;
+        return age >= min && age <= b.max;
       }).length;
-      prev = b.max;
       return { label: b.label, count, pct: Math.round((count / total) * 100), color: b.color };
     });
   }, [defects]);
@@ -508,7 +504,6 @@ function DashboardContent() {
       defect_analysis: "Defect Triage Agent",
       test_reporting: "Report Agent",
     };
-    if (agentRuns.length === 0) return AI_AGENTS_MOCK;
     return agentRuns.slice(0, 5).map(run => ({
       name: labelMap[run.agent_name] || run.agent_name,
       status: (run.status === "completed" ? "Completed"
@@ -565,10 +560,6 @@ function DashboardContent() {
     testCases.slice(0, 1).forEach(tc => activities.push({ user: "System", action: `updated test case ${tc.test_case_id}`, subject: tc.title, time: formatTimeAgo(tc.updated_at), timestamp: timestampFromDate(tc.updated_at), isAgent: false }));
     defects.slice(0, 1).forEach(d => activities.push({ user: "System", action: `logged defect ${d.defect_id || ""}`, subject: d.summary, time: formatTimeAgo(d.created_at), timestamp: timestampFromDate(d.created_at), isAgent: false }));
     agentRuns.slice(0, 2).forEach(r => activities.push({ user: "AI Agent", action: r.progress_message || `Completed ${r.agent_name}`, subject: "", time: formatTimeAgo(r.created_at), timestamp: timestampFromDate(r.created_at), isAgent: true }));
-    if (!activities.length) return [
-      { user: "System", action: "project ready — upload requirements to begin", subject: "Getting Started", time: "Just now", timestamp: 0, isAgent: false },
-      { user: "AI Agent", action: "ready to generate test cases and automation scripts", subject: "AI Agents", time: "Just now", timestamp: 0, isAgent: true },
-    ];
     return activities.sort((a, b) => b.timestamp - a.timestamp).slice(0, 6);
   }, [metrics, requirements, testCases, defects, agentRuns]);
 
@@ -589,34 +580,92 @@ function DashboardContent() {
   }, [stats, pendingApprovals]);
 
   // ── Domain quality matrix (merge real passRate into mock if available) ──────
+  const traceability = useMemo(() => {
+    const linkedRequirementIds = new Set(testCases.map(tc => tc.requirement_id ?? tc.linked_requirement_id).filter((id): id is number => Boolean(id)));
+    const automated = testCases.filter(tc => Boolean(tc.automation_script_id) || tc.automation_status === "automated" || tc.execution_mode === "automation" || tc.execution_mode === "automated").length;
+    const defectsWithRequirement = defects.filter(defect => {
+      const tc = testCases.find(item => item.id === defect.test_case_id);
+      return Boolean(tc?.requirement_id ?? tc?.linked_requirement_id);
+    }).length;
+    return {
+      reqToTC: stats.totalReqs ? Math.round((linkedRequirementIds.size / stats.totalReqs) * 100) : 0,
+      tcToAutomation: stats.totalTCs ? Math.round((automated / stats.totalTCs) * 100) : 0,
+      defectsToReq: stats.totalDefects ? Math.round((defectsWithRequirement / stats.totalDefects) * 100) : 0,
+      uncoveredRequirements: Math.max(0, stats.totalReqs - linkedRequirementIds.size),
+      orphanTestCases: testCases.filter(tc => !(tc.requirement_id ?? tc.linked_requirement_id)).length,
+    };
+  }, [testCases, defects, stats]);
+
+  const qualityGates = useMemo<Array<{ name: string; status: QualityGateStatus }>>(() => {
+    const gate = (hasItems: boolean, passed: boolean): QualityGateStatus => !hasItems ? "Pending" : passed ? "Passed" : "Failed";
+    return [
+      { name: "Requirement Approval", status: gate(stats.totalReqs > 0, stats.pendingReqs === 0) },
+      { name: "Automation Readiness", status: gate(stats.totalTCs > 0, stats.autoPct >= 80) },
+      { name: "Test Planning", status: gate(testPlans.length > 0, testPlans.every(plan => plan.status === "approved")) },
+      { name: "Execution Readiness", status: gate(stats.totalRuns > 0, stats.failedRuns === 0 && stats.runningRuns === 0) },
+      { name: "Test Case Review", status: gate(stats.totalTCs > 0, testCases.every(tc => tc.approval_status === "approved" || tc.status === "approved")) },
+      { name: "Defect Closure", status: gate(stats.totalDefects > 0, stats.criticalDefects === 0 && stats.highDefects === 0) },
+      { name: "Test Data Readiness", status: gate(stats.totalData > 0, stats.pendingData === 0) },
+      { name: "Release Report", status: gate((metrics?.reports.total ?? 0) > 0, (metrics?.reports.published ?? 0) > 0) },
+    ];
+  }, [stats, testPlans, testCases, metrics]);
+
+  const nextBestActions = useMemo<DashboardAction[]>(() => [
+    { title: `Approve ${stats.pendingReqs} requirements`, label: stats.pendingReqs ? "High impact" : "No pending items", variant: "high", href: "/requirements" },
+    { title: `Review ${testCases.filter(tc => tc.status === "draft" || tc.approval_status === "pending").length} test cases`, label: "Review queue", variant: "ai", href: "/test-cases" },
+    { title: stats.totalData ? `Review ${stats.pendingData} test data sets` : "Generate synthetic test data", label: stats.totalData ? "Data readiness" : "No data available", variant: "warning", href: "/test-data" },
+    { title: `Triage ${stats.criticalDefects + stats.highDefects} high/critical defects`, label: "Release risk", variant: "critical", href: "/defects" },
+    { title: `Monitor ${stats.runningRuns} active executions`, label: `${stats.failedRuns} failed runs`, variant: "warning", href: "/execution/dashboard" },
+  ], [stats, testCases]);
+
+  const aiQuality = useMemo(() => {
+    const scored = requirements.map(req => req.quality_score).filter((score): score is number => typeof score === "number");
+    return {
+      confidence: scored.length ? Math.round(scored.reduce((sum, score) => sum + score, 0) / scored.length) : null,
+      sparkline: scored.slice(-7),
+      ambiguity: stats.totalReqs ? Math.round((requirements.filter(req => (req.missing_information?.length ?? 0) > 0).length / stats.totalReqs) * 100) : 0,
+      coverageGaps: 100 - traceability.reqToTC,
+      defectRisk: stats.totalDefects ? Math.round(((stats.criticalDefects + stats.highDefects) / stats.totalDefects) * 100) : 0,
+    };
+  }, [requirements, stats, traceability]);
+
+  const agentStats = useMemo(() => {
+    const today = new Date().toDateString();
+    const todayRuns = agentRuns.filter(run => new Date(run.created_at).toDateString() === today);
+    return { actionsToday: todayRuns.length, runtimeHours: todayRuns.reduce((sum, run) => sum + (run.duration_seconds ?? 0), 0) / 3600 };
+  }, [agentRuns]);
+
   const domainMatrix = useMemo(() => {
-    if (!metrics) {
-      const realDomainMap = new Map(
-        (testCases).reduce((acc, tc) => {
-          if (!tc.telecom_domain) return acc;
-          const key = tc.telecom_domain.toLowerCase().replace(/[\s-]/g, "");
-          if (!acc.has(key)) acc.set(key, { total: 0, passed: 0 });
-          acc.get(key)!.total++;
-          if (tc.last_automation_status === "passed" || tc.status?.toLowerCase() === "approved") acc.get(key)!.passed++;
-          return acc;
-        }, new Map<string, { total: number; passed: number }>())
-      );
-      return DOMAIN_QUALITY_MOCK.map(mock => {
-        const key = mock.domain.toLowerCase().replace(/[\s-]/g, "");
-        const real = realDomainMap.get(key);
-        return real && real.total > 0
-          ? { ...mock, passRate: Math.round((real.passed / real.total) * 100) }
-          : mock;
-      });
-    }
-    // When metrics available, still use mock for rich columns, override passRate
-    const metricsMap = new Map((metrics.domainQuality ?? []).map(d => [d.domain.toLowerCase().replace(/[\s-]/g, ""), d]));
-    return DOMAIN_QUALITY_MOCK.map(mock => {
-      const key = mock.domain.toLowerCase().replace(/[\s-]/g, "");
-      const real = metricsMap.get(key);
-      return real ? { ...mock, passRate: real.passRate ?? mock.passRate } : mock;
+    const domains = new Map<string, { requirements: Requirement[]; testCases: TestCase[]; defects: DefectDraft[] }>();
+    const entryFor = (domain: string) => domains.get(domain) ?? { requirements: [], testCases: [], defects: [] };
+    requirements.forEach(req => {
+      const domain = req.telecom_domain || "Unspecified";
+      const entry = entryFor(domain); entry.requirements.push(req); domains.set(domain, entry);
     });
-  }, [metrics, testCases]);
+    testCases.forEach(tc => {
+      const domain = tc.telecom_domain || "Unspecified";
+      const entry = entryFor(domain); entry.testCases.push(tc); domains.set(domain, entry);
+    });
+    defects.forEach(defect => {
+      const domain = testCases.find(item => item.id === defect.test_case_id)?.telecom_domain || "Unspecified";
+      const entry = entryFor(domain); entry.defects.push(defect); domains.set(domain, entry);
+    });
+    return Array.from(domains.entries()).map(([domain, rows]) => {
+      const linkedReqs = new Set(rows.testCases.map(tc => tc.requirement_id ?? tc.linked_requirement_id).filter(Boolean)).size;
+      const automated = rows.testCases.filter(tc => Boolean(tc.automation_script_id) || tc.automation_status === "automated").length;
+      const passed = rows.testCases.filter(tc => tc.last_automation_status === "passed").length;
+      const risk = rows.defects.some(d => d.severity.toLowerCase() === "critical") ? "High" : rows.defects.length > 2 ? "Medium" : "Low";
+      return {
+        domain,
+        reqCoverage: rows.requirements.length ? Math.round((rows.requirements.filter(req => req.status === "approved").length / rows.requirements.length) * 100) : 0,
+        tcCoverage: rows.requirements.length ? Math.round((linkedReqs / rows.requirements.length) * 100) : 0,
+        automation: rows.testCases.length ? Math.round((automated / rows.testCases.length) * 100) : 0,
+        passRate: rows.testCases.length ? Math.round((passed / rows.testCases.length) * 100) : 0,
+        openDefects: rows.defects.length,
+        risk: risk as "Low" | "Medium" | "High",
+      };
+    });
+  }, [requirements, testCases, defects]);
 
   // ── project link helper ──────────────────────────────────────────────────────
   const projectLink = (href: string) =>
@@ -722,15 +771,15 @@ function DashboardContent() {
                 <div className="flex items-center gap-1.5 text-[9px] text-violet-500 font-semibold mb-0.5">
                   <Bot className="h-3 w-3" /> AI Confidence
                 </div>
-                <span className="text-2xl font-bold text-violet-600">{AI_QUALITY_MOCK.confidence}%</span>
+                <span className="text-2xl font-bold text-violet-600">{aiQuality.confidence === null ? "—" : `${aiQuality.confidence}%`}</span>
               </div>
-              <Sparkline data={AI_QUALITY_MOCK.sparkline} />
+              <Sparkline data={aiQuality.sparkline} />
             </div>
             <div className="mt-3 space-y-1.5 border-t border-slate-50 pt-2.5">
               {[
-                { label: "Ambiguity", ...AI_QUALITY_MOCK.ambiguity },
-                { label: "Coverage Gaps", ...AI_QUALITY_MOCK.coverageGaps },
-                { label: "Defect Pred. Risk", ...AI_QUALITY_MOCK.defectPredictionRisk },
+                { label: "Ambiguity", value: aiQuality.ambiguity, level: aiQuality.ambiguity >= 30 ? "High" : aiQuality.ambiguity > 0 ? "Medium" : "Low" },
+                { label: "Coverage Gaps", value: aiQuality.coverageGaps, level: aiQuality.coverageGaps >= 30 ? "High" : aiQuality.coverageGaps > 0 ? "Medium" : "Low" },
+                { label: "Defect Pred. Risk", value: aiQuality.defectRisk, level: aiQuality.defectRisk >= 30 ? "High" : aiQuality.defectRisk > 0 ? "Medium" : "Low" },
               ].map(m => (
                 <div key={m.label} className="flex items-center justify-between text-[10px]">
                   <span className="text-slate-500">{m.label}</span>
@@ -755,9 +804,9 @@ function DashboardContent() {
           <CardContent className="p-4 pt-1">
             <div className="grid grid-cols-3 gap-2 mt-1">
               {[
-                { label: "Docs Indexed", value: RAG_KNOWLEDGE_MOCK.documentsIndexed },
-                { label: "Jira Stories", value: RAG_KNOWLEDGE_MOCK.jiraStoriesIndexed },
-                { label: "Chunks", value: RAG_KNOWLEDGE_MOCK.chunks },
+                { label: "Docs Indexed", value: "—" },
+                { label: "Jira Stories", value: "—" },
+                { label: "Chunks", value: "—" },
               ].map(m => (
                 <div key={m.label} className="text-center">
                   <div className="text-base font-bold text-slate-800">{m.value}</div>
@@ -768,14 +817,14 @@ function DashboardContent() {
             <div className="mt-3 border-t border-slate-50 pt-2.5 space-y-1.5">
               <div className="flex items-center justify-between text-[10px]">
                 <span className="text-slate-500">Retrieval Accuracy</span>
-                <span className="font-bold text-slate-700">{RAG_KNOWLEDGE_MOCK.retrievalAccuracy}%</span>
+                <span className="font-bold text-slate-700">—</span>
               </div>
               <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-teal-500" style={{ width: `${RAG_KNOWLEDGE_MOCK.retrievalAccuracy}%` }} />
+                <div className="h-full rounded-full bg-slate-300" style={{ width: "0%" }} />
               </div>
               <div className="flex items-center gap-1.5 mt-1">
-                <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
-                <span className="text-[10px] font-semibold text-emerald-600">Healthy</span>
+                <AlertTriangle className="h-3.5 w-3.5 text-slate-400" />
+                <span className="text-[10px] font-semibold text-slate-500">Metrics unavailable</span>
               </div>
             </div>
           </CardContent>
@@ -868,13 +917,13 @@ function DashboardContent() {
           <CardContent className="p-4 pt-3 flex flex-col gap-2">
             {/* Row 1: 3 equal tiles */}
             <div className="grid grid-cols-3 gap-2">
-              {NEXT_BEST_ACTIONS_MOCK.slice(0, 3).map(action => (
+              {nextBestActions.slice(0, 3).map(action => (
                 <NBACard key={action.title} action={action} href={projectLink(action.href)} />
               ))}
             </div>
             {/* Row 2: 2 wider tiles — each spans half the panel width */}
             <div className="grid grid-cols-2 gap-2">
-              {NEXT_BEST_ACTIONS_MOCK.slice(3).map(action => (
+              {nextBestActions.slice(3).map(action => (
                 <NBACard key={action.title} action={action} href={projectLink(action.href)} />
               ))}
             </div>
@@ -937,7 +986,7 @@ function DashboardContent() {
           </CardHeader>
           <CardContent className="p-4">
             <div className="grid grid-cols-2 gap-2">
-              {QUALITY_GATES_MOCK.map(gate => (
+              {qualityGates.map(gate => (
                 <div key={gate.name} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-100">
                   <span className="text-[10px] font-medium text-slate-700 truncate">{gate.name}</span>
                   <GateBadge status={gate.status} />
@@ -957,9 +1006,9 @@ function DashboardContent() {
           <CardContent className="p-5">
             <div className="space-y-4">
               {[
-                { label: "Requirements mapped to Test Cases", value: TRACEABILITY_MOCK.reqToTC, color: "#ef4444" },
-                { label: "Test Cases mapped to Automation", value: TRACEABILITY_MOCK.tcToAutomation, color: "#10b981" },
-                { label: "Defects mapped to Requirements", value: TRACEABILITY_MOCK.defectsToReq, color: "#f59e0b" },
+                { label: "Requirements mapped to Test Cases", value: traceability.reqToTC, color: "#ef4444" },
+                { label: "Test Cases mapped to Automation", value: traceability.tcToAutomation, color: "#10b981" },
+                { label: "Defects mapped to Requirements", value: traceability.defectsToReq, color: "#f59e0b" },
               ].map(m => (
                 <div key={m.label}>
                   <div className="flex items-center justify-between text-[10px] mb-1">
@@ -974,11 +1023,11 @@ function DashboardContent() {
             </div>
             <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-slate-50">
               <div className="text-center p-2 rounded-lg bg-red-50 border border-red-100">
-                <div className="text-lg font-bold text-red-600">{TRACEABILITY_MOCK.uncoveredRequirements}</div>
+                <div className="text-lg font-bold text-red-600">{traceability.uncoveredRequirements}</div>
                 <div className="text-[9px] text-red-400 font-medium mt-0.5">Uncovered Requirements</div>
               </div>
               <div className="text-center p-2 rounded-lg bg-amber-50 border border-amber-100">
-                <div className="text-lg font-bold text-amber-600">{TRACEABILITY_MOCK.orphanTestCases}</div>
+                <div className="text-lg font-bold text-amber-600">{traceability.orphanTestCases}</div>
                 <div className="text-[9px] text-amber-400 font-medium mt-0.5">Orphan Test Cases</div>
               </div>
             </div>
@@ -1135,10 +1184,10 @@ function DashboardContent() {
               </div>
               <div className="text-right">
                 <div className="text-[10px] font-bold text-violet-600">
-                  <span className="text-base text-slate-800">{AI_AGENT_STATS_MOCK.actionsToday}</span> AI actions today
+                  <span className="text-base text-slate-800">{agentStats.actionsToday}</span> AI actions today
                 </div>
                 <div className="text-[10px] font-semibold text-emerald-600 mt-0.5">
-                  <Zap className="inline h-2.5 w-2.5" /> {AI_AGENT_STATS_MOCK.timeSavedHrs} hrs saved
+                  <Zap className="inline h-2.5 w-2.5" /> {agentStats.runtimeHours.toFixed(1)} hrs runtime
                 </div>
               </div>
             </div>
@@ -1162,7 +1211,7 @@ function DashboardContent() {
               ))}
             </div>
             <div className="mt-4 pt-3 border-t border-slate-50">
-              <Link href="/agents" className="text-[11px] font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
+              <Link href={projectLink("/agents")} className="text-[11px] font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
                 View All Agent Runs <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </div>

@@ -292,6 +292,26 @@ export interface Requirement {
   updated_at: string;
 }
 
+export interface RequirementQualityReview {
+  id: number;
+  quality_score?: number | null;
+  verdict?: string | null;
+  completeness_score?: number | null;
+  clarity_score?: number | null;
+  testability_score?: number | null;
+  ambiguity_score?: number | null;
+  acceptance_criteria_score?: number | null;
+  interface_readiness_score?: number | null;
+  telecom_domain_completeness?: number | null;
+  scenario_generation_readiness?: number | null;
+  ambiguities?: unknown[] | null;
+  missing_details?: unknown[] | null;
+  recommendations?: unknown[] | null;
+  clarification_questions?: unknown[] | null;
+  created_at?: string | null;
+  agent_run_id?: number | null;
+}
+
 // GAP-4d: coverage & prioritization analytics
 export interface RequirementCoverage {
   requirement_id: number;
@@ -402,6 +422,7 @@ export interface JiraConnectionTestResult {
 
 export interface TestPlan {
   id: number;
+  project_id: number;
   test_plan_id: string;
   title: string;
   scope?: string[];
@@ -526,6 +547,28 @@ export interface TestCase {
   requirement_id?: number;
   created_at: string;
   updated_at: string;
+
+  // UAT template fields (migration 042). `*_id` are the taxonomy-governed
+  // source of truth; `*_name` is the resolved display value (falls back to
+  // the legacy free-text column above when no taxonomy FK is set).
+  channel_id?: number | null;
+  channel_name?: string | null;
+  domain_id?: number | null;
+  domain_name?: string | null;
+  area_of_test_id?: number | null;
+  area_of_test_name?: string | null;
+  product_id?: number | null;
+  product_name?: string | null;
+  sub_request_type_id?: number | null;
+  sub_request_type_name?: string | null;
+  test_case_type_id?: number | null;
+  test_case_type_name?: string | null;
+  test_case_complexity_id?: number | null;
+  test_case_complexity_name?: string | null;
+  test_case_objective?: string | null;
+  atc_test_case?: string | null;
+  is_critical: boolean;
+  ppm_id?: string | null;
 }
 
 export type ApplicationLifecycleStatus = "draft" | "active" | "deprecated" | "retired";
@@ -1082,7 +1125,7 @@ export const requirementsApi = {
   stats: (projectId: number) =>
     api.get<RequirementStats>(`/requirements/project/${projectId}/stats`),
   qualityReviews: (reqId: number) =>
-    api.get<any[]>(`/requirements/${reqId}/quality-reviews`),
+    api.get<RequirementQualityReview[]>(`/requirements/${reqId}/quality-reviews`),
   // GAP-4d: coverage & prioritization analytics
   coverage: (reqId: number) =>
     api.get<RequirementCoverage>(`/requirements/${reqId}/coverage`),
@@ -1213,6 +1256,80 @@ export const testCasesApi = {
       dry_run: boolean;
     },
   ) => api.post<TestCaseBulkUpdateResult>(`/test-cases/projects/${projectId}/bulk-update`, payload),
+};
+
+// ── Taxonomy (centrally governed telecom QA master data) ────────────────────
+// Backs the Domain / Channel / Product / Area of Test / Sub Request Type /
+// Test Case Type / Test Case Complexity / Environment dropdowns across
+// Requirements, Test Cases, Test Planning and Execution. Real backend-driven
+// reference data — replaces any hardcoded option arrays.
+
+export interface TaxonomyEntry {
+  id: number;
+  organization_id?: number | null;
+  name: string;
+  code: string;
+  description?: string | null;
+  status: "active" | "draft" | "retired";
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface TaxonomyTree {
+  qa_domains: Array<{ id: number; name: string; code: string; is_active: boolean; product_groups: Array<{ id: number; name: string; code: string; is_active: boolean; products: Array<{ id: number; name: string; code: string; is_active: boolean }> }> }>;
+  systems: TaxonomyEntry[];
+  sub_request_types: TaxonomyEntry[];
+  test_case_types: TaxonomyEntry[];
+  test_case_complexities: TaxonomyEntry[];
+  environments: TaxonomyEntry[];
+}
+
+export const taxonomyApi = {
+  tree: (activeOnly = true) => api.get<TaxonomyTree>("/taxonomy/tree", { params: { active_only: activeOnly } }),
+  qaDomains: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/qa-domains", { params: { active_only: activeOnly } }),
+  productGroups: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/product-groups", { params: { active_only: activeOnly } }),
+  products: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/products", { params: { active_only: activeOnly } }),
+  systems: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/systems", { params: { active_only: activeOnly } }),
+  subRequestTypes: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/sub-request-types", { params: { active_only: activeOnly } }),
+  testCaseTypes: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/test-case-types", { params: { active_only: activeOnly } }),
+  testCaseComplexities: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/test-case-complexities", { params: { active_only: activeOnly } }),
+  environments: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/environments", { params: { active_only: activeOnly } }),
+};
+
+// ── Plan Test Case Enrollment (UAT template: Environment / Tester / ────────
+// Planned Execution Sequence, per test plan cycle) ───────────────────────────
+
+export interface PlanTestCaseEnrollment {
+  id: number;
+  test_plan_id: number;
+  test_case_id: number;
+  test_case_display_id?: string | null;
+  test_case_title?: string | null;
+  environment_id?: number | null;
+  environment_name?: string | null;
+  tester_user_id?: number | null;
+  planned_execution_sequence?: string | null;
+  order_index: number;
+  created_by?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const planTestCasesApi = {
+  list: (planId: number) => api.get<PlanTestCaseEnrollment[]>(`/test-plans/${planId}/cases`),
+  enroll: (
+    planId: number,
+    data: { test_case_id: number; environment_id?: number | null; tester_user_id?: number | null; planned_execution_sequence?: string | null },
+  ) => api.post<PlanTestCaseEnrollment>(`/test-plans/${planId}/cases`, data),
+  update: (
+    planId: number,
+    enrollmentId: number,
+    data: { environment_id?: number | null; tester_user_id?: number | null; planned_execution_sequence?: string | null; order_index?: number },
+  ) => api.patch<PlanTestCaseEnrollment>(`/test-plans/${planId}/cases/${enrollmentId}`, data),
+  reorder: (planId: number, orderedEnrollmentIds: number[]) =>
+    api.post<PlanTestCaseEnrollment[]>(`/test-plans/${planId}/cases/reorder`, { ordered_enrollment_ids: orderedEnrollmentIds }),
+  remove: (planId: number, enrollmentId: number) =>
+    api.delete<{ message: string }>(`/test-plans/${planId}/cases/${enrollmentId}`),
 };
 
 // ── Test Automation Classification & Routing (P1-S3 extension) ──────────────
@@ -2237,9 +2354,19 @@ export interface ExecutionResult {
   raw_result_json?: Record<string, unknown>;
   logs?: string[];
   metadata_?: Record<string, unknown> | null;
+  // UAT template fields (migration 042).
+  tested_by_id?: number | null;
+  tested_by_name?: string | null;
+  sit_status?: "not_started" | "passed" | "failed" | "n_a" | null;
+  blocking_defect_id?: number | null;
+  blocking_defect_display_id?: string | null;
+  other_reason?: string | null;
   created_at: string;
   updated_at: string;
 }
+
+// UAT template's "Overall Status" execution outcome vocabulary.
+export type OverallStatus = "pending" | "pass" | "fail" | "skip" | "error" | "blocked" | "not_run" | "running" | "passed_with_snag";
 
 export type FailureClassificationType =
   | "app_defect" | "locator_issue" | "data_issue" | "environment_issue" | "api_issue" | "timeout";
@@ -2489,6 +2616,18 @@ export const executionApi = {
     api.delete<ManualStepResult>(`/execution/manual/evidence/${evidenceId}`),
   completeManualRun: (runId: number) =>
     api.post<ManualRunDetail>(`/execution/manual/runs/${runId}/complete`),
+  // UAT template tracking for a single result: Overall Status outcome (incl.
+  // "Passed with Snag"), Tested By, SIT status, Blocking Snag ID / Other Reason.
+  updateManualResultUat: (
+    resultId: number,
+    patch: {
+      status?: OverallStatus;
+      tested_by_id?: number | null;
+      sit_status?: "not_started" | "passed" | "failed" | "n_a";
+      blocking_defect_id?: number | null;
+      other_reason?: string;
+    },
+  ) => api.patch<ExecutionResult>(`/execution/manual/results/${resultId}/uat`, patch),
 
   // Ask the configured LLM for a pass/fail/blocked suggestion on a step.
   // Tester drives invocation (no auto-suggest) so cost is predictable.
@@ -2852,6 +2991,41 @@ function _triggerDownload(blob: Blob, filename: string) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+// ── Test Case Import (CSV/XLSX, UAT template's 22-column format) ────────────
+
+export interface TestCaseImportPreview {
+  preview_token: string;
+  filename: string;
+  file_type: string;
+  detected_columns: string[];
+  row_count: number;
+  preview_rows: Array<Record<string, unknown>>;
+  validation_errors: Array<{ row_number?: number; test_case_id?: string; message: string }>;
+  validation_warnings: Array<{ row_number?: number; message: string }>;
+  can_import: boolean;
+}
+
+export interface TestCaseImportConfirmResult {
+  imported_count: number;
+  skipped_count: number;
+  created_test_case_ids: number[];
+  validation_summary: Record<string, unknown>;
+}
+
+export const testCaseImportApi = {
+  preview: (projectId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<TestCaseImportPreview>(`/test-cases/projects/${projectId}/import/preview`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+  confirm: (projectId: number, previewToken: string) =>
+    api.post<TestCaseImportConfirmResult>(`/test-cases/projects/${projectId}/import/confirm`, {
+      preview_token: previewToken,
+    }),
+};
 
 export const exportApi = {
   /**

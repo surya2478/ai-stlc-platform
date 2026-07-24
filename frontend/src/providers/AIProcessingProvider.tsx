@@ -90,13 +90,10 @@ export function AIProcessingProvider({ children }: { children: React.ReactNode }
   const activePromiseRef = useRef<Promise<unknown> | null>(null);
   const retryRef = useRef<RunAIActionOptions<unknown> | null>(null);
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const timeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimers = useCallback(() => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
-    if (timeoutTimerRef.current) clearTimeout(timeoutTimerRef.current);
     successTimerRef.current = null;
-    timeoutTimerRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -148,17 +145,6 @@ export function AIProcessingProvider({ children }: { children: React.ReactNode }
       canRetry: options.canRetry !== false,
     });
 
-    if (options.timeoutMs) {
-      timeoutTimerRef.current = setTimeout(() => {
-        setContext((current) => ACTIVE_STATUSES.has(current.status) ? {
-          ...current,
-          status: "timeout",
-          errorCategory: "Request timed out",
-          errorMessage: "The request is still unresolved. The backend operation was not cancelled.",
-        } : current);
-      }, options.timeoutMs);
-    }
-
     const promise = (async () => {
       try {
         const result = await options.execute();
@@ -184,8 +170,6 @@ export function AIProcessingProvider({ children }: { children: React.ReactNode }
         setContext((current) => ({ ...current, ...safeError(error), canRetry: options.canRetry !== false }));
         throw error;
       } finally {
-        if (timeoutTimerRef.current) clearTimeout(timeoutTimerRef.current);
-        timeoutTimerRef.current = null;
         activePromiseRef.current = null;
       }
     })();

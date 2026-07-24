@@ -20,17 +20,21 @@ import {
   ShieldCheck,
   Sparkles,
   TestTube2,
+  Upload,
   X,
   Zap,
 } from "lucide-react";
 import {
   agentRunsApi,
   automationClassificationApi,
+  exportApi,
   isClassificationDisabled,
   projectsApi,
   requirementsApi,
   reviewsApi,
   scenariosApi,
+  taxonomyApi,
+  testCaseImportApi,
   testCasesApi,
   usersApi,
   type ArtifactReview,
@@ -38,19 +42,22 @@ import {
   type ClassificationPolicySimulateResponse,
   type CoverageMatrixEntry,
   type Requirement,
+  type TaxonomyTree,
   type TestCase,
   type TestCaseAutomationClassification,
   type TestCaseHistory,
+  type TestCaseImportPreview,
   type TestScenario,
   type TestCaseSummary,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 import { JourneyGraphView } from "./JourneyGraphView";
 import { TestCaseApprovalView } from "./TestCaseApprovalView";
 import { useAIAction } from "@/hooks/useAIAction";
 import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
+import { terminalAIStatus } from "@/lib/ai-processing-status";
 
 type DrawerTab = "overview" | "cases" | "coverage" | "ai" | "activity";
 type Tone = "blue" | "emerald" | "red" | "purple" | "amber" | "slate";
@@ -87,8 +94,8 @@ function pctOf(part: number, total: number, label: string): string {
   return `${Math.round((part / total) * 1000) / 10}% ${label}`;
 }
 
-const TABLE_GRID = "70px 94px minmax(130px,1fr) 72px 94px 64px 84px 86px 82px 92px 72px 42px";
-const EDITOR_TABLE_GRID = "74px 102px minmax(128px,1fr) 72px 92px 62px 76px 84px 46px";
+const TABLE_GRID = "70px 94px minmax(130px,1fr) 72px 94px 64px 70px 70px 70px 56px 84px 86px 82px 92px 72px 42px";
+const EDITOR_TABLE_GRID = "74px 102px minmax(128px,1fr) 72px 92px 62px 70px 70px 70px 56px 76px 84px 46px";
 
 function messageFromError(error: unknown, fallback: string) {
   const candidate = error as { response?: { data?: { detail?: unknown } }; message?: string };
@@ -113,6 +120,20 @@ type EditorDraft = {
   preconditionsText: string;
   steps: Array<{ step_number: number; action: string; expected_result: string }>;
   expectedResult: string;
+  // UAT template fields (migration 042). `*_id` are the taxonomy FK the
+  // save diff persists; the paired `*Options` list on the form is fetched
+  // from taxonomyApi, never hardcoded.
+  domainId: number | null;
+  channelId: number | null;
+  productId: number | null;
+  areaOfTestId: number | null;
+  subRequestTypeId: number | null;
+  testCaseTypeId: number | null;
+  testCaseComplexityId: number | null;
+  testCaseObjective: string;
+  atcTestCase: string;
+  isCritical: boolean;
+  ppmId: string;
 };
 
 function draftFromCase(t: TestCase | null): EditorDraft {
@@ -122,8 +143,30 @@ function draftFromCase(t: TestCase | null): EditorDraft {
     testType: t?.test_type ?? "",
     automationCandidate: !!t?.automation_candidate,
     preconditionsText: (t?.preconditions ?? []).join("\n"),
-    steps: (t?.steps ?? []).map((s) => ({ ...s })),
+    // Some agent-generated / legacy rows store steps with an "expected" key
+    // instead of "expected_result" (or omit it) — normalize here so every
+    // downstream consumer (validation, step editor, save payload) can rely
+    // on expected_result always being a string.
+    steps: (t?.steps ?? []).map((s, i) => {
+      const raw = s as { step_number?: number; action?: string; expected_result?: string; expected?: string };
+      return {
+        step_number: raw.step_number ?? i + 1,
+        action: raw.action ?? "",
+        expected_result: raw.expected_result ?? raw.expected ?? "",
+      };
+    }),
     expectedResult: t?.expected_result ?? "",
+    domainId: t?.domain_id ?? null,
+    channelId: t?.channel_id ?? null,
+    productId: t?.product_id ?? null,
+    areaOfTestId: t?.area_of_test_id ?? null,
+    subRequestTypeId: t?.sub_request_type_id ?? null,
+    testCaseTypeId: t?.test_case_type_id ?? null,
+    testCaseComplexityId: t?.test_case_complexity_id ?? null,
+    testCaseObjective: t?.test_case_objective ?? "",
+    atcTestCase: t?.atc_test_case ?? "",
+    isCritical: !!t?.is_critical,
+    ppmId: t?.ppm_id ?? "",
   };
 }
 
@@ -176,14 +219,18 @@ function ppmFromRequirement(req?: Requirement) {
 }
 
 function scenarioClass(tc: TestCase) {
-  const raw = tc.test_type || tc.test_phase || tc.telecom_domain || "Business Validation";
+  // No fabricated default — an unclassified test case shows blank rather
+  // than a guessed category (CLAUDE.md: never show static/fabricated
+  // values as if they were live data).
+  const raw = tc.test_type || tc.test_phase || tc.telecom_domain || "";
+  if (!raw) return "";
   const normalized = normalize(raw);
   if (normalized.includes("happy") || normalized.includes("positive")) return "Happy Path";
   if (normalized.includes("input")) return "Input Validation";
   if (normalized.includes("auth")) return "Authorization";
   if (normalized.includes("payment")) return "Payment Validation";
   if (normalized.includes("notification")) return "Notification";
-  return raw.length > 24 ? "Business Validation" : raw;
+  return raw;
 }
 
 function testType(tc: TestCase) {
@@ -299,11 +346,11 @@ function StatCard({
         <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg border", toneMap[tone])}>
           <Icon className="h-4 w-4" />
         </div>
-        <p className="min-w-0 truncate text-xs font-bold text-slate-800">{title}</p>
+        <p className="min-w-0 truncate text-xs font-semibold text-slate-800">{title}</p>
       </div>
       <div className="mt-7">
-        <p className="text-2xl font-extrabold leading-none text-slate-950">{value}</p>
-        <p className="mt-3 text-xs font-semibold text-slate-500">{subtitle}</p>
+        <p className="text-2xl font-bold leading-none text-slate-950">{value}</p>
+        <p className="mt-3 text-xs font-normal text-slate-500">{subtitle}</p>
       </div>
     </div>
   );
@@ -325,8 +372,8 @@ function ReadinessItem({
         {tone === "amber" ? <AlertTriangle className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
       </span>
       <div>
-        <p className="text-xs font-bold text-slate-800">{label}</p>
-        <p className="mt-0.5 text-sm font-extrabold leading-none text-slate-950">{value}</p>
+        <p className="text-xs font-semibold text-slate-800">{label}</p>
+        <p className="mt-0.5 text-sm font-bold leading-none text-slate-950">{value}</p>
       </div>
     </div>
   );
@@ -461,29 +508,33 @@ function ScenarioSelectionPanel({
                           className="h-3.5 w-3.5 rounded border-slate-300 accent-[#1b59f8]"
                         />
                         <span className="w-24 shrink-0 font-mono text-[11px] font-bold text-[#1b59f8]">{scenario.scenario_id}</span>
-                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">{scenario.title}</span>
-                        {req && (
-                          <span className="shrink-0 text-[10px] font-bold text-slate-500">
-                            {req.requirement_id}
+                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                          <span className="min-w-0 truncate text-xs font-semibold text-slate-700">{scenario.title}</span>
+                          <span className="inline-flex shrink-0 items-center gap-2">
+                            {req && (
+                              <span className="font-mono text-[10px] font-bold text-slate-500">
+                                {req.requirement_id}
+                              </span>
+                            )}
+                            <span
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold",
+                                generatedTestCaseCount > 0
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-slate-200 bg-slate-50 text-slate-500",
+                              )}
+                              title={
+                                generatedTestCaseCount > 0
+                                  ? `${generatedTestCaseCount} test case${generatedTestCaseCount === 1 ? "" : "s"} generated from this scenario`
+                                  : "No test cases generated from this scenario"
+                              }
+                            >
+                              {generatedTestCaseCount > 0 && <CheckCircle className="h-3 w-3" />}
+                              TCs: {generatedTestCaseCount > 0 ? `Y (${generatedTestCaseCount})` : "N"}
+                            </span>
+                            <span className={badgeClass(priorityTone(scenario.priority))}>{scenario.priority}</span>
                           </span>
-                        )}
-                        <span
-                          className={cn(
-                            "inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold",
-                            generatedTestCaseCount > 0
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border-slate-200 bg-slate-50 text-slate-500",
-                          )}
-                          title={
-                            generatedTestCaseCount > 0
-                              ? `${generatedTestCaseCount} test case${generatedTestCaseCount === 1 ? "" : "s"} generated from this scenario`
-                              : "No test cases generated from this scenario"
-                          }
-                        >
-                          {generatedTestCaseCount > 0 && <CheckCircle className="h-3 w-3" />}
-                          TCs: {generatedTestCaseCount > 0 ? `Y (${generatedTestCaseCount})` : "N"}
                         </span>
-                        <span className={cn("shrink-0", badgeClass(priorityTone(scenario.priority)))}>{scenario.priority}</span>
                       </label>
                     </li>
                   );
@@ -589,6 +640,7 @@ function TestCasesContent() {
   const [reviewFilter, setReviewFilter] = useState("all");
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [userNames, setUserNames] = useState<Map<number, string>>(new Map());
@@ -660,6 +712,60 @@ function TestCasesContent() {
     () => new Map(classifications.map((item) => [item.test_case_id, item])),
     [classifications],
   );
+
+  const exportProject = useCallback(async () => {
+    if (!selectedProject || exporting) return;
+    setExporting(true);
+    try {
+      await exportApi.downloadTestCases(selectedProject, "excel");
+    } catch {
+      setError("Export failed. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }, [selectedProject, exporting]);
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<TestCaseImportPreview | null>(null);
+  const [previewingImport, setPreviewingImport] = useState(false);
+  const [confirmingImport, setConfirmingImport] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importResult, setImportResult] = useState<string>("");
+
+  const handleImportPreview = useCallback(async () => {
+    if (!selectedProject || !importFile) return;
+    setPreviewingImport(true);
+    setImportError("");
+    setImportResult("");
+    try {
+      const res = await testCaseImportApi.preview(selectedProject, importFile);
+      setImportPreview(res.data);
+    } catch (err) {
+      setImportError(messageFromError(err, "Could not parse that file."));
+      setImportPreview(null);
+    } finally {
+      setPreviewingImport(false);
+    }
+  }, [selectedProject, importFile]);
+
+  const handleImportConfirm = useCallback(async () => {
+    if (!selectedProject || !importPreview) return;
+    setConfirmingImport(true);
+    setImportError("");
+    try {
+      const res = await testCaseImportApi.confirm(selectedProject, importPreview.preview_token);
+      setImportResult(`Imported ${res.data.imported_count} test case(s)${res.data.skipped_count ? `, skipped ${res.data.skipped_count}` : ""}.`);
+      setImportPreview(null);
+      setImportFile(null);
+      await loadData();
+    } catch (err) {
+      setImportError(messageFromError(err, "Import failed."));
+    } finally {
+      setConfirmingImport(false);
+    }
+  }, [selectedProject, importPreview, loadData]);
+
   const testCaseCountByScenarioId = useMemo(() => {
     const counts = new Map<number, number>();
     testCases.forEach((testCase) => {
@@ -837,16 +943,21 @@ function TestCasesContent() {
       if (agentRunId) {
         updateAIProcessing({ status: "waiting", agentRunId: String(agentRunId), currentStage: "Waiting for the test-case agent" });
         setNotice("Test case generation is running...");
-        for (let attempt = 0; attempt < 60; attempt += 1) {
-          await sleep(attempt === 0 ? 1000 : 2000);
+        let firstPoll = true;
+        while (true) {
+          await sleep(firstPoll ? 1000 : 2000);
+          firstPoll = false;
           const run = (await agentRunsApi.get(agentRunId)).data;
+          const terminalStatus = terminalAIStatus(run.status);
+          if (terminalStatus) {
+            const message = run.error_message || "Test case generation failed.";
+            setNotice("");
+            updateAIProcessing({ status: terminalStatus, currentStage: run.status, errorCategory: "AI processing failed", errorMessage: message });
+            await loadData();
+            throw new Error(message);
+          }
           if (run.progress_message) {
             updateAIProcessing({ status: "processing", currentStage: run.progress_message });
-          }
-          if (run.status === "failed") {
-            setNotice("");
-            await loadData();
-            throw new Error(run.error_message || "Test case generation failed.");
           }
           if (run.status === "completed") {
             const count = Number(run.output_data?.count ?? 0);
@@ -856,7 +967,6 @@ function TestCasesContent() {
           }
           setNotice(run.progress_message ? `Test case generation: ${run.progress_message}` : "Test case generation is running...");
         }
-        throw new Error("Generation is still running. Check Agent Logs for progress.");
       } else {
         setNotice(String(data.message || "Test cases generated."));
         await loadData();
@@ -937,14 +1047,24 @@ function TestCasesContent() {
                 <h1 className="text-2xl font-extrabold tracking-tight text-slate-950">Generated Test Cases</h1>
                 <span className={badgeClass("purple")}>P1-S3 UI-010</span>
               </div>
-              <p className="mt-1 text-xs font-semibold text-slate-500">
+              <p className="mt-1 text-sm font-normal leading-5 text-slate-500">
                 AI-generated test cases from approved requirements and traceability context.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={() => exportToCSV(filtered, requirementsByKey, requirementsById)} className="h-9 gap-2 border-slate-200 text-xs font-bold">
-              <Download className="h-4 w-4" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setImportOpen(true); setImportError(""); setImportResult(""); }}
+              disabled={!selectedProject}
+              className="h-9 gap-2 border-slate-200 text-xs font-bold"
+            >
+              <Upload className="h-4 w-4" />
+              Import
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportProject} disabled={exporting || !selectedProject} className="h-9 gap-2 border-slate-200 text-xs font-bold">
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Export
             </Button>
           </div>
@@ -1036,14 +1156,18 @@ function TestCasesContent() {
           </Button>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-[9px] font-extrabold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: TABLE_GRID }}>
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="grid min-w-max border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-[9px] font-extrabold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: TABLE_GRID }}>
             <span>TC ID</span>
             <span>Req ID / PPM ID</span>
             <span>Title</span>
             <span>Test Type</span>
             <span>Scenario Class</span>
             <span>Priority</span>
+            <span>Domain</span>
+            <span>Channel</span>
+            <span>Complexity</span>
+            <span>Critical</span>
             <span>Automation Candidate</span>
             <span>Data Dependency</span>
             <span>Review Status</span>
@@ -1074,7 +1198,7 @@ function TestCasesContent() {
                     onClick={() => setSelectedTestCase(tc)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedTestCase(tc); }}
                     className={cn(
-                      "grid w-full cursor-pointer items-center px-4 py-3 text-left text-[11px] transition hover:bg-slate-50",
+                      "grid w-full min-w-max cursor-pointer items-center px-4 py-3 text-left text-[11px] transition hover:bg-slate-50",
                       selected && "border-l-2 border-[#1b59f8] bg-blue-50/25",
                     )}
                     style={{ gridTemplateColumns: TABLE_GRID }}
@@ -1088,6 +1212,10 @@ function TestCasesContent() {
                     <span><span className={badgeClass(testType(tc) === "Positive" ? "emerald" : testType(tc) === "Negative" ? "red" : "purple")}>{testType(tc)}</span></span>
                     <span><span className={badgeClass("slate")}>{scenarioClass(tc)}</span></span>
                     <span><span className={badgeClass(priorityTone(tc.priority))}>{tc.priority}</span></span>
+                    <span className="truncate font-semibold text-slate-600">{tc.domain_name || "—"}</span>
+                    <span className="truncate font-semibold text-slate-600">{tc.channel_name || "—"}</span>
+                    <span className="truncate font-semibold text-slate-600">{tc.test_case_complexity_name || "—"}</span>
+                    <span>{tc.is_critical && <span className={badgeClass("red")}>Critical</span>}</span>
                     <span>
                       {tc.automation_candidate && classificationsEnabled && classification ? (
                         <span className={badgeClass(classificationStatusTone(classification.candidate_status))}>{classification.candidate_status.replace(/_/g, " ")}</span>
@@ -1135,6 +1263,119 @@ function TestCasesContent() {
           </div>
         </div>
       </section>
+
+      <Drawer open={importOpen} onOpenChange={(open) => { setImportOpen(open); if (!open) { setImportFile(null); setImportPreview(null); setImportError(""); } }}>
+        <DrawerContent size="xl">
+          <DrawerHeader>
+            <div className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-[#1b59f8]" />
+              <div>
+                <DrawerTitle>Import Test Cases</DrawerTitle>
+                <DrawerDescription>
+                  Upload a CSV or Excel file in the UAT template format (docs/autonomous-automation-lab/test-case_template.xlsx).
+                </DrawerDescription>
+              </div>
+            </div>
+            <button onClick={() => setImportOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50">
+              <X className="h-4 w-4" />
+            </button>
+          </DrawerHeader>
+          <DrawerBody className="space-y-4">
+            {importResult && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{importResult}</div>
+            )}
+            {importError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">{importError}</div>
+            )}
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                onChange={(event) => { setImportFile(event.target.files?.[0] ?? null); setImportPreview(null); }}
+                className="flex-1 rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleImportPreview}
+                disabled={!importFile || previewingImport}
+                className="h-9 gap-2 border-slate-200 text-xs font-bold"
+              >
+                {previewingImport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                Preview
+              </Button>
+            </div>
+
+            {importPreview && (
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800">{importPreview.filename}</h4>
+                    <p className="mt-0.5 text-[10px] text-slate-400">{importPreview.row_count} row(s) detected</p>
+                  </div>
+                  <span className={badgeClass(importPreview.can_import ? "emerald" : "red")}>
+                    {importPreview.can_import ? "Ready to import" : "Cannot import"}
+                  </span>
+                </div>
+
+                {importPreview.validation_errors.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto rounded-lg border border-red-200 bg-red-50 p-2.5 text-[11px] text-red-700">
+                    {importPreview.validation_errors.map((item, idx) => (
+                      <p key={idx}>Row {item.row_number ?? item.test_case_id ?? "?"}: {item.message}</p>
+                    ))}
+                  </div>
+                )}
+                {importPreview.validation_warnings.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-700">
+                    {importPreview.validation_warnings.map((item, idx) => (
+                      <p key={idx}>Row {item.row_number ?? "?"}: {item.message}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="min-w-full border-collapse text-left text-[11px]">
+                    <thead className="border-b border-slate-100 bg-slate-50 text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-2.5 py-1.5">Test Case ID</th>
+                        <th className="px-2.5 py-1.5">Title</th>
+                        <th className="px-2.5 py-1.5">Type</th>
+                        <th className="px-2.5 py-1.5">Complexity</th>
+                        <th className="px-2.5 py-1.5">Critical</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {importPreview.preview_rows.map((row, idx) => (
+                        <tr key={idx}>
+                          <td className="px-2.5 py-1.5 font-mono font-bold text-[#1b59f8]">{String(row.test_case_id ?? "—")}</td>
+                          <td className="max-w-[220px] truncate px-2.5 py-1.5">{String(row.title ?? "—")}</td>
+                          <td className="px-2.5 py-1.5">{row.test_case_type_id ? "Matched" : "—"}</td>
+                          <td className="px-2.5 py-1.5">{row.test_case_complexity_id ? "Matched" : "—"}</td>
+                          <td className="px-2.5 py-1.5">{row.is_critical ? "Yes" : "No"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleImportConfirm}
+                    disabled={!importPreview.can_import || confirmingImport}
+                    className="h-9 gap-2 bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1447c9]"
+                  >
+                    {confirmingImport ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                    Confirm Import
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setImportPreview(null)} className="h-9 border-slate-200 text-xs font-bold">
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DrawerBody>
+        </DrawerContent>
+      </Drawer>
 
       <Drawer open={!!selectedTestCase} onOpenChange={(open) => !open && setSelectedTestCase(null)}>
         <DrawerContent size="xl">
@@ -1499,7 +1740,7 @@ function FilterSelect({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+      className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-xs font-medium text-slate-600 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
       aria-label={label}
     >
       {options.map((option) => (
@@ -1595,6 +1836,29 @@ function TestCaseEditorView({
       .catch(() => setCanReviewClassification(false));
     return () => { cancelled = true; };
   }, [selectedProject]);
+
+  // UAT template controlled-vocabulary dropdowns — real backend reference
+  // data (app/services/taxonomy_service.py), not a hardcoded option list.
+  const [taxonomy, setTaxonomy] = useState<TaxonomyTree | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    taxonomyApi.tree(true).then((res) => { if (!cancelled) setTaxonomy(res.data); }).catch(() => { if (!cancelled) setTaxonomy(null); });
+    return () => { cancelled = true; };
+  }, []);
+  const domainOptions = useMemo(() => taxonomy?.qa_domains ?? [], [taxonomy]);
+  const channelOptions = useMemo(() => taxonomy?.systems ?? [], [taxonomy]);
+  const subRequestTypeOptions = useMemo(() => taxonomy?.sub_request_types ?? [], [taxonomy]);
+  const testCaseTypeOptions = useMemo(() => taxonomy?.test_case_types ?? [], [taxonomy]);
+  const testCaseComplexityOptions = useMemo(() => taxonomy?.test_case_complexities ?? [], [taxonomy]);
+  const productGroupOptions = useMemo(
+    () => domainOptions.flatMap((d) => d.product_groups),
+    [domainOptions],
+  );
+  const productOptions = useMemo(
+    () => productGroupOptions.flatMap((pg) => pg.products),
+    [productGroupOptions],
+  );
+
   const reviewFindings = review?.findings ?? [];
   const reviewSuggestions = (review?.findings ?? [])
     .map((f) => f.suggestion)
@@ -1739,6 +2003,17 @@ function TestCaseEditorView({
       if (draft.preconditionsText !== savedDraft.preconditionsText) payload.preconditions = splitLines(draft.preconditionsText);
       if (JSON.stringify(draft.steps) !== JSON.stringify(savedDraft.steps)) payload.steps = draft.steps;
       if (draft.expectedResult !== savedDraft.expectedResult) payload.expected_result = draft.expectedResult;
+      if (draft.domainId !== savedDraft.domainId) payload.domain_id = draft.domainId;
+      if (draft.channelId !== savedDraft.channelId) payload.channel_id = draft.channelId;
+      if (draft.productId !== savedDraft.productId) payload.product_id = draft.productId;
+      if (draft.areaOfTestId !== savedDraft.areaOfTestId) payload.area_of_test_id = draft.areaOfTestId;
+      if (draft.subRequestTypeId !== savedDraft.subRequestTypeId) payload.sub_request_type_id = draft.subRequestTypeId;
+      if (draft.testCaseTypeId !== savedDraft.testCaseTypeId) payload.test_case_type_id = draft.testCaseTypeId;
+      if (draft.testCaseComplexityId !== savedDraft.testCaseComplexityId) payload.test_case_complexity_id = draft.testCaseComplexityId;
+      if (draft.testCaseObjective !== savedDraft.testCaseObjective) payload.test_case_objective = draft.testCaseObjective;
+      if (draft.atcTestCase !== savedDraft.atcTestCase) payload.atc_test_case = draft.atcTestCase;
+      if (draft.isCritical !== savedDraft.isCritical) payload.is_critical = draft.isCritical;
+      if (draft.ppmId !== savedDraft.ppmId) payload.ppm_id = draft.ppmId;
 
       const res = await testCasesApi.update(tc.id, payload);
       setDraft(draftFromCase(res.data));
@@ -1820,7 +2095,7 @@ function TestCaseEditorView({
                 <h1 className="text-2xl font-extrabold tracking-tight text-slate-950">Test Case Editor</h1>
                 <span className={badgeClass("purple")}>P1-S3 UI-011</span>
               </div>
-              <p className="mt-1 text-xs font-semibold text-slate-500">Review and refine generated test cases before approval.</p>
+              <p className="mt-1 text-sm font-normal leading-5 text-slate-500">Review and refine generated test cases before approval.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1829,12 +2104,12 @@ function TestCaseEditorView({
                 Revert
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={saveDraft} disabled={!tc || busyAction !== null || !dirty} className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
+            <Button variant="outline" size="sm" onClick={saveDraft} disabled={!tc || busyAction !== null || !dirty} className="h-9 gap-2 border-blue-200 text-xs font-medium text-[#1b59f8]">
               {busyAction === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
               Save Draft
               {tc && dirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
             </Button>
-            <Button variant="outline" size="sm" onClick={validateCase} disabled={!tc || busyAction !== null} className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
+            <Button variant="outline" size="sm" onClick={validateCase} disabled={!tc || busyAction !== null} className="h-9 gap-2 border-blue-200 text-xs font-medium text-[#1b59f8]">
               {busyAction === "validate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               Validate
             </Button>
@@ -1844,13 +2119,13 @@ function TestCaseEditorView({
               onClick={sendToApproval}
               disabled={!tc || busyAction !== null || approvalBlockers.length > 0}
               title={approvalBlockers.length ? approvalBlockers.join(" ") : undefined}
-              className="h-9 gap-2 bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]"
+              className="h-9 gap-2 bg-[#1b59f8] text-xs font-medium text-white hover:bg-[#1546c2]"
             >
               {busyAction === "approval" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
               Send to Approval
             </Button>
             <div className="relative">
-            <Button variant="outline" size="sm" onClick={() => setShowMore((value) => !value)} className="h-9 gap-2 border-slate-200 text-xs font-bold">
+            <Button variant="outline" size="sm" onClick={() => setShowMore((value) => !value)} className="h-9 gap-2 border-slate-200 text-xs font-medium">
               More
               <ChevronDown className="h-3.5 w-3.5" />
             </Button>
@@ -1860,7 +2135,7 @@ function TestCaseEditorView({
               </div>
             )}
             </div>
-            <Button variant="outline" size="sm" onClick={() => setInspectorOpen(true)} disabled={!tc} className="h-9 gap-2 border-slate-200 text-xs font-bold">
+            <Button variant="outline" size="sm" onClick={() => setInspectorOpen(true)} disabled={!tc} className="h-9 gap-2 border-slate-200 text-xs font-medium">
               <ShieldCheck className="h-4 w-4" />
               Inspector
             </Button>
@@ -1886,7 +2161,7 @@ function TestCaseEditorView({
 
         <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4">
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="mb-4 text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Editing Readiness Check</p>
+            <p className="mb-4 text-sm font-semibold text-slate-800">Editing Readiness Check</p>
             <div className="grid grid-cols-2 gap-x-6 gap-y-4 xl:grid-cols-4">
               <ReadinessItem
                 label="Requirement Linked"
@@ -1911,7 +2186,7 @@ function TestCaseEditorView({
             </div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-bold text-slate-500">Coverage Review</p>
+            <p className="text-sm font-semibold text-slate-800">Coverage Review</p>
             {review ? (
               <>
                 <p className="mt-5 text-xl font-extrabold text-slate-950">
@@ -1922,7 +2197,7 @@ function TestCaseEditorView({
                 </span>
               </>
             ) : (
-              <p className="mt-5 text-xs font-semibold text-slate-500">No automated coverage review recorded yet.</p>
+              <p className="mt-5 text-xs font-normal leading-5 text-slate-500">No automated coverage review recorded yet.</p>
             )}
           </div>
         </div>
@@ -1939,7 +2214,7 @@ function TestCaseEditorView({
                   key={key}
                   onClick={() => setActiveTab(key)}
                   className={cn(
-                    "inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-bold transition",
+                    "inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-semibold transition",
                     activeTab === key ? "bg-[#07142d] text-white" : "text-slate-600 hover:bg-white",
                   )}
                 >
@@ -1955,7 +2230,7 @@ function TestCaseEditorView({
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search by TC ID, title, requirement, scenario..."
-                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-[11px] font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-normal text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
               <FilterSelect value={typeFilter} onChange={setTypeFilter} options={["all", "Positive", "Negative", "Functional"]} label="Test Type" />
@@ -1964,9 +2239,9 @@ function TestCaseEditorView({
               <FilterSelect value={reviewFilter} onChange={setReviewFilter} options={["all", "Generated", "Needs Review", "Approved"]} label="Review Status" />
               <Button variant="outline" size="sm" className="h-9 w-9 border-slate-200 p-0"><Filter className="h-4 w-4" /></Button>
             </div>
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-              <div className="grid border-b border-slate-200 bg-slate-50/70 px-3 py-2 text-[8px] font-extrabold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: EDITOR_TABLE_GRID }}>
-                <span>TC ID</span><span>Req ID / PPM ID</span><span>Title</span><span>Test Type</span><span>Scenario Class</span><span>Priority</span><span>Edit Status</span><span>Validation Status</span><span>Actions</span>
+            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+              <div className="grid min-w-max border-b border-slate-200 bg-slate-50/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: EDITOR_TABLE_GRID }}>
+                <span>TC ID</span><span>Req ID / PPM ID</span><span>Title</span><span>Test Type</span><span>Scenario Class</span><span>Priority</span><span>Domain</span><span>Channel</span><span>Complexity</span><span>Critical</span><span>Edit Status</span><span>Validation Status</span><span>Actions</span>
               </div>
               {loading ? (
                 <div className="flex items-center justify-center py-16 text-xs font-bold text-slate-500">
@@ -1988,7 +2263,7 @@ function TestCaseEditorView({
                           setSelectedTestCase(row);
                           setEditorDrawerOpen(true);
                         }}
-                        className={cn("grid w-full items-center px-3 py-3 text-left text-[10px] transition hover:bg-slate-50", selected && "border-l-2 border-[#1b59f8] bg-blue-50/30")}
+                        className={cn("grid w-full min-w-max items-center px-3 py-3 text-left text-[11px] font-medium transition hover:bg-slate-50", selected && "border-l-2 border-[#1b59f8] bg-blue-50/30")}
                         style={{ gridTemplateColumns: EDITOR_TABLE_GRID }}
                       >
                         <span className="font-mono font-extrabold text-[#1b59f8]">{row.test_case_id}</span>
@@ -2000,6 +2275,10 @@ function TestCaseEditorView({
                         <span><span className={badgeClass(testType(row) === "Negative" ? "red" : "blue")}>{testType(row)}</span></span>
                         <span><span className={badgeClass("slate")}>{scenarioClass(row)}</span></span>
                         <span><span className={badgeClass(priorityTone(row.priority))}>{row.priority}</span></span>
+                        <span className="truncate text-slate-600">{row.domain_name || "—"}</span>
+                        <span className="truncate text-slate-600">{row.channel_name || "—"}</span>
+                        <span className="truncate text-slate-600">{row.test_case_complexity_name || "—"}</span>
+                        <span>{row.is_critical && <span className={badgeClass("red")}>Critical</span>}</span>
                         <span><span className={badgeClass("slate")}>{row.status.replace(/_/g, " ")}</span></span>
                         <span><span className={badgeClass(issue ? "amber" : "emerald")}>{issue ? "Issues" : "Valid"}</span></span>
                         <span className="flex justify-end"><span className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500"><MoreHorizontal className="h-3.5 w-3.5" /></span></span>
@@ -2065,6 +2344,30 @@ function TestCaseEditorView({
                   <EditorField label="Test Case ID" value={tc.test_case_id} muted />
                   <EditorField label="Status" value={tc.status.replace(/_/g, " ")} muted />
                 </div>
+                <EditorField
+                  label="Test Case Objective"
+                  value={draft.testCaseObjective}
+                  onChange={(v) => updateDraft("testCaseObjective", v)}
+                />
+                <EditorSection title="UAT Template Fields">
+                  <div className="grid grid-cols-4 gap-3">
+                    <EditorIdSelect label="Domain" value={draft.domainId} onChange={(v) => updateDraft("domainId", v)} options={domainOptions} />
+                    <EditorIdSelect label="Channel" value={draft.channelId} onChange={(v) => updateDraft("channelId", v)} options={channelOptions} />
+                    <EditorIdSelect label="Product" value={draft.productId} onChange={(v) => updateDraft("productId", v)} options={productOptions} />
+                    <EditorIdSelect label="Area of Test" value={draft.areaOfTestId} onChange={(v) => updateDraft("areaOfTestId", v)} options={productGroupOptions} />
+                  </div>
+                  <div className="mt-3 grid grid-cols-4 gap-3">
+                    <EditorIdSelect label="Sub Request Type" value={draft.subRequestTypeId} onChange={(v) => updateDraft("subRequestTypeId", v)} options={subRequestTypeOptions} />
+                    <EditorIdSelect label="Test Case Type" value={draft.testCaseTypeId} onChange={(v) => updateDraft("testCaseTypeId", v)} options={testCaseTypeOptions} />
+                    <EditorIdSelect label="Test Case Complexity" value={draft.testCaseComplexityId} onChange={(v) => updateDraft("testCaseComplexityId", v)} options={testCaseComplexityOptions} />
+                    <EditorField label="Critical TC Mapping" value={draft.isCritical ? "Yes" : "No"} onChange={(v) => updateDraft("isCritical", v === "Yes")} select options={["Yes", "No"]} />
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-3">
+                    <EditorField label="ATC Test Case" value={draft.atcTestCase} onChange={(v) => updateDraft("atcTestCase", v)} />
+                    <EditorField label="PPM ID" value={draft.ppmId} onChange={(v) => updateDraft("ppmId", v)} />
+                    <EditorField label="JIRA Issue Key" value={tc.jira_issue_key || ""} muted />
+                  </div>
+                </EditorSection>
                 <EditorSection title="Preconditions">
                   <textarea
                     aria-label="Preconditions"
@@ -2333,6 +2636,35 @@ function EditorField({
           className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
         />
       )}
+    </label>
+  );
+}
+
+// Taxonomy-backed select: stores an id, displays the resolved name. Options
+// come from taxonomyApi (see `taxonomy` state in TestCaseEditorView) — never
+// a hardcoded list.
+function EditorIdSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+  options: Array<{ id: number; name: string }>;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[10px] font-extrabold text-slate-500">{label}</span>
+      <select
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
+        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+      >
+        <option value="">—</option>
+        {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+      </select>
     </label>
   );
 }
