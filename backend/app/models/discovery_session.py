@@ -121,8 +121,11 @@ class DiscoverySession(TimestampMixin, Base):
     # migration/table set and a forward FK would force a two-pass insert.
     # Kept authoritative by session_service on every checkpoint write.
     latest_checkpoint_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # UI-016 doesn't exist yet — plain reference per the plan's Phase 4 note.
-    draft_model_version_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # UI-016 Application Model — real FK now that application_models exists
+    # (migration 044).
+    draft_model_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("application_models.id", ondelete="SET NULL"), nullable=True
+    )
 
     correlation_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True)

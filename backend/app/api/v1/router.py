@@ -9,7 +9,7 @@ from app.api.v1.endpoints import (
     test_data, automation, execution, defects,
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
     applications, reviews, playwright_studio, mcp_connections, video,
-    grounded_poc, automation_classification, discovery, taxonomy,
+    grounded_poc, automation_classification, discovery, taxonomy, application_models, network_events,
 )
 
 api_router = APIRouter()
@@ -55,4 +55,14 @@ api_router.include_router(
 # UI-015 Live Discovery Session (P1-S4 extension) — isolated namespace;
 # every route 404s unless DISCOVERY_SESSIONS_ENABLED=true.
 api_router.include_router(discovery.router, prefix="/discovery", tags=["Live Discovery Session"])
+# UI-016 Application Model (P1-S4 extension) — isolated namespace; every
+# route 404s unless APPLICATION_MODELS_ENABLED=true.
+api_router.include_router(
+    application_models.router, prefix="/lab/application-models", tags=["Application Model"]
+)
+# UI-017 API and Network Explorer (P1-S4 extension) — isolated namespace;
+# every route 404s unless NETWORK_EXPLORER_ENABLED=true.
+api_router.include_router(
+    network_events.router, prefix="/lab/network-explorer", tags=["API & Network Explorer"]
+)
 

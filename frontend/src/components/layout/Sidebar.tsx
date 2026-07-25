@@ -12,6 +12,7 @@ import {
   Radar,
   GitBranch,
   Boxes,
+  Network,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,8 @@ const NAV_ITEMS: NavGroup[] = [
     items: [
       { label: "Application Registry", href: "/applications", icon: Boxes },
       { label: "Live Discovery Session", href: "/automation?view=discovery", icon: Radar },
+      { label: "Application Model", href: "/applications?view=model", icon: GitBranch },
+      { label: "API & Network Explorer", href: "/applications?view=api-network", icon: Network },
     ],
   },
   {
@@ -122,8 +125,9 @@ function isActiveHref(pathname: string, currentQuery: string, href: string): boo
   }
   // "/automation" has a sibling view-scoped nav item (Live Discovery
   // Session, view=discovery) — the base "AI Automation Studio" entry must
-  // not also light up while that view is active.
-  if (path === "/automation") {
+  // not also light up while that view is active. "/applications" has the
+  // same relationship with Application Model (view=model).
+  if (path === "/automation" || path === "/applications") {
     return !currentParams.get("view");
   }
   return true;

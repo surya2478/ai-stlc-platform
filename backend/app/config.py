@@ -228,6 +228,16 @@ class Settings(BaseSettings):
     # regardless of this flag.
     discovery_sessions_enabled: bool = False
 
+    # ── UI-016 Application Model (P1-S4 extension) ───────────────────────────
+    # Master switch: every /application-models route 404s when off, same
+    # isolation pattern as discovery_sessions_enabled.
+    application_models_enabled: bool = False
+
+    # ── UI-017 API and Network Explorer (P1-S4 extension) ────────────────────
+    # Master switch: every /network-explorer route 404s when off, same
+    # isolation pattern as application_models_enabled.
+    network_explorer_enabled: bool = False
+
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days
     retention_rag_events_days: int = 180      # purge RAG retrieval audit events older than N days

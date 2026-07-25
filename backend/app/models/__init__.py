@@ -72,5 +72,14 @@ from app.models.discovery_session import (  # noqa: F401
     DiscoveryCapture,
     DiscoverySessionEvent,
 )
+from app.models.application_model import (  # noqa: F401
+    ApplicationModel,
+    ApplicationModelNode,
+    ApplicationModelEdge,
+    ApplicationModelLocatorEvidence,
+    ApplicationModelGap,
+    ApplicationModelActivity,
+)
+from app.models.network_event import NetworkEvent, NetworkEventActivity  # noqa: F401
 
 

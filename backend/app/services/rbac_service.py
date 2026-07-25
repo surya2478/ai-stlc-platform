@@ -97,6 +97,50 @@ _GRANULAR_DISCOVERY_PERMISSIONS: frozenset[str] = frozenset(
     }
 )
 
+# ─── UI-016 Application Model (P1-S4 extension) ──────────────────────────────
+APPLICATION_MODEL_VIEW = "application_model.view"
+APPLICATION_MODEL_BUILD = "application_model.build"
+APPLICATION_MODEL_EDIT = "application_model.edit"
+APPLICATION_MODEL_REVIEW = "application_model.review"
+APPLICATION_MODEL_APPROVE = "application_model.approve"
+APPLICATION_MODEL_PUBLISH = "application_model.publish"
+APPLICATION_MODEL_RESOLVE_GAPS = "application_model.resolve_gaps"
+APPLICATION_MODEL_VALIDATE_LOCATORS = "application_model.validate_locators"
+APPLICATION_MODEL_EXPORT = "application_model.export"
+APPLICATION_MODEL_VIEW_AUDIT = "application_model.view_audit"
+
+_GRANULAR_APPLICATION_MODEL_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        APPLICATION_MODEL_VIEW,
+        APPLICATION_MODEL_BUILD,
+        APPLICATION_MODEL_EDIT,
+        APPLICATION_MODEL_REVIEW,
+        APPLICATION_MODEL_APPROVE,
+        APPLICATION_MODEL_PUBLISH,
+        APPLICATION_MODEL_RESOLVE_GAPS,
+        APPLICATION_MODEL_VALIDATE_LOCATORS,
+        APPLICATION_MODEL_EXPORT,
+        APPLICATION_MODEL_VIEW_AUDIT,
+    }
+)
+
+# ─── UI-017 API and Network Explorer (P1-S4 extension) ───────────────────────
+NETWORK_EXPLORER_VIEW = "network_explorer.view"
+NETWORK_EXPLORER_BUILD = "network_explorer.build"
+NETWORK_EXPLORER_REVIEW = "network_explorer.review"
+NETWORK_EXPLORER_EXPORT = "network_explorer.export"
+NETWORK_EXPLORER_VIEW_AUDIT = "network_explorer.view_audit"
+
+_GRANULAR_NETWORK_EXPLORER_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        NETWORK_EXPLORER_VIEW,
+        NETWORK_EXPLORER_BUILD,
+        NETWORK_EXPLORER_REVIEW,
+        NETWORK_EXPLORER_EXPORT,
+        NETWORK_EXPLORER_VIEW_AUDIT,
+    }
+)
+
 _GRANULAR_AUTOMATION_PERMISSIONS: frozenset[str] = frozenset(
     {
         AUTOMATION_VIEW,
@@ -122,6 +166,8 @@ GRANULAR_PERMISSIONS: frozenset[str] = (
     | _GRANULAR_EXECUTION_PERMISSIONS
     | _GRANULAR_CLASSIFICATION_PERMISSIONS
     | _GRANULAR_DISCOVERY_PERMISSIONS
+    | _GRANULAR_APPLICATION_MODEL_PERMISSIONS
+    | _GRANULAR_NETWORK_EXPLORER_PERMISSIONS
 )
 
 ALL_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -163,7 +209,11 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
     """
     extra: set[Permission] = set()
     if VIEW_PROJECT in base:
-        extra.update({AUTOMATION_VIEW, EXECUTION_VIEW_LIVE_RUNS, AUTOMATION_CLASSIFICATION_VIEW, DISCOVERY_VIEW})
+        extra.update({
+            AUTOMATION_VIEW, EXECUTION_VIEW_LIVE_RUNS, AUTOMATION_CLASSIFICATION_VIEW, DISCOVERY_VIEW,
+            APPLICATION_MODEL_VIEW, APPLICATION_MODEL_EXPORT, APPLICATION_MODEL_VIEW_AUDIT,
+            NETWORK_EXPLORER_VIEW, NETWORK_EXPLORER_EXPORT, NETWORK_EXPLORER_VIEW_AUDIT,
+        })
     if GENERATE_AUTOMATION in base:
         extra.update({
             AUTOMATION_GENERATE_SCRIPT,
@@ -176,11 +226,18 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             DISCOVERY_CONTROL_SESSION,
             DISCOVERY_EMERGENCY_STOP,
             DISCOVERY_CORRECT_ACTION,
+            APPLICATION_MODEL_BUILD,
+            APPLICATION_MODEL_EDIT,
+            APPLICATION_MODEL_RESOLVE_GAPS,
+            APPLICATION_MODEL_VALIDATE_LOCATORS,
+            NETWORK_EXPLORER_BUILD,
+            NETWORK_EXPLORER_REVIEW,
         })
     if APPROVE_TEST_CASES in base:
         extra.update({
             AUTOMATION_REVIEW_SCRIPT, AUTOMATION_APPROVE_SCRIPT, AUTOMATION_CLASSIFICATION_APPROVE,
             DISCOVERY_COMPLETE_SESSION,
+            APPLICATION_MODEL_REVIEW, APPLICATION_MODEL_APPROVE, APPLICATION_MODEL_PUBLISH,
         })
     if EXECUTE_TESTS in base:
         extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})

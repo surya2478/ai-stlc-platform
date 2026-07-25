@@ -23,6 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { ApplicationInspector } from "@/components/applications/ApplicationInspector";
 import { ApplicationDrawer } from "@/components/applications/ApplicationDrawer";
+import { ApplicationModelView } from "@/components/applications/ApplicationModelView";
+import { NetworkExplorerView } from "@/components/applications/NetworkExplorerView";
 import {
   applicationHasEnvironment,
   applicationHasProductMapping,
@@ -288,6 +290,31 @@ function ApplicationsContent() {
     link.download = `application_registry_project_${selectedProject}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  if (searchParams.get("view") === "model") {
+    if (!selectedProject) {
+      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Application Model.</div>;
+    }
+    const applicationParam = Number(searchParams.get("application")) || null;
+    const modelParam = Number(searchParams.get("model")) || null;
+    return (
+      <div className="min-h-full pb-8">
+        <ApplicationModelView projectId={selectedProject} applicationId={applicationParam} modelId={modelParam} />
+      </div>
+    );
+  }
+
+  if (searchParams.get("view") === "api-network") {
+    if (!selectedProject) {
+      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open API &amp; Network Explorer.</div>;
+    }
+    const applicationParam = Number(searchParams.get("application")) || null;
+    return (
+      <div className="min-h-full pb-8">
+        <NetworkExplorerView projectId={selectedProject} applicationId={applicationParam} />
+      </div>
+    );
   }
 
   return (

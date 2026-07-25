@@ -317,6 +317,32 @@ limited-edit drawer described above.
 
 ### P1-S4 Application Discovery - 4 screens
 
+**UI-017 API and Network Explorer — Phase 1 (2026-07-25):** governed request browser built on
+the only structured signal the current discovery capture pipeline can honestly produce. New
+backend: migration `045_network_events.py` (2 tables: `network_events`, `network_event_activity`),
+`network_event_service.py` — a regex parser confirmed against a real live capture (the actual
+`@playwright/mcp` `browser_network_requests` tool numbers each entry, e.g. `"12. [GET] url =>
+[200]"`; an initial parser without that numbered-list prefix marked every real request
+`unparsed` until fixed and re-verified live) that turns a session's masked `network_log`
+`DiscoveryCapture` text files into structured method/URL/host/status rows, idempotent
+rebuild-in-place, KPI computation, and per-request review actions (mark reviewed/ignored) with
+audit logging. `/api/v1/lab/network-explorer/*` (flag-gated on `NETWORK_EXPLORER_ENABLED`,
+disabled by default), permissions `network_explorer.*`. Frontend: `NetworkExplorerView.tsx` at
+`/applications?view=api-network`, new sidebar entry. Requests, correlation to the owning
+`DiscoverySession`/`DiscoveryAction` (screen/test-step), review/ignore actions, evidence viewing
+(reuses UI-015's existing capture-content endpoint) and sanitized export are real and
+backend-authoritative. Headers, request/response bodies, timing/waterfall, API/DB validators,
+external-system MCP mapping and publishing relationships into the Application Model are visibly
+present but disabled with an honest reason (the MCP capture tool never reports headers/bodies/
+timing at all, and no validator or publish pipeline exists yet — the same
+visible-but-disabled pattern UI-016 used for its own APIs/External Systems tabs). Backend: 11
+new focused tests pass (`test_network_event_service.py`), full suite 1098/1109 passing (the
+same 5 pre-existing unrelated failures confirmed by UI-016's stash-and-compare remain, nothing
+new broken). Frontend typecheck/lint/build clean. Verified live against real project-1 discovery
+session data (24 captured lines, 20 parsed / 4 honestly-unparsed non-request lines, 12 distinct
+APIs, 2 external hosts, 100% action-linked) including a live regex bug found and fixed during
+verification, plus review and export actions confirmed via direct authenticated API calls.
+
 Screens: **Application Registry**, **Live Discovery Session**, **Application Model**, **API and Network Explorer**.
 
 - [ ] Register, search, filter, edit and archive applications.
@@ -329,6 +355,27 @@ Screens: **Application Registry**, **Live Discovery Session**, **Application Mod
 - [ ] Build versioned application-model and journey relationships.
 - [ ] Expose tree, graph, details, history, comparison, approval and impact views.
 - [ ] Link API requests/responses and schema details to screens, steps and IR actions.
+
+**UI-016 Application Model — Phase 1 (2026-07-25):** governed, versioned Application Model
+built from completed Live Discovery Session evidence. New backend: migration
+`044_application_models.py` (6 tables: `application_models`, `application_model_nodes`,
+`application_model_edges`, `application_model_locator_evidence`, `application_model_gaps`,
+`application_model_activity`; converts `discovery_sessions.draft_model_version_id` from a
+placeholder column into a real FK), `application_model_service.py` (build/rebuild-in-place from
+`DiscoveryAction.target_screen_ref`/`target_component_ref`/`target_element_ref`, deterministic
+gap detection, ADR-001-style version chain, separation-of-duties approval reusing
+`ApprovalAction`), `/api/v1/lab/application-models/*` (flag-gated on
+`APPLICATION_MODELS_ENABLED`, disabled by default), permissions `application_model.*`. Frontend:
+`ApplicationModelView.tsx` at `/applications?view=model`, new sidebar entry. Screens, components,
+elements, locator evidence and gaps are real and backend-authoritative; Journeys, APIs/External
+Systems, Evidence viewing, Change Comparison, KB projection and node merge/split are visibly
+present but disabled with an explanation (no backing data source yet — needs UI-017 and a
+network-log parser that doesn't exist). Verified live against real project data: build → resolve
+gap → submit for review → separation-of-duty block → approve as a second user → publish →
+immutability → create new draft → rebuild-in-place, all through the real API with two real user
+accounts. Backend: 7 new focused tests pass (`test_application_model_service.py`), full suite
+1088/1093 passing (5 pre-existing unrelated failures confirmed via stash-and-compare). Frontend
+typecheck/lint/build clean.
 
 ### P1-S5 Automation Studio Core - 5 implementation screens
 
@@ -560,8 +607,8 @@ Use `-` for not applicable and add approval/evidence links when work starts.
 | UI-013 | 1 | P1-S3 | Test Case Approval | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-014 | 1 | P1-S4 | Application Registry | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-015 | 1 | P1-S4 | Live Discovery Session | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| UI-016 | 1 | P1-S4 | Application Model | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| UI-017 | 1 | P1-S4 | API and Network Explorer | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| UI-016 | 1 | P1-S4 | Application Model | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
+| UI-017 | 1 | P1-S4 | API and Network Explorer | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-018 | 1 | P1-S5 | Automation Workspace | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-019 | 1 | P1-S5 | Live Recorder | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-020 | 1 | P1-S5 | Automation IR Editor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
@@ -1161,13 +1208,13 @@ Every post-baseline scope change must record:
 | 1.0.1 | 21 July 2026 | Phase 0 validation evidence recorded; P0-S1 through P0-S4 accepted; P0-S5 blocked by backend Python environment repair | Codex |
 | 1.0.2 | 21 July 2026 | Backend Python environment repaired; focused Autonomous Lab tests passed; P0-S5 accepted | Codex |
 | 1.0.3 | 21 July 2026 | UI-001 Executive Overview implemented from approved screen image; frontend lint, TypeScript and local route verification passed | Codex |
+| 1.0.4 | 25 July 2026 | UI-016 Application Model implemented (Phase 1) from approved reference image and contract; migration 044, service, API, permissions, frontend view and sidebar entry; live-verified end to end with two real user accounts; tracker row and P1-S4 note updated | Claude |
+
+Note: this tracker's per-screen register and changelog were not kept current with every commit between 22 July and 25 July (UI-006 through UI-015 shipped in that window — see git log and `docs/autonomous-automation-lab/CLAUDE_CODE_HANDOVER.md` for what actually landed). A full resync of those rows is a separate, not-yet-started task.
 
 ## 31. Immediate next action
 
-After Phase 0 validation:
-
-1. Produce the P1-S1 Executive Overview screen mockup and UI contract for approval.
-2. Begin P1-S1 implementation only after the mockup and UI contract are approved.
-3. Wait for explicit visual approval.
-4. Implement the complete P1-S1 vertical slice.
-5. Verify and accept P1-S1 before preparing P1-S2 mockups.
+1. Present `UI-017 API and Network Explorer` — the last P1-S4 screen — for a reference image and UI contract.
+2. Wait for explicit visual approval before implementing.
+3. Note: UI-017 will need a network-log parser that doesn't exist yet (see the UI-016 P1-S4 note above) — scope that gap explicitly in the UI-017 contract rather than assuming it's available.
+4. After P1-S4 is complete, move to P1-S5 Automation Studio Core.

@@ -3490,3 +3490,219 @@ export const discoveryApi = {
   getCaptureContent: (sessionId: number, captureId: number) =>
     api.get<string>(`/discovery/sessions/${sessionId}/captures/${captureId}/content`),
 };
+
+// ─── UI-016 Application Model (Phase 1) ─────────────────────────────────────
+
+export type ApplicationModelStatus =
+  | "draft" | "pending_review" | "changes_requested" | "approved" | "published"
+  | "superseded" | "rejected" | "stale" | "archived";
+
+export interface ApplicationModel {
+  id: number;
+  project_id: number;
+  application_id: number;
+  source_session_id: number | null;
+  version: number;
+  parent_model_id: number | null;
+  is_current: boolean;
+  status: ApplicationModelStatus;
+  built_by: number | null;
+  built_at: string | null;
+  reviewed_by: number | null;
+  reviewed_at: string | null;
+  approved_by: number | null;
+  approved_at: string | null;
+  published_by: number | null;
+  published_at: string | null;
+  decision_reason: string | null;
+  built_from_action_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApplicationModelKpis {
+  screens: number;
+  components: number;
+  elements: number;
+  journeys: number;
+  apis: number;
+  gaps_open: number;
+  gaps_critical_open: number;
+  gaps_total: number;
+}
+
+export interface ApplicationModelDetail extends ApplicationModel {
+  kpis: ApplicationModelKpis;
+  stale: boolean;
+}
+
+export type ApplicationModelNodeType =
+  | "application" | "environment" | "journey" | "scenario" | "test_case" | "screen"
+  | "view" | "dialog" | "component" | "element" | "api" | "external_system" | "validator"
+  | "evidence" | "gap";
+
+export interface ApplicationModelNode {
+  id: number;
+  model_id: number;
+  node_type: ApplicationModelNodeType;
+  parent_node_id: number | null;
+  external_ref: string;
+  display_name: string;
+  description: string | null;
+  state: string;
+  attributes: Record<string, unknown>;
+}
+
+export interface ApplicationModelEdge {
+  id: number;
+  model_id: number;
+  edge_type: "CONTAINS" | "NAVIGATES_TO";
+  from_node_id: number;
+  to_node_id: number;
+}
+
+export interface ApplicationModelGap {
+  id: number;
+  model_id: number;
+  gap_type: string;
+  severity: "critical" | "warning";
+  node_id: number | null;
+  evidence: Record<string, unknown>;
+  remediation: string | null;
+  owner_id: number | null;
+  status: "open" | "resolved";
+  reviewer_notes: string | null;
+  resolved_by: number | null;
+  resolved_at: string | null;
+}
+
+export interface LocatorEvidenceEntry {
+  id: number;
+  node_id: number;
+  locator_value: string | null;
+  locator_type: string | null;
+  confidence: number | null;
+  status: "candidate" | "confirmed" | "unstable" | "fallback";
+  source_action_id: number | null;
+  reason: string | null;
+  created_by: number | null;
+  created_at: string;
+}
+
+export interface ApplicationModelActivityEntry {
+  id: string;
+  at: string;
+  actor_id: number | null;
+  event_type: string;
+  node_id: number | null;
+  reason: string | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+}
+
+export const applicationModelsApi = {
+  list: (projectId: number, applicationId: number) =>
+    api.get<ApplicationModel[]>(`/lab/application-models/projects/${projectId}/applications/${applicationId}/models`),
+  get: (modelId: number) => api.get<ApplicationModelDetail>(`/lab/application-models/${modelId}`),
+  build: (payload: { project_id: number; application_id: number; session_id: number }) =>
+    api.post<ApplicationModelDetail>(`/lab/application-models/build`, payload),
+  nodes: (modelId: number, nodeType?: ApplicationModelNodeType) =>
+    api.get<ApplicationModelNode[]>(`/lab/application-models/${modelId}/nodes`, {
+      params: nodeType ? { node_type: nodeType } : undefined,
+    }),
+  edges: (modelId: number) => api.get<ApplicationModelEdge[]>(`/lab/application-models/${modelId}/edges`),
+  gaps: (modelId: number, status?: "open" | "resolved") =>
+    api.get<ApplicationModelGap[]>(`/lab/application-models/${modelId}/gaps`, { params: status ? { status } : undefined }),
+  locatorHistory: (modelId: number, nodeId: number) =>
+    api.get<LocatorEvidenceEntry[]>(`/lab/application-models/${modelId}/nodes/${nodeId}/locator-history`),
+  submitReview: (modelId: number) => api.post<ApplicationModelDetail>(`/lab/application-models/${modelId}/submit-review`),
+  requestChanges: (modelId: number, reason: string) =>
+    api.post<ApplicationModelDetail>(`/lab/application-models/${modelId}/request-changes`, { reason }),
+  reject: (modelId: number, reason: string) =>
+    api.post<ApplicationModelDetail>(`/lab/application-models/${modelId}/reject`, { reason }),
+  approve: (modelId: number, reason?: string | null) =>
+    api.post<ApplicationModelDetail>(`/lab/application-models/${modelId}/approve`, { reason: reason ?? null }),
+  publish: (modelId: number) => api.post<ApplicationModelDetail>(`/lab/application-models/${modelId}/publish`),
+  newDraft: (modelId: number) => api.post<ApplicationModelDetail>(`/lab/application-models/${modelId}/new-draft`),
+  renameNode: (modelId: number, nodeId: number, displayName: string) =>
+    api.patch<ApplicationModelNode>(`/lab/application-models/${modelId}/nodes/${nodeId}`, { display_name: displayName }),
+  confirmLocator: (modelId: number, nodeId: number) =>
+    api.post<LocatorEvidenceEntry>(`/lab/application-models/${modelId}/nodes/${nodeId}/locator/confirm`, {}),
+  markLocatorUnstable: (modelId: number, nodeId: number, reason: string) =>
+    api.post<LocatorEvidenceEntry>(`/lab/application-models/${modelId}/nodes/${nodeId}/locator/mark-unstable`, { reason }),
+  addFallbackLocator: (modelId: number, nodeId: number, locatorValue: string, locatorType?: string | null) =>
+    api.post<LocatorEvidenceEntry>(`/lab/application-models/${modelId}/nodes/${nodeId}/locator/fallback`, {
+      locator_value: locatorValue, locator_type: locatorType ?? null,
+    }),
+  resolveGap: (modelId: number, gapId: number, reviewerNotes?: string | null) =>
+    api.post<ApplicationModelGap>(`/lab/application-models/${modelId}/gaps/${gapId}/resolve`, { reviewer_notes: reviewerNotes ?? null }),
+  activity: (modelId: number) => api.get<ApplicationModelActivityEntry[]>(`/lab/application-models/${modelId}/activity`),
+  exportUrl: (modelId: number) => `/api/v1/lab/application-models/${modelId}/export`,
+};
+
+// ─── UI-017 API and Network Explorer (Phase 1) ──────────────────────────────
+
+export type NetworkEventParseState = "parsed" | "unparsed";
+export type NetworkEventReviewState = "unreviewed" | "reviewed" | "ignored";
+
+export interface NetworkEvent {
+  id: number;
+  project_id: number;
+  session_id: number;
+  capture_id: number;
+  action_id: number | null;
+  sequence: number;
+  parse_state: NetworkEventParseState;
+  method: string | null;
+  url: string | null;
+  host: string | null;
+  path: string | null;
+  is_external: boolean | null;
+  status_code: number | null;
+  status_text: string | null;
+  raw_line: string;
+  review_state: NetworkEventReviewState;
+  review_reason: string | null;
+  reviewed_by: number | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface NetworkEventKpis {
+  requests_captured: number;
+  requests_parsed: number;
+  requests_unparsed: number;
+  apis_identified: number;
+  external_systems: number;
+  mapping_readiness_pct: number;
+  ignored: number;
+  validation_available: boolean;
+}
+
+export interface NetworkEventActivityEntry {
+  id: number;
+  session_id: number;
+  event_id: number | null;
+  event_type: string;
+  actor_id: number | null;
+  reason: string | null;
+  correlation_id: string | null;
+  created_at: string;
+}
+
+export const networkExplorerApi = {
+  build: (payload: { project_id: number; session_id: number }) =>
+    api.post<NetworkEventKpis>(`/lab/network-explorer/build`, payload),
+  kpis: (sessionId: number) => api.get<NetworkEventKpis>(`/lab/network-explorer/sessions/${sessionId}/kpis`),
+  events: (sessionId: number, params?: {
+    method?: string; status_bucket?: "2xx" | "3xx" | "4xx" | "5xx"; external_only?: boolean;
+    unmapped_only?: boolean; review_state?: NetworkEventReviewState; search?: string;
+  }) => api.get<NetworkEvent[]>(`/lab/network-explorer/sessions/${sessionId}/events`, { params }),
+  event: (eventId: number) => api.get<NetworkEvent>(`/lab/network-explorer/events/${eventId}`),
+  ignore: (eventId: number, reason: string) =>
+    api.post<NetworkEvent>(`/lab/network-explorer/events/${eventId}/ignore`, { reason }),
+  review: (eventId: number, note?: string | null) =>
+    api.post<NetworkEvent>(`/lab/network-explorer/events/${eventId}/review`, { note: note ?? null }),
+  activity: (sessionId: number) => api.get<NetworkEventActivityEntry[]>(`/lab/network-explorer/sessions/${sessionId}/activity`),
+  exportUrl: (sessionId: number) => `/api/v1/lab/network-explorer/sessions/${sessionId}/export`,
+};
