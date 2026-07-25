@@ -2664,17 +2664,21 @@ function RequirementsContent() {
           </Card>
 
           <div className={cn("flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit", workspaceView !== "intake" && "hidden")}>
-            {(["documents", "url", "github", "jira", "paste", "api", "requirements"] as const).map((t) => (
+            {(["requirements", "documents", "url", "github", "jira", "paste", "api"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={cn(
-                  "rounded-lg px-4 py-1.5 text-xs font-bold capitalize transition-all",
-                  tab === t
-                    ? "bg-slate-900 text-slate-50 shadow-sm"
-                    : "text-slate-500 hover:text-slate-900"
+                  "inline-flex items-center rounded-lg px-4 py-1.5 text-xs font-bold capitalize transition-all",
+                  t === "requirements"
+                    ? "bg-gradient-to-r from-cyan-500 to-violet-500 text-white shadow-sm hover:opacity-95"
+                    : tab === t
+                      ? "bg-slate-900 text-slate-50 shadow-sm"
+                      : "text-slate-500 hover:text-slate-900",
+                  tab === t && t === "requirements" && "ring-2 ring-violet-200 ring-offset-1"
                 )}
               >
+                {t === "requirements" && <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
                 {t === "documents" ? "Documents / UI Input"
                   : t === "url" ? "URL Input"
                   : t === "github" ? "GitHub / Local Repository"
@@ -2683,7 +2687,7 @@ function RequirementsContent() {
                   : t === "requirements" ? "Extracted Requirements"
                   : "Jira"}
                 {t === "requirements" && requirements.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{requirements.length}</span>
+                  <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-bold text-white">{requirements.length}</span>
                 )}
                 {t === "documents" && documents.length > 0 && (
                   <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{documents.length}</span>

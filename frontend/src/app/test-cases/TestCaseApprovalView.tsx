@@ -205,6 +205,12 @@ function contentValidation(testCase: TestCase) {
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
 
+function reviewScoreLabel(score: number | null | undefined) {
+  return typeof score === "number"
+    ? `${score.toFixed(1)}/5 (${Math.round(Math.max(0, Math.min(5, score)) * 20)}%)`
+    : "No score";
+}
+
 function coverageFor(requirement: Requirement | undefined, allScenarios: TestScenario[]) {
   if (!requirement) return 0;
   const kinds = new Set(allScenarios.filter((item) => item.requirement_id === requirement.id && item.status === "approved").map((item) => normal(item.scenario_type)));
@@ -307,7 +313,7 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
         scenariosApi.list(projectId),
         testCasesApi.list(projectId),
         applicationsApi.getForProject(projectId),
-        reviewsApi.listForProject(projectId, "test_case"),
+        reviewsApi.listForProject(projectId, "scenario_test_case_coverage"),
         traceabilityApi.approvals(projectId, { entity_type: "test_case", page_size: 200 }),
         projectsApi.memberships(projectId),
         projectsApi.roles(),
@@ -338,10 +344,15 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
 
   useEffect(() => {
     if (!projectId || !selectedId) { setHistory([]); setReviewHistory([]); return; }
-    Promise.all([testCasesApi.history(selectedId), reviewsApi.history("test_case", selectedId, projectId)])
+    const selectedCase = testCases.find((item) => item.id === selectedId);
+    const scenarioId = selectedCase?.scenario_id ?? selectedCase?.linked_scenario_id;
+    const reviewPromise = scenarioId
+      ? reviewsApi.history("scenario_test_case_coverage", scenarioId, projectId)
+      : Promise.resolve({ data: [] as ArtifactReview[] });
+    Promise.all([testCasesApi.history(selectedId), reviewPromise])
       .then(([historyRes, reviewRes]) => { setHistory(historyRes.data); setReviewHistory(reviewRes.data); })
       .catch((loadError) => setError(errorMessage(loadError, "Could not load the selected test-case history.")));
-  }, [projectId, selectedId]);
+  }, [projectId, selectedId, testCases]);
 
   const requirementById = useMemo(() => new Map(requirements.map((item) => [item.id, item])), [requirements]);
   const requirementByKey = useMemo(() => new Map(requirements.map((item) => [item.requirement_id, item])), [requirements]);
@@ -362,7 +373,11 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
     const requirement = (testCase.requirement_id ? requirementById.get(testCase.requirement_id) : undefined) || (testCase.linked_requirement_id ? requirementById.get(testCase.linked_requirement_id) : undefined) || (testCase.linked_requirement_key ? requirementByKey.get(testCase.linked_requirement_key) : undefined);
     const scenario = (testCase.scenario_id ? scenarioById.get(testCase.scenario_id) : undefined) || (testCase.linked_scenario_id ? scenarioById.get(testCase.linked_scenario_id) : undefined);
     const application = testCase.application_id ? appById.get(testCase.application_id) : undefined;
-    const review = reviews.filter((item) => item.artifact_id === testCase.id).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    const review = scenario
+      ? reviews
+        .filter((item) => item.artifact_id === scenario.id)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
+      : undefined;
     const approval = approvals.filter((item) => item.entity_id === testCase.id).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
     const reviewerId = Number(testCase.metadata_?.assigned_reviewer_id || 0);
     const reviewer = reviewerId ? userById.get(reviewerId) : undefined;
@@ -380,11 +395,18 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
       { key: "application", label: "Application mapping complete", state: application ? "pass" : "blocker", detail: application?.name || "No active application mapping" },
       { key: "evidence", label: "Evidence requirements attached", state: evidence.length ? "pass" : "blocker", detail: evidence.length ? `${evidence.length} required type${evidence.length === 1 ? "" : "s"}` : "No evidence requirement recorded" },
       { key: "discovery", label: "Discovery eligibility evaluated", state: discovery === "Not required" || isDiscoveryEvaluated(discovery) ? "pass" : "blocker", detail: discovery },
-      { key: "review", label: "Independent review passed", state: review?.verdict === "pass" ? "pass" : review ? "blocker" : "warning", detail: review ? `${review.verdict.replace("_", " ")} · ${review.overall_score ?? "No score"}` : "No persisted independent review" },
+      {
+        key: "review",
+        label: "Scenario test-case set review",
+        state: review?.verdict === "pass" ? "pass" : review?.review_mode === "gating" ? "blocker" : "warning",
+        detail: review
+          ? `${review.verdict.replace("_", " ")} · ${reviewScoreLabel(review.overall_score)} · ${review.review_mode}`
+          : "No persisted set-level review",
+      },
       { key: "policy", label: "Policy & reviewer permissions", state: canApprove ? "pass" : "blocker", detail: canApprove ? "Approval permission confirmed" : "Approval permission not confirmed" },
       classificationCheckState(testCase, classification, classificationsEnabled),
     ];
-    const blockers = checks.filter((item) => item.state === "blocker" || (item.key === "review" && item.state === "warning"));
+    const blockers = checks.filter((item) => item.state === "blocker");
     const approvalDecision = normal(approval?.decision);
     const persisted = normal(testCase.status || testCase.approval_status);
     let status: ApprovalRow["status"];
@@ -580,7 +602,47 @@ function CheckList({ checks }: { checks: GovernanceCheck[] }) {
 function ReviewInspector({ row, history, approvals, onTrace }: { row: ApprovalRow; history: TestCaseHistory[]; approvals: ApprovalAction[]; onTrace: () => void }) {
   return <>
     <div className="grid grid-cols-4 gap-2 rounded-lg border border-slate-200 bg-white p-3 text-[9px]"><LabelValue label="Test case ID" value={row.testCase.test_case_id} /><LabelValue label="Current status" value={row.status} /><LabelValue label="Test type" value={row.testCase.test_type || "Unassigned"} /><LabelValue label="Priority" value={row.testCase.priority} /></div>
-    <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3"><Panel title="Readiness Summary"><p className="text-lg font-black text-slate-900">{row.checks.length - row.blockers.length} / {row.checks.length}</p><p className="mb-2 text-[8px] font-semibold text-slate-500">checks passed</p><Progress value={Math.round((row.checks.length - row.blockers.length) / row.checks.length * 100)} /><div className="mt-3"><CheckList checks={row.checks} /></div></Panel><Panel title="Deterministic Validation"><div className={cn("flex items-center gap-2 text-sm font-black", row.validationScore === 100 ? "text-emerald-600" : "text-amber-600")}>{row.validationScore === 100 ? <ShieldCheck className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}{row.validationScore === 100 ? "Pass" : "Needs work"}</div><p className="mt-3 text-[8px] font-semibold text-slate-500">Validation score</p><p className="mt-1 text-xl font-black text-slate-900">{row.validationScore} / 100</p><button onClick={onTrace} className="mt-4 text-[9px] font-bold text-[#1b59f8]">View details</button></Panel><Panel title="AI Recommendation (Advisory)" className="border-purple-100 bg-purple-50/30">{row.review ? <><p className="text-[10px] font-extrabold text-purple-700">{row.review.verdict === "pass" ? "Approve" : row.review.verdict === "needs_revision" ? "Revise" : "Do not approve"}</p><p className="mt-2 text-[9px] leading-4 text-slate-600">{row.review.findings?.[0]?.issue || "Persisted independent review has no narrative finding."}</p><p className="mt-3 text-[8px] font-semibold text-slate-500">Confidence / score</p><p className="mt-1 text-lg font-black text-purple-700">{row.review.overall_score ?? "Not recorded"}</p></> : <Empty>No persisted independent review recommendation.</Empty>}</Panel></div>
+    <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3">
+      <Panel title="Readiness Summary">
+        <p className="text-lg font-black text-slate-900">{row.checks.length - row.blockers.length} / {row.checks.length}</p>
+        <p className="mb-2 text-[8px] font-semibold text-slate-500">non-blocking or passed checks</p>
+        <Progress value={Math.round((row.checks.length - row.blockers.length) / row.checks.length * 100)} />
+        <div className="mt-3"><CheckList checks={row.checks} /></div>
+      </Panel>
+      <Panel title="Deterministic Validation">
+        <div className={cn("flex items-center gap-2 text-sm font-black", row.validationScore === 100 ? "text-emerald-600" : "text-amber-600")}>
+          {row.validationScore === 100 ? <ShieldCheck className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+          {row.validationScore === 100 ? "Pass" : "Needs work"}
+        </div>
+        <p className="mt-3 text-[8px] font-semibold text-slate-500">Required-field completeness</p>
+        <p className="mt-1 text-xl font-black text-slate-900">{row.validationScore} / 100</p>
+        <button onClick={onTrace} className="mt-4 text-[9px] font-bold text-[#1b59f8]">View details</button>
+      </Panel>
+      <Panel
+        title={`AI Scenario Test-Case Set Review${row.review ? ` (${row.review.review_mode === "gating" ? "Gating" : "Advisory"})` : ""}`}
+        className="border-purple-100 bg-purple-50/30"
+      >
+        {row.review ? (
+          <>
+            <p className="text-[10px] font-extrabold text-purple-700">
+              {row.review.verdict === "pass" ? "Pass" : row.review.verdict === "needs_revision" ? "Needs revision" : "Fail"}
+            </p>
+            <p className="mt-2 text-[9px] leading-4 text-slate-600">
+              {row.review.findings?.[0]?.issue || "Persisted set-level review has no narrative finding."}
+            </p>
+            <p className="mt-3 text-[8px] font-semibold text-slate-500">Set-level score</p>
+            <p className="mt-1 text-lg font-black text-purple-700">{reviewScoreLabel(row.review.overall_score)}</p>
+            <p className="mt-2 text-[8px] font-semibold leading-4 text-slate-500">
+              {row.review.review_mode === "gating"
+                ? "Unresolved review findings can block approval."
+                : "Findings are advisory improvements and do not block approval."}
+            </p>
+          </>
+        ) : (
+          <Empty>No persisted scenario test-case set review.</Empty>
+        )}
+      </Panel>
+    </div>
     <Panel title="Reviewer, SLA & Blocking Findings"><div className="grid grid-cols-3 gap-3"><LabelValue label="Assigned reviewer" value={row.reviewer?.full_name || "Unassigned"} /><LabelValue label="Review SLA / age" value={ageLabel(row.testCase.updated_at)} /><LabelValue label="Blocking findings" value={`${row.blockers.length} blocker${row.blockers.length === 1 ? "" : "s"}`} /></div>{row.blockers.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-4 text-[9px] font-semibold text-red-600">{row.blockers.map((item) => <li key={item.key}>{item.label}: {item.detail}</li>)}</ul>}</Panel>
     <Panel title="Traceability Snapshot" action={<button onClick={onTrace} className="text-[8px] font-bold text-[#1b59f8]">View full trace</button>}><div className="grid grid-cols-2 gap-2 2xl:grid-cols-6"><LabelValue label="Requirement" value={row.requirement?.requirement_id || "Unlinked"} /><LabelValue label="PPM ID" value={ppmId(row.requirement)} /><LabelValue label="Scenario" value={row.scenario?.scenario_id || "Unlinked"} /><LabelValue label="Journey" value={row.journeyId} /><LabelValue label="Application" value={row.application?.name || "Missing"} /><LabelValue label="Discovery" value={row.discovery} /></div></Panel>
     <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3"><Panel title="Test Case Preview"><p className="text-[8px] font-semibold text-slate-500">Preconditions</p><p className="mt-1 text-[9px] font-bold text-slate-800">{row.testCase.preconditions?.length || 0} recorded</p><p className="mt-2 text-[8px] font-semibold text-slate-500">Test steps</p><p className="mt-1 text-[9px] font-bold text-slate-800">{row.testCase.steps?.length || 0} ordered steps</p><p className="mt-2 text-[8px] font-semibold text-slate-500">Expected result</p><p className="mt-1 line-clamp-2 text-[9px] font-semibold text-slate-700">{row.testCase.expected_result || "Missing"}</p></Panel><Panel title="Evidence Summary"><p className="text-[8px] font-semibold text-slate-500">Required evidence</p><div className="mt-2 flex flex-wrap gap-1">{row.evidence.map((item) => <Badge key={item} tone="blue">{item}</Badge>)}{!row.evidence.length && <Badge tone="red">Missing</Badge>}</div><p className="mt-3 text-[8px] font-semibold text-slate-500">Latest execution evidence</p><p className="mt-1 text-[9px] font-bold text-slate-800">{row.testCase.latest_evidence_available ? "Available" : "Not available"}</p></Panel><Panel title="History / Activity"><p className="text-[9px] font-bold text-slate-800">{history.length} editor change{history.length === 1 ? "" : "s"}</p><p className="mt-2 text-[9px] font-bold text-slate-800">{approvals.length} approval action{approvals.length === 1 ? "" : "s"}</p><p className="mt-2 text-[8px] font-semibold text-slate-500">Latest activity</p><p className="mt-1 text-[9px] font-semibold text-slate-700">{shortDate(history[0]?.created_at || approvals[0]?.created_at || row.testCase.updated_at)}</p></Panel></div>
@@ -723,7 +785,7 @@ function HistoryInspector({ history, approvals, users }: { history: TestCaseHist
 }
 
 function ActivityInspector({ row, history, reviews, approvals, users }: { row: ApprovalRow; history: TestCaseHistory[]; reviews: ArtifactReview[]; approvals: ApprovalAction[]; users: Map<number, UserAccount> }) {
-  const entries = [{ id: "generated", at: row.testCase.created_at, actor: row.testCase.created_by ? users.get(row.testCase.created_by)?.full_name || `User ${row.testCase.created_by}` : "Generation service", title: "Test case generated", detail: row.testCase.test_case_id, comment: null }, ...history.map((item) => ({ id: `h-${item.id}`, at: item.created_at, actor: item.changed_by ? users.get(item.changed_by)?.full_name || `User ${item.changed_by}` : item.source, title: `${item.field_name} updated`, detail: item.source, comment: item.comment })), ...reviews.map((item) => ({ id: `r-${item.id}`, at: item.created_at, actor: item.reviewer_agent, title: "Independent review", detail: `${item.verdict} · ${item.overall_score ?? "no score"}`, comment: item.findings?.[0]?.issue || null })), ...approvals.map((item) => ({ id: `a-${item.id}`, at: item.created_at, actor: users.get(item.user_id)?.full_name || `User ${item.user_id}`, title: "Approval action", detail: item.decision, comment: item.notes }))].sort((a, b) => b.at.localeCompare(a.at));
+  const entries = [{ id: "generated", at: row.testCase.created_at, actor: row.testCase.created_by ? users.get(row.testCase.created_by)?.full_name || `User ${row.testCase.created_by}` : "Generation service", title: "Test case generated", detail: row.testCase.test_case_id, comment: null }, ...history.map((item) => ({ id: `h-${item.id}`, at: item.created_at, actor: item.changed_by ? users.get(item.changed_by)?.full_name || `User ${item.changed_by}` : item.source, title: `${item.field_name} updated`, detail: item.source, comment: item.comment })), ...reviews.map((item) => ({ id: `r-${item.id}`, at: item.created_at, actor: item.reviewer_agent, title: "Scenario test-case set review", detail: `${item.verdict.replace("_", " ")} · ${reviewScoreLabel(item.overall_score)} · ${item.review_mode}`, comment: item.findings?.[0]?.issue || null })), ...approvals.map((item) => ({ id: `a-${item.id}`, at: item.created_at, actor: users.get(item.user_id)?.full_name || `User ${item.user_id}`, title: "Approval action", detail: item.decision, comment: item.notes }))].sort((a, b) => b.at.localeCompare(a.at));
   return <Panel title="Activity & Audit Log"><Timeline entries={entries} /></Panel>;
 }
 

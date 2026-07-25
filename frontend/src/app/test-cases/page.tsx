@@ -42,7 +42,7 @@ import {
   type ClassificationPolicySimulateResponse,
   type CoverageMatrixEntry,
   type Requirement,
-  type TaxonomyTree,
+  type TaxonomyEntry,
   type TestCase,
   type TestCaseAutomationClassification,
   type TestCaseHistory,
@@ -94,7 +94,7 @@ function pctOf(part: number, total: number, label: string): string {
   return `${Math.round((part / total) * 1000) / 10}% ${label}`;
 }
 
-const TABLE_GRID = "70px 94px minmax(130px,1fr) 72px 94px 64px 70px 70px 70px 56px 84px 86px 82px 92px 72px 42px";
+const TABLE_GRID = "70px 110px minmax(380px,1fr) 72px 100px 64px 76px 76px 76px 68px 96px 96px 94px 98px 110px 48px";
 const EDITOR_TABLE_GRID = "74px 102px minmax(128px,1fr) 72px 92px 62px 70px 70px 70px 56px 76px 84px 46px";
 
 function messageFromError(error: unknown, fallback: string) {
@@ -120,9 +120,9 @@ type EditorDraft = {
   preconditionsText: string;
   steps: Array<{ step_number: number; action: string; expected_result: string }>;
   expectedResult: string;
-  // UAT template fields (migration 042). `*_id` are the taxonomy FK the
-  // save diff persists; the paired `*Options` list on the form is fetched
-  // from taxonomyApi, never hardcoded.
+  // UAT template fields. The selected application/test-case input is stored
+  // as a governed taxonomy FK; the editor loads the complete master-table
+  // options whenever no FK has been provided.
   domainId: number | null;
   channelId: number | null;
   productId: number | null;
@@ -176,6 +176,31 @@ function sleep(ms: number) {
 
 function normalize(value: string | null | undefined) {
   return (value || "").toLowerCase().replace(/[_-]/g, " ");
+}
+
+function availableFilterOptions(values: string[]) {
+  return [
+    "all",
+    ...Array.from(new Set(values.filter((value) => value.trim()))).sort((left, right) =>
+      left.localeCompare(right),
+    ),
+  ];
+}
+
+function reviewScorePercent(score: number) {
+  return Math.round(Math.max(0, Math.min(5, score)) * 20);
+}
+
+function reviewScoreLabel(score: number) {
+  return `${score.toFixed(1)}/5 (${reviewScorePercent(score)}%)`;
+}
+
+function compareTestCaseIds(left: TestCase, right: TestCase) {
+  const byDisplayId = left.test_case_id.localeCompare(right.test_case_id, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+  return byDisplayId || left.id - right.id;
 }
 
 function displayDate(value?: string | null) {
@@ -631,13 +656,15 @@ function TestCasesContent() {
   const [selectedScenarioIds, setSelectedScenarioIds] = useState<number[]>([]);
   const [selectedTestCase, setSelectedTestCase] = useState<TestCase | null>(null);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
-  const [activeTab, setActiveTab] = useState("all");
+  const [generatedTab, setGeneratedTab] = useState("all");
+  const [editorTab, setEditorTab] = useState("all");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [classFilter, setClassFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [automationFilter, setAutomationFilter] = useState("all");
   const [reviewFilter, setReviewFilter] = useState("all");
+  const [generatedFiltersOpen, setGeneratedFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -780,6 +807,18 @@ function TestCasesContent() {
   }, [loadData]);
 
   useEffect(() => {
+    setGeneratedTab("all");
+    setEditorTab("all");
+    setQuery("");
+    setTypeFilter("all");
+    setClassFilter("all");
+    setPriorityFilter("all");
+    setAutomationFilter("all");
+    setReviewFilter("all");
+    setGeneratedFiltersOpen(false);
+  }, [selectedProject]);
+
+  useEffect(() => {
     setDrawerTab("overview");
   }, [selectedTestCase?.id]);
 
@@ -812,6 +851,30 @@ function TestCasesContent() {
     integration: integrationCount,
   };
 
+  const typeFilterOptions = useMemo(
+    () => availableFilterOptions(testCases.map(testType)),
+    [testCases],
+  );
+  const classFilterOptions = useMemo(
+    () => availableFilterOptions(testCases.map(scenarioClass)),
+    [testCases],
+  );
+  const priorityFilterOptions = useMemo(
+    () => availableFilterOptions(testCases.map((testCase) => testCase.priority)),
+    [testCases],
+  );
+  const reviewFilterOptions = useMemo(
+    () => availableFilterOptions(testCases.map(reviewStatus)),
+    [testCases],
+  );
+  const activeGeneratedFilterCount = [
+    typeFilter,
+    classFilter,
+    priorityFilter,
+    automationFilter,
+    reviewFilter,
+  ].filter((filter) => filter !== "all").length;
+
   const filtered = useMemo(() => {
     return testCases.filter((tc) => {
       const req = findRequirementForCase(tc, requirementsByKey, requirementsById);
@@ -827,22 +890,22 @@ function TestCasesContent() {
       const rowClass = scenarioClass(tc);
       const rowReview = reviewStatus(tc);
       const tabOk =
-        activeTab === "all" ||
-        (activeTab === "gaps" && traceabilityHealth(tc) !== "Good") ||
-        normalize(rowType).includes(normalize(activeTab)) ||
-        normalize(rowClass).includes(normalize(activeTab));
+        generatedTab === "all" ||
+        (generatedTab === "gaps" && traceabilityHealth(tc) !== "Good") ||
+        normalize(rowType).includes(normalize(generatedTab)) ||
+        normalize(rowClass).includes(normalize(generatedTab));
       const queryOk = !query.trim() || rowText.includes(query.trim().toLowerCase());
-      const typeOk = typeFilter === "all" || rowType === typeFilter;
-      const classOk = classFilter === "all" || rowClass === classFilter;
-      const priorityOk = priorityFilter === "all" || tc.priority === priorityFilter;
+      const typeOk = typeFilter === "all" || normalize(rowType) === normalize(typeFilter);
+      const classOk = classFilter === "all" || normalize(rowClass) === normalize(classFilter);
+      const priorityOk = priorityFilter === "all" || normalize(tc.priority) === normalize(priorityFilter);
       const automationOk =
         automationFilter === "all" ||
         (automationFilter === "yes" && tc.automation_candidate) ||
         (automationFilter === "no" && !tc.automation_candidate);
-      const reviewOk = reviewFilter === "all" || rowReview === reviewFilter;
+      const reviewOk = reviewFilter === "all" || normalize(rowReview) === normalize(reviewFilter);
       return tabOk && queryOk && typeOk && classOk && priorityOk && automationOk && reviewOk;
-    });
-  }, [activeTab, automationFilter, classFilter, priorityFilter, query, requirementsById, requirementsByKey, reviewFilter, testCases, typeFilter]);
+    }).sort(compareTestCaseIds);
+  }, [automationFilter, classFilter, generatedTab, priorityFilter, query, requirementsById, requirementsByKey, reviewFilter, testCases, typeFilter]);
 
   const selectedRequirement = selectedTestCase ? findRequirementForCase(selectedTestCase, requirementsByKey, requirementsById) : undefined;
   const linkedCases = selectedTestCase
@@ -1014,8 +1077,8 @@ function TestCasesContent() {
         setPriorityFilter={setPriorityFilter}
         reviewFilter={reviewFilter}
         setReviewFilter={setReviewFilter}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        activeTab={editorTab}
+        setActiveTab={setEditorTab}
         loading={loading}
         setSelectedTestCase={setSelectedTestCase}
         selectedProject={selectedProject}
@@ -1117,11 +1180,11 @@ function TestCasesContent() {
                 tab.key === "regression" ? kpiValues.regression :
                 tab.key === "integration" ? kpiValues.integration :
                 kpiValues.gaps;
-              const active = activeTab === tab.key;
+              const active = generatedTab === tab.key;
               return (
                 <button
                   key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => setGeneratedTab(tab.key)}
                   className={cn(
                     "inline-flex h-9 items-center gap-2 rounded-md px-4 text-xs font-bold transition",
                     active ? "bg-[#07142d] text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-slate-900",
@@ -1135,7 +1198,7 @@ function TestCasesContent() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-3">
           <div className="relative min-w-72 flex-1">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -1145,19 +1208,59 @@ function TestCasesContent() {
               className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-11 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
             />
           </div>
-          <FilterSelect value={typeFilter} onChange={setTypeFilter} options={["all", "Positive", "Negative", "Edge / Boundary", "Regression"]} label="Test Type" />
-          <FilterSelect value={classFilter} onChange={setClassFilter} options={["all", "Business Validation", "Authorization", "Happy Path", "Input Validation", "Payment Validation", "Notification"]} label="Scenario Class" />
-          <FilterSelect value={priorityFilter} onChange={setPriorityFilter} options={["all", "High", "Medium", "Low", "Critical"]} label="Priority" />
-          <FilterSelect value={automationFilter} onChange={setAutomationFilter} options={["all", "yes", "no"]} label="Automation" />
-          <FilterSelect value={reviewFilter} onChange={setReviewFilter} options={["all", "Generated", "Needs Review", "Approved", "Rejected", "Blocked"]} label="Review Status" />
-          <Button variant="outline" size="sm" className="h-10 gap-2 border-slate-200 text-xs font-bold">
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              "h-10 gap-2 border-slate-200 text-xs font-bold",
+              (generatedFiltersOpen || activeGeneratedFilterCount > 0) && "border-blue-300 bg-blue-50 text-[#1b59f8]",
+            )}
+            onClick={() => setGeneratedFiltersOpen((open) => !open)}
+            aria-expanded={generatedFiltersOpen}
+            aria-controls="generated-test-case-filters"
+          >
             <Filter className="h-4 w-4" />
             Filters
+            {activeGeneratedFilterCount > 0 && (
+              <span className="rounded-full bg-[#1b59f8] px-1.5 py-0.5 text-[10px] text-white">
+                {activeGeneratedFilterCount}
+              </span>
+            )}
           </Button>
         </div>
+        {generatedFiltersOpen && (
+          <div
+            id="generated-test-case-filters"
+            aria-label="Generated test case filters"
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3"
+          >
+            <FilterSelect value={typeFilter} onChange={setTypeFilter} options={typeFilterOptions} label="Test Type" />
+            <FilterSelect value={classFilter} onChange={setClassFilter} options={classFilterOptions} label="Scenario Class" />
+            <FilterSelect value={priorityFilter} onChange={setPriorityFilter} options={priorityFilterOptions} label="Priority" />
+            <FilterSelect value={automationFilter} onChange={setAutomationFilter} options={["all", "yes", "no"]} label="Automation" />
+            <FilterSelect value={reviewFilter} onChange={setReviewFilter} options={reviewFilterOptions} label="Review Status" />
+            {activeGeneratedFilterCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-10 gap-2 text-xs font-bold text-slate-600"
+                onClick={() => {
+                  setTypeFilter("all");
+                  setClassFilter("all");
+                  setPriorityFilter("all");
+                  setAutomationFilter("all");
+                  setReviewFilter("all");
+                }}
+              >
+                <X className="h-4 w-4" />
+                Clear filters
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid min-w-max border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-[9px] font-extrabold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: TABLE_GRID }}>
+          <div className="grid w-full min-w-[1760px] items-center gap-x-2 border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-[9px] font-extrabold uppercase leading-4 tracking-wide text-slate-500" style={{ gridTemplateColumns: TABLE_GRID }}>
             <span>TC ID</span>
             <span>Req ID / PPM ID</span>
             <span>Title</span>
@@ -1198,8 +1301,8 @@ function TestCasesContent() {
                     onClick={() => setSelectedTestCase(tc)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedTestCase(tc); }}
                     className={cn(
-                      "grid w-full min-w-max cursor-pointer items-center px-4 py-3 text-left text-[11px] transition hover:bg-slate-50",
-                      selected && "border-l-2 border-[#1b59f8] bg-blue-50/25",
+                      "grid w-full min-w-[1760px] cursor-pointer items-center gap-x-2 px-4 py-3 text-left text-[11px] transition hover:bg-slate-50",
+                      selected && "bg-blue-50/25 shadow-[inset_2px_0_0_#1b59f8]",
                     )}
                     style={{ gridTemplateColumns: TABLE_GRID }}
                   >
@@ -1457,10 +1560,15 @@ function TestCasesContent() {
                       {selectedReview && (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                            <span>Coverage review score</span>
-                            <span>{typeof selectedReview.overall_score === "number" ? `${selectedReview.overall_score}/100` : selectedReview.verdict.replace(/_/g, " ")}</span>
+                            <span>Scenario test-case set review</span>
+                            <span>{typeof selectedReview.overall_score === "number" ? reviewScoreLabel(selectedReview.overall_score) : selectedReview.verdict.replace(/_/g, " ")}</span>
                           </div>
-                          {typeof selectedReview.overall_score === "number" && <MiniProgress value={selectedReview.overall_score} />}
+                          {typeof selectedReview.overall_score === "number" && <MiniProgress value={reviewScorePercent(selectedReview.overall_score)} />}
+                          <p className="text-[10px] font-semibold text-slate-500">
+                            {selectedReview.review_mode === "gating"
+                              ? "Gating review — unresolved findings can block approval."
+                              : "Advisory review — findings are improvement suggestions and do not block approval."}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -1823,6 +1931,7 @@ function TestCaseEditorView({
   const review = reviewForCase(tc, scenarioReviews);
   const classification = tc ? classifications.find((item) => item.test_case_id === tc.id) : undefined;
   const [canReviewClassification, setCanReviewClassification] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
     if (!selectedProject) { setCanReviewClassification(false); return; }
     let cancelled = false;
@@ -1837,27 +1946,49 @@ function TestCaseEditorView({
     return () => { cancelled = true; };
   }, [selectedProject]);
 
-  // UAT template controlled-vocabulary dropdowns — real backend reference
-  // data (app/services/taxonomy_service.py), not a hardcoded option list.
-  const [taxonomy, setTaxonomy] = useState<TaxonomyTree | null>(null);
+  // Query each governed master table directly. The previous nested,
+  // active-only tree could hide table rows when a parent was inactive and
+  // did not express the required "all values in the table" fallback.
+  const [domainOptions, setDomainOptions] = useState<TaxonomyEntry[]>([]);
+  const [channelOptions, setChannelOptions] = useState<TaxonomyEntry[]>([]);
+  const [productGroupOptions, setProductGroupOptions] = useState<TaxonomyEntry[]>([]);
+  const [productOptions, setProductOptions] = useState<TaxonomyEntry[]>([]);
+  const [subRequestTypeOptions, setSubRequestTypeOptions] = useState<TaxonomyEntry[]>([]);
+  const [testCaseTypeOptions, setTestCaseTypeOptions] = useState<TaxonomyEntry[]>([]);
+  const [testCaseComplexityOptions, setTestCaseComplexityOptions] = useState<TaxonomyEntry[]>([]);
   useEffect(() => {
     let cancelled = false;
-    taxonomyApi.tree(true).then((res) => { if (!cancelled) setTaxonomy(res.data); }).catch(() => { if (!cancelled) setTaxonomy(null); });
+    Promise.all([
+      taxonomyApi.qaDomains(false),
+      taxonomyApi.systems(false),
+      taxonomyApi.productGroups(false),
+      taxonomyApi.products(false),
+      taxonomyApi.subRequestTypes(false),
+      taxonomyApi.testCaseTypes(false),
+      taxonomyApi.testCaseComplexities(false),
+    ])
+      .then(([domains, channels, productGroups, products, subRequestTypes, testCaseTypes, complexities]) => {
+        if (cancelled) return;
+        setDomainOptions(domains.data);
+        setChannelOptions(channels.data);
+        setProductGroupOptions(productGroups.data);
+        setProductOptions(products.data);
+        setSubRequestTypeOptions(subRequestTypes.data);
+        setTestCaseTypeOptions(testCaseTypes.data);
+        setTestCaseComplexityOptions(complexities.data);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDomainOptions([]);
+        setChannelOptions([]);
+        setProductGroupOptions([]);
+        setProductOptions([]);
+        setSubRequestTypeOptions([]);
+        setTestCaseTypeOptions([]);
+        setTestCaseComplexityOptions([]);
+      });
     return () => { cancelled = true; };
   }, []);
-  const domainOptions = useMemo(() => taxonomy?.qa_domains ?? [], [taxonomy]);
-  const channelOptions = useMemo(() => taxonomy?.systems ?? [], [taxonomy]);
-  const subRequestTypeOptions = useMemo(() => taxonomy?.sub_request_types ?? [], [taxonomy]);
-  const testCaseTypeOptions = useMemo(() => taxonomy?.test_case_types ?? [], [taxonomy]);
-  const testCaseComplexityOptions = useMemo(() => taxonomy?.test_case_complexities ?? [], [taxonomy]);
-  const productGroupOptions = useMemo(
-    () => domainOptions.flatMap((d) => d.product_groups),
-    [domainOptions],
-  );
-  const productOptions = useMemo(
-    () => productGroupOptions.flatMap((pg) => pg.products),
-    [productGroupOptions],
-  );
 
   const reviewFindings = review?.findings ?? [];
   const reviewSuggestions = (review?.findings ?? [])
@@ -1869,6 +2000,24 @@ function TestCaseEditorView({
   const readyForApproval = testCases.filter((row) => traceabilityHealth(row) === "Good" && reviewStatus(row) !== "Needs Review").length;
   const automationReady = testCases.filter((row) => row.automation_candidate).length;
   const blocked = testCases.filter((row) => row.status === "blocked").length;
+  const typeFilterOptions = useMemo(
+    () => availableFilterOptions(testCases.map(testType)),
+    [testCases],
+  );
+  const classFilterOptions = useMemo(
+    () => availableFilterOptions(testCases.map(scenarioClass)),
+    [testCases],
+  );
+  const priorityFilterOptions = useMemo(
+    () => availableFilterOptions(testCases.map((testCase) => testCase.priority)),
+    [testCases],
+  );
+  const reviewFilterOptions = useMemo(
+    () => availableFilterOptions(testCases.map(reviewStatus)),
+    [testCases],
+  );
+  const activeFilterCount = [typeFilter, classFilter, priorityFilter, reviewFilter]
+    .filter((filter) => filter !== "all").length;
   const editorRows = useMemo(() => {
     return testCases.filter((row) => {
       const rowReq = findRequirementForCase(row, requirementsByKey, requirementsById);
@@ -1881,10 +2030,10 @@ function TestCaseEditorView({
         (activeTab === "ready" && !issue) ||
         (activeTab === "issues" && issue) ||
         (activeTab === "blocked" && row.status === "blocked");
-      const typeOk = typeFilter === "all" || typeFilter === "Functional" || testType(row) === typeFilter;
-      const classOk = classFilter === "all" || scenarioClass(row) === classFilter;
-      const priorityOk = priorityFilter === "all" || row.priority === priorityFilter;
-      const reviewOk = reviewFilter === "all" || reviewStatus(row) === reviewFilter;
+      const typeOk = typeFilter === "all" || normalize(testType(row)) === normalize(typeFilter);
+      const classOk = classFilter === "all" || normalize(scenarioClass(row)) === normalize(classFilter);
+      const priorityOk = priorityFilter === "all" || normalize(row.priority) === normalize(priorityFilter);
+      const reviewOk = reviewFilter === "all" || normalize(reviewStatus(row)) === normalize(reviewFilter);
       return queryOk && activeOk && typeOk && classOk && priorityOk && reviewOk;
     });
   }, [activeTab, classFilter, priorityFilter, query, requirementsById, requirementsByKey, reviewFilter, testCases, typeFilter]);
@@ -2035,8 +2184,9 @@ function TestCaseEditorView({
       notify(`${tc.test_case_id} has no automated coverage review yet. Validation runs when the review agent processes its scenario.`);
       return;
     }
-    const score = typeof review.overall_score === "number" ? `, overall score ${review.overall_score}/100` : "";
-    notify(`Latest coverage review for ${tc.test_case_id}: ${review.verdict.replace(/_/g, " ")}${score}.`);
+    const score = typeof review.overall_score === "number" ? `, overall score ${reviewScoreLabel(review.overall_score)}` : "";
+    const mode = review.review_mode === "gating" ? "gating" : "advisory";
+    notify(`Latest scenario test-case set review for ${tc.test_case_id}: ${review.verdict.replace(/_/g, " ")}${score} (${mode}).`);
   }
 
   // Contract gate: title, preconditions, steps and expected result must be
@@ -2186,15 +2336,18 @@ function TestCaseEditorView({
             </div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">Coverage Review</p>
+            <p className="text-sm font-semibold text-slate-800">Scenario Test-Case Set Review</p>
             {review ? (
               <>
                 <p className="mt-5 text-xl font-extrabold text-slate-950">
-                  {typeof review.overall_score === "number" ? `${review.overall_score}/100` : "—"}
+                  {typeof review.overall_score === "number" ? reviewScoreLabel(review.overall_score) : "—"}
                 </p>
                 <span className={badgeClass(review.verdict === "pass" ? "emerald" : review.verdict === "fail" ? "red" : "amber")}>
-                  {review.verdict.replace(/_/g, " ")}
+                  {review.verdict.replace(/_/g, " ")} · {review.review_mode === "gating" ? "gating" : "advisory"}
                 </span>
+                <p className="mt-3 text-[10px] font-semibold leading-5 text-slate-500">
+                  This score reviews the complete set of test cases linked to the parent scenario, not this test case in isolation.
+                </p>
               </>
             ) : (
               <p className="mt-5 text-xs font-normal leading-5 text-slate-500">No automated coverage review recorded yet.</p>
@@ -2233,12 +2386,54 @@ function TestCaseEditorView({
                   className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-normal text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
-              <FilterSelect value={typeFilter} onChange={setTypeFilter} options={["all", "Positive", "Negative", "Functional"]} label="Test Type" />
-              <FilterSelect value={classFilter} onChange={setClassFilter} options={["all", "Business Validation", "Payment Validation", "Input Validation"]} label="Scenario Class" />
-              <FilterSelect value={priorityFilter} onChange={setPriorityFilter} options={["all", "High", "Medium", "Low"]} label="Priority" />
-              <FilterSelect value={reviewFilter} onChange={setReviewFilter} options={["all", "Generated", "Needs Review", "Approved"]} label="Review Status" />
-              <Button variant="outline" size="sm" className="h-9 w-9 border-slate-200 p-0"><Filter className="h-4 w-4" /></Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-9 gap-2 border-slate-200 px-3 text-xs font-bold",
+                  (filtersOpen || activeFilterCount > 0) && "border-blue-300 bg-blue-50 text-[#1b59f8]",
+                )}
+                onClick={() => setFiltersOpen((open) => !open)}
+                aria-expanded={filtersOpen}
+                aria-controls="editor-test-case-filters"
+              >
+                <Filter className="h-4 w-4" />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="rounded-full bg-[#1b59f8] px-1.5 py-0.5 text-[10px] text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
             </div>
+            {filtersOpen && (
+              <div
+                id="editor-test-case-filters"
+                aria-label="Editor test case filters"
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/40 p-3"
+              >
+                <FilterSelect value={typeFilter} onChange={setTypeFilter} options={typeFilterOptions} label="Test Type" />
+                <FilterSelect value={classFilter} onChange={setClassFilter} options={classFilterOptions} label="Scenario Class" />
+                <FilterSelect value={priorityFilter} onChange={setPriorityFilter} options={priorityFilterOptions} label="Priority" />
+                <FilterSelect value={reviewFilter} onChange={setReviewFilter} options={reviewFilterOptions} label="Review Status" />
+                {activeFilterCount > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-10 gap-2 text-xs font-bold text-slate-600"
+                    onClick={() => {
+                      setTypeFilter("all");
+                      setClassFilter("all");
+                      setPriorityFilter("all");
+                      setReviewFilter("all");
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                    Clear filters
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
               <div className="grid min-w-max border-b border-slate-200 bg-slate-50/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: EDITOR_TABLE_GRID }}>
                 <span>TC ID</span><span>Req ID / PPM ID</span><span>Title</span><span>Test Type</span><span>Scenario Class</span><span>Priority</span><span>Domain</span><span>Channel</span><span>Complexity</span><span>Critical</span><span>Edit Status</span><span>Validation Status</span><span>Actions</span>

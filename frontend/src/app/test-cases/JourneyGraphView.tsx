@@ -745,11 +745,19 @@ function InfoPair({ label, value, link }: { label: string; value: string; link?:
 
 function OverviewInspector({ journey, selectedNode, reviews }: { journey: JourneyRecord; selectedNode: SelectedNode | null; reviews: ArtifactReview[] }) {
   const requirement = journey.requirements[0];
-  const scoreReviews = reviews.filter((item) => journey.testCases.some((tc) => tc.id === item.artifact_id) && item.artifact_type === "test_case" && item.overall_score != null);
-  const aiScore = scoreReviews.length ? Math.round(scoreReviews.reduce((sum, item) => sum + Number(item.overall_score), 0) / scoreReviews.length) : null;
+  const scoreReviews = reviews.filter(
+    (item) =>
+      journey.scenarios.some((scenario) => scenario.id === item.artifact_id) &&
+      item.artifact_type === "scenario_test_case_coverage" &&
+      item.overall_score != null,
+  );
+  const aiScore = scoreReviews.length
+    ? scoreReviews.reduce((sum, item) => sum + Number(item.overall_score), 0) / scoreReviews.length
+    : null;
+  const aiScorePercent = aiScore == null ? null : Math.round(Math.max(0, Math.min(5, aiScore)) * 20);
   return <>
     <Panel title="Selected Node"><div className="grid grid-cols-2 gap-3"><InfoPair label="Node Type" value={(selectedNode?.type || "journey").replace("_", " ")} /><InfoPair label="Status" value={journey.gaps.length ? "Needs Review" : "Ready"} /><InfoPair label="Journey ID" value={journey.id} link /><InfoPair label="Journey Name" value={journey.name} /><InfoPair label="Linked Requirement" value={requirement?.requirement_id || "Not linked"} link /><InfoPair label="PPM ID" value={ppmId(requirement)} link /><InfoPair label="Domain" value={requirement?.telecom_domain || requirement?.qa_domain || "Not classified"} /><InfoPair label="Owner" value={journey.ownerId ? `User #${journey.ownerId}` : "Unassigned"} /></div></Panel>
-    <Panel title="AI Summary"><p className="text-[10px] font-semibold leading-5 text-slate-600">This graph is derived from the project&apos;s approved requirements, linked scenarios, test cases, applications, evidence requirements and review records.</p><p className="mt-2 text-[9px] font-bold text-purple-700">{aiScore == null ? "No persisted AI review score is available." : `Persisted test-case review score: ${aiScore}%`}</p></Panel>
+    <Panel title="AI Summary"><p className="text-[10px] font-semibold leading-5 text-slate-600">This graph is derived from the project&apos;s approved requirements, linked scenarios, test cases, applications, evidence requirements and review records.</p><p className="mt-2 text-[9px] font-bold text-purple-700">{aiScore == null ? "No persisted scenario test-case set review is available." : `Scenario test-case set review: ${aiScore.toFixed(1)}/5 (${aiScorePercent}%)`}</p></Panel>
     <Panel title="Readiness Snapshot"><div className="grid grid-cols-4 gap-2"><Ring label="Coverage" value={journey.coverage} /><Ring label="Evidence" value={journey.evidenceCoverage} /><Ring label="Applications" value={journey.applicationCoverage} /><Ring label="Approval" value={journey.approvalReadiness} locked={journey.gaps.length > 0} /></div></Panel>
   </>;
 }
@@ -822,8 +830,15 @@ function classificationBadgeTone(status: string | undefined): string {
 
 function ActivityInspector({ journey, reviews, approvals }: { journey: JourneyRecord; reviews: ArtifactReview[]; approvals: ApprovalAction[] }) {
   const caseIds = new Set(journey.testCases.map((item) => item.id));
+  const scenarioIds = new Set(journey.scenarios.map((item) => item.id));
   const entries = [
-    ...reviews.filter((item) => item.artifact_type === "test_case" && caseIds.has(item.artifact_id)).map((item) => ({ time: item.created_at, actor: item.reviewer_agent, text: `Review ${item.verdict.replace("_", " ")}` })),
+    ...reviews
+      .filter((item) => item.artifact_type === "scenario_test_case_coverage" && scenarioIds.has(item.artifact_id))
+      .map((item) => ({
+        time: item.created_at,
+        actor: item.reviewer_agent,
+        text: `Scenario test-case set review ${item.verdict.replace("_", " ")}${typeof item.overall_score === "number" ? ` · ${item.overall_score.toFixed(1)}/5` : ""}`,
+      })),
     ...approvals.filter((item) => item.entity_type === "test_case" && caseIds.has(item.entity_id)).map((item) => ({ time: item.created_at, actor: item.actor_role || `User #${item.user_id}`, text: `Approval ${item.decision}` })),
   ].sort((a, b) => b.time.localeCompare(a.time));
   return <Panel title="Audit Activity"><div className="space-y-3">{entries.slice(0, 12).map((entry, index) => <div key={`${entry.time}-${index}`} className="relative pl-4 text-[10px]"><span className="absolute left-0 top-1 h-2 w-2 rounded-full bg-[#1b59f8]" /><p className="font-bold text-slate-500">{displayDate(entry.time)}</p><p className="mt-0.5 font-extrabold text-slate-800">{entry.actor}</p><p className="font-semibold text-slate-600">{entry.text}</p></div>)}{!entries.length && <p className="text-[10px] font-semibold text-slate-500">No persisted review or approval activity is available for these test cases.</p>}</div></Panel>;
