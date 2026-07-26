@@ -13,6 +13,7 @@ import {
   GitBranch,
   Boxes,
   Network,
+  Layers3,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,12 @@ const NAV_ITEMS: NavGroup[] = [
       { label: "Live Discovery Session", href: "/automation?view=discovery", icon: Radar },
       { label: "Application Model", href: "/applications?view=model", icon: GitBranch },
       { label: "API & Network Explorer", href: "/applications?view=api-network", icon: Network },
+    ],
+  },
+  {
+    group: "Automation Studio Core",
+    items: [
+      { label: "Automation Workspace", href: "/automation?view=workspace", icon: Layers3 },
     ],
   },
   {

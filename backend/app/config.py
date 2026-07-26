@@ -238,6 +238,14 @@ class Settings(BaseSettings):
     # isolation pattern as application_models_enabled.
     network_explorer_enabled: bool = False
 
+    # ── UI-018 Automation Workspace (P1-S5 Automation Studio Core) ───────────
+    # Master switch: every /automation-suites route 404s when off, same
+    # isolation pattern as network_explorer_enabled.
+    automation_suite_enabled: bool = False
+    # Bounds one evaluate_suite pass; a suite over this many members is
+    # rejected rather than allowed to fan out unboundedly.
+    automation_suite_max_members: int = 500
+
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days
     retention_rag_events_days: int = 180      # purge RAG retrieval audit events older than N days

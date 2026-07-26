@@ -10,6 +10,7 @@ from app.api.v1.endpoints import (
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
     applications, reviews, playwright_studio, mcp_connections, video,
     grounded_poc, automation_classification, discovery, taxonomy, application_models, network_events,
+    automation_suites,
 )
 
 api_router = APIRouter()
@@ -64,5 +65,10 @@ api_router.include_router(
 # every route 404s unless NETWORK_EXPLORER_ENABLED=true.
 api_router.include_router(
     network_events.router, prefix="/lab/network-explorer", tags=["API & Network Explorer"]
+)
+# UI-018 Automation Workspace (P1-S5 Automation Studio Core) — isolated
+# namespace; every route 404s unless AUTOMATION_SUITE_ENABLED=true.
+api_router.include_router(
+    automation_suites.router, prefix="/lab/automation-suites", tags=["Automation Workspace"]
 )
 

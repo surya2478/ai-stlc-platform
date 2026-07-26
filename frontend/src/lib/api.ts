@@ -3706,3 +3706,571 @@ export const networkExplorerApi = {
   activity: (sessionId: number) => api.get<NetworkEventActivityEntry[]>(`/lab/network-explorer/sessions/${sessionId}/activity`),
   exportUrl: (sessionId: number) => `/api/v1/lab/network-explorer/sessions/${sessionId}/export`,
 };
+
+// ─── UI-018 Automation Workspace — Automation Test Suite (Phase A) ───────────
+
+export type AutomationSuiteStatus =
+  | "DRAFT" | "SCOPE_SELECTED" | "INHERITANCE_REVIEW_REQUIRED" | "MAPPING_INCOMPLETE"
+  | "CONFLICT_REVIEW_REQUIRED" | "READY_FOR_VALIDATION" | "VALIDATION_PENDING"
+  | "VALIDATION_FAILED" | "READY_FOR_REVIEW" | "APPROVED" | "PUBLISHED" | "DEPRECATED"
+  | "ARCHIVED";
+
+export type SuiteMemberStatus = "NOT_EVALUATED" | "READY" | "WARNING" | "BLOCKED";
+export type SuiteInclusionStatus = "included" | "excluded" | "manual_only";
+export type SuiteGapStatus = "open" | "resolved" | "exception_approved" | "excluded";
+
+export interface Paginated<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface AutomationSuite {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  tags: string[];
+  status: AutomationSuiteStatus;
+  version: number;
+  parent_suite_id: number | null;
+  is_current: boolean;
+  default_environment: string | null;
+  owner_id: number | null;
+  created_by: number | null;
+  archived_by: number | null;
+  archived_at: string | null;
+  last_evaluated_at: string | null;
+  last_inheritance_sync_at: string | null;
+  members_total: number;
+  members_included: number;
+  members_ready: number;
+  members_blocked: number;
+  members_manual_only: number;
+  members_drifted: number;
+  gaps_critical_open: number;
+  gaps_warning_open: number;
+  conflicts_open: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutomationSuiteListItem {
+  id: number;
+  name: string;
+  description: string | null;
+  tags: string[];
+  status: AutomationSuiteStatus;
+  version: number;
+  is_current: boolean;
+  default_environment: string | null;
+  members_total: number;
+  members_included: number;
+  members_ready: number;
+  members_blocked: number;
+  members_manual_only: number;
+  members_drifted: number;
+  gaps_critical_open: number;
+  gaps_warning_open: number;
+  conflicts_open: number;
+  frameworks: string[];
+  application_count: number;
+  owner_id: number | null;
+  last_evaluated_at: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface AutomationSuiteOverview {
+  suite_id: number;
+  name: string;
+  description: string | null;
+  tags: string[];
+  status: AutomationSuiteStatus;
+  default_environment: string | null;
+  members_total: number;
+  members_included: number;
+  members_ready: number;
+  members_blocked: number;
+  members_manual_only: number;
+  members_drifted: number;
+  gaps_critical_open: number;
+  gaps_warning_open: number;
+  conflicts_open: number;
+  automated_members: number;
+  automation_coverage_pct: number;
+  inherited_application_count: number;
+  inherited_frameworks: string[];
+  linked_script_count: number;
+  last_evaluated_at: string | null;
+  last_inheritance_sync_at: string | null;
+  execution_group_count: number | null;
+  validation_summary: string | null;
+  unavailable: Record<string, string>;
+}
+
+export interface AutomationSuiteMember {
+  id: number;
+  test_case_id: number;
+  test_case_reference: string | null;
+  title: string | null;
+  test_case_status: string | null;
+  execution_mode: string | null;
+  priority: string | null;
+  automation_status: string | null;
+  inclusion_status: SuiteInclusionStatus;
+  planned_sequence: number | null;
+  source_system: string;
+  source_reference: string | null;
+  member_status: SuiteMemberStatus;
+  readiness_checks_passed: number;
+  readiness_checks_total: number;
+  last_evaluated_at: string | null;
+  resolved_application_id: number | null;
+  resolved_framework: string | null;
+  resolved_environment: string | null;
+  resolved_script_id: number | null;
+  exclusion_reason: string | null;
+}
+
+export interface AutomationSuiteGap {
+  id: number;
+  suite_id: number;
+  suite_test_case_id: number | null;
+  test_case_id: number | null;
+  gap_type: string;
+  scope: "member" | "suite";
+  category: "gap" | "conflict";
+  severity: "critical" | "warning";
+  stage: string;
+  reason: string;
+  remediation: string | null;
+  evidence: Record<string, unknown>;
+  status: SuiteGapStatus;
+  resolution_action: string | null;
+  reviewer_notes: string | null;
+  resolved_by: number | null;
+  resolved_at: string | null;
+  auto_closed: boolean;
+  first_detected_at: string;
+  last_detected_at: string;
+}
+
+export interface AutomationSuiteActivityEntry {
+  id: number;
+  suite_id: number;
+  suite_test_case_id: number | null;
+  event_type: string;
+  actor_id: number | null;
+  reason: string | null;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface SelectableTestCase {
+  id: number;
+  test_case_reference: string | null;
+  title: string | null;
+  objective: string | null;
+  status: string | null;
+  test_type: string | null;
+  priority: string | null;
+  is_critical: boolean | null;
+  execution_mode: string | null;
+  automation_status: string | null;
+  automation_candidate: boolean | null;
+  application_id: number | null;
+  requirement_id: number | null;
+  test_suite_id: number | null;
+  linked_release_version: string | null;
+  linked_script_count: number;
+  frameworks: string[];
+  mapping_status: string;
+}
+
+export interface GroundingRow {
+  step_number: number | null;
+  action: string | null;
+  screen: string | null;
+  element: string | null;
+  locator_status: string | null;
+  apis: string[];
+  external_validation: string;
+  evidence_count: number;
+  status: "Complete" | "Partial" | "Missing" | "Ambiguous" | "Stale" | "Blocked";
+}
+
+export interface InheritedScopeItem {
+  source: string;
+  source_entity: string;
+  source_id: number | null;
+  [key: string]: unknown;
+}
+
+export interface AutomationSuiteInheritedScope {
+  business_traceability: InheritedScopeItem[];
+  applications: InheritedScopeItem[];
+  frameworks: InheritedScopeItem[];
+  scripts: InheritedScopeItem[];
+  environments: InheritedScopeItem[];
+  test_data: InheritedScopeItem[];
+  owners: InheritedScopeItem[];
+  last_synchronized_at: string | null;
+  unavailable: Record<string, string>;
+}
+
+export interface AutomationSuiteDashboard {
+  suites: {
+    total: number;
+    draft: number;
+    active: number;
+    archived: number;
+    in_review: number;
+    published: number;
+    created_last_7d: number;
+    created_prev_7d: number;
+    validation_pending: number | null;
+  };
+  test_cases: {
+    linked_total: number;
+    automation_candidates: number;
+    automated: number;
+    coverage_pct: number;
+  };
+  automation_assets: {
+    scripts: number;
+    recordings: number;
+    automation_ir: number | null;
+    page_objects: number | null;
+    reusable_components: number | null;
+    api_collections: number | null;
+    object_repositories: number | null;
+    git_repositories: number | null;
+  };
+  active_executions: {
+    running: number;
+    queued: number;
+    review_required: number;
+    blocked: number | null;
+    inconclusive: number | null;
+  };
+  success_rate: {
+    pass_rate_7d: number | null;
+    pass_rate_prev_7d: number | null;
+    trend: { date: string; pass_rate: number | null }[];
+    scope: string;
+  };
+  unavailable: Record<string, string>;
+}
+
+export interface ActiveExecutionRow {
+  id: number;
+  execution_id: string;
+  automation_test_suite: string | null;
+  suite_link_available: boolean;
+  environment: string | null;
+  execution_type: string | null;
+  status: string;
+  started_at: string | null;
+  total_tests: number;
+  progress_pct: number | null;
+  framework: string | null;
+  execution_group: string | null;
+}
+
+export interface AutomationSuiteFooterStatus {
+  agents: { total: number; connected: number; error: number; not_configured: number };
+  qa_environment: string | null;
+  storage_usage: string | null;
+  server_time: string;
+  unavailable: Record<string, string>;
+}
+
+export interface SuiteInheritancePreview {
+  selected_test_cases: number;
+  applications: number;
+  frameworks: string[];
+  existing_scripts: number;
+  recordings: number;
+  environments: string[];
+  test_data_sources: number;
+  requirements: number;
+  missing_mappings: number;
+  warnings: number;
+  conflicts: number;
+  blocking_conflicts: number;
+  findings: {
+    gap_type: string;
+    scope: string;
+    category: string;
+    severity: string;
+    stage: string;
+    reason: string;
+    remediation: string | null;
+    test_case_id: number | null;
+  }[];
+  automation_ir_definitions: number | null;
+  defects: number | null;
+  change_requests: number | null;
+  execution_groups: number | null;
+  business_projects: number;
+  unavailable: Record<string, string>;
+}
+
+export interface CreateSuitePayload {
+  name: string;
+  description?: string | null;
+  tags?: string[];
+  test_case_ids?: number[];
+  test_suite_ids?: number[];
+  default_environment?: string | null;
+  idempotency_key?: string | null;
+}
+
+export const automationSuiteApi = {
+  dashboard: (projectId: number) =>
+    api.get<AutomationSuiteDashboard>(`/lab/automation-suites/projects/${projectId}/dashboard`),
+  activeExecutions: (projectId: number, limit = 20) =>
+    api.get<{ items: ActiveExecutionRow[]; unavailable: Record<string, string> }>(
+      `/lab/automation-suites/projects/${projectId}/active-executions`,
+      { params: { limit } },
+    ),
+  footerStatus: (projectId: number) =>
+    api.get<AutomationSuiteFooterStatus>(`/lab/automation-suites/projects/${projectId}/footer-status`),
+
+  listSuites: (
+    projectId: number,
+    params?: { search?: string; status?: string; page?: number; page_size?: number; sort?: string },
+  ) =>
+    api.get<Paginated<AutomationSuiteListItem>>(
+      `/lab/automation-suites/projects/${projectId}/suites`,
+      { params },
+    ),
+  createSuite: (projectId: number, payload: CreateSuitePayload) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/projects/${projectId}/suites`, payload),
+
+  selectableTestCases: (
+    projectId: number,
+    params?: {
+      search?: string;
+      status?: string;
+      automation_status?: string;
+      execution_mode?: string;
+      automation_candidate?: boolean;
+      test_type?: string;
+      priority?: string;
+      is_critical?: boolean;
+      application_id?: number;
+      requirement_id?: number;
+      test_suite_id?: number;
+      framework?: string;
+      has_script?: boolean;
+      exclude_suite_id?: number;
+      page?: number;
+      page_size?: number;
+    },
+  ) =>
+    api.get<Paginated<SelectableTestCase>>(
+      `/lab/automation-suites/projects/${projectId}/selectable-test-cases`,
+      { params },
+    ),
+  previewInheritance: (
+    projectId: number,
+    payload: { test_case_ids: number[]; default_environment?: string | null },
+  ) =>
+    api.post<SuiteInheritancePreview>(
+      `/lab/automation-suites/projects/${projectId}/suites/preview-inheritance`,
+      payload,
+    ),
+
+  getSuite: (suiteId: number) =>
+    api.get<AutomationSuiteOverview>(`/lab/automation-suites/suites/${suiteId}`),
+  updateSuite: (
+    suiteId: number,
+    payload: { name?: string; description?: string | null; tags?: string[] },
+  ) => api.patch<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}`, payload),
+  setDefaultEnvironment: (suiteId: number, environment: string | null) =>
+    api.patch<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/default-environment`, {
+      environment,
+    }),
+  evaluate: (suiteId: number) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/evaluate`),
+  archive: (suiteId: number) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/archive`),
+  inheritedScope: (suiteId: number) =>
+    api.get<AutomationSuiteInheritedScope>(
+      `/lab/automation-suites/suites/${suiteId}/inherited-scope`,
+    ),
+
+  members: (
+    suiteId: number,
+    params?: {
+      inclusion_status?: string;
+      member_status?: string;
+      page?: number;
+      page_size?: number;
+    },
+  ) =>
+    api.get<Paginated<AutomationSuiteMember>>(`/lab/automation-suites/suites/${suiteId}/members`, {
+      params,
+    }),
+  addMembers: (suiteId: number, payload: { test_case_ids?: number[]; test_suite_ids?: number[] }) =>
+    api.post<{
+      added: number;
+      skipped_duplicate: number;
+      rejected: { test_case_id: number; reason: string }[];
+    }>(`/lab/automation-suites/suites/${suiteId}/members`, payload),
+  updateMember: (
+    suiteId: number,
+    memberId: number,
+    payload: {
+      inclusion_status?: SuiteInclusionStatus;
+      planned_sequence?: number;
+      exclusion_reason?: string;
+    },
+  ) => api.patch(`/lab/automation-suites/suites/${suiteId}/members/${memberId}`, payload),
+  removeMember: (suiteId: number, memberId: number) =>
+    api.delete(`/lab/automation-suites/suites/${suiteId}/members/${memberId}`),
+  memberGrounding: (suiteId: number, memberId: number) =>
+    api.get<GroundingRow[]>(
+      `/lab/automation-suites/suites/${suiteId}/members/${memberId}/grounding`,
+    ),
+
+  gaps: (
+    suiteId: number,
+    params?: {
+      category?: string;
+      severity?: string;
+      status?: string;
+      member_id?: number;
+      page?: number;
+      page_size?: number;
+    },
+  ) =>
+    api.get<Paginated<AutomationSuiteGap>>(`/lab/automation-suites/suites/${suiteId}/gaps`, {
+      params,
+    }),
+  resolveGap: (
+    suiteId: number,
+    gapId: number,
+    payload: { resolution_action: string; reviewer_notes?: string | null },
+  ) =>
+    api.post<AutomationSuiteGap>(
+      `/lab/automation-suites/suites/${suiteId}/gaps/${gapId}/resolve`,
+      payload,
+    ),
+  approveException: (suiteId: number, gapId: number, reason: string) =>
+    api.post<AutomationSuiteGap>(
+      `/lab/automation-suites/suites/${suiteId}/gaps/${gapId}/approve-exception`,
+      { reason },
+    ),
+
+  activity: (suiteId: number, params?: { page?: number; page_size?: number }) =>
+    api.get<Paginated<AutomationSuiteActivityEntry>>(
+      `/lab/automation-suites/suites/${suiteId}/activity`,
+      { params },
+    ),
+  exportUrl: (suiteId: number) => `/api/v1/lab/automation-suites/suites/${suiteId}/export`,
+
+  // ── Phase B ──
+  executionGroups: (suiteId: number) =>
+    api.get<{
+      items: AutomationSuiteExecutionGroup[];
+      split_dimensions: string[];
+      unavailable: Record<string, string>;
+    }>(`/lab/automation-suites/suites/${suiteId}/execution-groups`),
+  createExecutionGroup: (
+    suiteId: number,
+    payload: { name: string; framework?: string | null; environment?: string | null; notes?: string | null },
+  ) => api.post(`/lab/automation-suites/suites/${suiteId}/execution-groups`, payload),
+  splitExecutionGroups: (suiteId: number, dimension: string) =>
+    api.post<{ groups_created: number; dimension: string }>(
+      `/lab/automation-suites/suites/${suiteId}/execution-groups/split`,
+      { dimension },
+    ),
+  deleteExecutionGroup: (suiteId: number, groupId: number) =>
+    api.delete(`/lab/automation-suites/suites/${suiteId}/execution-groups/${groupId}`),
+  assignExecutionGroup: (suiteId: number, memberId: number, executionGroupId: number | null) =>
+    api.patch(`/lab/automation-suites/suites/${suiteId}/members/${memberId}/execution-group`, {
+      execution_group_id: executionGroupId,
+    }),
+
+  submitForReview: (suiteId: number) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/submit-for-review`),
+  requestChanges: (suiteId: number, reason: string) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/request-changes`, { reason }),
+  rejectSuite: (suiteId: number, reason: string) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/reject`, { reason }),
+  approveSuite: (suiteId: number, reason?: string | null) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/approve`, {
+      reason: reason ?? null,
+    }),
+  publishSuite: (suiteId: number) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/publish`),
+
+  versions: (suiteId: number) =>
+    api.get<{ items: AutomationSuiteVersion[] }>(`/lab/automation-suites/suites/${suiteId}/versions`),
+  newVersion: (suiteId: number) =>
+    api.post<AutomationSuite>(`/lab/automation-suites/suites/${suiteId}/new-version`),
+  snapshot: (suiteId: number) =>
+    api.get<AutomationSuiteSnapshot | null>(`/lab/automation-suites/suites/${suiteId}/snapshot`),
+  impactReview: (suiteId: number) =>
+    api.get<AutomationSuiteImpactReview>(`/lab/automation-suites/suites/${suiteId}/impact-review`),
+};
+
+export interface AutomationSuiteExecutionGroup {
+  id: number | null;
+  name: string;
+  sequence: number;
+  status: string;
+  framework: string | null;
+  environment: string | null;
+  application_id: number | null;
+  notes: string | null;
+  member_count: number;
+  created_at: string | null;
+}
+
+export interface AutomationSuiteVersion {
+  suite_id: number;
+  version: number;
+  status: AutomationSuiteStatus;
+  is_current: boolean;
+  submitted_by: number | null;
+  approved_by: number | null;
+  published_by: number | null;
+  published_at: string | null;
+  decision_reason: string | null;
+  members_included: number;
+  snapshot_checksum: string | null;
+  created_at: string;
+}
+
+export interface AutomationSuiteSnapshot {
+  id: number;
+  suite_id: number;
+  suite_version: number;
+  members: Record<string, unknown>[];
+  execution_groups: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+  checksum: string;
+  created_by: number | null;
+  created_at: string;
+}
+
+export interface AutomationSuiteImpactReview {
+  snapshot:
+    | {
+        suite_version: number;
+        checksum: string;
+        member_count: number;
+        created_at: string;
+      }
+    | null;
+  reason?: string;
+  changed_members?: { member_id: number; test_case_id: number; reasons: string[] }[];
+  impact_review_required?: boolean;
+}

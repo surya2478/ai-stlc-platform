@@ -141,7 +141,7 @@ No UI-only placeholder counts as an implemented screen.
 | 1 | P1-S2 | Requirement Intelligence Core | 3 | `NOT_STARTED` |
 | 1 | P1-S3 | Test Design and Approval | 4 | `IN_PROGRESS` |
 | 1 | P1-S4 | Application Discovery | 4 | `NOT_STARTED` |
-| 1 | P1-S5 | Automation Studio Core | 5 | `NOT_STARTED` |
+| 1 | P1-S5 | Automation Studio Core | 5 | `IN_PROGRESS` |
 | 1 | P1-S6 | Test Data Selection | 1 | `NOT_STARTED` |
 | 1 | P1-S7 | Execution and Evidence | 2 | `NOT_STARTED` |
 | 2 | P2-S1 | Operational Command Centre | 3 | `NOT_STARTED` |
@@ -394,6 +394,184 @@ The six-page Automation Studio design pack must also include **Framework Configu
 - [ ] Enforce generator/reviewer separation.
 - [ ] Support reject, request changes, approve and publish decisions.
 
+**UI-018 Automation Workspace — Phase A (2026-07-26):** implemented against
+the final consolidated UI-018 contract, which supersedes the earlier
+per-test-case build. The contract establishes **Automation Test Suite** as a
+first-class aggregate — an orchestration container over selected test cases
+where application, framework, script, environment and traceability data is
+*inherited read-only* from authoritative sources and never re-entered.
+
+The earlier Phase 1 aggregate (`automation_workspaces` +
+`automation_workspace_blockers` + `automation_workspace_activity`) was
+**retired**: it was scoped to one test case × environment, which cannot
+express suite membership or cross-member conflicts. Its readiness *logic* was
+preserved and relocated — all 10 checks port 1:1 with their reason,
+remediation, severity and stage strings intact (parity is pinned by tests) —
+now evaluated per suite member and persisted as gap rows on the suite. The
+uncommitted `046_automation_workspaces.py` was downgraded out of the dev DB
+and replaced by `046_automation_suites.py`, so head stays at 046 with no
+orphan revision.
+
+New backend: `046_automation_suites.py` (4 tables: `automation_suites`,
+`automation_suite_test_cases`, `automation_suite_gaps`,
+`automation_suite_activity`) and the `services/automation_suite/` package.
+Its defining structure is that **`inheritance.py` is the only module that
+queries for evaluation; readiness, conflict detection, gap planning and status
+are pure functions over frozen dataclasses.** That is what bounds cost: one
+`evaluate_suite` pass measured 14 SQL statements for 2 members and 15 for 13
+members (scaling with distinct applications, not member count — a naive
+per-member port would have issued ~130).
+
+Suite-level capabilities the per-test-case engine could not provide:
+cross-member conflict detection (`MULTIPLE_FRAMEWORKS`,
+`MULTIPLE_ENVIRONMENTS`, `MIXED_MANUAL_AUTOMATED`), and gap **adjudication** —
+`plan_gap_sync` upserts by fingerprint and auto-closes what it no longer
+detects, but never deletes, because a suite gap carries `exception_approved` /
+`resolution_action` / `reviewer_notes` / `first_detected_at` that a
+delete-and-rebuild would silently discard (the retired engine wiped its
+blockers each pass, which was only safe because they held no human decision).
+Fingerprints key on stable identity — `LOCATOR_MISSING` keys on the model, not
+the Application Model gap-id list, which churns on every rebuild and would
+otherwise orphan an approved waiver. Waived and excluded findings stop
+blocking at *both* member and suite level, so "approve exception" and "exclude
+test case" genuinely advance status.
+
+7 of the contract's 13 statuses are reachable and deterministic (`DRAFT`,
+`SCOPE_SELECTED`, `MAPPING_INCOMPLETE`, `CONFLICT_REVIEW_REQUIRED`,
+`INHERITANCE_REVIEW_REQUIRED`, `READY_FOR_VALIDATION`, `ARCHIVED`); the other
+6 need UI-023 validation, the approval workflow or immutable snapshots and are
+reserved in the CHECK constraint so Phase B needs no migration.
+`/api/v1/lab/automation-suites/*` (23 routes, flag-gated on
+`AUTOMATION_SUITE_ENABLED`, disabled by default), 10 `automation_suite.*`
+permissions with `approve_exception` under `APPROVE_TEST_CASES` rather than
+`GENERATE_AUTOMATION` — waiving a readiness gap is a governance decision.
+Wizard step 1 is server-side paginated; suite creation is idempotent on a
+client-supplied key so a refresh or double-submit cannot create two suites.
+
+Frontend: `AutomationSuiteDashboard.tsx` (landing), `AutomationSuiteDetail.tsx`
+(drill-in) and `NewAutomationSuiteWizard.tsx` (6-step), sharing
+`suite-shared.tsx`, at `/automation?view=workspace`,
+`?view=workspace&suite=<id>` and `?view=workspace-new`. Detail tabs Overview /
+Test Cases / Inherited Scope / Conflicts and Gaps are live; Execution Groups,
+Automation Assets, Test Data, Executions, Evidence and Versions are visibly
+disabled with the reason, per the UI-016/017 pattern.
+
+**Two rules deliberately not invented.** Environment resolves from the
+suite-owned default only — deriving it from `test_data.environment` was
+rejected because "test data exists for env X" is not "this test case runs in
+env X", and that is also why the selection filters expose no environment
+filter. `UNSUPPORTED_FRAMEWORK_APPLICATION` is reserved but never raised: no
+framework/application pairing matrix exists anywhere in this repo, so
+authoring one would be a guessed business rule surfaced as a governance
+finding.
+
+**Honest degradation** (contract element → missing source): Framework Profile
+identity/version → no `framework_profile` table (UI-022, P2-S3), so the plain
+`automation_scripts.framework` string is shown sourced to the script;
+Automation IR → no entity (UI-020); page objects, reusable components, API
+collections, object repositories, git repositories → no entities; change
+requests → no entity at all; releases → free-text on the test case, not a
+link; evidence tab/policy → no evidence entity; execution↔suite linkage → no
+FK, so `ExecutionRun.suite_name` is emitted verbatim with
+`suite_link_available: false` and success rate is labelled project-wide;
+`Blocked`/`Inconclusive` execution states → not values of
+`ExecutionRun.status` (the real `review_required` is exposed under its own
+label); validation-pending KPI → no validation subsystem; execution groups,
+schedule, approvals, snapshots, versions, impact review → Phase B; environment
+health and storage usage → no subsystems (agent availability *is* real from
+`mcp_connections`). Each is returned as `null` with a stated reason in an
+`unavailable` map and rendered as an explained dash, never as `0`.
+
+Backend: 88 new focused tests pass across 7 modules (readiness incl. parity
+ports, conflicts, gap-sync planning, status precedence, service, dashboard
+honest-nulls, grounding); full suite 1186 passed / 5 failed — the same 5
+pre-existing unrelated failures (Jira import, security middleware) recorded in
+UI-016/017. Frontend typecheck/lint/build clean. Verified live against real
+project-1 data: migration round-tripped 045↔046; suite created from 2 approved
+test cases landed `MAPPING_INCOMPLETE` with 4 real critical gaps and 3
+warnings; the project-default application fallback resolved so no spurious
+mapping gap; replaying the idempotency key returned the same suite and created
+nothing; duplicate active name 409'd; waiving all 4 criticals advanced the
+suite to `READY_FOR_VALIDATION` and the waivers survived re-evaluation
+un-reopened; archive and double-archive/evaluate-archived guards returned 409;
+inherited scope showed every item with a real source label
+("Inherited from TC-0008", "Derived from linked script framework
+'playwright'"); export, activity and member grounding all returned real data.
+
+**UI-018 Automation Workspace — Phase B (2026-07-26):** migration
+`047_automation_suite_phase_b.py` (additive: `automation_suite_execution_groups`,
+`automation_suite_snapshots`, `execution_group_id` on
+`automation_suite_test_cases`, and the approval audit columns on
+`automation_suites`), plus `services/automation_suite/execution_groups.py` and
+`lifecycle.py`. 37 routes total; 6 new permissions, with `review`/`approve`/
+`publish` under `APPROVE_TEST_CASES` and group management under
+`GENERATE_AUTOMATION`.
+
+Four capabilities, all backed by real data:
+
+*Execution groups* — `plan_auto_split` (pure) groups members by an inherited
+discriminator (framework, environment or application). This is what finally
+makes `split_execution_groups` a real resolution instead of a 422: splitting a
+`MULTIPLE_FRAMEWORKS` conflict into one group per framework resolves it without
+touching anything at source. A member with no script lands in an honestly
+labelled "unmapped" group carrying no invented framework.
+
+*Approval workflow* — submit / request changes / reject / approve / publish,
+mirroring `application_model_service` so governance reads the same across
+UI-016 and UI-018, including the separation-of-duty rule (the submitter cannot
+approve) and the critical-findings-must-be-clear gate. The key structural
+addition is `WORKFLOW_OWNED_STATUSES`: once a suite is in review, approved or
+published, evaluation refreshes its rollup and findings but **must not**
+recompute its status, otherwise the next evaluation pass would silently undo an
+approval. `READY_FOR_REVIEW`, `APPROVED`, `PUBLISHED` and `DEPRECATED` are now
+reachable — 11 of 13 statuses; only `VALIDATION_PENDING`/`VALIDATION_FAILED`
+remain reserved, pending UI-023.
+
+*Immutable snapshots* — publication writes an `AutomationSuiteSnapshot` holding
+each member's resolved source ids and versions plus a sha256 over a canonical,
+order-independent payload, and never updates it. A published suite is frozen:
+membership, rename and re-split all return 409 `SUITE_IMMUTABLE`.
+
+*Versions and impact review* — `create_new_draft` opens version n+1 copying
+membership, marks the prior version not-current, and keeps the chain rooted at
+`parent_suite_id`. Impact review compares a published suite's snapshot against
+live sources and emits `SNAPSHOT_DRIFT` findings; because gaps upsert rather
+than delete, restoring the source auto-closes the finding while preserving its
+`first_detected_at`. Execution groups are deliberately *not* copied to a new
+version — a new version re-splits, and copying would leave grouping decisions
+attributed to a scope that has since changed.
+
+**Deliberately not built, with the reason.** Schedule, parallelism, retry,
+timeout, evidence policy, notification rules and agent-pool preference are all
+execution-time concerns, and there is no suite-to-execution path: `execution_runs`
+has no FK to a suite, no runner integration consumes one, and Celery beat only
+carries retention jobs. Storing policy that nothing honours would misrepresent
+it, so the Execution Groups tab lists each with its reason instead. Wiring real
+dispatch belongs with P1-S7 Execution and Evidence.
+
+Backend: 117 focused tests across 9 modules (29 new for Phase B covering split
+planning, every approval transition, separation of duty, snapshot determinism
+and immutability, the version chain and drift detection); full suite 1216 passed
+/ 5 failed — the same 5 pre-existing unrelated failures. Frontend
+typecheck/lint/build clean; the Execution Groups and Versions tabs are now live
+(Automation Assets, Test Data, Executions and Evidence remain honestly disabled).
+
+Verified live end to end on project 1: migration 047 round-tripped; suite split
+into 2 real framework groups; submitted for review; **the submitter's own
+approval was refused 409 `SEPARATION_OF_DUTY_VIOLATION`**; a second real user
+approved and published; the snapshot froze 2 members and 2 groups with a
+64-char checksum; all three mutation paths on the published suite returned 409
+`SUITE_IMMUTABLE`; bumping a real test case's version produced an impact finding
+while the snapshot stayed **byte-identical** (same checksum); evaluating the
+published suite recorded `SNAPSHOT_DRIFT` and left the status at `PUBLISHED`;
+a new version opened as v2 with membership copied, v1 marked not-current, and
+v2's findings requiring their own adjudication rather than inheriting v1's
+waivers; restoring the source auto-closed the drift finding with its
+`first_detected_at` intact.
+
+Remaining for P1-S5: UI-019 Live Recorder, UI-020 Automation IR Editor, UI-021
+Script Editor, UI-023 Validation and Review.
+
 ### P1-S6 Test Data Selection - 1 screen
 
 Screen: **Data Search and Selection**.
@@ -609,7 +787,7 @@ Use `-` for not applicable and add approval/evidence links when work starts.
 | UI-015 | 1 | P1-S4 | Live Discovery Session | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-016 | 1 | P1-S4 | Application Model | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-017 | 1 | P1-S4 | API and Network Explorer | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
-| UI-018 | 1 | P1-S5 | Automation Workspace | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| UI-018 | 1 | P1-S5 | Automation Workspace | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-019 | 1 | P1-S5 | Live Recorder | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-020 | 1 | P1-S5 | Automation IR Editor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-021 | 1 | P1-S5 | Script Editor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |

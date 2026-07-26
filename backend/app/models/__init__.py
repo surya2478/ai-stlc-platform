@@ -81,5 +81,13 @@ from app.models.application_model import (  # noqa: F401
     ApplicationModelActivity,
 )
 from app.models.network_event import NetworkEvent, NetworkEventActivity  # noqa: F401
+from app.models.automation_suite import (  # noqa: F401
+    AutomationSuite,
+    AutomationSuiteTestCase,
+    AutomationSuiteGap,
+    AutomationSuiteActivity,
+    AutomationSuiteExecutionGroup,
+    AutomationSuiteSnapshot,
+)
 
 

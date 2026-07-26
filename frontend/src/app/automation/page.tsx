@@ -62,6 +62,9 @@ import { AutomationInventoryPanel, type InventoryItem } from "@/components/autom
 import { AutomationWorkspace } from "@/components/automation/AutomationWorkspace";
 import { ConvertManualToAutomationDialog } from "@/components/automation/ConvertManualToAutomationDialog";
 import { DiscoverySessionView } from "@/components/discovery/DiscoverySessionView";
+import { AutomationSuiteDashboard } from "@/components/automation/AutomationSuiteDashboard";
+import { AutomationSuiteDetail } from "@/components/automation/AutomationSuiteDetail";
+import { NewAutomationSuiteWizard } from "@/components/automation/NewAutomationSuiteWizard";
 import { RunnerStatusChip } from "@/app/execution/_components/RunnerStatusChip";
 import { RunTriggerDialog, RunAllEligibleDialog, type RunTarget, type BatchRunCandidate } from "@/app/execution/_components/AutomationBuilderTab";
 import { RunDetailDrawer } from "@/app/execution/_components/RunDetailDrawer";
@@ -801,6 +804,33 @@ function AutomationContent() {
           </div>
         </div>
         <DiscoverySessionView projectId={selectedProject} />
+      </div>
+    );
+  }
+
+  if (searchParams.get("view") === "workspace") {
+    if (!selectedProject) {
+      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Automation Workspace.</div>;
+    }
+    const suiteId = Number(searchParams.get("suite")) || null;
+    return (
+      <div className="min-h-full pb-8">
+        {suiteId ? (
+          <AutomationSuiteDetail projectId={selectedProject} suiteId={suiteId} />
+        ) : (
+          <AutomationSuiteDashboard projectId={selectedProject} />
+        )}
+      </div>
+    );
+  }
+
+  if (searchParams.get("view") === "workspace-new") {
+    if (!selectedProject) {
+      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to create an Automation Test Suite.</div>;
+    }
+    return (
+      <div className="min-h-full pb-8">
+        <NewAutomationSuiteWizard projectId={selectedProject} />
       </div>
     );
   }

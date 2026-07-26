@@ -141,6 +141,46 @@ _GRANULAR_NETWORK_EXPLORER_PERMISSIONS: frozenset[str] = frozenset(
     }
 )
 
+# ─── UI-018 Automation Workspace / Automation Test Suite (P1-S5) ─────────────
+AUTOMATION_SUITE_VIEW = "automation_suite.view"
+AUTOMATION_SUITE_CREATE = "automation_suite.create"
+AUTOMATION_SUITE_UPDATE = "automation_suite.update"
+AUTOMATION_SUITE_MANAGE_MEMBERS = "automation_suite.manage_members"
+AUTOMATION_SUITE_EVALUATE = "automation_suite.evaluate"
+AUTOMATION_SUITE_RESOLVE_GAP = "automation_suite.resolve_gap"
+AUTOMATION_SUITE_APPROVE_EXCEPTION = "automation_suite.approve_exception"
+AUTOMATION_SUITE_ARCHIVE = "automation_suite.archive"
+AUTOMATION_SUITE_EXPORT = "automation_suite.export"
+AUTOMATION_SUITE_VIEW_AUDIT = "automation_suite.view_audit"
+# ── Phase B ──
+AUTOMATION_SUITE_MANAGE_GROUPS = "automation_suite.manage_groups"
+AUTOMATION_SUITE_SUBMIT_REVIEW = "automation_suite.submit_review"
+AUTOMATION_SUITE_REVIEW = "automation_suite.review"
+AUTOMATION_SUITE_APPROVE = "automation_suite.approve"
+AUTOMATION_SUITE_PUBLISH = "automation_suite.publish"
+AUTOMATION_SUITE_CREATE_VERSION = "automation_suite.create_version"
+
+_GRANULAR_AUTOMATION_SUITE_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        AUTOMATION_SUITE_VIEW,
+        AUTOMATION_SUITE_CREATE,
+        AUTOMATION_SUITE_UPDATE,
+        AUTOMATION_SUITE_MANAGE_MEMBERS,
+        AUTOMATION_SUITE_EVALUATE,
+        AUTOMATION_SUITE_RESOLVE_GAP,
+        AUTOMATION_SUITE_APPROVE_EXCEPTION,
+        AUTOMATION_SUITE_ARCHIVE,
+        AUTOMATION_SUITE_EXPORT,
+        AUTOMATION_SUITE_VIEW_AUDIT,
+        AUTOMATION_SUITE_MANAGE_GROUPS,
+        AUTOMATION_SUITE_SUBMIT_REVIEW,
+        AUTOMATION_SUITE_REVIEW,
+        AUTOMATION_SUITE_APPROVE,
+        AUTOMATION_SUITE_PUBLISH,
+        AUTOMATION_SUITE_CREATE_VERSION,
+    }
+)
+
 _GRANULAR_AUTOMATION_PERMISSIONS: frozenset[str] = frozenset(
     {
         AUTOMATION_VIEW,
@@ -168,6 +208,7 @@ GRANULAR_PERMISSIONS: frozenset[str] = (
     | _GRANULAR_DISCOVERY_PERMISSIONS
     | _GRANULAR_APPLICATION_MODEL_PERMISSIONS
     | _GRANULAR_NETWORK_EXPLORER_PERMISSIONS
+    | _GRANULAR_AUTOMATION_SUITE_PERMISSIONS
 )
 
 ALL_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -213,6 +254,7 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             AUTOMATION_VIEW, EXECUTION_VIEW_LIVE_RUNS, AUTOMATION_CLASSIFICATION_VIEW, DISCOVERY_VIEW,
             APPLICATION_MODEL_VIEW, APPLICATION_MODEL_EXPORT, APPLICATION_MODEL_VIEW_AUDIT,
             NETWORK_EXPLORER_VIEW, NETWORK_EXPLORER_EXPORT, NETWORK_EXPLORER_VIEW_AUDIT,
+            AUTOMATION_SUITE_VIEW, AUTOMATION_SUITE_EXPORT, AUTOMATION_SUITE_VIEW_AUDIT,
         })
     if GENERATE_AUTOMATION in base:
         extra.update({
@@ -232,12 +274,31 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             APPLICATION_MODEL_VALIDATE_LOCATORS,
             NETWORK_EXPLORER_BUILD,
             NETWORK_EXPLORER_REVIEW,
+            AUTOMATION_SUITE_CREATE,
+            AUTOMATION_SUITE_UPDATE,
+            AUTOMATION_SUITE_MANAGE_MEMBERS,
+            AUTOMATION_SUITE_EVALUATE,
+            AUTOMATION_SUITE_RESOLVE_GAP,
+            AUTOMATION_SUITE_ARCHIVE,
+            AUTOMATION_SUITE_MANAGE_GROUPS,
+            AUTOMATION_SUITE_SUBMIT_REVIEW,
+            AUTOMATION_SUITE_CREATE_VERSION,
         })
     if APPROVE_TEST_CASES in base:
         extra.update({
             AUTOMATION_REVIEW_SCRIPT, AUTOMATION_APPROVE_SCRIPT, AUTOMATION_CLASSIFICATION_APPROVE,
             DISCOVERY_COMPLETE_SESSION,
             APPLICATION_MODEL_REVIEW, APPLICATION_MODEL_APPROVE, APPLICATION_MODEL_PUBLISH,
+            # Waiving a suite readiness gap is a governance decision, not an
+            # engineering one — it rides with test-case approval, not
+            # GENERATE_AUTOMATION.
+            AUTOMATION_SUITE_APPROVE_EXCEPTION,
+            # Reviewing, approving and publishing a suite are the same class of
+            # decision. Separation of duty is enforced in the service by
+            # comparing the actor against the submitter, not by the permission.
+            AUTOMATION_SUITE_REVIEW,
+            AUTOMATION_SUITE_APPROVE,
+            AUTOMATION_SUITE_PUBLISH,
         })
     if EXECUTE_TESTS in base:
         extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})
