@@ -90,8 +90,38 @@ def routing_default_adapter(ctx: ClassificationContext) -> tuple[str | None, lis
     return primary_adapter, mandatory, optional
 
 
+def policy_capability_allowlists(ctx: ClassificationContext) -> tuple[set[str], set[str]]:
+    """Return adapters and validators explicitly declared by the policy.
+
+    The classification agent is advisory and may only select capabilities
+    from these lists. Evidence keys are deliberately excluded: screenshots,
+    traces, and step results describe required output artifacts, not runtime
+    validators.
+    """
+    rules = ctx.policy.rules or {}
+    adapters: set[str] = set()
+    validators: set[str] = set()
+    for rule in rules.get("routing_rules") or []:
+        for key in [
+            rule.get("primary_adapter"),
+            *(rule.get("supporting_adapters") or []),
+        ]:
+            if key:
+                adapters.add(key)
+    for rule in rules.get("external_validation_rules") or []:
+        validators.update(key for key in (rule.get("required") or []) if key)
+        validators.update(key for key in (rule.get("optional") or []) if key)
+    return adapters, validators
+
+
 async def evaluate_test_case(
-    db: AsyncSession, *, project_id: int, test_case_id: int, user_id: int, agent_enabled: bool = True
+    db: AsyncSession,
+    *,
+    project_id: int,
+    test_case_id: int,
+    user_id: int,
+    agent_enabled: bool = True,
+    force_reclassify: bool = False,
 ) -> tuple[AgentRun, str]:
     # Local import: agent_dispatch_service imports app.worker.tasks.agent_tasks
     # (for run_agent), and agent_tasks imports this module (for
@@ -135,6 +165,12 @@ async def evaluate_test_case(
         "routing_default_optional_validators": default_optional,
         "agent_enabled": agent_enabled,
     }
+    if force_reclassify:
+        # A deliberate retry must not reuse the completed run produced from
+        # the same test-case version and policy. The nonce becomes part of
+        # the derived idempotency key while ordinary duplicate Evaluate
+        # requests continue to deduplicate normally.
+        input_data["reclassification_requested_at"] = datetime.now(timezone.utc).isoformat()
 
     run, task_id = await agent_dispatch_service.enqueue_agent_run(
         db,
@@ -185,6 +221,18 @@ async def persist_classification_result(
         "routing_default_optional_validators", []
     )
 
+    allowed_adapters, allowed_validators = policy_capability_allowlists(ctx)
+    rejected_capabilities: list[str] = []
+    if primary_adapter and primary_adapter not in allowed_adapters:
+        rejected_capabilities.append(primary_adapter)
+        primary_adapter = input_data.get("routing_default_adapter")
+    rejected_capabilities.extend(key for key in supporting_adapters if key not in allowed_adapters)
+    rejected_capabilities.extend(key for key in mandatory_validators if key not in allowed_validators)
+    rejected_capabilities.extend(key for key in optional_validators if key not in allowed_validators)
+    supporting_adapters = [key for key in supporting_adapters if key in allowed_adapters]
+    mandatory_validators = [key for key in mandatory_validators if key in allowed_validators]
+    optional_validators = [key for key in optional_validators if key in allowed_validators]
+
     capability_keys = [k for k in [primary_adapter, *supporting_adapters, *mandatory_validators, *optional_validators] if k]
     capability_map = await capability_resolver.resolve_capabilities(db, project_id=project_id, keys=capability_keys)
     mandatory_unavailable = [
@@ -199,6 +247,14 @@ async def persist_classification_result(
 
     all_blockers = pre_blockers + post_result.blockers
     all_warnings = pre_warnings + post_result.warnings
+    for key in sorted(set(rejected_capabilities)):
+        all_warnings.append(
+            deterministic_rules.RuleFinding(
+                "undeclared_agent_capability",
+                "Agent capability ignored",
+                f"Agent-recommended capability '{key}' is not declared as an adapter or validator in the policy.",
+            )
+        )
 
     complexity_score, automation_value_score, factors = scoring_service.compute_scores(
         ctx, mandatory_validator_count=len(mandatory_validators), optional_validator_count=len(optional_validators)

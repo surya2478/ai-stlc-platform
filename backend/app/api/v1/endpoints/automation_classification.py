@@ -192,7 +192,12 @@ async def reclassify(classification_id: int, db: DBSession, current_user: Curren
     await require_entity_permission(row, AUTOMATION_CLASSIFICATION_EVALUATE, current_user, db)
     agent_enabled = get_settings().automation_classification_agent_enabled
     run, _task_id = await classification_service.evaluate_test_case(
-        db, project_id=row.project_id, test_case_id=row.test_case_id, user_id=current_user.id, agent_enabled=agent_enabled
+        db,
+        project_id=row.project_id,
+        test_case_id=row.test_case_id,
+        user_id=current_user.id,
+        agent_enabled=agent_enabled,
+        force_reclassify=True,
     )
     await db.commit()
     return ClassificationEvaluateResponseItem(test_case_id=row.test_case_id, agent_run_id=run.id, status=run.status)

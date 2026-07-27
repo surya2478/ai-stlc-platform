@@ -61,8 +61,17 @@ type Tone = "blue" | "emerald" | "amber" | "red" | "purple" | "slate";
 type InspectorTab = "review" | "traceability" | "test-case" | "evidence" | "history" | "activity" | "automation";
 type QueueTab = "all" | "ready" | "pending" | "changes" | "approved" | "rejected" | "blocked";
 type CheckState = "pass" | "warning" | "blocker";
+type CheckScope = "approval" | "downstream";
 
-type GovernanceCheck = { key: string; label: string; state: CheckState; detail: string };
+type GovernanceCheck = {
+  key: string;
+  label: string;
+  state: CheckState;
+  scope: CheckScope;
+  detail: string;
+  guidance?: string;
+  owner?: string;
+};
 type ApprovalRow = {
   testCase: TestCase;
   requirement?: Requirement;
@@ -74,6 +83,7 @@ type ApprovalRow = {
   journeyId: string;
   journeyName: string;
   validationScore: number;
+  validationFindings: string[];
   journeyCoverage: number;
   evidence: string[];
   discovery: string;
@@ -89,21 +99,21 @@ function classificationCheckState(
   enabled: boolean,
 ): GovernanceCheck {
   if (!enabled) {
-    return { key: "automation_classification", label: "Automation classification approved", state: "pass", detail: "Classification capability not enabled for this project" };
+    return { key: "automation_classification", label: "Automation classification", state: "pass", scope: "downstream", detail: "Not enabled for this project", owner: "Automation Classification" };
   }
   if (!testCase.automation_candidate) {
-    return { key: "automation_classification", label: "Automation classification approved", state: "pass", detail: "Not an automation candidate" };
+    return { key: "automation_classification", label: "Automation classification", state: "pass", scope: "downstream", detail: "Not required for a manual test case", owner: "Automation Classification" };
   }
   if (!classification) {
-    return { key: "automation_classification", label: "Automation classification approved", state: "blocker", detail: "Not yet classified" };
+    return { key: "automation_classification", label: "Automation classification", state: "warning", scope: "downstream", detail: "Pending after test-case approval", guidance: "Classify the approved test case before automation design.", owner: "Automation Classification" };
   }
   if (classification.test_case_version !== testCase.version) {
-    return { key: "automation_classification", label: "Automation classification approved", state: "blocker", detail: "Classification stale — test case changed since last classified" };
+    return { key: "automation_classification", label: "Automation classification", state: "warning", scope: "downstream", detail: "Reclassification required after approval", guidance: "Reclassify the approved version before automation design.", owner: "Automation Classification" };
   }
   if (classification.review_status !== "APPROVED") {
-    return { key: "automation_classification", label: "Automation classification approved", state: "blocker", detail: `${classification.candidate_status} · ${classification.review_status.replace("_", " ").toLowerCase()}` };
+    return { key: "automation_classification", label: "Automation classification", state: "warning", scope: "downstream", detail: `${classification.candidate_status}: ${classification.review_status.replace("_", " ").toLowerCase()}`, guidance: "Complete classification review before automation design.", owner: "Automation Classification" };
   }
-  return { key: "automation_classification", label: "Automation classification approved", state: "pass", detail: `${classification.candidate_status} · v${classification.version} approved` };
+  return { key: "automation_classification", label: "Automation classification", state: "pass", scope: "downstream", detail: `${classification.candidate_status}: v${classification.version} approved`, owner: "Automation Classification" };
 }
 
 const GRID = "34px 72px 112px minmax(150px,1fr) 72px 92px 62px 88px 70px 78px 90px 102px 64px 90px 34px";
@@ -194,15 +204,18 @@ function journeyReviewed(testCase: TestCase) {
 
 function contentValidation(testCase: TestCase) {
   const steps = testCase.steps || [];
-  const checks = [
-    Boolean(testCase.title.trim()),
-    Boolean(testCase.preconditions?.length),
-    Boolean(steps.length),
-    Boolean(steps.length && steps.every((step) => Boolean(step.action?.trim()))),
-    Boolean(steps.length && steps.every((step) => Boolean(step.expected_result?.trim()))),
-    Boolean(testCase.expected_result?.trim()),
+  const checks: Array<[boolean, string]> = [
+    [Boolean(testCase.title.trim()), "Add a clear test-case title."],
+    [Boolean(testCase.preconditions?.length), "Add at least one precondition."],
+    [Boolean(steps.length), "Add at least one ordered test step."],
+    [Boolean(steps.length && steps.every((step) => Boolean(step.action?.trim()))), "Complete the action for every test step."],
+    [Boolean(steps.length && steps.every((step) => Boolean(step.expected_result?.trim()))), "Add an expected result to every test step."],
+    [Boolean(testCase.expected_result?.trim()), "Add the overall expected result."],
   ];
-  return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  return {
+    score: Math.round((checks.filter(([passed]) => passed).length / checks.length) * 100),
+    missing: checks.filter(([passed]) => !passed).map(([, message]) => message),
+  };
 }
 
 function reviewScoreLabel(score: number | null | undefined) {
@@ -238,7 +251,8 @@ function statusTone(status: ApprovalRow["status"]): Tone {
 }
 
 function Badge({ children, tone = "slate" }: { children: React.ReactNode; tone?: Tone }) {
-  return <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-extrabold", toneClass(tone))}>{children}</span>;
+  const isLaterStage = children === "Missing" && tone === "red";
+  return <span className={cn("inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-extrabold", toneClass(isLaterStage ? "amber" : tone))}>{isLaterStage ? "Later" : children}</span>;
 }
 
 function Progress({ value, tone = "emerald" }: { value: number; tone?: Tone }) {
@@ -260,7 +274,7 @@ function Panel({ title, action, children, className }: { title: string; action?:
   return <section className={cn("rounded-lg border border-slate-200 bg-white p-3", className)}><div className="mb-2 flex items-center justify-between"><h3 className="text-[10px] font-extrabold text-slate-800">{title}</h3>{action}</div>{children}</section>;
 }
 
-export function TestCaseApprovalView({ projectId }: { projectId: number | null }) {
+export function TestCaseApprovalView({ projectId, initialTestCaseId = null }: { projectId: number | null; initialTestCaseId?: number | null }) {
   const router = useRouter();
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [scenarios, setScenarios] = useState<TestScenario[]>([]);
@@ -323,7 +337,11 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
       setRequirements(reqRes.data); setScenarios(scenarioRes.data); setTestCases(caseRes.data);
       setApplications(appRes.data.applications.filter((item) => item.is_active)); setReviews(reviewRes.data); setApprovals(approvalRes.data);
       setMemberships(membershipRes.data); setRoles(roleRes.data); setUsers(userRes.data); setMe(meRes.data);
-      setSelectedId((current) => current && caseRes.data.some((item) => item.id === current) ? current : caseRes.data[0]?.id ?? null);
+      setSelectedId((current) => {
+        if (current && caseRes.data.some((item) => item.id === current)) return current;
+        if (initialTestCaseId && caseRes.data.some((item) => item.id === initialTestCaseId)) return initialTestCaseId;
+        return caseRes.data[0]?.id ?? null;
+      });
       setLastRefreshed(new Date());
     } catch (loadError) { setError(errorMessage(loadError, "Could not load the test-case approval queue.")); }
     finally { setLoading(false); }
@@ -338,7 +356,7 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
       setClassifications([]);
       setClassificationsEnabled(!isClassificationDisabled(clsError));
     }
-  }, [projectId]);
+  }, [initialTestCaseId, projectId]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
@@ -384,26 +402,30 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
     const evidence = evidenceRequirements(testCase);
     const discovery = discoveryState(testCase);
     const journey = journeyFor(requirement, testCase);
-    const validationScore = contentValidation(testCase);
+    const validation = contentValidation(testCase);
+    const validationScore = validation.score;
     const journeyCoverage = coverageFor(requirement, scenarios);
     const classification = classificationByTestCaseId.get(testCase.id);
     const checks: GovernanceCheck[] = [
-      { key: "requirement", label: "Requirement approved", state: requirement?.status === "approved" ? "pass" : "blocker", detail: requirement ? `${requirement.requirement_id}: ${requirement.status}` : "No linked requirement" },
-      { key: "scenario", label: "Scenario approved", state: scenario?.status === "approved" ? "pass" : "blocker", detail: scenario ? `${scenario.scenario_id}: ${scenario.status}` : "No linked scenario" },
-      { key: "validation", label: "Test case validation passed", state: validationScore === 100 ? "pass" : "blocker", detail: `${validationScore}/100 deterministic completeness` },
-      { key: "journey", label: "Journey coverage reviewed", state: journey.id !== "Not mapped" && journeyReviewed(testCase) ? "pass" : "blocker", detail: journey.id === "Not mapped" ? "No linked journey" : journeyReviewed(testCase) ? `${journeyCoverage}% scenario coverage` : "Journey review not recorded" },
-      { key: "application", label: "Application mapping complete", state: application ? "pass" : "blocker", detail: application?.name || "No active application mapping" },
-      { key: "evidence", label: "Evidence requirements attached", state: evidence.length ? "pass" : "blocker", detail: evidence.length ? `${evidence.length} required type${evidence.length === 1 ? "" : "s"}` : "No evidence requirement recorded" },
-      { key: "discovery", label: "Discovery eligibility evaluated", state: discovery === "Not required" || isDiscoveryEvaluated(discovery) ? "pass" : "blocker", detail: discovery },
+      { key: "requirement", label: "Requirement approved", state: requirement?.status === "approved" ? "pass" : "blocker", scope: "approval", detail: requirement ? `${requirement.requirement_id}: ${requirement.status}` : "No linked requirement", guidance: requirement ? `Approve ${requirement.requirement_id} in Requirements > Review & Approval.` : "Link an approved requirement in the Test Case Editor.", owner: "Requirements" },
+      { key: "scenario", label: "Scenario approved", state: scenario?.status === "approved" ? "pass" : "blocker", scope: "approval", detail: scenario ? `${scenario.scenario_id}: ${scenario.status}` : "No linked scenario", guidance: scenario ? `Approve ${scenario.scenario_id} in Test Planning.` : "Link an approved scenario in the Test Case Editor.", owner: "Test Planning" },
+      { key: "validation", label: "Test case content complete", state: validationScore === 100 ? "pass" : "blocker", scope: "approval", detail: validationScore === 100 ? "100/100 required fields complete" : `${validationScore}/100: ${validation.missing[0]}`, guidance: `${validation.missing.join(" ")} Update the test case in Test Case Editor, then return to approval.`, owner: "Test Case Editor" },
+      { key: "journey", label: "Journey coverage", state: journey.id !== "Not mapped" && journeyReviewed(testCase) ? "pass" : "warning", scope: "downstream", detail: journey.id === "Not mapped" ? "Later: map in Journey Graph" : journeyReviewed(testCase) ? `${journeyCoverage}% scenario coverage` : "Later: review in Journey Graph", guidance: "Complete journey mapping and coverage review before journey sign-off. This does not block test-case content approval.", owner: "Journey Graph" },
+      { key: "application", label: "Application mapping", state: application ? "pass" : "warning", scope: "downstream", detail: application?.name || "Later: map before discovery", guidance: "Map the approved test case to an application before discovery or automation starts.", owner: "Application Registry" },
+      { key: "evidence", label: "Evidence policy", state: evidence.length ? "pass" : "warning", scope: "downstream", detail: evidence.length ? `${evidence.length} required type${evidence.length === 1 ? "" : "s"}` : "Later: define before execution", guidance: "Declare screenshots, logs, traces, or audit evidence before execution. Evidence is not required to approve test-case content.", owner: "Execution Preparation" },
+      { key: "discovery", label: "Discovery eligibility", state: discovery === "Not required" || isDiscoveryEvaluated(discovery) ? "pass" : "warning", scope: "downstream", detail: discovery === "Not evaluated" ? "Later: evaluate after approval" : discovery, guidance: "Evaluate discovery eligibility after the test case is approved and before a discovery session starts.", owner: "Application Discovery" },
       {
         key: "review",
         label: "Scenario test-case set review",
         state: review?.verdict === "pass" ? "pass" : review?.review_mode === "gating" ? "blocker" : "warning",
+        scope: "approval",
         detail: review
-          ? `${review.verdict.replace("_", " ")} · ${reviewScoreLabel(review.overall_score)} · ${review.review_mode}`
+          ? `${review.verdict.replace("_", " ")}: ${reviewScoreLabel(review.overall_score)}: ${review.review_mode}`
           : "No persisted set-level review",
+        guidance: review?.review_mode === "gating" ? "Resolve the gating AI review findings and rerun the scenario test-case set review." : "Advisory findings may be improved but do not block approval.",
+        owner: "AI Review",
       },
-      { key: "policy", label: "Policy & reviewer permissions", state: canApprove ? "pass" : "blocker", detail: canApprove ? "Approval permission confirmed" : "Approval permission not confirmed" },
+      { key: "policy", label: "Reviewer permission", state: canApprove ? "pass" : "blocker", scope: "approval", detail: canApprove ? "Approval permission confirmed" : "Current user cannot approve test cases", guidance: "Assign a project reviewer with the approve_test_cases permission.", owner: "Project Settings" },
       classificationCheckState(testCase, classification, classificationsEnabled),
     ];
     const blockers = checks.filter((item) => item.state === "blocker");
@@ -416,7 +438,7 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
     else if (persisted === "blocked" || blockers.length) status = "Blocked";
     else if (["pending approval", "pending", "pending review"].includes(persisted)) status = "Pending Review";
     else status = "Ready";
-    return { testCase, requirement, scenario, application, review, approval, classification, journeyId: journey.id, journeyName: journey.name, validationScore, journeyCoverage, evidence, discovery, reviewer, checks, blockers, status };
+    return { testCase, requirement, scenario, application, review, approval, classification, journeyId: journey.id, journeyName: journey.name, validationScore, validationFindings: validation.missing, journeyCoverage, evidence, discovery, reviewer, checks, blockers, status };
   }), [appById, approvals, canApprove, classificationByTestCaseId, classificationsEnabled, requirementById, requirementByKey, reviews, scenarioById, scenarios, testCases, userById]);
 
   const selected = rows.find((item) => item.testCase.id === selectedId) || rows[0];
@@ -459,7 +481,8 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
   const readiness = (key: string) => {
     const relevant = allChecks.filter((item) => item.key === key);
     const passed = relevant.filter((item) => item.state === "pass").length;
-    return { passed, total: relevant.length, good: relevant.length > 0 && passed === relevant.length };
+    const warnings = relevant.filter((item) => item.state === "warning").length;
+    return { passed, total: relevant.length, warnings, scope: relevant[0]?.scope || "approval", good: relevant.length > 0 && passed === relevant.length };
   };
 
   function clearFilters() {
@@ -543,8 +566,8 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
         <Kpi label="Rejected / Blocked" value={counts.rejected + counts.blocked} detail="Rejected or unresolved blockers" icon={XCircle} tone="red" />
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm"><div className="mb-3 flex items-center justify-between"><h2 className="text-[10px] font-extrabold uppercase tracking-wide text-slate-700">Approval Readiness Check</h2><span className="text-[9px] font-bold text-[#1b59f8]">Persisted project records</span></div><div className="grid grid-cols-4 gap-2 2xl:grid-cols-9">
-        {["requirement", "scenario", "validation", "journey", "application", "evidence", "discovery", "policy", "automation_classification"].map((key) => { const item = readiness(key); const label = rows[0]?.checks.find((check) => check.key === key)?.label || key; return <div key={key} className="flex min-w-0 gap-2"><span className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full", item.good ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")}>{item.good ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}</span><div className="min-w-0"><p className="text-[8px] font-bold leading-3 text-slate-700">{label}</p><p className="mt-1 text-[9px] font-extrabold text-slate-900">{item.passed}/{item.total}</p></div></div>; })}
+      <section className="rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-[10px] font-extrabold uppercase tracking-wide text-slate-700">Approval & Downstream Readiness</h2><p className="mt-1 text-[9px] font-semibold text-slate-500">Only approval-stage checks block the reviewer decision. Blue clock items are completed later.</p></div><span className="text-[9px] font-bold text-[#1b59f8]">Persisted project records</span></div><div className="grid grid-cols-4 gap-2 2xl:grid-cols-9">
+        {["requirement", "scenario", "validation", "journey", "application", "evidence", "discovery", "policy", "automation_classification"].map((key) => { const item = readiness(key); const label = rows[0]?.checks.find((check) => check.key === key)?.label || key; const later = item.scope === "downstream" && item.warnings > 0; return <div key={key} className="flex min-w-0 gap-2"><span className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full", item.good ? "bg-emerald-50 text-emerald-600" : later ? "bg-blue-50 text-blue-600" : "bg-red-50 text-red-600")}>{item.good ? <CheckCircle2 className="h-3.5 w-3.5" /> : later ? <Clock3 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}</span><div className="min-w-0"><p className="text-[8px] font-bold leading-3 text-slate-700">{label}</p><p className="mt-1 text-[9px] font-extrabold text-slate-900">{item.passed}/{item.total}{later ? " · Later stage" : ""}</p></div></div>; })}
       </div></section>
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -577,7 +600,8 @@ export function TestCaseApprovalView({ projectId }: { projectId: number | null }
           {inspectorTab === "activity" && <ActivityInspector row={selected} history={history} reviews={reviewHistory} approvals={approvals.filter((item) => item.entity_id === selected.testCase.id)} users={userById} />}
 
           <Panel title="Review Actions" className="border-amber-200 bg-amber-50/40">
-            {selected.blockers.length > 0 && <div className="mb-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[9px] font-bold text-amber-700"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />Action blocked: {selected.blockers.length} mandatory finding{selected.blockers.length === 1 ? "" : "s"} must be resolved before approval.</div>}
+            {selected.blockers.length > 0 && <div className="mb-2 rounded-md border border-red-200 bg-red-50 p-2 text-[9px] text-red-800"><div className="flex items-start gap-2 font-bold"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Approval is blocked only by the current-stage requirement{selected.blockers.length === 1 ? "" : "s"} below.</span></div><ul className="mt-2 space-y-1 pl-5">{selected.blockers.map((item) => <li key={item.key} className="list-disc font-semibold"><strong>{item.label}:</strong> {item.guidance || item.detail}</li>)}</ul></div>}
+            {selected.blockers.length === 0 && selected.checks.some((check) => check.scope === "downstream" && check.state !== "pass") && <div className="mb-2 rounded-md border border-blue-200 bg-blue-50 p-2 text-[9px] font-semibold text-blue-800"><strong>Ready for approval.</strong> Remaining journey, evidence, discovery, application, or automation items are tracked for later stages and do not disable this action.</div>}
             {decisionMode && <div className="mb-2 rounded-md border border-slate-200 bg-white p-2"><label className="text-[9px] font-extrabold text-slate-700">Reviewer comment (required)</label><textarea aria-label="Reviewer comment" value={comment} onChange={(event) => setComment(event.target.value)} className="mt-1 h-16 w-full resize-none rounded border border-slate-200 p-2 text-[10px]" /><div className="mt-2 flex gap-2"><Button onClick={() => void submitDecision()} disabled={!comment.trim() || Boolean(busy)} className={cn("h-8 flex-1 text-[9px] font-bold text-white", decisionMode === "reject" ? "bg-red-600" : "bg-amber-500")}>Confirm {decisionMode === "reject" ? "Rejection" : "Changes"}</Button><Button variant="outline" onClick={() => { setDecisionMode(null); setComment(""); }} className="h-8 text-[9px] font-bold">Cancel</Button></div></div>}
             {assigning && <div className="mb-2 rounded-md border border-slate-200 bg-white p-2"><select aria-label="Assigned reviewer" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} className="h-8 w-full rounded border border-slate-200 px-2 text-[9px]"><option value="">Select reviewer</option>{activeReviewerUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name} · {activeMembershipByUser.get(user.id)?.role}</option>)}</select><div className="mt-2 flex gap-2"><Button onClick={() => void assignReviewer()} disabled={!assigneeId || Boolean(busy)} className="h-8 flex-1 bg-[#1b59f8] text-[9px] font-bold text-white">Save Assignment</Button><Button variant="outline" onClick={() => setAssigning(false)} className="h-8 text-[9px] font-bold">Cancel</Button></div></div>}
             <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3"><Button onClick={() => void approveRows([selected])} disabled={selected.blockers.length > 0 || Boolean(busy) || !canApprove || selected.status === "Approved"} className="h-9 bg-emerald-500 text-[9px] font-bold text-white disabled:bg-slate-200"><ShieldCheck className="mr-1 h-3.5 w-3.5" />Approve Test Case</Button><Button variant="outline" onClick={() => setDecisionMode("changes")} className="h-9 border-amber-300 text-[9px] font-bold text-amber-700">Request Changes</Button><Button variant="outline" onClick={() => setDecisionMode("reject")} className="h-9 border-red-300 text-[9px] font-bold text-red-700">Reject Test Case</Button></div>
@@ -596,17 +620,26 @@ function FilterSelect({ label, value, setValue, options, optionValues, extra = [
 }
 
 function CheckList({ checks }: { checks: GovernanceCheck[] }) {
-  return <div className="space-y-1.5">{checks.map((check) => <div key={check.key} className="flex items-start justify-between gap-2"><span className="flex min-w-0 items-start gap-2 text-[9px] font-semibold text-slate-600">{check.state === "pass" ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" /> : <AlertTriangle className={cn("h-3.5 w-3.5 shrink-0", check.state === "blocker" ? "text-red-500" : "text-amber-500")} />}<span>{check.label}</span></span><span className="max-w-[48%] text-right text-[8px] font-bold text-slate-500">{check.detail}</span></div>)}</div>;
+  return <div className="space-y-1.5">{checks.map((check) => <div key={check.key} className="flex items-start justify-between gap-2"><span className="flex min-w-0 items-start gap-2 text-[9px] font-semibold text-slate-600">{check.state === "pass" ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" /> : check.scope === "downstream" ? <Clock3 className="h-3.5 w-3.5 shrink-0 text-blue-500" /> : <AlertTriangle className={cn("h-3.5 w-3.5 shrink-0", check.state === "blocker" ? "text-red-500" : "text-amber-500")} />}<span>{check.label}{check.scope === "downstream" && check.state !== "pass" && <span className="ml-1 rounded bg-blue-50 px-1 py-0.5 text-[7px] font-extrabold text-blue-700">LATER</span>}</span></span><span className="max-w-[48%] text-right text-[8px] font-bold text-slate-500">{check.detail}</span></div>)}</div>;
 }
 
 function ReviewInspector({ row, history, approvals, onTrace }: { row: ApprovalRow; history: TestCaseHistory[]; approvals: ApprovalAction[]; onTrace: () => void }) {
+  const approvalChecks = row.checks.filter((check) => check.scope === "approval");
+  const approvalPassed = approvalChecks.filter((check) => check.state !== "blocker").length;
+  const downstreamItems = row.checks.filter((check) => check.scope === "downstream" && check.state !== "pass");
   return <>
     <div className="grid grid-cols-4 gap-2 rounded-lg border border-slate-200 bg-white p-3 text-[9px]"><LabelValue label="Test case ID" value={row.testCase.test_case_id} /><LabelValue label="Current status" value={row.status} /><LabelValue label="Test type" value={row.testCase.test_type || "Unassigned"} /><LabelValue label="Priority" value={row.testCase.priority} /></div>
+    <Panel title="What is required to approve" className={row.blockers.length ? "border-red-200 bg-red-50/40" : "border-emerald-200 bg-emerald-50/40"}>
+      <p className={cn("text-[10px] font-extrabold", row.blockers.length ? "text-red-800" : "text-emerald-800")}>{row.blockers.length ? `${row.blockers.length} approval requirement${row.blockers.length === 1 ? "" : "s"} must be resolved.` : "All approval-stage requirements are satisfied."}</p>
+      <p className="mt-1 text-[9px] font-semibold leading-4 text-slate-600">Approval validates test-case content, approved requirement/scenario traceability, applicable gating review, and reviewer permission. Journey, application, evidence, discovery, and automation preparation happen afterward.</p>
+      {row.blockers.length > 0 && <div className="mt-3 space-y-2">{row.blockers.map((item) => <div key={item.key} className="rounded-md border border-red-100 bg-white p-2"><p className="text-[9px] font-extrabold text-red-800">{item.label}: {item.detail}</p><p className="mt-1 text-[8px] font-semibold leading-4 text-slate-600"><strong>Update in {item.owner || "the owning workspace"}:</strong> {item.guidance}</p></div>)}</div>}
+      {downstreamItems.length > 0 && <div className="mt-3 rounded-md border border-blue-100 bg-blue-50 p-2"><p className="text-[9px] font-extrabold text-blue-800">Later-stage preparation — does not block approval</p><ul className="mt-1.5 space-y-1">{downstreamItems.map((item) => <li key={item.key} className="text-[8px] font-semibold leading-4 text-blue-900"><strong>{item.owner}:</strong> {item.guidance}</li>)}</ul></div>}
+    </Panel>
     <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3">
       <Panel title="Readiness Summary">
-        <p className="text-lg font-black text-slate-900">{row.checks.length - row.blockers.length} / {row.checks.length}</p>
-        <p className="mb-2 text-[8px] font-semibold text-slate-500">non-blocking or passed checks</p>
-        <Progress value={Math.round((row.checks.length - row.blockers.length) / row.checks.length * 100)} />
+        <p className="text-lg font-black text-slate-900">{approvalPassed} / {approvalChecks.length}</p>
+        <p className="mb-2 text-[8px] font-semibold text-slate-500">approval-stage gates satisfied</p>
+        <Progress value={Math.round(approvalPassed / Math.max(1, approvalChecks.length) * 100)} />
         <div className="mt-3"><CheckList checks={row.checks} /></div>
       </Panel>
       <Panel title="Deterministic Validation">
@@ -643,7 +676,7 @@ function ReviewInspector({ row, history, approvals, onTrace }: { row: ApprovalRo
         )}
       </Panel>
     </div>
-    <Panel title="Reviewer, SLA & Blocking Findings"><div className="grid grid-cols-3 gap-3"><LabelValue label="Assigned reviewer" value={row.reviewer?.full_name || "Unassigned"} /><LabelValue label="Review SLA / age" value={ageLabel(row.testCase.updated_at)} /><LabelValue label="Blocking findings" value={`${row.blockers.length} blocker${row.blockers.length === 1 ? "" : "s"}`} /></div>{row.blockers.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-4 text-[9px] font-semibold text-red-600">{row.blockers.map((item) => <li key={item.key}>{item.label}: {item.detail}</li>)}</ul>}</Panel>
+    <Panel title="Reviewer, SLA & Approval Findings"><div className="grid grid-cols-3 gap-3"><LabelValue label="Assigned reviewer" value={row.reviewer?.full_name || "Unassigned"} /><LabelValue label="Review SLA / age" value={ageLabel(row.testCase.updated_at)} /><LabelValue label="Approval blockers" value={`${row.blockers.length} blocker${row.blockers.length === 1 ? "" : "s"}`} /></div>{row.blockers.length > 0 ? <ul className="mt-3 space-y-2">{row.blockers.map((item) => <li key={item.key} className="rounded-md border border-red-100 bg-red-50 p-2 text-[9px] font-semibold text-red-700"><strong>{item.label}:</strong> {item.detail}<span className="mt-1 block text-[8px] text-slate-600">{item.guidance}</span></li>)}</ul> : <p className="mt-3 rounded-md border border-emerald-100 bg-emerald-50 p-2 text-[9px] font-semibold text-emerald-700">No approval blockers. The reviewer can approve this test case now; later-stage items remain visible for downstream teams.</p>}</Panel>
     <Panel title="Traceability Snapshot" action={<button onClick={onTrace} className="text-[8px] font-bold text-[#1b59f8]">View full trace</button>}><div className="grid grid-cols-2 gap-2 2xl:grid-cols-6"><LabelValue label="Requirement" value={row.requirement?.requirement_id || "Unlinked"} /><LabelValue label="PPM ID" value={ppmId(row.requirement)} /><LabelValue label="Scenario" value={row.scenario?.scenario_id || "Unlinked"} /><LabelValue label="Journey" value={row.journeyId} /><LabelValue label="Application" value={row.application?.name || "Missing"} /><LabelValue label="Discovery" value={row.discovery} /></div></Panel>
     <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3"><Panel title="Test Case Preview"><p className="text-[8px] font-semibold text-slate-500">Preconditions</p><p className="mt-1 text-[9px] font-bold text-slate-800">{row.testCase.preconditions?.length || 0} recorded</p><p className="mt-2 text-[8px] font-semibold text-slate-500">Test steps</p><p className="mt-1 text-[9px] font-bold text-slate-800">{row.testCase.steps?.length || 0} ordered steps</p><p className="mt-2 text-[8px] font-semibold text-slate-500">Expected result</p><p className="mt-1 line-clamp-2 text-[9px] font-semibold text-slate-700">{row.testCase.expected_result || "Missing"}</p></Panel><Panel title="Evidence Summary"><p className="text-[8px] font-semibold text-slate-500">Required evidence</p><div className="mt-2 flex flex-wrap gap-1">{row.evidence.map((item) => <Badge key={item} tone="blue">{item}</Badge>)}{!row.evidence.length && <Badge tone="red">Missing</Badge>}</div><p className="mt-3 text-[8px] font-semibold text-slate-500">Latest execution evidence</p><p className="mt-1 text-[9px] font-bold text-slate-800">{row.testCase.latest_evidence_available ? "Available" : "Not available"}</p></Panel><Panel title="History / Activity"><p className="text-[9px] font-bold text-slate-800">{history.length} editor change{history.length === 1 ? "" : "s"}</p><p className="mt-2 text-[9px] font-bold text-slate-800">{approvals.length} approval action{approvals.length === 1 ? "" : "s"}</p><p className="mt-2 text-[8px] font-semibold text-slate-500">Latest activity</p><p className="mt-1 text-[9px] font-semibold text-slate-700">{shortDate(history[0]?.created_at || approvals[0]?.created_at || row.testCase.updated_at)}</p></Panel></div>
   </>;
@@ -660,7 +693,7 @@ function TestCaseInspector({ row, onEdit }: { row: ApprovalRow; onEdit: () => vo
 function EvidenceInspector({ row }: { row: ApprovalRow }) {
   const dependencies = metadataStrings(row.testCase.metadata_, "evidence_dependencies");
   const owner = metadataString(row.testCase.metadata_, "evidence_owner");
-  return <><Panel title="Required Evidence Types">{row.evidence.length ? <div className="flex flex-wrap gap-2">{row.evidence.map((item) => <Badge key={item} tone="purple">{item}</Badge>)}</div> : <Empty>No evidence requirements are attached. This is an approval blocker.</Empty>}</Panel><Panel title="Evidence Policy Status"><CheckList checks={[row.checks.find((item) => item.key === "evidence")!]} /></Panel><Panel title="Missing Evidence Requirements">{row.evidence.length ? <p className="text-[9px] font-semibold text-emerald-700">No missing declared evidence type.</p> : <p className="text-[9px] font-semibold text-red-700">Required evidence types must be declared before approval.</p>}</Panel><Panel title="Execution / Application Dependencies">{dependencies.length ? <ul className="list-disc space-y-1 pl-4 text-[9px] font-semibold text-slate-700">{dependencies.map((item) => <li key={item}>{item}</li>)}</ul> : <Empty>No persisted evidence dependency recorded.</Empty>}</Panel><Panel title="Evidence Owner"><LabelValue label="Owner" value={owner || "Unassigned"} /></Panel></>;
+  return <><Panel title="Required Evidence Types">{row.evidence.length ? <div className="flex flex-wrap gap-2">{row.evidence.map((item) => <Badge key={item} tone="purple">{item}</Badge>)}</div> : <Empty>No evidence policy is defined yet. This is tracked for execution preparation and does not block test-case approval.</Empty>}</Panel><Panel title="Evidence Policy Status"><CheckList checks={[row.checks.find((item) => item.key === "evidence")!]} /></Panel><Panel title="When to complete it">{row.evidence.length ? <p className="text-[9px] font-semibold text-emerald-700">Evidence types are already declared.</p> : <p className="text-[9px] font-semibold leading-4 text-blue-700">Before execution, define the required screenshots, logs, traces, or audit records in execution preparation. Actual evidence is captured during execution.</p>}</Panel><Panel title="Execution / Application Dependencies">{dependencies.length ? <ul className="list-disc space-y-1 pl-4 text-[9px] font-semibold text-slate-700">{dependencies.map((item) => <li key={item}>{item}</li>)}</ul> : <Empty>No persisted evidence dependency recorded.</Empty>}</Panel><Panel title="Evidence Owner"><LabelValue label="Owner" value={owner || "Execution preparation team"}/></Panel></>;
 }
 
 const CLASSIFICATION_DECISIONS: Array<{ key: "approve" | "approve_conditional" | "not_recommended" | "defer" | "request_changes"; label: string; reasonRequired: boolean; tone: string }> = [

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "rea
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
-  FileText, Upload, Bot, CheckCircle, XCircle, RefreshCw, AlertTriangle, Star, Trash2, X, Plug, Search, Download, Plus, Settings, ChevronRight, Loader2, ShieldCheck, Clock, Globe, GitBranch, BarChart2, ChevronDown, ClipboardPaste, Braces, Layers3, CircleDot, Link2, Filter, Sparkles
+  FileText, Upload, Bot, CheckCircle, XCircle, RefreshCw, AlertTriangle, Star, Trash2, X, Plug, Search, Download, Plus, Settings, ChevronRight, Loader2, ShieldCheck, Clock, Globe, GitBranch, BarChart2, ChevronDown, ClipboardPaste, Braces, Layers3, CircleDot, Link2, Filter, Sparkles, ArrowRight
 } from "lucide-react";
 import {
   requirementsApi,
@@ -172,6 +172,14 @@ function getRequirementWorkflowStageLabel(req: Requirement): string {
   if (stage === "analysis") return "Requirement Analysis";
   if (stage === "traceability") return "Traceability";
   return "Review & Approval";
+}
+
+function requirementIntakeTransitionBlockers(req: Requirement): string[] {
+  const blockers: string[] = [];
+  if (!req.requirement_id?.trim()) blockers.push("A governed requirement ID is required.");
+  if (!req.title?.trim()) blockers.push("Add a requirement title.");
+  if (!req.source?.trim()) blockers.push("Source provenance is required.");
+  return blockers;
 }
 
 function getRequirementWorkflowStageVariant(req: Requirement): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
@@ -4373,7 +4381,63 @@ function RequirementsContent() {
               </DrawerBody>
 
               <DrawerFooter>
-                <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="w-full h-9 bg-white border-slate-200">Close detail</Button>
+                {(() => {
+                  const stage = getRequirementWorkflowStage(selectedReq);
+                  const intakeBlockers = requirementIntakeTransitionBlockers(selectedReq);
+                  if (workspaceView !== "intake") {
+                    return <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="w-full h-9 bg-white border-slate-200">Close detail</Button>;
+                  }
+                  if (stage !== "intake") {
+                    const destinationLabel = stage === "analysis" ? "Requirement Analysis" : stage === "traceability" ? "Traceability" : "Review & Approval";
+                    return (
+                      <div className="w-full space-y-3">
+                        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                          <div className="flex items-start gap-2">
+                            <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                            <div>
+                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Next action</div>
+                              <div className="mt-1 text-xs font-bold text-slate-900">Continue in {destinationLabel}</div>
+                              <p className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-600">This requirement has already completed intake. Open its current workspace to perform the next governed actions.</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="h-9 flex-1 bg-white border-slate-200">Close</Button>
+                          <Button size="sm" onClick={() => { setSelectedReq(null); handleWorkspaceViewChange(stage); }} className="h-9 flex-[1.5] bg-[#1b59f8] text-white hover:bg-blue-700">
+                            <ArrowRight className="mr-1.5 h-3.5 w-3.5" />
+                            Open {destinationLabel}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="w-full space-y-3">
+                      <div className={cn("rounded-xl border p-3", intakeBlockers.length ? "border-amber-200 bg-amber-50" : "border-blue-200 bg-blue-50")}>
+                        <div className="flex items-start gap-2">
+                          {intakeBlockers.length ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /> : <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />}
+                          <div>
+                            <div className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Next step</div>
+                            <div className="mt-1 text-xs font-bold text-slate-900">Requirement Analysis</div>
+                            <p className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-600">
+                              {intakeBlockers.length
+                                ? "Complete the intake items below before sending this requirement for quality analysis."
+                                : "Intake validation is complete. Send this requirement to Requirement Analysis for quality scoring, ambiguity review, and classification."}
+                            </p>
+                            {intakeBlockers.length > 0 && <ul className="mt-2 space-y-1">{intakeBlockers.map((blocker) => <li key={blocker} className="text-[10px] font-semibold text-amber-800">• {blocker}</li>)}</ul>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="h-9 flex-1 bg-white border-slate-200">Close</Button>
+                        <Button size="sm" disabled={transitioning || intakeBlockers.length > 0} onClick={() => handleRequirementTransition(selectedReq, "send_to_analysis", "analysis")} className="h-9 flex-[1.5] bg-[#1b59f8] text-white hover:bg-blue-700">
+                          {transitioning ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="mr-1.5 h-3.5 w-3.5" />}
+                          Send to Requirement Analysis
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </DrawerFooter>
             </>
           )}

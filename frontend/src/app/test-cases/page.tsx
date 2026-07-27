@@ -281,6 +281,19 @@ function traceabilityHealth(tc: TestCase) {
   return "Good";
 }
 
+function approvalReadinessBlockers(tc: TestCase): string[] {
+  const blockers: string[] = [];
+  if (!tc.title.trim()) blockers.push("Add a clear test-case title.");
+  if (!(tc.preconditions ?? []).some((item) => item.trim())) blockers.push("Add at least one precondition.");
+  if (!(tc.steps ?? []).length) {
+    blockers.push("Add at least one test step with an action and expected result.");
+  } else if ((tc.steps ?? []).some((step) => !step.action.trim() || !step.expected_result.trim())) {
+    blockers.push("Complete the action and expected result for every test step.");
+  }
+  if (!tc.expected_result?.trim()) blockers.push("Add the overall expected result.");
+  return blockers;
+}
+
 function resolveUserName(names: Map<number, string>, id?: number | null): string {
   if (!id) return "—";
   return names.get(id) || `User #${id}`;
@@ -915,6 +928,13 @@ function TestCasesContent() {
   const selectedReview = reviewForCase(selectedTestCase, scenarioReviews);
   const selectedEligibility = (selectedTestCase?.metadata_ as { automation_eligibility?: { verdict?: string; reason?: string; automation_style?: string; agent_run_id?: number } } | undefined)?.automation_eligibility;
   const selectedClassification = selectedTestCase ? classificationByTestCaseId.get(selectedTestCase.id) : undefined;
+  const selectedApprovalBlockers = selectedTestCase ? approvalReadinessBlockers(selectedTestCase) : [];
+  const selectedIsInApproval = selectedTestCase
+    ? selectedTestCase.status === "pending_approval"
+      || selectedTestCase.status === "approved"
+      || selectedTestCase.approval_status === "pending"
+      || selectedTestCase.approval_status === "approved"
+    : false;
 
   async function classifyTestCase(id: number) {
     if (!selectedProject) return;
@@ -979,6 +999,13 @@ function TestCasesContent() {
   function openInEditor(id: number) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("view", "editor");
+    params.set("case", String(id));
+    router.push(`${pathname}?${params.toString()}`);
+  }
+
+  function openInApproval(id: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "approval");
     params.set("case", String(id));
     router.push(`${pathname}?${params.toString()}`);
   }
@@ -1049,7 +1076,8 @@ function TestCasesContent() {
   }
 
   if (view === "approval") {
-    return <TestCaseApprovalView projectId={selectedProject} />;
+    const requestedCaseId = Number(searchParams.get("case"));
+    return <TestCaseApprovalView projectId={selectedProject} initialTestCaseId={Number.isFinite(requestedCaseId) ? requestedCaseId : null} />;
   }
 
   if (view === "editor") {
@@ -1526,6 +1554,97 @@ function TestCasesContent() {
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
               {drawerTab === "overview" && (
                 <>
+                  <DrawerCard title="Test Case Details" icon={TestTube2}>
+                    <div className="space-y-5">
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Objective</p>
+                        <p className="mt-1 text-xs font-semibold leading-5 text-slate-700">
+                          {selectedTestCase.test_case_objective?.trim() || selectedTestCase.title}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        <InfoPair label="Priority" value={selectedTestCase.priority || "Not set"} />
+                        <InfoPair label="Severity" value={selectedTestCase.severity || "Not set"} />
+                        <InfoPair label="Test Type" value={selectedTestCase.test_type || "Not set"} />
+                        <InfoPair label="Automation Candidate" value={selectedTestCase.automation_candidate ? "Yes" : "No"} />
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Preconditions</p>
+                        {(selectedTestCase.preconditions ?? []).length ? (
+                          <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs font-semibold leading-5 text-slate-700">
+                            {(selectedTestCase.preconditions ?? []).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                          </ol>
+                        ) : (
+                          <p className="mt-2 text-xs font-semibold text-amber-700">No preconditions recorded.</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Test Steps</p>
+                        {(selectedTestCase.steps ?? []).length ? (
+                          <div className="mt-2 overflow-hidden rounded-lg border border-slate-200">
+                            <div className="grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] bg-slate-50 text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                              <span className="px-3 py-2">#</span>
+                              <span className="border-l border-slate-200 px-3 py-2">Action</span>
+                              <span className="border-l border-slate-200 px-3 py-2">Expected Result</span>
+                            </div>
+                            {(selectedTestCase.steps ?? []).map((step, index) => (
+                              <div key={`${step.step_number}-${index}`} className="grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] border-t border-slate-200 text-xs font-semibold leading-5 text-slate-700">
+                                <span className="px-3 py-2">{step.step_number || index + 1}</span>
+                                <span className="border-l border-slate-200 px-3 py-2">{step.action || "Missing action"}</span>
+                                <span className="border-l border-slate-200 px-3 py-2">{step.expected_result || "Missing expected result"}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs font-semibold text-amber-700">No test steps recorded.</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Overall Expected Result</p>
+                        <p className={cn("mt-1 text-xs font-semibold leading-5", selectedTestCase.expected_result?.trim() ? "text-slate-700" : "text-amber-700")}>
+                          {selectedTestCase.expected_result?.trim() || "No overall expected result recorded."}
+                        </p>
+                      </div>
+
+                      {selectedTestCase.bdd_scenario?.trim() && (
+                        <div>
+                          <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">BDD Scenario</p>
+                          <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">{selectedTestCase.bdd_scenario}</pre>
+                        </div>
+                      )}
+                    </div>
+                  </DrawerCard>
+
+                  <DrawerCard title="Review & Approval Readiness" icon={selectedApprovalBlockers.length ? AlertTriangle : CheckCircle}>
+                    {selectedIsInApproval ? (
+                      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                        <p className="text-xs font-extrabold text-blue-800">
+                          {selectedTestCase.status === "approved" || selectedTestCase.approval_status === "approved"
+                            ? "This test case is approved."
+                            : "This test case is already in Review & Approval."}
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold leading-5 text-blue-700">Open the approval queue to view its review status, findings, and decision history.</p>
+                      </div>
+                    ) : selectedApprovalBlockers.length ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-extrabold text-amber-900">Complete these items before sending:</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] font-semibold leading-5 text-amber-800">
+                          {selectedApprovalBlockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
+                        </ul>
+                        <p className="mt-2 text-[10px] font-semibold text-amber-700">Automation classification and execution evidence happen later and do not block this handoff.</p>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
+                        <p className="text-xs font-extrabold text-emerald-800">Ready for Review & Approval</p>
+                        <p className="mt-1 text-[11px] font-semibold leading-5 text-emerald-700">The required test content is complete. Automation classification and execution evidence are later-stage activities.</p>
+                      </div>
+                    )}
+                  </DrawerCard>
+
                   <DrawerCard title="Requirement Summary" icon={ShieldCheck}>
                     {selectedRequirement?.summary ? (
                       <p className="text-xs font-semibold leading-6 text-slate-600">{selectedRequirement.summary}</p>
@@ -1651,7 +1770,15 @@ function TestCasesContent() {
 
                   <DrawerCard title="Automation Classification" icon={ShieldCheck}>
                     {!classificationsEnabled ? (
-                      <p className="text-xs font-semibold text-slate-400">Automation classification is not enabled for this project.</p>
+                      <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-extrabold text-amber-900">Automation Classification is disabled at platform level.</p>
+                        <p className="text-[11px] font-semibold leading-5 text-amber-800">
+                          A platform administrator must set <code className="rounded bg-white px-1 py-0.5 font-mono">AUTOMATION_CLASSIFICATION_ENABLED=true</code> for the backend and worker, then restart both services.
+                        </p>
+                        <p className="text-[10px] font-semibold leading-5 text-amber-700">
+                          Optional: set <code className="rounded bg-white px-1 py-0.5 font-mono">AUTOMATION_CLASSIFICATION_AGENT_ENABLED=true</code> for LLM recommendations. This setting is not configured per project.
+                        </p>
+                      </div>
                     ) : !selectedTestCase.automation_candidate ? (
                       <p className="text-xs font-semibold text-slate-400">Not marked as an automation candidate.</p>
                     ) : !selectedClassification ? (
@@ -1733,7 +1860,11 @@ function TestCasesContent() {
               <p className="mb-3 text-xs font-extrabold text-slate-800">Actions</p>
               <div className="grid grid-cols-2 gap-3">
                 <Button variant="outline" size="sm" onClick={() => openInEditor(selectedTestCase.id)} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Open in Editor</Button>
-                <Button variant="outline" size="sm" onClick={() => sendCaseToApproval(selectedTestCase.id)} disabled={selectedTestCase.status === "pending_approval" || selectedTestCase.status === "approved"} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Send to Approval</Button>
+                {selectedIsInApproval ? (
+                  <Button variant="outline" size="sm" onClick={() => openInApproval(selectedTestCase.id)} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Open Review &amp; Approval</Button>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={() => void sendCaseToApproval(selectedTestCase.id)} disabled={selectedApprovalBlockers.length > 0} title={selectedApprovalBlockers.join(" ")} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Send to Review &amp; Approval</Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => exportToCSV([selectedTestCase], requirementsByKey, requirementsById)} className="col-span-2 h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
                   <Download className="h-3.5 w-3.5" />
                   Export Test Case

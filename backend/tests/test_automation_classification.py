@@ -146,6 +146,35 @@ def test_pre_agent_no_blockers_for_healthy_case():
     assert result.blockers == []
 
 
+def test_policy_capability_allowlists_exclude_evidence_keys():
+    ctx = _ctx(
+        policy=_policy(
+            rules={
+                "routing_rules": [
+                    {
+                        "when": {},
+                        "primary_adapter": "PLAYWRIGHT_MCP",
+                        "supporting_adapters": ["API_ADAPTER"],
+                    }
+                ],
+                "external_validation_rules": [
+                    {"required": ["OMS_MCP"], "optional": ["CRM_MCP"]}
+                ],
+                "evidence_rules": {
+                    "web_e2e": {"mandatory": ["SCREENSHOT", "DOM_SNAPSHOT"]}
+                },
+            }
+        )
+    )
+
+    adapters, validators = classification_service.policy_capability_allowlists(ctx)
+
+    assert adapters == {"PLAYWRIGHT_MCP", "API_ADAPTER"}
+    assert validators == {"OMS_MCP", "CRM_MCP"}
+    assert "SCREENSHOT" not in adapters | validators
+    assert "DOM_SNAPSHOT" not in adapters | validators
+
+
 def test_pre_agent_blocks_on_unapproved_requirement():
     ctx = _ctx(requirement=_requirement(status="draft"))
     result = deterministic_rules.evaluate_pre_agent(ctx)
