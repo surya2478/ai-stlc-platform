@@ -14,6 +14,7 @@ import {
   Boxes,
   Network,
   Layers3,
+  Video,
   MoreHorizontal,
   Home,
   Workflow,
@@ -95,6 +96,7 @@ const NAV_ITEMS: NavGroup[] = [
     icon: Wand2,
     items: [
       { label: "Automation Workspace", href: "/automation?view=workspace", icon: Layers3 },
+      { label: "Live Recorder", href: "/automation?view=recorder", icon: Video },
     ],
   },
   {

@@ -19,6 +19,7 @@ import {
   Wrench,
   X,
   Terminal,
+  Video,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -65,6 +66,8 @@ import { DiscoverySessionView } from "@/components/discovery/DiscoverySessionVie
 import { AutomationSuiteDashboard } from "@/components/automation/AutomationSuiteDashboard";
 import { AutomationSuiteDetail } from "@/components/automation/AutomationSuiteDetail";
 import { NewAutomationSuiteWizard } from "@/components/automation/NewAutomationSuiteWizard";
+import { LiveRecorderLauncher } from "@/components/automation/LiveRecorderLauncher";
+import { LiveRecorderWorkspace } from "@/components/automation/LiveRecorderWorkspace";
 import { RunnerStatusChip } from "@/app/execution/_components/RunnerStatusChip";
 import { RunTriggerDialog, RunAllEligibleDialog, type RunTarget, type BatchRunCandidate } from "@/app/execution/_components/AutomationBuilderTab";
 import { RunDetailDrawer } from "@/app/execution/_components/RunDetailDrawer";
@@ -819,6 +822,35 @@ function AutomationContent() {
           <AutomationSuiteDetail projectId={selectedProject} suiteId={suiteId} />
         ) : (
           <AutomationSuiteDashboard projectId={selectedProject} />
+        )}
+      </div>
+    );
+  }
+
+  if (searchParams.get("view") === "recorder") {
+    if (!selectedProject) {
+      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open the Live Recorder.</div>;
+    }
+    const recordingId = Number(searchParams.get("recording")) || null;
+    return (
+      <div className="min-h-full pb-8">
+        {recordingId ? (
+          <LiveRecorderWorkspace projectId={selectedProject} recordingId={recordingId} />
+        ) : (
+          <div className="space-y-6 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
+                <Video className="h-6 w-6 text-[#1b59f8]" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-900">Live Recorder</h1>
+                <p className="text-xs text-slate-500 mt-1">
+                  Record real interactions against the mapped application for one Automation Test Suite member.
+                </p>
+              </div>
+            </div>
+            <LiveRecorderLauncher projectId={selectedProject} />
+          </div>
         )}
       </div>
     );

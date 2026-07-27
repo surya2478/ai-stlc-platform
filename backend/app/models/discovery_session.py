@@ -104,6 +104,35 @@ class DiscoverySession(TimestampMixin, Base):
     journey_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
     scenario_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # ── UI-019 Live Recorder (migration 048) ──
+    # A Live Recorder run is a DiscoverySession with these set; a UI-015 run
+    # leaves them null and backfills `recording_origin` to "discovery". See
+    # app.models.recording_session for why UI-019 extends this table instead
+    # of defining a parallel session entity.
+    recording_origin: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="discovery", server_default="discovery", index=True
+    )
+    suite_id: Mapped[int | None] = mapped_column(
+        ForeignKey("automation_suites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    suite_member_id: Mapped[int | None] = mapped_column(
+        ForeignKey("automation_suite_test_cases.id", ondelete="SET NULL"), nullable=True
+    )
+    # Section 7 — GUIDED_TEST_CASE or EXPLORATORY. Null for UI-015 sessions,
+    # which use `mode` for a different axis (who drives the browser).
+    recording_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Section 14's Converted-to-IR terminal condition, tracked separately from
+    # `status` so a Captured session can be re-emitted without a status change.
+    ir_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="NOT_GENERATED", server_default="NOT_GENERATED"
+    )
+    # Section 25 versioning. A published recording is never edited — a new
+    # version chains off it.
+    recording_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    parent_recording_id: Mapped[int | None] = mapped_column(
+        ForeignKey("discovery_sessions.id", ondelete="SET NULL"), nullable=True
+    )
+
     purpose: Mapped[str | None] = mapped_column(Text, nullable=True)  # mandatory for Free mode
     evidence_policy: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
     capture_options: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")

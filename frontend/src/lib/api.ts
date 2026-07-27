@@ -4274,3 +4274,426 @@ export interface AutomationSuiteImpactReview {
   changed_members?: { member_id: number; test_case_id: number; reasons: string[] }[];
   impact_review_required?: boolean;
 }
+
+// ─── UI-019 Live Recorder (P1-S5 Automation Studio Core) ────────────────────
+
+export type RecordingMode = "GUIDED_TEST_CASE" | "EXPLORATORY";
+
+export type RecorderStepStatus =
+  | "PENDING" | "ACTIVE" | "RECORDED" | "PARTIALLY_RECORDED"
+  | "SKIPPED" | "MISMATCH" | "NEEDS_REVIEW" | "COMPLETED";
+
+/**
+ * A Live Recorder recording is a DiscoverySession with the recorder columns
+ * set — the same capture engine, state machine and evidence contract as
+ * UI-015. `status` therefore uses the discovery session states.
+ */
+export interface Recording {
+  id: number;
+  project_id: number;
+  suite_id: number | null;
+  suite_member_id: number | null;
+  test_case_id: number | null;
+  test_case_version: number | null;
+  application_id: number;
+  environment: string;
+  framework: string;
+  status: string;
+  recording_mode: RecordingMode | null;
+  recording_origin: string;
+  recording_version: number;
+  parent_recording_id: number | null;
+  ir_status: string;
+  current_step_index: number;
+  purpose: string | null;
+  requirement_ref: string | null;
+  scenario_ref: string | null;
+  started_at: string | null;
+  terminal_at: string | null;
+  terminal_reason: string | null;
+  failure_detail: string | null;
+  resume_state_classification: string | null;
+  latest_checkpoint_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecorderInheritedContext {
+  suite: { id: number; name: string; version: number; status: string } | null;
+  test_case: {
+    id: number;
+    display_id: string;
+    title: string;
+    objective: string | null;
+    test_type: string | null;
+    priority: string;
+    is_critical: boolean;
+    status: string;
+    version: number;
+    automation_status: string;
+    preconditions: string[] | null;
+  } | null;
+  application: { id: number; name: string; type: string | null } | null;
+  environment: string;
+  framework: string;
+  recording_mode: RecordingMode | null;
+  requirement_ref: string | null;
+  scenario_ref: string | null;
+  test_data: { id: number; name: string | null; status: string }[];
+  existing_script: { id: number; framework: string; status: string; version: number } | null;
+  application_model: { id: number; version: number; is_stale: boolean } | null;
+}
+
+export interface RecorderPrecondition {
+  name: string;
+  passed: boolean;
+  blocking: boolean;
+  detail: string;
+  remediation_href: string | null;
+}
+
+export interface RecorderPreconditionResult {
+  ready: boolean;
+  checks: RecorderPrecondition[];
+  blockers: RecorderPrecondition[];
+  advisories: RecorderPrecondition[];
+}
+
+export interface RecorderStep {
+  step_key: string;
+  source_step_index: number | null;
+  action_text: string | null;
+  expected_result: string | null;
+  status: RecorderStepStatus;
+  recorded_action_count: number;
+  checkpoint_count: number;
+  accepted_checkpoint_count: number;
+  skip_reason: string | null;
+  is_discovered_substep: boolean;
+  parent_step_key: string | null;
+  status_reason: string;
+}
+
+export interface RecorderLocatorCandidate {
+  strategy: string;
+  value: string;
+  locator: string;
+  confidence: number;
+  unique: boolean;
+  validated: boolean;
+}
+
+export interface RecorderLocatorEvidence {
+  element_name: string;
+  role: string | null;
+  page_url: string | null;
+  candidates: RecorderLocatorCandidate[];
+}
+
+export interface RecordedAction {
+  id: number;
+  sequence: number;
+  actor: string;
+  action_family: string;
+  target_semantic: string | null;
+  test_step_ref: string | null;
+  input_binding: Record<string, unknown> | null;
+  occurred_at: string;
+  duration_ms: number | null;
+  evidence_refs: number[];
+  locator_evidence: RecorderLocatorEvidence | null;
+  locator_confidence: number | null;
+  inclusion_state: string;
+  issue_note: string | null;
+  reviewer_note: string | null;
+}
+
+export interface RecorderStepMapping {
+  id: number;
+  action_id: number;
+  step_key: string;
+  mapping_source: string;
+  confidence: number | null;
+  review_state: string;
+  lifecycle_phase: string | null;
+  excluded_from_ir: boolean;
+  exclusion_reason: string | null;
+}
+
+export interface RecorderCheckpoint {
+  id: number;
+  action_id: number | null;
+  step_key: string | null;
+  checkpoint_type: string;
+  target: string | null;
+  expected_value: string | null;
+  source: string;
+  review_state: string;
+  recommendation_reason: string | null;
+  expected_result_ref: string | null;
+  evidence_capture_id: number | null;
+  reviewed_by: number | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface RecorderSegment {
+  id: number;
+  sequence: number;
+  application_id: number;
+  environment: string;
+  framework: string | null;
+  adapter: string | null;
+  started_at: string;
+  ended_at: string | null;
+  start_action_sequence: number | null;
+  end_action_sequence: number | null;
+  transition_reason: string | null;
+}
+
+export interface RecorderDataBinding {
+  id: number;
+  action_id: number | null;
+  name: string;
+  placeholder: string;
+  classification: string;
+  test_data_id: number | null;
+  secret_reference: string | null;
+  source_action_id: number | null;
+  environment_key: string | null;
+  sample_value: string | null;
+}
+
+export interface RecorderNote {
+  id: number;
+  scope: string;
+  step_key: string | null;
+  action_id: number | null;
+  checkpoint_id: number | null;
+  segment_id: number | null;
+  body: string;
+  created_by: number | null;
+  created_at: string;
+}
+
+export interface RecorderCapture {
+  id: number;
+  action_id: number | null;
+  capture_type: string;
+  captured_at: string;
+  source: string | null;
+  redaction_state: string;
+  retention_state: string;
+}
+
+export interface RecorderLatestView {
+  action_id: number | null;
+  sequence: number | null;
+  screenshot_capture_id: number | null;
+  accessibility_snapshot: string | null;
+  page_url: string | null;
+  captured_at: string | null;
+}
+
+/** A figure that reports why it has no value rather than defaulting to zero. */
+export interface RecorderMeasure {
+  value: number | null;
+  reason: string | null;
+}
+
+export interface RecordingSummary {
+  session_id: number;
+  status: string;
+  recording_mode: RecordingMode | null;
+  recording_version: number;
+  ir_status: string;
+  duration_seconds: number | null;
+  recorded_actions: number;
+  excluded_actions: number;
+  test_case_coverage: {
+    total_steps: number;
+    recorded_steps: number;
+    skipped_steps: number;
+    steps_without_actions: number;
+    percent: number | null;
+    percent_basis: string;
+  };
+  unmapped_actions: {
+    action_id: number; sequence: number; action_family: string; target_semantic: string | null;
+  }[];
+  missing_steps: { step_key: string; action_text: string | null }[];
+  expected_results_without_checkpoints: { step_key: string; expected_result: string | null }[];
+  checkpoints: { total: number; accepted: number; needs_review: number; rejected: number };
+  applications_visited: {
+    segment: number; application_id: number; environment: string; transition_reason: string | null;
+  }[];
+  network_requests: RecorderMeasure;
+  network_failures: RecorderMeasure;
+  console_errors: RecorderMeasure;
+  console_warnings: RecorderMeasure;
+  locator_warnings: { action_id: number; sequence: number; confidence: number | null; detail: string }[];
+  evidence_generated: Record<string, number>;
+  redactions: { inputs: number; captures: number };
+  unsupported_actions: { occurred_at: string | null; detail: string | null }[];
+  unbound_inputs: {
+    action_id: number; sequence: number; target_semantic: string | null;
+    sample_value: string | null; requires_secret_reference: boolean;
+  }[];
+  data_bindings: number;
+  notes: number;
+}
+
+export interface AutomationIrDraft {
+  id: number;
+  session_id: number;
+  suite_id: number | null;
+  test_case_id: number;
+  version: number;
+  is_current: boolean;
+  status: string;
+  contract: Record<string, unknown>;
+  contract_version: string;
+  source_action_ids: number[];
+  readiness: {
+    unresolved: {
+      kind: string; detail: string; action_id?: number; sequence?: number; checkpoint_id?: number;
+    }[];
+    unresolved_count: number;
+    step_count: number;
+    assertion_count: number;
+    custom_step_count: number;
+    ready_for_script_generation: boolean;
+  };
+  generated_by: number | null;
+  created_at: string;
+}
+
+/** States in which a live capture task is attached and polling for commands. */
+const LIVE_RECORDING_STATUSES = new Set([
+  "INITIALISING", "RECORDING", "PAUSE_REQUESTED", "RESUMING", "STOP_REQUESTED",
+]);
+
+export function isLiveRecording(recording: Pick<Recording, "status"> | undefined | null): boolean {
+  return Boolean(recording && LIVE_RECORDING_STATUSES.has(recording.status));
+}
+
+/** A recording that has produced its final action set — summary and IR apply. */
+export function isCapturedRecording(recording: Pick<Recording, "status"> | undefined | null): boolean {
+  return Boolean(recording && ["STOPPED", "PAUSED", "COMPLETED"].includes(recording.status));
+}
+
+const RECORDER_BASE = "/lab/recorder";
+
+export const recorderApi = {
+  create: (projectId: number, payload: {
+    suite_id: number; test_case_id: number; recording_mode: RecordingMode;
+    environment?: string | null; correlation_id?: string | null;
+  }) => api.post<Recording>(`${RECORDER_BASE}/projects/${projectId}/recordings`, payload),
+  list: (projectId: number, params?: { suite_id?: number; test_case_id?: number; status?: string }) =>
+    api.get<Recording[]>(`${RECORDER_BASE}/projects/${projectId}/recordings`, { params }),
+  get: (sessionId: number) => api.get<Recording>(`${RECORDER_BASE}/recordings/${sessionId}`),
+  inheritedContext: (sessionId: number) =>
+    api.get<RecorderInheritedContext>(`${RECORDER_BASE}/recordings/${sessionId}/inherited-context`),
+  preconditions: (sessionId: number) =>
+    api.get<RecorderPreconditionResult>(`${RECORDER_BASE}/recordings/${sessionId}/preconditions`),
+  command: (sessionId: number, payload: {
+    command: string; idempotency_key: string; reason?: string | null; params?: Record<string, unknown>;
+  }) => api.post<Recording>(`${RECORDER_BASE}/recordings/${sessionId}/commands`, payload),
+  discard: (sessionId: number, reason: string) =>
+    api.post<Recording>(`${RECORDER_BASE}/recordings/${sessionId}/discard`, { reason }),
+  newVersion: (sessionId: number, reason: string) =>
+    api.post<Recording>(`${RECORDER_BASE}/recordings/${sessionId}/new-version`, { reason }),
+
+  steps: (sessionId: number) => api.get<RecorderStep[]>(`${RECORDER_BASE}/recordings/${sessionId}/steps`),
+  activeStep: (sessionId: number) =>
+    api.get<{ step_key: string | null }>(`${RECORDER_BASE}/recordings/${sessionId}/active-step`),
+  activateStep: (sessionId: number, stepKey: string) =>
+    api.post<RecorderStep[]>(
+      `${RECORDER_BASE}/recordings/${sessionId}/steps/${encodeURIComponent(stepKey)}/activate`,
+    ),
+  setStepStatus: (sessionId: number, stepKey: string, payload: { status: string; reason?: string | null }) =>
+    api.post<RecorderStep[]>(
+      `${RECORDER_BASE}/recordings/${sessionId}/steps/${encodeURIComponent(stepKey)}/status`,
+      payload,
+    ),
+  addDiscoveredSubstep: (sessionId: number, payload: { parent_step_key: string; label: string }) =>
+    api.post<RecorderStep[]>(`${RECORDER_BASE}/recordings/${sessionId}/steps/discovered`, payload),
+
+  actions: (sessionId: number) => api.get<RecordedAction[]>(`${RECORDER_BASE}/recordings/${sessionId}/actions`),
+  recordAction: (sessionId: number, payload: {
+    idempotency_key: string; action_family: string; target_ref?: string | null;
+    target_semantic?: string | null; input_text?: string | null; url?: string | null;
+    active_step_key?: string | null;
+  }) => api.post<Recording>(`${RECORDER_BASE}/recordings/${sessionId}/actions`, payload),
+  mappings: (sessionId: number) =>
+    api.get<RecorderStepMapping[]>(`${RECORDER_BASE}/recordings/${sessionId}/mappings`),
+  mapAction: (sessionId: number, actionId: number, stepKey: string | null) =>
+    api.post<RecorderStepMapping | null>(
+      `${RECORDER_BASE}/recordings/${sessionId}/actions/${actionId}/map`,
+      { step_key: stepKey },
+    ),
+  updateMapping: (sessionId: number, actionId: number, payload: {
+    lifecycle_phase?: string | null; excluded_from_ir?: boolean;
+    exclusion_reason?: string | null; review_state?: string;
+  }) => api.patch<RecorderStepMapping>(
+    `${RECORDER_BASE}/recordings/${sessionId}/actions/${actionId}/mapping`,
+    payload,
+  ),
+
+  checkpoints: (sessionId: number) =>
+    api.get<RecorderCheckpoint[]>(`${RECORDER_BASE}/recordings/${sessionId}/checkpoints`),
+  createCheckpoint: (sessionId: number, payload: {
+    checkpoint_type: string; step_key?: string | null; action_id?: number | null;
+    target?: string | null; expected_value?: string | null; expected_result_ref?: string | null;
+  }) => api.post<RecorderCheckpoint>(`${RECORDER_BASE}/recordings/${sessionId}/checkpoints`, payload),
+  reviewCheckpoint: (sessionId: number, checkpointId: number, payload: {
+    review_state: string; expected_value?: string | null;
+  }) => api.post<RecorderCheckpoint>(
+    `${RECORDER_BASE}/recordings/${sessionId}/checkpoints/${checkpointId}/review`,
+    payload,
+  ),
+  deleteCheckpoint: (sessionId: number, checkpointId: number) =>
+    api.delete<void>(`${RECORDER_BASE}/recordings/${sessionId}/checkpoints/${checkpointId}`),
+
+  segments: (sessionId: number) => api.get<RecorderSegment[]>(`${RECORDER_BASE}/recordings/${sessionId}/segments`),
+  transitionSegment: (sessionId: number, payload: {
+    application_id: number; environment: string; transition_reason: string;
+  }) => api.post<RecorderSegment>(`${RECORDER_BASE}/recordings/${sessionId}/segments/transition`, payload),
+
+  dataBindings: (sessionId: number) =>
+    api.get<RecorderDataBinding[]>(`${RECORDER_BASE}/recordings/${sessionId}/data-bindings`),
+  upsertDataBinding: (sessionId: number, payload: {
+    name: string; classification: string; action_id?: number | null; test_data_id?: number | null;
+    secret_reference?: string | null; source_action_id?: number | null;
+    environment_key?: string | null; sample_value?: string | null;
+  }) => api.put<RecorderDataBinding>(`${RECORDER_BASE}/recordings/${sessionId}/data-bindings`, payload),
+  deleteDataBinding: (sessionId: number, bindingId: number) =>
+    api.delete<void>(`${RECORDER_BASE}/recordings/${sessionId}/data-bindings/${bindingId}`),
+
+  notes: (sessionId: number) => api.get<RecorderNote[]>(`${RECORDER_BASE}/recordings/${sessionId}/notes`),
+  createNote: (sessionId: number, payload: {
+    body: string; scope?: string; step_key?: string | null; action_id?: number | null;
+    checkpoint_id?: number | null; segment_id?: number | null;
+  }) => api.post<RecorderNote>(`${RECORDER_BASE}/recordings/${sessionId}/notes`, payload),
+  deleteNote: (sessionId: number, noteId: number) =>
+    api.delete<void>(`${RECORDER_BASE}/recordings/${sessionId}/notes/${noteId}`),
+
+  captures: (sessionId: number, actionId?: number) =>
+    api.get<RecorderCapture[]>(`${RECORDER_BASE}/recordings/${sessionId}/captures`, {
+      params: actionId != null ? { action_id: actionId } : undefined,
+    }),
+  /** Screenshot URL for an <img src>, served through the same auth as every other call. */
+  captureImageUrl: (sessionId: number, captureId: number) =>
+    `/api/v1${RECORDER_BASE}/recordings/${sessionId}/captures/${captureId}/image`,
+  latestView: (sessionId: number) =>
+    api.get<RecorderLatestView>(`${RECORDER_BASE}/recordings/${sessionId}/latest-view`),
+
+  summary: (sessionId: number) => api.get<RecordingSummary>(`${RECORDER_BASE}/recordings/${sessionId}/summary`),
+  finalize: (sessionId: number) => api.post<RecordingSummary>(`${RECORDER_BASE}/recordings/${sessionId}/finalize`),
+  irDraft: (sessionId: number) =>
+    api.get<AutomationIrDraft | null>(`${RECORDER_BASE}/recordings/${sessionId}/ir-draft`),
+  emitIrDraft: (sessionId: number) =>
+    api.post<AutomationIrDraft>(`${RECORDER_BASE}/recordings/${sessionId}/ir-draft`),
+  activity: (sessionId: number) =>
+    api.get<DiscoverySessionEvent[]>(`${RECORDER_BASE}/recordings/${sessionId}/activity`),
+};

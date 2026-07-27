@@ -131,8 +131,20 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
 
                 if command == "perform_action" and (is_free_mode or manual_control):
                     params = dict((session.pending_command or {}).get("params") or {})
+                    # UI-019 rides on this same branch. `active_step_key` is
+                    # its own concern, popped here so capture_service stays
+                    # unaware of suites and step mapping.
+                    active_step_key = params.pop("active_step_key", None)
                     try:
-                        await capture_service.perform_free_action(db, session, mcp_session, output_dir, **params)
+                        action = await capture_service.perform_free_action(
+                            db, session, mcp_session, output_dir, **params
+                        )
+                        if session.recording_origin == "live_recorder":
+                            from app.services.recorder import mapping as recorder_mapping
+
+                            await recorder_mapping.auto_map_action(
+                                db, session, action, step_key=active_step_key
+                            )
                     except Exception as exc:
                         # A malformed/failed action request is the user's or
                         # the target page's problem, not a reason to fail the

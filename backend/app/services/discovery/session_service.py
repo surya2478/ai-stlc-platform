@@ -384,6 +384,7 @@ async def record_free_action(
     target_semantic: str | None = None,
     input_text: str | None = None,
     url: str | None = None,
+    active_step_key: str | None = None,
 ) -> DiscoverySession:
     """Queue one ad-hoc action (Section 5.2) for the live capture task to
     perform on its next poll tick. Unlike lifecycle commands this never
@@ -426,6 +427,13 @@ async def record_free_action(
             "target_semantic": target_semantic,
             "input_text": input_text,
             "url": url,
+            # UI-019 only: the test case step that was active when the user
+            # asked for this action, so the worker can attach the resulting
+            # action to it (see recorder.mapping.auto_map_action). Null for
+            # UI-015 sessions, which have no step mapping concept. The worker
+            # pops this before calling capture_service, which does not and
+            # should not know about suites or step mapping.
+            "active_step_key": active_step_key,
         },
     }
     await db.commit()

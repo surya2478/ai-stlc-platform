@@ -10,7 +10,7 @@ from app.api.v1.endpoints import (
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
     applications, reviews, playwright_studio, mcp_connections, video,
     grounded_poc, automation_classification, discovery, taxonomy, application_models, network_events,
-    automation_suites,
+    automation_suites, recorder,
 )
 
 api_router = APIRouter()
@@ -71,4 +71,8 @@ api_router.include_router(
 api_router.include_router(
     automation_suites.router, prefix="/lab/automation-suites", tags=["Automation Workspace"]
 )
+# UI-019 Live Recorder (P1-S5 Automation Studio Core) — drives the same
+# capture engine as UI-015, so it shares that flag: every route 404s unless
+# DISCOVERY_SESSIONS_ENABLED=true.
+api_router.include_router(recorder.router, prefix="/lab/recorder", tags=["Live Recorder"])
 

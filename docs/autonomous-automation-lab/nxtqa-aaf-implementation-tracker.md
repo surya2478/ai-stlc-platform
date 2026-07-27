@@ -569,8 +569,58 @@ v2's findings requiring their own adjudication rather than inheriting v1's
 waivers; restoring the source auto-closed the drift finding with its
 `first_detected_at` intact.
 
-Remaining for P1-S5: UI-019 Live Recorder, UI-020 Automation IR Editor, UI-021
-Script Editor, UI-023 Validation and Review.
+**UI-019 Live Recorder (2026-07-27):** implemented against the approved
+UI-019 contract and reference image. Migration `048`, additive only: seven
+columns on `discovery_sessions` (suite/member link, recording mode and origin,
+IR status, version chain) and seven new tables — step states, step mappings,
+validation checkpoints, segments, data bindings, notes, and
+`automation_ir_drafts`.
+
+The capture engine is **not** duplicated. A Live Recorder run *is* a
+`DiscoverySession`: UI-015's state machine, `DiscoveryAction` rows,
+`DiscoveryCapture` evidence and `DiscoverySessionEvent` audit trail are reused
+unchanged (contract Section 29 forbids duplicating them, and a second
+implementation would fork the only code that actually observes a browser).
+Network activity in the recorder reuses UI-017's parser; inherited context
+reuses UI-018's `inheritance.resolve_suite_inheritance`.
+
+Interaction model, stated plainly because the reference image implies
+otherwise: the centre panel is a **proxied viewport**, not an embedded
+browser. The application runs headless via Playwright-MCP on the backend host,
+so the panel shows the real screenshot it just took plus the real
+accessibility tree it just read; the user selects a real element and names an
+action, and the backend performs it against the live application. Every
+recorded action is one the platform genuinely executed. Native click capture
+would need screencast/VNC infrastructure that does not exist and was not in
+scope.
+
+The emitted Automation IR is `AutomationGenerationContract` — the same
+validated, framework-neutral structure the script compiler already renders to
+Playwright and pytest. Recording became a second way to produce one, so a
+recorded test case reaches runnable code with no new format. Verified live: a
+recording driven entirely through the UI produced a draft that compiled to
+`IndexHtmlPage.ts` plus a spec filling a test-data fixture and asserting the
+URL. The emitter never guesses — an action with no observed locator becomes a
+`custom` step (a visible TODO), only user-accepted checkpoints become
+assertions, and everything unresolved is listed in `readiness`.
+
+Deliberate scope limits, each surfaced in the UI rather than hidden: mobile
+and desktop adapters (none exist — a member resolving to one is blocked with
+that stated), video and trace capture (Playwright-MCP does not expose them),
+and Section 23's "Compare Against Existing Script". A member left `BLOCKED` by
+suite evaluation is an **advisory, not a blocker** — the two common causes are
+"no automation classification" and "no approved Application Model", neither of
+which prevents driving a browser, and recording is one of the ways those gaps
+get closed; blocking on it would have been circular.
+
+Backend: 124 focused tests across 4 modules; full suite 1344 passed with the
+same 3 pre-existing failures (`test_jira_foundation` ×2,
+`test_security::test_xss_attempt_in_json_body`), confirmed identical at
+unmodified HEAD via a throwaway worktree. Frontend lint/typecheck/build clean.
+Live-verified end to end in the browser against real suite data.
+
+Remaining for P1-S5: UI-020 Automation IR Editor, UI-021 Script Editor,
+UI-023 Validation and Review.
 
 ### P1-S6 Test Data Selection - 1 screen
 
@@ -788,7 +838,7 @@ Use `-` for not applicable and add approval/evidence links when work starts.
 | UI-016 | 1 | P1-S4 | Application Model | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-017 | 1 | P1-S4 | API and Network Explorer | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-018 | 1 | P1-S5 | Automation Workspace | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
-| UI-019 | 1 | P1-S5 | Live Recorder | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| UI-019 | 1 | P1-S5 | Live Recorder | [x] | [x] | [x] | [x] | [x] | [x] | [x] |
 | UI-020 | 1 | P1-S5 | Automation IR Editor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-021 | 1 | P1-S5 | Script Editor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-022 | 2 | P2-S3 | Framework Configuration | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
@@ -1387,6 +1437,7 @@ Every post-baseline scope change must record:
 | 1.0.2 | 21 July 2026 | Backend Python environment repaired; focused Autonomous Lab tests passed; P0-S5 accepted | Codex |
 | 1.0.3 | 21 July 2026 | UI-001 Executive Overview implemented from approved screen image; frontend lint, TypeScript and local route verification passed | Codex |
 | 1.0.4 | 25 July 2026 | UI-016 Application Model implemented (Phase 1) from approved reference image and contract; migration 044, service, API, permissions, frontend view and sidebar entry; live-verified end to end with two real user accounts; tracker row and P1-S4 note updated | Claude |
+| 1.0.5 | 27 July 2026 | UI-019 Live Recorder implemented from approved reference image and contract; migration 048 (7 additive columns + 7 tables), recorder service package, `/lab/recorder` API, 7 permissions, frontend workspace and sidebar entry; reuses UI-015's capture engine, UI-017's network parser and UI-018's inheritance rather than duplicating them; emits `AutomationGenerationContract` as the IR; 124 focused tests; live-verified end to end in the browser | Claude |
 
 Note: this tracker's per-screen register and changelog were not kept current with every commit between 22 July and 25 July (UI-006 through UI-015 shipped in that window — see git log and `docs/autonomous-automation-lab/CLAUDE_CODE_HANDOVER.md` for what actually landed). A full resync of those rows is a separate, not-yet-started task.
 

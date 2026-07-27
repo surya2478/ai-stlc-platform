@@ -160,6 +160,27 @@ AUTOMATION_SUITE_APPROVE = "automation_suite.approve"
 AUTOMATION_SUITE_PUBLISH = "automation_suite.publish"
 AUTOMATION_SUITE_CREATE_VERSION = "automation_suite.create_version"
 
+# ─── UI-019 Live Recorder (P1-S5) ────────────────────────────────────────────
+RECORDER_VIEW = "recorder.view"
+RECORDER_START_RECORDING = "recorder.start_recording"
+RECORDER_CONTROL_RECORDING = "recorder.control_recording"  # pause/resume/stop/segment
+RECORDER_MAP_ACTIONS = "recorder.map_actions"  # step mapping, checkpoints, bindings, notes
+RECORDER_DISCARD = "recorder.discard"
+RECORDER_GENERATE_IR = "recorder.generate_ir"
+RECORDER_CREATE_VERSION = "recorder.create_version"
+
+_GRANULAR_RECORDER_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        RECORDER_VIEW,
+        RECORDER_START_RECORDING,
+        RECORDER_CONTROL_RECORDING,
+        RECORDER_MAP_ACTIONS,
+        RECORDER_DISCARD,
+        RECORDER_GENERATE_IR,
+        RECORDER_CREATE_VERSION,
+    }
+)
+
 _GRANULAR_AUTOMATION_SUITE_PERMISSIONS: frozenset[str] = frozenset(
     {
         AUTOMATION_SUITE_VIEW,
@@ -209,6 +230,7 @@ GRANULAR_PERMISSIONS: frozenset[str] = (
     | _GRANULAR_APPLICATION_MODEL_PERMISSIONS
     | _GRANULAR_NETWORK_EXPLORER_PERMISSIONS
     | _GRANULAR_AUTOMATION_SUITE_PERMISSIONS
+    | _GRANULAR_RECORDER_PERMISSIONS
 )
 
 ALL_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -255,6 +277,7 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             APPLICATION_MODEL_VIEW, APPLICATION_MODEL_EXPORT, APPLICATION_MODEL_VIEW_AUDIT,
             NETWORK_EXPLORER_VIEW, NETWORK_EXPLORER_EXPORT, NETWORK_EXPLORER_VIEW_AUDIT,
             AUTOMATION_SUITE_VIEW, AUTOMATION_SUITE_EXPORT, AUTOMATION_SUITE_VIEW_AUDIT,
+            RECORDER_VIEW,
         })
     if GENERATE_AUTOMATION in base:
         extra.update({
@@ -283,6 +306,16 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             AUTOMATION_SUITE_MANAGE_GROUPS,
             AUTOMATION_SUITE_SUBMIT_REVIEW,
             AUTOMATION_SUITE_CREATE_VERSION,
+            # Recording is engineering work, the same class as generating a
+            # script — it rides with GENERATE_AUTOMATION rather than needing a
+            # separate grant. Emitting the IR is part of the same act: it is a
+            # deterministic transform of what was recorded, not an approval.
+            RECORDER_START_RECORDING,
+            RECORDER_CONTROL_RECORDING,
+            RECORDER_MAP_ACTIONS,
+            RECORDER_DISCARD,
+            RECORDER_GENERATE_IR,
+            RECORDER_CREATE_VERSION,
         })
     if APPROVE_TEST_CASES in base:
         extra.update({
