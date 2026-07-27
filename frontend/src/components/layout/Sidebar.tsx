@@ -14,6 +14,13 @@ import {
   Boxes,
   Network,
   Layers3,
+  MoreHorizontal,
+  Home,
+  Workflow,
+  Compass,
+  Wand2,
+  Activity,
+  SlidersHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,12 +34,16 @@ type NavItem = {
 
 type NavGroup = {
   group: string;
+  // Group headers render as nav rows (same treatment as a parent item like
+  // Test Planning), so each one carries its own icon.
+  icon: LucideIcon;
   items: NavItem[];
 };
 
 const NAV_ITEMS: NavGroup[] = [
   {
     group: "Overview",
+    icon: Home,
     items: [
       { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
       { label: "Command Centre", href: "/autonomous-lab/missions", icon: Radar },
@@ -40,6 +51,7 @@ const NAV_ITEMS: NavGroup[] = [
   },
   {
     group: "STLC Pipeline",
+    icon: Workflow,
     items: [
       { label: "Requirements", href: "/requirements", icon: FileText },
       {
@@ -54,10 +66,6 @@ const NAV_ITEMS: NavGroup[] = [
           { label: "Test Case Approval", href: "/test-cases?view=approval", icon: ShieldCheck },
         ],
       },
-      { label: "Test Data", href: "/test-data", icon: Database },
-      { label: "AI Automation Studio", href: "/automation", icon: Sparkles },
-      { label: "Playwright AI Studio", href: "/playwright-studio", icon: Bot },
-      { label: "Grounded Automation (PoC)", href: "/grounded-automation", icon: Target },
       {
         label: "Execution",
         href: "/execution",
@@ -74,6 +82,7 @@ const NAV_ITEMS: NavGroup[] = [
   },
   {
     group: "Application Discovery",
+    icon: Compass,
     items: [
       { label: "Application Registry", href: "/applications", icon: Boxes },
       { label: "Live Discovery Session", href: "/automation?view=discovery", icon: Radar },
@@ -83,12 +92,14 @@ const NAV_ITEMS: NavGroup[] = [
   },
   {
     group: "Automation Studio Core",
+    icon: Wand2,
     items: [
       { label: "Automation Workspace", href: "/automation?view=workspace", icon: Layers3 },
     ],
   },
   {
     group: "Operations",
+    icon: Activity,
     items: [
       { label: "AI Agents", href: "/agents", icon: Bot },
       { label: "Agent Run Logs", href: "/agents/logs", icon: BookOpen },
@@ -97,14 +108,28 @@ const NAV_ITEMS: NavGroup[] = [
   },
   {
     group: "Settings",
+    icon: SlidersHorizontal,
     items: [
       { label: "Project Settings", href: "/settings", icon: Settings },
       { label: "Users & Roles", href: "/users", icon: Users },
     ],
   },
+  {
+    // Last in the tree by design: a catch-all for capabilities that are not
+    // part of the ordered STLC pipeline.
+    group: "Others",
+    icon: MoreHorizontal,
+    items: [
+      { label: "Test Data", href: "/test-data", icon: Database },
+      { label: "AI Automation Studio", href: "/automation", icon: Sparkles },
+      { label: "Playwright AI Studio", href: "/playwright-studio", icon: Bot },
+      { label: "Grounded Automation (PoC)", href: "/grounded-automation", icon: Target },
+    ],
+  },
 ];
 
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-items";
+const EXPANDED_GROUPS_STORAGE_KEY = "sidebar-expanded-groups";
 
 function withProject(href: string, projectId: string | null): string {
   if (!projectId) return href;
@@ -145,6 +170,10 @@ function isParentActive(pathname: string, currentQuery: string, item: NavItem): 
   return Boolean(item.children?.some((c) => isActiveHref(pathname, currentQuery, c.href)));
 }
 
+function isGroupActive(pathname: string, currentQuery: string, group: NavGroup): boolean {
+  return group.items.some((item) => isParentActive(pathname, currentQuery, item));
+}
+
 function SidebarContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -154,6 +183,9 @@ function SidebarContent() {
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Groups are open unless explicitly collapsed, so a first visit still shows
+  // the whole menu. Only an entry of `false` hides one.
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setMounted(true);
@@ -167,7 +199,29 @@ function SidebarContent() {
         /* ignore */
       }
     }
+    const savedGroups = localStorage.getItem(EXPANDED_GROUPS_STORAGE_KEY);
+    if (savedGroups) {
+      try {
+        setExpandedGroups(JSON.parse(savedGroups));
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    // Reopen the group holding the current route, so navigating can never
+    // leave the active item hidden inside a collapsed group. This runs on route
+    // change only, so collapsing the group you are already in stays collapsed.
+    setExpandedGroups((prev) => {
+      const active = NAV_ITEMS.find((group) => isGroupActive(pathname, currentQuery, group));
+      if (!active || prev[active.group] !== false) return prev;
+      const next = { ...prev, [active.group]: true };
+      localStorage.setItem(EXPANDED_GROUPS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, [pathname, currentQuery, mounted]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -204,6 +258,16 @@ function SidebarContent() {
     });
   };
 
+  const isGroupExpanded = (groupName: string) => expandedGroups[groupName] !== false;
+
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups((prev) => {
+      const next = { ...prev, [groupName]: prev[groupName] === false };
+      localStorage.setItem(EXPANDED_GROUPS_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
   if (!mounted) {
     return <aside className="flex w-60 flex-col bg-[#091225] border-r border-[#13223f] text-slate-400" />;
   }
@@ -234,17 +298,51 @@ function SidebarContent() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 space-y-4 no-scrollbar">
-        {NAV_ITEMS.map((group) => (
-          <div key={group.group} className="px-2">
-            {!collapsed ? (
-              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                {group.group}
-              </p>
-            ) : (
-              <div className="border-t border-[#13223f]/50 my-3 first:hidden" />
-            )}
-            <div className="space-y-0.5">
-              {group.items.map((item) => {
+        {NAV_ITEMS.map((group) => {
+          const groupActive = isGroupActive(pathname, currentQuery, group);
+          // When the rail is collapsed there is no header to click, so items
+          // always show — otherwise a group could become unreachable.
+          const showItems = collapsed || isGroupExpanded(group.group);
+          const groupId = `navgroup-${group.group.replace(/\s+/g, "-").toLowerCase()}`;
+
+          return (
+            <div key={group.group} className="px-2">
+              {!collapsed ? (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.group)}
+                  aria-expanded={isGroupExpanded(group.group)}
+                  aria-controls={groupId}
+                  // Same row treatment as a parent item such as Test Planning:
+                  // icon, normal-case label, full padding and hover — so a
+                  // section header reads as prominently as the items under it.
+                  className={cn(
+                    "mb-1.5 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-150",
+                    groupActive
+                      ? "bg-[#13223f] text-white"
+                      : "text-slate-300 hover:bg-[#13223f] hover:text-white"
+                  )}
+                >
+                  <group.icon
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      groupActive ? "text-white" : "text-slate-400"
+                    )}
+                  />
+                  <span className="truncate flex-1 text-left">{group.group}</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+                      isGroupExpanded(group.group) ? "rotate-0" : "-rotate-90",
+                      groupActive ? "text-white/70" : "text-slate-500"
+                    )}
+                  />
+                </button>
+              ) : (
+                <div className="border-t border-[#13223f]/50 my-3 first:hidden" />
+              )}
+              <div id={groupId} className={cn("space-y-0.5", !showItems && "hidden")}>
+                {group.items.map((item) => {
                 if (item.children && item.children.length > 0) {
                   return (
                     <ParentItem
@@ -269,10 +367,11 @@ function SidebarContent() {
                     collapsed={collapsed}
                   />
                 );
-              })}
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Footer / Collapse Button */}
