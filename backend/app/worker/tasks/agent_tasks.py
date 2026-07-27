@@ -1159,6 +1159,20 @@ async def _persist_agent_artifacts(
                 "overall_score": overall,
                 "verdict": verdict,
                 "scenario_generation_readiness": scenario_readiness,
+                "scores": {
+                    "completeness": qr.get("completeness_score"),
+                    "clarity": qr.get("clarity_score"),
+                    "testability": qr.get("testability_score"),
+                    "ambiguity": qr.get("ambiguity_score"),
+                    "acceptance_criteria": qr.get("acceptance_criteria_score"),
+                    "interface_readiness": qr.get("interface_readiness_score"),
+                    "telecom_domain_completeness": qr.get("telecom_domain_completeness"),
+                },
+                "findings": qr.get("issues", []),
+                "recommendations": qr.get("suggestions", []),
+                "pass_score": 3.5,
+                "pass_scenario_readiness": 3,
+                "stale": False,
                 "agent_run_id": run.id,
             }
             req.metadata_ = metadata

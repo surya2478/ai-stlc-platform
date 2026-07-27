@@ -19,7 +19,13 @@ class RequirementCreate(BaseModel):
     project_id: int
     title: str
     summary: str | None = None
-    source: Literal["manual", "doc_upload", "jira"] = "manual"
+    source: Literal[
+        "manual",
+        "doc_upload",
+        "jira",
+        "pasted_text",
+        "api_specification",
+    ] = "manual"
     source_document_id: int | None = None
     telecom_domain: str | None = None
     qa_domain: str | None = None

@@ -189,6 +189,7 @@ async def get_requirement_coverage(
 
 # ── WRITE endpoints — require approve_requirements ────────────────────────────
 
+@router.post("", response_model=RequirementOut, status_code=201)
 @router.post("/", response_model=RequirementOut, status_code=201)
 async def create_requirement(
     data: RequirementCreate,

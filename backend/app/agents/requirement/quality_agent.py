@@ -21,6 +21,36 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+QUALITY_SCORE_WEIGHTS: dict[str, float] = {
+    "completeness_score": 0.15,
+    "clarity_score": 0.10,
+    "testability_score": 0.20,
+    "ambiguity_score": 0.10,
+    "acceptance_criteria_score": 0.20,
+    "interface_readiness_score": 0.10,
+    "telecom_domain_completeness": 0.05,
+    "scenario_generation_readiness": 0.10,
+}
+QUALITY_PASS_SCORE = 3.5
+QUALITY_REVISION_SCORE = 2.5
+QUALITY_PASS_SCENARIO_READINESS = 3.0
+
+
+def calculate_quality_outcome(review: dict[str, Any]) -> tuple[float, str]:
+    """Calculate the governed quality score and verdict deterministically."""
+    overall = round(
+        sum(float(review[field]) * weight for field, weight in QUALITY_SCORE_WEIGHTS.items()),
+        2,
+    )
+    scenario_readiness = float(review["scenario_generation_readiness"])
+    if overall >= QUALITY_PASS_SCORE and scenario_readiness >= QUALITY_PASS_SCENARIO_READINESS:
+        verdict = "pass"
+    elif overall < QUALITY_REVISION_SCORE or scenario_readiness <= 1:
+        verdict = "fail"
+    else:
+        verdict = "needs_revision"
+    return overall, verdict
+
 
 # ── State ──────────────────────────────────────────────────────────────────────
 
@@ -60,6 +90,13 @@ VERDICT rules:
 - pass: overall_score >= 3.5 AND scenario_generation_readiness >= 3
 - needs_revision: 2.5 <= overall_score < 3.5 OR scenario_generation_readiness == 2
 - fail: overall_score < 2.5 OR scenario_generation_readiness == 1
+
+The governed overall score is calculated by the server using these weights:
+- completeness 15%, clarity 10%, testability 20%, ambiguity 10%
+- acceptance criteria 20%, interface readiness 10%
+- telecom domain completeness 5%, scenario generation readiness 10%
+Your overall_score and verdict are advisory and will be recalculated from the
+dimension scores before they are saved.
 
 For EACH requirement, output a JSON object with:
 - requirement_id: the numeric id field provided (INTEGER — use this, not title)
@@ -162,7 +199,11 @@ def _validate_and_merge(state: QualityState) -> QualityState:
     for r in state["reviews"]:
         try:
             v = validate_structured_output(r, RequirementQualityLLMOutput)
-            validated_reviews.append(v.model_dump(mode="json"))
+            review = v.model_dump(mode="json")
+            overall, verdict = calculate_quality_outcome(review)
+            review["overall_score"] = overall
+            review["verdict"] = verdict
+            validated_reviews.append(review)
         except Exception as exc:
             errors.append(f"Schema validation failed for review: {exc}")
 

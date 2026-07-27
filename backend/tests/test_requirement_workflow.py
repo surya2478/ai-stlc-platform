@@ -5,9 +5,12 @@ from fastapi import HTTPException
 
 from app.services.requirement_service import (
     approve_requirement,
+    requirement_analysis_blockers,
     requirement_workflow_stage,
     transition_requirement,
+    update_requirement,
 )
+from app.schemas.requirement import RequirementUpdate
 
 
 class FakeDB:
@@ -28,6 +31,7 @@ def requirement(**overrides):
         "status": "draft",
         "readiness_status": "intake_ready",
         "quality_verdict": None,
+        "quality_score": None,
         "missing_information": [],
         "telecom_domain": "Digital",
         "qa_domain": None,
@@ -42,6 +46,11 @@ def requirement(**overrides):
         "downstream_systems": [],
         "metadata_": {"workflow_stage": "intake"},
         "review_notes": None,
+        "summary": "Original summary",
+        "acceptance_criteria": [],
+        "business_rules": [],
+        "apis": [],
+        "risks": [],
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -160,3 +169,27 @@ async def test_clarification_resolution_clears_blocker_and_requeues_analysis():
     assert req.readiness_status == "analysis_pending"
     assert req.missing_information == []
     assert req.metadata_["clarification_resolved"] is True
+
+
+@pytest.mark.asyncio
+async def test_quality_relevant_edit_marks_previous_review_stale():
+    req = requirement(
+        readiness_status="analysis_complete",
+        quality_score=4.1,
+        quality_verdict="pass",
+        metadata_={
+            "workflow_stage": "analysis",
+            "quality_review": {"overall_score": 4.1, "verdict": "pass", "stale": False},
+        },
+    )
+
+    await update_requirement(
+        FakeDB(),
+        req,
+        RequirementUpdate(summary="Updated, measurable billing behavior"),
+    )
+
+    assert req.metadata_["quality_review"]["stale"] is True
+    assert req.metadata_["quality_review"]["stale_fields"] == ["summary"]
+    assert req.readiness_status == "analysis_pending"
+    assert any("stale" in blocker.lower() for blocker in requirement_analysis_blockers(req))

@@ -17,7 +17,7 @@ class Requirement(TimestampMixin, Base):
     requirement_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     # e.g. REQ-001 — auto-generated or from Jira
     source: Mapped[str] = mapped_column(String(50), nullable=False)
-    # source: jira | doc_upload | manual
+    # source: jira | doc_upload | manual | pasted_text | api_specification
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 

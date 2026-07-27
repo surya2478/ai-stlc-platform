@@ -202,9 +202,10 @@ function getAnalysisStatus(req: Requirement, isDuplicate: boolean): AnalysisStat
   const readiness = (req.readiness_status || "").toLowerCase();
   const quality = (req.quality_verdict || "").toLowerCase();
   const missingCount = asTextList(req.missing_information).length;
+  const qualityReview = metadataRecord(req).quality_review as Record<string, any> | undefined;
 
   if (status === "approved") return "analyzed";
-  if (readiness.includes("stale")) return "stale_source";
+  if (qualityReview?.stale === true || readiness.includes("stale")) return "stale_source";
   if (status === "rejected" || readiness.includes("blocked")) return "blocked";
   if (readiness === "analysis_pending") return "queued";
   if (quality === "fail") return "failed";
@@ -351,7 +352,7 @@ const jiraStoryTypePreset = "Story, User Story, Requirement, Epic";
 type IntakeTab = "requirements" | "documents" | "url" | "github" | "jira" | "paste" | "api";
 type RequirementsWorkspaceView = "intake" | "analysis" | "traceability" | "review";
 type RequirementTransitionAction = "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability" | "request_clarification" | "resolve_clarification";
-type AnalysisDialog = "acceptance" | "issues" | "classification" | "systems" | "clarification";
+type AnalysisDialog = "content" | "acceptance" | "issues" | "classification" | "systems" | "clarification";
 type AnalysisStatus = "not_analyzed" | "queued" | "analyzing" | "needs_clarification" | "needs_revision" | "blocked" | "analyzed" | "stale_source" | "failed";
 
 type IntakeSourceRow = {
@@ -584,7 +585,12 @@ function RequirementsContent() {
   const [missingInfoDraft, setMissingInfoDraft] = useState("");
   const [resolutionDraft, setResolutionDraft] = useState("");
   const [markMissingResolved, setMarkMissingResolved] = useState(false);
+  const [summaryDraft, setSummaryDraft] = useState("");
+  const [businessRulesDraft, setBusinessRulesDraft] = useState("");
+  const [risksDraft, setRisksDraft] = useState("");
   const [systemsDraft, setSystemsDraft] = useState("");
+  const [interfacesDraft, setInterfacesDraft] = useState("");
+  const [apisDraft, setApisDraft] = useState("");
   const [classificationDraft, setClassificationDraft] = useState({ domain: "", journey: "", application: "", requestType: "", testType: "", riskLevel: "" });
   // Test Environment + Generation Notes — tester-set context for AI test-case
   // generation, editable per requirement in the Details tab.
@@ -1108,7 +1114,12 @@ function RequirementsContent() {
     setMissingInfoDraft((selectedReq.missing_information || []).join("\n"));
     setResolutionDraft("");
     setMarkMissingResolved(false);
+    setSummaryDraft(selectedReq.summary || "");
+    setBusinessRulesDraft((selectedReq.business_rules || []).join("\n"));
+    setRisksDraft((selectedReq.risks || []).join("\n"));
     setSystemsDraft((selectedReq.systems_impacted || []).join("\n"));
+    setInterfacesDraft((selectedReq.impacted_interfaces || []).join("\n"));
+    setApisDraft((selectedReq.apis || []).join("\n"));
     setClassificationDraft({
       domain: selectedReq.telecom_domain || selectedReq.qa_domain || "",
       journey: selectedReq.business_process || "",
@@ -1130,7 +1141,13 @@ function RequirementsContent() {
     try {
       const resolvingClarification = analysisDialog === "issues" && selectedReq.readiness_status === "needs_clarification";
       let updates: Partial<Requirement> = {};
-      if (analysisDialog === "acceptance") {
+      if (analysisDialog === "content") {
+        updates = {
+          summary: summaryDraft.trim(),
+          business_rules: splitLines(businessRulesDraft),
+          risks: splitLines(risksDraft),
+        };
+      } else if (analysisDialog === "acceptance") {
         updates = { acceptance_criteria: splitLines(criteriaDraft) };
       } else if (analysisDialog === "issues") {
         if ((markMissingResolved || resolvingClarification) && !resolutionDraft.trim()) {
@@ -1162,7 +1179,11 @@ function RequirementsContent() {
           risk_level: classificationDraft.riskLevel.trim() || undefined,
         };
       } else if (analysisDialog === "systems") {
-        updates = { systems_impacted: splitLines(systemsDraft) };
+        updates = {
+          systems_impacted: splitLines(systemsDraft),
+          impacted_interfaces: splitLines(interfacesDraft),
+          apis: splitLines(apisDraft),
+        };
       } else if (analysisDialog === "clarification") {
         if (!resolutionDraft.trim()) {
           setAnalysisDialogError("Describe the clarification required before submitting the request.");
@@ -1178,7 +1199,7 @@ function RequirementsContent() {
       const res = await requirementsApi.update(selectedReq.id, updates);
       setSelectedReq(res.data);
       setRequirements((current) => current.map((item) => item.id === res.data.id ? res.data : item));
-      setAgentStatus("Requirement details updated successfully.");
+      setAgentStatus("Changes saved. The previous quality score is now stale; select Re-run Analysis to calculate a new score.");
       setAnalysisDialog(null);
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
@@ -3844,6 +3865,24 @@ function RequirementsContent() {
                     ...asTextList(qualityMeta?.missing_information),
                     ...asTextList(latestQualityReview?.missing_details),
                   ].filter((item, index, items) => items.indexOf(item) === index);
+                  const findings = [
+                    ...asTextList(latestQualityReview?.ambiguities),
+                    ...asTextList(qualityMeta?.findings),
+                  ].filter((item, index, items) => items.indexOf(item) === index);
+                  const recommendations = [
+                    ...asTextList(latestQualityReview?.recommendations),
+                    ...asTextList(qualityMeta?.recommendations),
+                  ].filter((item, index, items) => items.indexOf(item) === index);
+                  const scenarioReadiness = Number(latestQualityReview?.scenario_generation_readiness ?? qualityMeta?.scenario_generation_readiness);
+                  const previousReview = selectedQualityReviews[1];
+                  const previousScore = previousReview?.quality_score == null ? null : Math.round(Number(previousReview.quality_score) * 20);
+                  const scoreDelta = row?.qualityScore != null && previousScore != null ? row.qualityScore - previousScore : null;
+                  const isQualityStale = qualityMeta?.stale === true;
+                  const improvementActions: Array<{ label: string; detail: string; dialog: AnalysisDialog }> = [];
+                  if (!latestQualityReview || Number(latestQualityReview.completeness_score) < 3.5 || Number(latestQualityReview.clarity_score) < 3.5) improvementActions.push({ label: "Edit core details", detail: "State the actor, business outcome, trigger, rules, constraints, and risks.", dialog: "content" });
+                  if (!latestQualityReview || Number(latestQualityReview.testability_score) < 3.5 || Number(latestQualityReview.acceptance_criteria_score) < 3.5) improvementActions.push({ label: "Edit acceptance criteria", detail: "Add measurable positive and negative outcomes with expected results.", dialog: "acceptance" });
+                  if (!latestQualityReview || Number(latestQualityReview.interface_readiness_score) < 3.5) improvementActions.push({ label: "Map systems & APIs", detail: "Name impacted systems, interfaces, endpoints, protocols, and dependencies.", dialog: "systems" });
+                  if (!latestQualityReview || Number(latestQualityReview.telecom_domain_completeness) < 3.5) improvementActions.push({ label: "Edit classification", detail: "Complete domain, application, request type, test phase, and risk level.", dialog: "classification" });
                   return (
                     <div className="space-y-3 text-xs">
                       <section className="border-b border-slate-100 pb-3">
@@ -3852,6 +3891,30 @@ function RequirementsContent() {
                           <Badge variant={row?.qualityScore === null ? "outline" : "warning"} className="text-[9px]">Quality score {row?.qualityScore === null || row?.qualityScore === undefined ? "Not recorded" : `${row.qualityScore}/100`}</Badge>
                         </div>
                         <p className="text-[11px] font-semibold leading-relaxed text-slate-600">{selectedReq.summary || selectedReq.title}</p>
+                        <button onClick={() => openAnalysisDialog("content")} className="mt-2 text-[10px] font-bold text-[#1b59f8]">Edit summary, rules & risks</button>
+                      </section>
+
+                      <section className="rounded-xl border border-blue-200 bg-blue-50/70 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h4 className="text-xs font-bold text-blue-950">How to pass quality analysis</h4>
+                            <p className="mt-1 text-[10px] font-semibold leading-relaxed text-blue-800">Reach at least <strong>70/100</strong> overall and <strong>3/5 Scenario Readiness</strong>. Saving changes makes the old score stale; Re-run Analysis calculates the new result.</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className="text-lg font-extrabold text-blue-950">{row?.qualityScore ?? "—"}/100</div>
+                            <div className="text-[9px] font-bold text-blue-700">Readiness {Number.isFinite(scenarioReadiness) ? `${scenarioReadiness.toFixed(1)}/5` : "—"}</div>
+                            {scoreDelta !== null && <div className={cn("text-[9px] font-bold", scoreDelta > 0 ? "text-emerald-700" : scoreDelta < 0 ? "text-red-700" : "text-slate-500")}>{scoreDelta > 0 ? "+" : ""}{scoreDelta} since prior run</div>}
+                          </div>
+                        </div>
+                        {isQualityStale && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-bold text-amber-800">This score is from before the latest edits and cannot be used to pass. Re-run Analysis.</div>}
+                        <div className="mt-3 space-y-2">
+                          {improvementActions.map((action) => (
+                            <button key={action.label} type="button" onClick={() => openAnalysisDialog(action.dialog)} className="flex w-full items-start justify-between gap-3 rounded-lg border border-blue-100 bg-white p-2 text-left transition hover:border-blue-300">
+                              <span><span className="block text-[10px] font-bold text-blue-900">{action.label}</span><span className="mt-0.5 block text-[9px] font-semibold leading-snug text-slate-600">{action.detail}</span></span>
+                              <ChevronRight className="mt-1 h-3.5 w-3.5 shrink-0 text-blue-500" />
+                            </button>
+                          ))}
+                        </div>
                       </section>
 
                       <section className="border-b border-slate-100 pb-3">
@@ -3878,7 +3941,7 @@ function RequirementsContent() {
                         </div>
                         <div className="grid grid-cols-4 gap-1.5">
                           {([
-                            ["Ambiguities", row?.ambiguityCount ?? 0, "bg-slate-50 border-slate-100 text-slate-800"],
+                            ["Findings", findings.length, "bg-slate-50 border-slate-100 text-slate-800"],
                             ["Missing Info", row?.missingInfoCount ?? 0, "bg-red-50 border-red-100 text-red-700"],
                             ["Duplicates", row?.duplicateCount ?? 0, "bg-amber-50 border-amber-100 text-amber-700"],
                             ["Conflicts", row?.conflictCount ?? 0, "bg-blue-50 border-blue-100 text-blue-700"],
@@ -3970,6 +4033,22 @@ function RequirementsContent() {
                                 </div>
                               ))}
                             </div>
+                            {findings.length > 0 && (
+                              <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 p-2.5">
+                                <div className="text-[9px] font-bold uppercase text-amber-700">Review findings</div>
+                                <ul className="mt-1.5 space-y-1">
+                                  {findings.map((item, index) => <li key={`${item}-${index}`} className="text-[10px] font-semibold leading-snug text-amber-900">• {item}</li>)}
+                                </ul>
+                              </div>
+                            )}
+                            {recommendations.length > 0 && (
+                              <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 p-2.5">
+                                <div className="text-[9px] font-bold uppercase text-emerald-700">What to update</div>
+                                <ul className="mt-1.5 space-y-1">
+                                  {recommendations.map((item, index) => <li key={`${item}-${index}`} className="text-[10px] font-semibold leading-snug text-emerald-900">• {item}</li>)}
+                                </ul>
+                              </div>
+                            )}
                             {selectedQualityReviews.length > 1 && <div className="mt-2 text-[9px] font-semibold text-slate-400">{selectedQualityReviews.length} persisted review runs; latest shown.</div>}
                           </>
                         ) : <div className="text-[10px] font-semibold text-slate-400">No persisted quality-review run is available for this requirement.</div>}
@@ -4309,7 +4388,8 @@ function RequirementsContent() {
           ...asTextList(qualityMeta?.missing_information),
           ...asTextList(selectedQualityReviews[0]?.missing_details),
         ].filter((item, index, items) => items.indexOf(item) === index);
-        const dialogTitle = analysisDialog === "acceptance" ? "Edit Acceptance Criteria"
+        const dialogTitle = analysisDialog === "content" ? "Edit Core Requirement Details"
+          : analysisDialog === "acceptance" ? "Edit Acceptance Criteria"
           : analysisDialog === "issues" ? "Analysis Issues & Missing Information"
           : analysisDialog === "classification" ? "Edit Requirement Classification"
           : analysisDialog === "systems" ? "Edit Impacted Systems"
@@ -4329,13 +4409,19 @@ function RequirementsContent() {
                 <button type="button" aria-label="Close dialog" onClick={() => { setAnalysisDialogError(null); setAnalysisDialog(null); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
               </div>
               <div className="max-h-[65vh] space-y-4 overflow-y-auto px-5 py-4 text-xs">
+                {analysisDialog === "content" && <>
+                  <p className="font-semibold text-slate-600">Describe the requirement precisely. Include the actor, trigger, expected business outcome, constraints, and measurable scope.</p>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Requirement summary</span><textarea aria-label="Requirement summary" value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} rows={6} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="When [trigger], the system shall [behavior] for [actor] so that [business outcome]..." /></label>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Business rules - one per line</span><textarea aria-label="Business rules" value={businessRulesDraft} onChange={(event) => setBusinessRulesDraft(event.target.value)} rows={5} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Billing changes take effect on the next billing cycle." /></label>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Risks and constraints - one per line</span><textarea aria-label="Risks and constraints" value={risksDraft} onChange={(event) => setRisksDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Proration must not create duplicate charges." /></label>
+                </>}
                 {analysisDialog === "acceptance" && <>
                   <p className="font-semibold text-slate-600">Enter one independently testable acceptance criterion per line.</p>
                   <textarea aria-label="Acceptance criteria" value={criteriaDraft} onChange={(event) => setCriteriaDraft(event.target.value)} rows={10} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="The system shall..." />
                 </>}
                 {analysisDialog === "issues" && <>
                   <div className="grid grid-cols-4 gap-2">
-                    {[["Ambiguities", analysisRow?.ambiguityCount || 0], ["Missing", analysisRow?.missingInfoCount || 0], ["Duplicates", analysisRow?.duplicateCount || 0], ["Conflicts", analysisRow?.conflictCount || 0]].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="text-[9px] font-bold uppercase text-slate-400">{label}</div><div className="mt-1 text-lg font-bold text-slate-800">{value}</div></div>)}
+                    {[["Findings", asTextList(selectedQualityReviews[0]?.ambiguities).length || asTextList(qualityMeta?.findings).length], ["Missing", analysisRow?.missingInfoCount || 0], ["Duplicates", analysisRow?.duplicateCount || 0], ["Conflicts", analysisRow?.conflictCount || 0]].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="text-[9px] font-bold uppercase text-slate-400">{label}</div><div className="mt-1 text-lg font-bold text-slate-800">{value}</div></div>)}
                   </div>
                   {(asTextList(qualityMeta?.ambiguities).length > 0 || asTextList(qualityMeta?.conflicts).length > 0) && <div className="rounded-lg border border-amber-100 bg-amber-50 p-3"><div className="mb-1 text-[10px] font-bold uppercase text-amber-700">Other findings</div>{[...asTextList(qualityMeta?.ambiguities), ...asTextList(qualityMeta?.conflicts)].map((item) => <div key={item} className="mt-1 font-semibold text-amber-800">• {item}</div>)}</div>}
                   {missingInfoItems.length > 0 && (
@@ -4360,8 +4446,10 @@ function RequirementsContent() {
                     "Domain", "domain"], ["Journey / Business Process", "journey"], ["Application / Product", "application"], ["Request Type", "requestType"], ["Test Type / Phase", "testType"], ["Risk Level", "riskLevel"]] as Array<[string, keyof typeof classificationDraft]>).map(([label, key]) => <label key={key} className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">{label}</span><input aria-label={label} value={classificationDraft[key]} onChange={(event) => setClassificationDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-9 w-full rounded-lg border border-slate-200 px-3 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" /></label>)}
                 </div>}
                 {analysisDialog === "systems" && <>
-                  <p className="font-semibold text-slate-600">Enter every application, service, API, interface, or dependent system impacted by this requirement, one per line.</p>
-                  <textarea aria-label="Impacted systems" value={systemsDraft} onChange={(event) => setSystemsDraft(event.target.value)} rows={10} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="OMS&#10;Notification Service&#10;CRM" />
+                  <p className="font-semibold text-slate-600">Record systems, interfaces, and APIs separately so the reviewer can assess integration readiness.</p>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Impacted systems - one per line</span><textarea aria-label="Impacted systems" value={systemsDraft} onChange={(event) => setSystemsDraft(event.target.value)} rows={5} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Billing Platform&#10;CRM" /></label>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Interfaces - one per line</span><textarea aria-label="Impacted interfaces" value={interfacesDraft} onChange={(event) => setInterfacesDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="CRM to Billing customer update interface" /></label>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">APIs / protocols - one per line</span><textarea aria-label="APIs and protocols" value={apisDraft} onChange={(event) => setApisDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="PATCH /customers/{id}/billing-profile (REST)" /></label>
                 </>}
                 {analysisDialog === "clarification" && <>
                   <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 font-semibold text-blue-800">This records an audited clarification request and keeps the requirement in Analysis with “Needs Clarification” status. It does not send an external email or Jira message.</div>

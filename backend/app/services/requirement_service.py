@@ -13,6 +13,12 @@ from app.services.display_id_service import display_id, temporary_id
 # Requirements whose approval status cannot be changed again
 _TERMINAL_STATUSES = {"approved", "rejected"}
 _WORKFLOW_STAGES = {"intake", "analysis", "traceability", "review"}
+_QUALITY_RELEVANT_FIELDS = {
+    "title", "summary", "acceptance_criteria", "business_rules", "systems_impacted",
+    "impacted_interfaces", "apis", "risks", "missing_information", "telecom_domain",
+    "qa_domain", "business_process", "product", "product_group", "sub_request_type",
+    "test_phase", "risk_level", "review_notes",
+}
 
 
 def requirement_workflow_stage(req: Requirement) -> str:
@@ -47,6 +53,9 @@ def _has_values(value) -> bool:
 
 def requirement_analysis_blockers(req: Requirement) -> list[str]:
     blockers: list[str] = []
+    quality_review = (req.metadata_ or {}).get("quality_review") or {}
+    if quality_review.get("stale") is True:
+        blockers.append("Quality analysis is stale after requirement changes. Re-run Analysis.")
     if str(req.quality_verdict or "").lower() != "pass":
         blockers.append("Quality analysis must pass before traceability.")
     if _has_values(req.missing_information):
@@ -325,8 +334,24 @@ async def update_requirement(
                        "Telecom metadata fields (domain, risk, etc.) can still be updated.",
             )
     data = updates.model_dump(exclude_unset=True)
+    changed_quality_fields = [
+        key for key, value in data.items()
+        if key in _QUALITY_RELEVANT_FIELDS and getattr(req, key, None) != value
+    ]
     for key, value in data.items():
         setattr(req, key, value)
+    if changed_quality_fields and (req.quality_score is not None or req.quality_verdict):
+        metadata = dict(req.metadata_ or {})
+        quality_review = dict(metadata.get("quality_review") or {})
+        quality_review.update({
+            "stale": True,
+            "stale_reason": "Requirement content changed after the last quality analysis.",
+            "stale_fields": sorted(changed_quality_fields),
+        })
+        metadata["quality_review"] = quality_review
+        req.metadata_ = metadata
+        if requirement_workflow_stage(req) == "analysis":
+            req.readiness_status = "analysis_pending"
     await db.flush()
     await db.refresh(req)
     return req
