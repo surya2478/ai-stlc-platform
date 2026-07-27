@@ -104,12 +104,24 @@ async def create_user(data: UserCreate, current_user: CurrentUser, db: DBSession
     require_platform_admin(current_user)
     if data.role not in GLOBAL_ROLES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid global role")
+    # Same strength policy as /register. Without this an admin could mint an
+    # account weaker than any user could create for themselves.
+    try:
+        validate_password_strength(data.password)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     repo = UserRepository(db)
-    existing = await repo.get_by_email(data.email)
+    # Normalise exactly as /register and /login do. Storing the address as
+    # typed produced accounts that could never log in: login lowercases before
+    # looking up, so a row created as "Admin@Local.test" was unreachable. The
+    # duplicate check has to use the normalised form too, or a second,
+    # unreachable row could be created alongside an existing account.
+    email = data.email.strip().lower()
+    existing = await repo.get_by_email(email)
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
     user = User(
-        email=data.email,
+        email=email,
         full_name=data.full_name.strip(),
         hashed_password=hash_password(data.password),
         role=data.role,

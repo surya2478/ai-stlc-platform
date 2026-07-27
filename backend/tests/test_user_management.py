@@ -188,7 +188,11 @@ def test_project_manager_can_list_users_for_managed_project():
     ]
 
 
-def test_admin_can_create_user_with_valid_role():
+# Satisfies validate_password_strength: 12+ chars, upper, lower, digit, symbol.
+_COMPLIANT_PASSWORD = "Str0ng!Passw0rd"
+
+
+def _create_user(payload: dict):
     db = _CreateUserDB()
 
     async def fake_db() -> AsyncIterator[_CreateUserDB]:
@@ -197,22 +201,68 @@ def test_admin_can_create_user_with_valid_role():
     app.dependency_overrides[get_db] = fake_db
     app.dependency_overrides[require_user] = _admin_user
     try:
-        response = TestClient(app).post(
-            "/api/v1/users/",
-            json={
-                "email": "lead@example.com",
-                "full_name": "QA Lead",
-                "password": "strongpass123",
-                "role": "qa_lead",
-                "is_superuser": False,
-            },
-        )
+        response = TestClient(app).post("/api/v1/users/", json=payload)
     finally:
         app.dependency_overrides.clear()
+    return response, db
+
+
+def test_admin_can_create_user_with_valid_role():
+    response, _ = _create_user(
+        {
+            "email": "lead@example.com",
+            "full_name": "QA Lead",
+            "password": _COMPLIANT_PASSWORD,
+            "role": "qa_lead",
+            "is_superuser": False,
+        }
+    )
 
     assert response.status_code == 201
     assert response.json()["role"] == "qa_lead"
     assert response.json()["is_active"] is True
+
+
+def test_admin_created_email_is_lowercased_like_login():
+    """Login lowercases before looking up, so an address stored with the
+    capitalisation the admin typed produced an account that could never
+    authenticate.
+
+    EmailStr already lowercases the domain but preserves the local part, so
+    the local part is where the bug actually bit. Surrounding whitespace is
+    unreachable here (EmailStr 422s first), but the endpoint strips anyway to
+    stay identical to /register.
+    """
+    response, db = _create_user(
+        {
+            "email": "Admin@Local.com",
+            "full_name": "Admin",
+            "password": _COMPLIANT_PASSWORD,
+            "role": "qa_lead",
+            "is_superuser": False,
+        }
+    )
+
+    assert response.status_code == 201
+    assert db.created_user.email == "admin@local.com"
+
+
+def test_admin_created_user_must_meet_the_same_password_policy_as_register():
+    """Otherwise an admin can mint an account weaker than any user could
+    create for themselves."""
+    response, db = _create_user(
+        {
+            "email": "weak@example.com",
+            "full_name": "Weak",
+            "password": "strongpass123",  # no uppercase, no special character
+            "role": "qa_lead",
+            "is_superuser": False,
+        }
+    )
+
+    assert response.status_code == 400
+    assert "uppercase" in response.json()["detail"].lower()
+    assert db.created_user is None
 
 
 def test_last_active_admin_cannot_be_deactivated():
