@@ -713,34 +713,9 @@ async def trigger_quality_agent(
         )
     reqs = analysis_reqs
 
-    # Include id AND all telecom fields in the dict passed to agent
-    req_dicts = [
-        {
-            "id": r.id,
-            "requirement_id": r.requirement_id,
-            "title": r.title,
-            "summary": r.summary,
-            "acceptance_criteria": r.acceptance_criteria,
-            "business_rules": r.business_rules,
-            "user_roles": r.user_roles,
-            "systems_impacted": r.systems_impacted,
-            "impacted_interfaces": r.impacted_interfaces,
-            "ui_pages": r.ui_pages,
-            "apis": r.apis,
-            "dependencies": r.dependencies,
-            "risks": r.risks,
-            "missing_information": r.missing_information,
-            "telecom_domain": r.telecom_domain,
-            "test_phase": r.test_phase,
-            "risk_level": r.risk_level,
-            "release_version": r.release_version,
-            # Feed the owner's clarification answer back into Agent 2. Without
-            # this context a re-run evaluates only the original source and
-            # recreates the same missing-information finding.
-            "clarification_context": r.review_notes if (r.metadata_ or {}).get("clarification_resolved") else None,
-        }
-        for r in reqs
-    ]
+    # Include the current persisted revision and every quality-relevant field.
+    # This makes a post-edit Re-run distinct from the completed pre-edit run.
+    req_dicts = [requirement_service.build_quality_agent_input(r) for r in reqs]
 
     if not _run_agents_synchronously():
         agent_run, task_id = await enqueue_agent_run(

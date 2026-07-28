@@ -261,10 +261,22 @@ async def get_rag_status(
     )
     embedded_chunks = embedded_result.scalar() or 0
 
+    async def indexed_source_count(source_type: str) -> int:
+        result = await db.execute(
+            select(func.count(func.distinct(KnowledgeChunk.source_id))).where(
+                KnowledgeChunk.project_id == project_id,
+                KnowledgeChunk.is_active == True,  # noqa: E712
+                KnowledgeChunk.source_type == source_type,
+            )
+        )
+        return result.scalar() or 0
+
     return {
         "rag_enabled": settings.rag_enabled,
         "embedding_model": settings.embedding_model,
         "project_id": project_id,
+        "indexed_documents": await indexed_source_count("uploaded_document"),
+        "indexed_jira_stories": await indexed_source_count("jira"),
         "total_active_chunks": total_chunks,
         "embedded_chunks": embedded_chunks,
         "unembedded_chunks": total_chunks - embedded_chunks,

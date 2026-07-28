@@ -55,18 +55,11 @@ const NAV_ITEMS: NavGroup[] = [
     icon: Workflow,
     items: [
       { label: "Requirements", href: "/requirements", icon: FileText },
-      {
-        label: "Test Planning",
-        href: "/test-planning",
-        icon: ClipboardList,
-        children: [
-          { label: "Test Planning Dashboard", href: "/test-planning", icon: ClipboardList },
-          { label: "Generated Test Cases", href: "/test-cases?view=generated", icon: TestTube2 },
-          { label: "Test Case Editor", href: "/test-cases?view=editor", icon: TestTube2 },
-          { label: "Journey Graph", href: "/test-cases?view=journey-graph", icon: GitBranch },
-          { label: "Test Case Approval", href: "/test-cases?view=approval", icon: ShieldCheck },
-        ],
-      },
+      { label: "Test Planning & Scenarios", href: "/test-planning", icon: ClipboardList },
+      { label: "Test Cases", href: "/test-cases?view=generated", icon: TestTube2 },
+      { label: "Test Editor", href: "/test-cases?view=editor", icon: TestTube2 },
+      { label: "Test Case Approval", href: "/test-cases?view=approval", icon: ShieldCheck },
+      { label: "Journey Graph", href: "/test-cases?view=journey-graph", icon: GitBranch },
       {
         label: "Execution",
         href: "/execution",

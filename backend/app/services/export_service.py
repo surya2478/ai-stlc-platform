@@ -35,6 +35,7 @@ from app.models.requirement import Requirement
 from app.models.test_case import TestCase
 from app.models.test_plan import PlanTestCase
 from app.models.test_scenario import TestScenario
+from app.services.test_case_template import TEST_CASE_TEMPLATE_HEADERS
 
 # ── Excel cell helpers ──────────────────────────────────────────────────────
 
@@ -94,8 +95,9 @@ async def _fetch_all_test_cases(
     db: AsyncSession,
     project_id: int,
     include_drafts: bool = False,
+    test_case_ids: list[int] | None = None,
 ) -> list[TestCase]:
-    """Return all test cases for *project_id*, optionally including drafts."""
+    """Return project test cases, optionally including drafts or limiting IDs."""
     stmt = (
         select(TestCase)
         .where(TestCase.project_id == project_id)
@@ -111,6 +113,8 @@ async def _fetch_all_test_cases(
     )
     if not include_drafts:
         stmt = stmt.where(TestCase.status == "approved")
+    if test_case_ids is not None:
+        stmt = stmt.where(TestCase.id.in_(test_case_ids))
     stmt = stmt.order_by(TestCase.id)
     return list((await db.execute(stmt)).scalars().all())
 
@@ -181,8 +185,8 @@ def _template_row(
     latest_result: ExecutionResult | None,
     enrollment: PlanTestCase | None,
 ) -> list[Any]:
-    """Build one row in the UAT template's 22-column order (docs/autonomous-
-    automation-lab/test-case_template.xlsx). Values are raw (str/bool/None);
+    """Build the first 22 governed test-case fields in canonical order.
+    Values are raw (str/bool/None);
     callers coerce for their target format (Excel cell vs CSV field)."""
     overall_status = _OVERALL_STATUS_DISPLAY.get(
         (latest_result.status if latest_result else None) or "not_run", "Not Executed"
@@ -212,26 +216,6 @@ def _template_row(
         enrollment.planned_execution_sequence if enrollment else None,
         tc.is_critical,
     ]
-
-
-_TEMPLATE_HEADERS = [
-    "ID", "Domain", "Channel", "Product", "Area of Test", "Test Case ID",
-    "Environment", "Sub Request Type", "Test Case Objective", "Pre-Requisites",
-    "Test Steps", "Expected Results", "ATC Test Case", "Test Case Type",
-    "Test Case Complexity", "Tested By", "JIRA ID or PPM", "Overall Status",
-    "Blocking Snag ID / Other Reason", "SIT", "Planned Execution Sequence",
-    "Critical TC Mapping",
-]
-
-# Platform-specific columns kept after the 22 template columns so existing
-# consumers of these fields (traceability lineage, legacy automation
-# metadata) don't silently lose data.
-_PLATFORM_EXTRA_HEADERS = [
-    "Priority", "Severity", "BDD Scenario", "Approval Status",
-    "Requirement ID", "Requirement Title", "Scenario ID", "Scenario Title",
-    "Test Phase", "Product Group", "External TC ID", "External TC URL",
-    "Created At",
-]
 
 
 def _platform_extra_row(tc: TestCase, req: Requirement | None, scen: TestScenario | None) -> list[Any]:
@@ -273,8 +257,7 @@ async def _fetch_scenario_map(
 
 # ── Excel styling helpers ───────────────────────────────────────────────────
 #
-# Matches the source workbook's look (docs/autonomous-automation-lab/
-# test-case_template.xlsx, sheet "UAT Test Cases"): header row alternates
+# Matches the canonical workbook's look: the header row alternates
 # between bright green (#92D050) and dusty rose (#D99694, the workbook's
 # theme accent2 tinted 40%) per column, bold white Calibri 12, wrapped text.
 # Data rows: Calibri 11, white background, thin border, wrapped text.
@@ -326,16 +309,16 @@ async def export_test_cases_excel(
     db: AsyncSession,
     project_id: int,
     include_drafts: bool = False,
+    test_case_ids: list[int] | None = None,
 ) -> bytes:
     """
     Return an Excel workbook (bytes) with one row per test case, columns
-    matching the UAT template's 22-field order (docs/autonomous-automation-
-    lab/test-case_template.xlsx) followed by platform-specific extras.
+    matching the canonical 35-column test-case template.
     """
     from openpyxl import Workbook
     from openpyxl.utils import get_column_letter
 
-    test_cases = await _fetch_all_test_cases(db, project_id, include_drafts)
+    test_cases = await _fetch_all_test_cases(db, project_id, include_drafts, test_case_ids)
     req_map = await _fetch_requirement_map(db, project_id)
     scen_map = await _fetch_scenario_map(db, project_id)
     tc_ids = [tc.id for tc in test_cases]
@@ -346,7 +329,7 @@ async def export_test_cases_excel(
     ws = wb.active
     ws.title = "Test Cases"
 
-    headers = _TEMPLATE_HEADERS + _PLATFORM_EXTRA_HEADERS
+    headers = TEST_CASE_TEMPLATE_HEADERS
 
     ws.row_dimensions[1].height = 30
     for col_idx, header in enumerate(headers, 1):
@@ -391,10 +374,10 @@ async def export_test_cases_csv(
     db: AsyncSession,
     project_id: int,
     include_drafts: bool = False,
+    test_case_ids: list[int] | None = None,
 ) -> str:
-    """Return a plain CSV string of all test cases, columns matching the
-    UAT template's 22-field order followed by platform-specific extras."""
-    test_cases = await _fetch_all_test_cases(db, project_id, include_drafts)
+    """Return a plain CSV string using the canonical 35-column template."""
+    test_cases = await _fetch_all_test_cases(db, project_id, include_drafts, test_case_ids)
     req_map = await _fetch_requirement_map(db, project_id)
     scen_map = await _fetch_scenario_map(db, project_id)
     tc_ids = [tc.id for tc in test_cases]
@@ -403,7 +386,7 @@ async def export_test_cases_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf, dialect="excel")
-    writer.writerow(_TEMPLATE_HEADERS + _PLATFORM_EXTRA_HEADERS)
+    writer.writerow(TEST_CASE_TEMPLATE_HEADERS)
 
     for tc in test_cases:
         req = req_map.get(tc.requirement_id) if tc.requirement_id else None
@@ -424,6 +407,7 @@ async def export_test_cases_xray_csv(
     db: AsyncSession,
     project_id: int,
     include_drafts: bool = False,
+    test_case_ids: list[int] | None = None,
 ) -> str:
     """
     Return an Xray-compatible CSV string for Jira Xray import.
@@ -434,7 +418,7 @@ async def export_test_cases_xray_csv(
 
     Ref: https://docs.getxray.app/display/XRAY/Importing+Test+Cases+from+CSV
     """
-    test_cases = await _fetch_all_test_cases(db, project_id, include_drafts)
+    test_cases = await _fetch_all_test_cases(db, project_id, include_drafts, test_case_ids)
     req_map = await _fetch_requirement_map(db, project_id)
 
     buf = io.StringIO()

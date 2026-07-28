@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AutomationClassificationPolicyOut(BaseModel):
@@ -20,6 +20,11 @@ class AutomationClassificationPolicyOut(BaseModel):
     published_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class AutomationClassificationPolicyUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    rules: dict
 
 
 class ClassificationPolicySimulateRequest(BaseModel):

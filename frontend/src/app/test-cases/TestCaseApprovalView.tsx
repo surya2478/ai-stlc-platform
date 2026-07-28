@@ -31,6 +31,7 @@ import {
 import {
   applicationsApi,
   automationClassificationApi,
+  exportApi,
   isClassificationDisabled,
   projectsApi,
   requirementsApi,
@@ -347,7 +348,7 @@ export function TestCaseApprovalView({ projectId, initialTestCaseId = null }: { 
     finally { setLoading(false); }
 
     // Loaded separately from the Promise.all above: a 404 here just means
-    // AUTOMATION_CLASSIFICATION_ENABLED is off and must not break the rest
+    // Classification failures must not break the rest
     // of the (already working) approval queue.
     try {
       const clsRes = await automationClassificationApi.listForProject(projectId);
@@ -525,17 +526,36 @@ export function TestCaseApprovalView({ projectId, initialTestCaseId = null }: { 
     finally { setBusy(""); }
   }
 
-  function exportQueue() {
-    const header = ["TC ID", "Requirement ID", "PPM ID", "Title", "Status", "Reviewer", "Validation", "Journey Coverage", "Evidence", "Application", "Updated At"];
-    const body = filtered.map((row) => [row.testCase.test_case_id, row.requirement?.requirement_id || "", ppmId(row.requirement), row.testCase.title, row.status, row.reviewer?.full_name || "Unassigned", row.validationScore, row.journeyCoverage, row.evidence.join("; "), row.application?.name || "", row.testCase.updated_at]);
-    const csv = [header, ...body].map((line) => line.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `test-case-approval-project-${projectId}.csv`; anchor.click(); URL.revokeObjectURL(url);
+  async function exportQueue() {
+    if (!projectId) return;
+    try {
+      await exportApi.downloadTestCases(
+        projectId,
+        "excel",
+        true,
+        filtered.map((row) => row.testCase.id),
+        `test_cases_approval_project_${projectId}.xlsx`,
+      );
+      setNotice("Review queue exported in the canonical test-case import template.");
+    } catch (exportError) {
+      setError(errorMessage(exportError, "Could not export the review queue."));
+    }
   }
 
-  function exportSelected() {
-    if (!selected) return;
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ test_case: selected.testCase, requirement: selected.requirement, scenario: selected.scenario, application: selected.application, review: selected.review, approval_history: approvals.filter((item) => item.entity_id === selected.testCase.id), change_history: history }, null, 2)], { type: "application/json" }));
-    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${selected.testCase.test_case_id}-approval-record.json`; anchor.click(); URL.revokeObjectURL(url);
+  async function exportSelected() {
+    if (!projectId || !selected) return;
+    try {
+      await exportApi.downloadTestCases(
+        projectId,
+        "excel",
+        true,
+        [selected.testCase.id],
+        `${selected.testCase.test_case_id}.xlsx`,
+      );
+      setNotice(`${selected.testCase.test_case_id} exported in the canonical test-case import template.`);
+    } catch (exportError) {
+      setError(errorMessage(exportError, "Could not export the test case."));
+    }
   }
 
   const domains = Array.from(new Set(rows.map((row) => row.requirement?.telecom_domain || row.testCase.telecom_domain).filter(Boolean))) as string[];
@@ -551,7 +571,7 @@ export function TestCaseApprovalView({ projectId, initialTestCaseId = null }: { 
       <div className="flex items-center gap-2 text-[10px] font-semibold text-slate-500"><span>e&amp; STLC</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-[#1b59f8]">Test Planning</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-slate-800">Test Case Approval</span></div>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-[270px] flex-1 items-start gap-3"><span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-purple-100 bg-purple-50 text-purple-600"><FileCheck2 className="h-4 w-4" /></span><div><div className="flex items-center gap-2"><h1 className="text-xl font-black text-slate-950">Test Case Approval</h1><Badge tone="purple">P1-S3 UI-013</Badge></div><p className="mt-1 text-sm font-normal leading-5 text-slate-500">Independently review and approve validated test cases before discovery and execution.</p></div></div>
-        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2"><span className="text-[9px] font-semibold text-slate-500">Last refreshed: {lastRefreshed ? dateTime(lastRefreshed.toISOString()) : "Not yet refreshed"}</span><Button variant="outline" onClick={() => void loadData()} disabled={loading} className="h-8 gap-1.5 px-3 text-[10px] font-bold"><RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />Refresh</Button><Button variant="outline" onClick={exportQueue} disabled={!filtered.length} className="h-8 gap-1.5 px-3 text-[10px] font-bold"><Download className="h-3.5 w-3.5" />Export Review Queue</Button><Button onClick={() => void approveRows(rows.filter((row) => selectedIds.has(row.testCase.id)))} disabled={!selectedIds.size || busy === "approve" || !canApprove} className="h-8 gap-1.5 bg-[#1b59f8] px-3 text-[10px] font-bold text-white"><Check className="h-3.5 w-3.5" />Approve Selected</Button></div>
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2"><span className="text-[9px] font-semibold text-slate-500">Last refreshed: {lastRefreshed ? dateTime(lastRefreshed.toISOString()) : "Not yet refreshed"}</span><Button variant="outline" onClick={() => void loadData()} disabled={loading} className="h-8 gap-1.5 px-3 text-[10px] font-bold"><RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />Refresh</Button><Button variant="outline" onClick={() => void exportQueue()} disabled={!filtered.length} className="h-8 gap-1.5 px-3 text-[10px] font-bold"><Download className="h-3.5 w-3.5" />Export Review Queue (.xlsx)</Button><Button onClick={() => void approveRows(rows.filter((row) => selectedIds.has(row.testCase.id)))} disabled={!selectedIds.size || busy === "approve" || !canApprove} className="h-8 gap-1.5 bg-[#1b59f8] px-3 text-[10px] font-bold text-white"><Check className="h-3.5 w-3.5" />Approve Selected</Button></div>
       </header>
 
       {error && <div role="alert" className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-bold text-red-700"><span className="flex items-center gap-2"><AlertTriangle className="h-3.5 w-3.5" />{error}</span><button aria-label="Dismiss error" onClick={() => setError("")}><X className="h-3.5 w-3.5" /></button></div>}
@@ -606,7 +626,7 @@ export function TestCaseApprovalView({ projectId, initialTestCaseId = null }: { 
             {assigning && <div className="mb-2 rounded-md border border-slate-200 bg-white p-2"><select aria-label="Assigned reviewer" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)} className="h-8 w-full rounded border border-slate-200 px-2 text-[9px]"><option value="">Select reviewer</option>{activeReviewerUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name} · {activeMembershipByUser.get(user.id)?.role}</option>)}</select><div className="mt-2 flex gap-2"><Button onClick={() => void assignReviewer()} disabled={!assigneeId || Boolean(busy)} className="h-8 flex-1 bg-[#1b59f8] text-[9px] font-bold text-white">Save Assignment</Button><Button variant="outline" onClick={() => setAssigning(false)} className="h-8 text-[9px] font-bold">Cancel</Button></div></div>}
             <div className="grid grid-cols-1 gap-2 2xl:grid-cols-3"><Button onClick={() => void approveRows([selected])} disabled={selected.blockers.length > 0 || Boolean(busy) || !canApprove || selected.status === "Approved"} className="h-9 bg-emerald-500 text-[9px] font-bold text-white disabled:bg-slate-200"><ShieldCheck className="mr-1 h-3.5 w-3.5" />Approve Test Case</Button><Button variant="outline" onClick={() => setDecisionMode("changes")} className="h-9 border-amber-300 text-[9px] font-bold text-amber-700">Request Changes</Button><Button variant="outline" onClick={() => setDecisionMode("reject")} className="h-9 border-red-300 text-[9px] font-bold text-red-700">Reject Test Case</Button></div>
             <div className="mt-2 grid grid-cols-1 gap-2 2xl:grid-cols-3"><Button variant="outline" onClick={() => router.push(`/test-cases?project=${projectId}&view=editor&case=${selected.testCase.id}`)} className="h-9 text-[9px] font-bold"><ChevronLeft className="mr-1 h-3.5 w-3.5" />Send Back to Editor</Button><Button variant="outline" onClick={() => router.push(`/test-cases?project=${projectId}&view=journey-graph&journey=${encodeURIComponent(selected.journeyId)}&case=${selected.testCase.id}`)} className="h-9 text-[9px] font-bold"><GitBranch className="mr-1 h-3.5 w-3.5" />Journey Graph</Button><Button variant="outline" onClick={() => setAssigning(true)} className="h-9 text-[9px] font-bold"><UserRound className="mr-1 h-3.5 w-3.5" />Assign Reviewer</Button></div>
-            <div className="mt-2 grid grid-cols-1 gap-2 2xl:grid-cols-3"><Button variant="outline" onClick={() => setInspectorTab("traceability")} className="h-9 text-[9px] font-bold"><Link2 className="mr-1 h-3.5 w-3.5" />View Full Trace</Button><Button variant="outline" onClick={() => setInspectorTab("activity")} className="h-9 text-[9px] font-bold"><History className="mr-1 h-3.5 w-3.5" />View Audit Log</Button><Button variant="outline" onClick={exportSelected} className="h-9 text-[9px] font-bold"><Download className="mr-1 h-3.5 w-3.5" />Export Test Case</Button></div>
+            <div className="mt-2 grid grid-cols-1 gap-2 2xl:grid-cols-3"><Button variant="outline" onClick={() => setInspectorTab("traceability")} className="h-9 text-[9px] font-bold"><Link2 className="mr-1 h-3.5 w-3.5" />View Full Trace</Button><Button variant="outline" onClick={() => setInspectorTab("activity")} className="h-9 text-[9px] font-bold"><History className="mr-1 h-3.5 w-3.5" />View Audit Log</Button><Button variant="outline" onClick={() => void exportSelected()} className="h-9 text-[9px] font-bold"><Download className="mr-1 h-3.5 w-3.5" />Export Test Case (.xlsx)</Button></div>
           </Panel>
         </div>
       </div>}

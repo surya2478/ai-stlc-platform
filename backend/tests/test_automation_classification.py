@@ -22,6 +22,7 @@ from app.services.test_classification import (
     policy_resolver,
     scoring_service,
 )
+from app.services.test_classification.policy_defaults import default_policy_rules
 from app.services.test_classification.context import ClassificationContext
 
 
@@ -197,7 +198,35 @@ def test_pre_agent_conditional_warns_on_missing_test_data():
 def test_pre_agent_guardrail_blocks_captcha_regardless_of_policy():
     ctx = _ctx(test_case=_test_case(metadata_={"classification_flags": {"captcha_dependency": True}}))
     result = deterministic_rules.evaluate_pre_agent(ctx)
-    assert any(f.code == "unsupported_application" for f in result.blockers)
+    assert any(f.code == "manual_only:captcha" for f in result.blockers)
+
+
+def test_default_manual_only_condition_blocks_atm_test_with_clear_message():
+    ctx = _ctx(test_case=_test_case(title="Verify cash withdrawal on an ATM machine"))
+    result = deterministic_rules.evaluate_pre_agent(ctx)
+    finding = next(item for item in result.blockers if item.code == "manual_only:atm")
+    assert finding.label == "Automation not possible: ATM machine"
+    assert "physical ATM hardware" in finding.detail
+    assert "Matched configured keyword 'atm'" in finding.detail
+
+
+def test_project_can_define_custom_manual_only_condition():
+    policy = _policy(
+        rules={
+            "manual_only_conditions": [
+                {
+                    "code": "smart_card_reader",
+                    "label": "Physical smart-card reader",
+                    "keywords": ["smart card reader"],
+                    "reason": "A certified reader and physical card are required.",
+                }
+            ],
+            "candidate_rules": {"block_if": [], "conditional_if": []},
+        }
+    )
+    ctx = _ctx(policy=policy, test_case=_test_case(title="Validate smart card reader authentication"))
+    result = deterministic_rules.evaluate_pre_agent(ctx)
+    assert [item.code for item in result.blockers] == ["manual_only:smart_card_reader"]
 
 
 def test_capability_mandatory_gap_always_blocks_even_without_policy_config():
@@ -216,6 +245,37 @@ def test_scores_are_clamped_0_to_100():
     assert 0 <= complexity <= 100
     assert 0 <= automation_value <= 100
     assert len(factors) == 9  # 5 automation_value + 4 complexity factors
+
+
+def test_default_policy_is_safe_and_available_without_environment_flags():
+    rules = default_policy_rules()
+    candidate = rules["candidate_rules"]
+    assert candidate["minimum_automation_value_score"] == 60
+    assert "missing_expected_result" in candidate["block_if"]
+    assert "unsupported_application" in candidate["conditional_if"]
+    assert rules["routing_rules"][0]["primary_adapter"] == "PLAYWRIGHT_MCP"
+
+
+@pytest.mark.anyio
+async def test_publish_project_policy_creates_versioned_project_override():
+    previous = _policy(id_=8, project_id=9, version=2)
+    db = _FakeDB(responses=[[previous]])
+    rules = default_policy_rules()
+    rules["candidate_rules"]["minimum_automation_value_score"] = 75
+
+    published = await policy_resolver.publish_project_policy(
+        db,
+        project_id=9,
+        name="Project 9 policy",
+        rules=rules,
+        user_id=4,
+    )
+
+    assert published.project_id == 9
+    assert published.version == 3
+    assert published.parent_policy_id == 8
+    assert published.status == "published"
+    assert published.rules["candidate_rules"]["minimum_automation_value_score"] == 75
 
 
 def test_more_external_dependencies_increase_complexity():

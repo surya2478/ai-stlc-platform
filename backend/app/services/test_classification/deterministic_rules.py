@@ -18,10 +18,13 @@ taxonomy is hard-coded here (constraint #8).
 """
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass, field
 from typing import Callable
 
 from app.services.test_classification.context import ClassificationContext
+from app.services.test_classification.policy_defaults import default_policy_rules
 
 BLOCKING_TERMINAL_STATUSES = {"rejected"}
 
@@ -120,15 +123,56 @@ def _check_scenario_not_approved(ctx: ClassificationContext) -> RuleFinding | No
     return None
 
 
-def _check_captcha_otp(ctx: ClassificationContext) -> RuleFinding | None:
+def _test_case_search_text(ctx: ClassificationContext) -> str:
+    tc = ctx.test_case
+    values = [
+        tc.title,
+        getattr(tc, "test_case_objective", None),
+        tc.expected_result,
+        tc.bdd_scenario,
+        tc.preconditions,
+        tc.steps,
+        tc.test_data,
+    ]
+    return " ".join(json.dumps(value, default=str) if isinstance(value, (dict, list)) else str(value or "") for value in values).casefold()
+
+
+def _manual_only_findings(ctx: ClassificationContext) -> list[RuleFinding]:
+    rules = ctx.policy.rules or {}
+    conditions = (
+        rules["manual_only_conditions"]
+        if "manual_only_conditions" in rules
+        else default_policy_rules()["manual_only_conditions"]
+    )
+    search_text = _test_case_search_text(ctx)
     flags = _classification_flags(ctx)
-    if flags.get("captcha_dependency") or flags.get("otp_dependency") or flags.get("biometric_dependency"):
-        return RuleFinding(
-            "unsupported_application",
-            "CAPTCHA/OTP/biometric dependency",
-            "Test case depends on CAPTCHA, OTP or biometric verification that cannot be automated deterministically.",
+    findings: list[RuleFinding] = []
+    for condition in conditions:
+        label = str(condition.get("label") or condition.get("code") or "Configured manual-only condition").strip()
+        reason = str(condition.get("reason") or "This configured condition prevents unattended automation.").strip()
+        matched = next(
+            (
+                str(keyword).strip()
+                for keyword in condition.get("keywords") or []
+                if str(keyword).strip()
+                and re.search(rf"(?<!\w){re.escape(str(keyword).strip().casefold())}(?!\w)", search_text)
+            ),
+            None,
         )
-    return None
+        matched_flag = next(
+            (str(flag) for flag in condition.get("metadata_flags") or [] if flags.get(str(flag))),
+            None,
+        )
+        if matched or matched_flag:
+            source = f"Matched configured keyword '{matched}'." if matched else f"Matched test-case flag '{matched_flag}'."
+            findings.append(
+                RuleFinding(
+                    f"manual_only:{condition.get('code') or 'custom'}",
+                    f"Automation not possible: {label}",
+                    f"{reason} {source}",
+                )
+            )
+    return findings
 
 
 def _check_destructive(ctx: ClassificationContext) -> RuleFinding | None:
@@ -143,7 +187,6 @@ def _check_destructive(ctx: ClassificationContext) -> RuleFinding | None:
 # by the agent or by policy conditional_if downgrade (constraint: "Security
 # and regulatory guardrails" sit above every other precedence tier).
 _GUARDRAIL_CHECKS: list[Callable[[ClassificationContext], RuleFinding | None]] = [
-    _check_captcha_otp,
     _check_destructive,
 ]
 
@@ -167,6 +210,8 @@ def evaluate_pre_agent(ctx: ClassificationContext) -> DeterministicResult:
         finding = check(ctx)
         if finding is not None:
             result.blockers.append(finding)
+
+    result.blockers.extend(_manual_only_findings(ctx))
 
     candidate_rules = (ctx.policy.rules or {}).get("candidate_rules") or {}
     block_if = set(candidate_rules.get("block_if") or [])

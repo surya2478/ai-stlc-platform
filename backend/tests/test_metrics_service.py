@@ -214,6 +214,13 @@ class SmartFakeSession:
                 rep.status = "published"
                 rep.created_at = datetime(2026, 6, 13, 12, 0, 0)
                 return [rep]
+        elif "from agent_runs" in compiled or "agent_runs." in compiled:
+            run = MagicMock()
+            run.agent_name = "test_case"
+            run.status = "completed"
+            run.progress_message = "Generated test cases"
+            run.updated_at = datetime(2026, 6, 13, 13, 0, 0)
+            return [run]
         
         return 0
 
@@ -245,7 +252,7 @@ async def test_metrics_service_normal_calculations():
     assert metrics.execution.completedRuns == 2
     assert metrics.execution.passed == 15
     assert metrics.execution.failed == 1
-    assert metrics.execution.completionPercentage == 160.0
+    assert metrics.execution.completionPercentage == 100.0
     assert metrics.execution.passRatePercentage == 93.8
 
     assert metrics.defects.total == 2
@@ -253,8 +260,9 @@ async def test_metrics_service_normal_calculations():
     assert metrics.defects.critical == 0
     assert metrics.defects.high == 0
 
-    assert metrics.releaseReadiness.status == "AT-RISK"  # readiness index is 71.4%
-    assert metrics.releaseReadiness.score == 71.4
+    assert metrics.releaseReadiness.status == "NO-GO"
+    assert metrics.releaseReadiness.score == 62.4
+    assert any(activity.is_agent for activity in metrics.recentActivities)
 
 
 @pytest.mark.anyio

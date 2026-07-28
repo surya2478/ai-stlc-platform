@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, Suspense } from "react";
-import { Bell, Plus, Search, User, CheckCircle2, ChevronDown, HelpCircle, Sun, Moon, LogOut } from "lucide-react";
+import { Bell, Plus, Search, User, CheckCircle2, AlertTriangle, MinusCircle, ChevronDown, HelpCircle, Sun, Moon, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { authApi, projectsApi, usersApi, type Project } from "@/lib/api";
@@ -14,6 +14,7 @@ function HeaderContent() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [jiraSync, setJiraSync] = useState<{ synced: number; failures: number; conflicts: number } | null>(null);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ full_name: string; email: string; role: string } | null>(null);
 
@@ -23,6 +24,20 @@ function HeaderContent() {
       .then((res) => setCurrentUser(res.data))
       .catch((err) => console.error("Failed to load current user:", err));
   }, []);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setJiraSync(null);
+      return;
+    }
+    projectsApi.dashboardMetrics(selectedProjectId)
+      .then(({ data }) => setJiraSync({
+        synced: data.jiraSync.syncedCount,
+        failures: data.jiraSync.failureCount,
+        conflicts: data.jiraSync.conflictCount,
+      }))
+      .catch(() => setJiraSync(null));
+  }, [selectedProjectId]);
 
   const userInitials = useMemo(() => {
     if (!currentUser?.full_name) return "??";
@@ -129,9 +144,26 @@ function HeaderContent() {
         )}
 
         {/* Jira Sync Badge */}
-        <div className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap bg-emerald-50 border border-emerald-100 rounded-full px-2.5 py-1 text-[10px] font-semibold text-emerald-700 xl:flex">
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-          <span>Jira Synced just now</span>
+        <div className={cn(
+          "hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-semibold xl:flex",
+          jiraSync && (jiraSync.failures > 0 || jiraSync.conflicts > 0)
+            ? "border-red-100 bg-red-50 text-red-700"
+            : jiraSync && jiraSync.synced > 0
+              ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+              : "border-slate-200 bg-slate-50 text-slate-500"
+        )}>
+          {jiraSync && (jiraSync.failures > 0 || jiraSync.conflicts > 0)
+            ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            : jiraSync && jiraSync.synced > 0
+              ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              : <MinusCircle className="h-3.5 w-3.5 shrink-0" />}
+          <span>
+            {jiraSync && (jiraSync.failures > 0 || jiraSync.conflicts > 0)
+              ? `${jiraSync.failures + jiraSync.conflicts} Jira sync issue(s)`
+              : jiraSync && jiraSync.synced > 0
+                ? `${jiraSync.synced} Jira item(s) synced`
+                : "No Jira sync activity"}
+          </span>
         </div>
       </div>
 

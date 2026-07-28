@@ -87,6 +87,10 @@ async def export_test_cases(
     current_user: CurrentUser,
     format: Literal["excel", "csv", "xray"] = Query("excel", description="Export format"),
     include_drafts: bool = Query(False),
+    test_case_ids: str | None = Query(
+        None,
+        description="Optional comma-separated test-case database IDs to export",
+    ),
 ):
     """
     Export all test cases for a project.
@@ -102,23 +106,35 @@ async def export_test_cases(
     - BDD test cases → emitted as Cucumber type in Xray CSV
     """
     await require_project_access(project_id, current_user, db)
+    selected_ids: list[int] | None = None
+    if test_case_ids is not None:
+        try:
+            selected_ids = sorted({
+                int(value.strip())
+                for value in test_case_ids.split(",")
+                if value.strip()
+            })
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="test_case_ids must contain only integer IDs") from exc
+        if not selected_ids:
+            raise HTTPException(status_code=422, detail="test_case_ids must contain at least one ID")
 
     if format == "excel":
-        data = await export_service.export_test_cases_excel(db, project_id, include_drafts)
+        data = await export_service.export_test_cases_excel(db, project_id, include_drafts, selected_ids)
         return Response(
             content=data,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename=test_cases_project_{project_id}.xlsx"},
         )
     elif format == "csv":
-        data = await export_service.export_test_cases_csv(db, project_id, include_drafts)
+        data = await export_service.export_test_cases_csv(db, project_id, include_drafts, selected_ids)
         return Response(
             content=data.encode("utf-8-sig"),  # BOM for Excel compatibility
             media_type="text/csv; charset=utf-8",
             headers={"Content-Disposition": f"attachment; filename=test_cases_project_{project_id}.csv"},
         )
     elif format == "xray":
-        data = await export_service.export_test_cases_xray_csv(db, project_id, include_drafts)
+        data = await export_service.export_test_cases_xray_csv(db, project_id, include_drafts, selected_ids)
         return Response(
             content=data.encode("utf-8-sig"),
             media_type="text/csv; charset=utf-8",

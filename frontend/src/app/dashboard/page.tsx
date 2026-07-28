@@ -15,9 +15,10 @@ import {
 } from "lucide-react";
 import {
   projectsApi, requirementsApi, testCasesApi,
-  automationApi, executionApi, defectsApi, agentRunsApi, testPlansApi, testDataApi,
+  automationApi, executionApi, defectsApi, agentRunsApi, testPlansApi, testDataApi, ragApi,
   type Project, type ExecutionRun, type AgentRun, type Requirement,
-  type TestCase, type TestDataItem, type TestPlan, type DefectDraft, type DashboardMetrics
+  type TestCase, type TestDataItem, type TestPlan, type DefectDraft, type DashboardMetrics,
+  type RagProjectStatus
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
@@ -41,6 +42,18 @@ function formatTimeAgo(dateString?: string | null): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+function isPendingTestCaseReview(testCase: TestCase): boolean {
+  return ["draft", "pending_approval"].includes(testCase.status) ||
+    ["pending", "pending_approval"].includes(testCase.approval_status);
+}
+
+function qualityScorePercent(score: number): number {
+  // Requirement analysis stores quality on a 0-5 scale. Retain compatibility
+  // with older imported records that already contain percentages.
+  const normalized = score <= 5 ? score * 20 : score;
+  return Math.round(Math.min(100, Math.max(0, normalized)));
 }
 
 // ── Circular Progress Ring ────────────────────────────────────────────────────
@@ -192,6 +205,7 @@ function DashboardContent() {
   const [execRuns, setExecRuns] = useState<ExecutionRun[]>([]);
   const [defects, setDefects] = useState<DefectDraft[]>([]);
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
+  const [ragStatus, setRagStatus] = useState<RagProjectStatus | null>(null);
   const [scriptsCount, setScriptsCount] = useState<number>(0);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [newDropdownOpen, setNewDropdownOpen] = useState(false);
@@ -224,7 +238,7 @@ function DashboardContent() {
         console.error("Failed to load centralized dashboard metrics", err);
         setMetricsError(msg);
       }
-      const [reqRes, planRes, tcRes, dataRes, execRes, defRes, agentRes, autoRes] =
+      const [reqRes, planRes, tcRes, dataRes, execRes, defRes, agentRes, autoRes, ragRes] =
         await Promise.allSettled([
           requirementsApi.list(selectedProjectId),
           testPlansApi.list(selectedProjectId),
@@ -234,6 +248,7 @@ function DashboardContent() {
           defectsApi.list(selectedProjectId),
           agentRunsApi.list(selectedProjectId, { limit: 100 }),
           automationApi.list(selectedProjectId),
+          ragApi.status(selectedProjectId),
         ]);
       setRequirements(reqRes.status === "fulfilled" ? reqRes.value.data : []);
       setTestPlans(planRes.status === "fulfilled" ? planRes.value.data : []);
@@ -243,6 +258,7 @@ function DashboardContent() {
       setDefects(defRes.status === "fulfilled" ? defRes.value.data : []);
       setAgentRuns(agentRes.status === "fulfilled" ? agentRes.value.data : []);
       setScriptsCount(autoRes.status === "fulfilled" ? autoRes.value.data.length : 0);
+      setRagStatus(ragRes.status === "fulfilled" ? ragRes.value.data : null);
       setLastUpdated(new Date());
     } catch (e) {
       console.error("Failed to load dashboard data", e);
@@ -314,7 +330,12 @@ function DashboardContent() {
     const approvedReqs = requirements.filter(r => r.status === "approved").length;
     const pendingReqs = requirements.filter(r => r.status === "pending_review" || r.status === "draft").length;
     const totalTCs = testCases.length;
-    const automatedTCs = testCases.filter(t => t.mode === "automated" || t.execution_mode === "automated").length;
+    const automatedTCs = testCases.filter(t =>
+      t.mode === "automated" ||
+      ["automation", "automated"].includes(t.execution_mode) ||
+      t.automation_status === "automated" ||
+      Boolean(t.automation_script_id)
+    ).length;
     const totalData = testData.length;
     const approvedData = testData.filter(d => d.approval_status === "approved").length;
     const totalRuns = mergedRuns.length;
@@ -416,7 +437,7 @@ function DashboardContent() {
         note = s.rate === 100 ? "Complete" : `${Math.max(0, s.total - s.current)} pending`;
       } else if (s.label === "Test Cases") {
         risk = s.rate >= 70 ? "Medium" : "High";
-        const pendingTC = testCases.filter(t => t.status === "draft" || t.approval_status === "pending").length;
+        const pendingTC = testCases.filter(isPendingTestCaseReview).length;
         note = pendingTC > 0 ? `${pendingTC} pending review` : "All reviewed";
       } else if (s.label === "Test Data") {
         risk = s.total === 0 ? "Medium" : s.rate >= 80 ? "Low" : "Medium";
@@ -485,7 +506,7 @@ function DashboardContent() {
       const min = index === 0 ? 0 : buckets[index - 1].max;
       const count = defects.filter(d => {
         const age = (now - new Date(d.created_at).getTime()) / 86400000;
-        return age >= min && age <= b.max;
+        return (index === 0 ? age >= min : age > min) && age <= b.max;
       }).length;
       return { label: b.label, count, pct: Math.round((count / total) * 100), color: b.color };
     });
@@ -539,7 +560,7 @@ function DashboardContent() {
       });
     };
     addItem(requirements.filter(r => r.status === "pending_review") as never[], "Requirement Approval Needed", "High Priority", (i) => (i as Requirement).requirement_id || `REQ-${(i as Requirement).id}`);
-    addItem(testCases.filter(t => t.status === "draft" || t.approval_status === "pending") as never[], "Test Case Verification Review", "Medium Priority", (i) => (i as TestCase).test_case_id || `TC-${(i as TestCase).id}`);
+    addItem(testCases.filter(isPendingTestCaseReview) as never[], "Test Case Verification Review", "Medium Priority", (i) => (i as TestCase).test_case_id || `TC-${(i as TestCase).id}`);
     addItem(defects.filter(d => d.status === "draft" || d.status === "pending_review") as never[], "Defect Triage Approval", "High Priority", (i) => (i as DefectDraft).defect_id || `DEF-${(i as DefectDraft).id}`);
     if (!list.length) list.push({ title: "Test Suite Signoff & Approval", subtitle: "Release sprint package ready", count: 0, priority: "Clear", priorityColor: "text-emerald-600 bg-emerald-50 border-emerald-100" });
     return list.slice(0, 3);
@@ -552,7 +573,7 @@ function DashboardContent() {
       return (metrics.recentActivities ?? []).map(act => ({
         user: act.user, action: act.action, subject: act.subject,
         time: act.time ? formatTimeAgo(act.time) : "Just now",
-        timestamp: timestampFromDate(act.time), isAgent: (act as any).is_agent ?? false,
+        timestamp: timestampFromDate(act.time), isAgent: act.is_agent,
       }));
     }
     const activities: ActivityItem[] = [];
@@ -572,10 +593,10 @@ function DashboardContent() {
   // ── Critical blockers summary ────────────────────────────────────────────────
   const criticalBlockers = useMemo(() => {
     const hcDefects = stats.criticalDefects + stats.highDefects;
-    const pendingApprovalCount = pendingApprovals.filter(p => p.count > 0).length;
-    const testDataGaps = stats.totalData === 0 ? 1 : 0;
-    const total = (stats.criticalDefects > 0 ? 1 : 0) + (pendingApprovalCount > 0 ? 1 : 0) +
-      (testDataGaps > 0 ? 1 : 0) + (stats.pendingReqs > 10 ? 1 : 0) + (stats.autoPct < 50 ? 1 : 0);
+    const pendingApprovalCount = pendingApprovals.reduce((sum, item) => sum + item.count, 0);
+    const testDataGaps = stats.totalTCs > 0 && stats.totalData === 0 ? 1 : 0;
+    // The total must be the exact sum of the three blocker categories shown.
+    const total = hcDefects + pendingApprovalCount + testDataGaps;
     return { total, hcDefects, pendingApprovalCount, testDataGaps };
   }, [stats, pendingApprovals]);
 
@@ -612,7 +633,7 @@ function DashboardContent() {
 
   const nextBestActions = useMemo<DashboardAction[]>(() => [
     { title: `Approve ${stats.pendingReqs} requirements`, label: stats.pendingReqs ? "High impact" : "No pending items", variant: "high", href: "/requirements" },
-    { title: `Review ${testCases.filter(tc => tc.status === "draft" || tc.approval_status === "pending").length} test cases`, label: "Review queue", variant: "ai", href: "/test-cases" },
+    { title: `Review ${testCases.filter(isPendingTestCaseReview).length} test cases`, label: "Review queue", variant: "ai", href: "/test-cases" },
     { title: stats.totalData ? `Review ${stats.pendingData} test data sets` : "Generate synthetic test data", label: stats.totalData ? "Data readiness" : "No data available", variant: "warning", href: "/test-data" },
     { title: `Triage ${stats.criticalDefects + stats.highDefects} high/critical defects`, label: "Release risk", variant: "critical", href: "/defects" },
     { title: `Monitor ${stats.runningRuns} active executions`, label: `${stats.failedRuns} failed runs`, variant: "warning", href: "/execution/dashboard" },
@@ -620,9 +641,10 @@ function DashboardContent() {
 
   const aiQuality = useMemo(() => {
     const scored = requirements.map(req => req.quality_score).filter((score): score is number => typeof score === "number");
+    const percentages = scored.map(qualityScorePercent);
     return {
-      confidence: scored.length ? Math.round(scored.reduce((sum, score) => sum + score, 0) / scored.length) : null,
-      sparkline: scored.slice(-7),
+      confidence: percentages.length ? Math.round(percentages.reduce((sum, score) => sum + score, 0) / percentages.length) : null,
+      sparkline: percentages.slice(-7),
       ambiguity: stats.totalReqs ? Math.round((requirements.filter(req => (req.missing_information?.length ?? 0) > 0).length / stats.totalReqs) * 100) : 0,
       coverageGaps: 100 - traceability.reqToTC,
       defectRisk: stats.totalDefects ? Math.round(((stats.criticalDefects + stats.highDefects) / stats.totalDefects) * 100) : 0,
@@ -804,9 +826,9 @@ function DashboardContent() {
           <CardContent className="p-4 pt-1">
             <div className="grid grid-cols-3 gap-2 mt-1">
               {[
-                { label: "Docs Indexed", value: "—" },
-                { label: "Jira Stories", value: "—" },
-                { label: "Chunks", value: "—" },
+                { label: "Docs Indexed", value: ragStatus?.indexed_documents ?? 0 },
+                { label: "Jira Stories", value: ragStatus?.indexed_jira_stories ?? 0 },
+                { label: "Chunks", value: ragStatus?.total_active_chunks ?? 0 },
               ].map(m => (
                 <div key={m.label} className="text-center">
                   <div className="text-base font-bold text-slate-800">{m.value}</div>
@@ -816,15 +838,22 @@ function DashboardContent() {
             </div>
             <div className="mt-3 border-t border-slate-50 pt-2.5 space-y-1.5">
               <div className="flex items-center justify-between text-[10px]">
-                <span className="text-slate-500">Retrieval Accuracy</span>
-                <span className="font-bold text-slate-700">—</span>
+                <span className="text-slate-500">Index Coverage</span>
+                <span className="font-bold text-slate-700">{ragStatus?.index_coverage_pct ?? 0}%</span>
               </div>
               <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-slate-300" style={{ width: "0%" }} />
+                <div
+                  className={cn("h-full rounded-full", ragStatus?.rag_enabled ? "bg-teal-500" : "bg-slate-300")}
+                  style={{ width: `${ragStatus?.index_coverage_pct ?? 0}%` }}
+                />
               </div>
               <div className="flex items-center gap-1.5 mt-1">
-                <AlertTriangle className="h-3.5 w-3.5 text-slate-400" />
-                <span className="text-[10px] font-semibold text-slate-500">Metrics unavailable</span>
+                {ragStatus?.rag_enabled
+                  ? <CheckCircle className="h-3.5 w-3.5 text-teal-500" />
+                  : <AlertTriangle className="h-3.5 w-3.5 text-slate-400" />}
+                <span className="text-[10px] font-semibold text-slate-500">
+                  {ragStatus ? (ragStatus.rag_enabled ? `${ragStatus.embedded_chunks} chunks embedded` : "RAG is disabled") : "RAG status unavailable"}
+                </span>
               </div>
             </div>
           </CardContent>
@@ -838,13 +867,26 @@ function DashboardContent() {
           </CardHeader>
           <CardContent className="p-4 pt-1">
             <div className="flex items-center gap-1.5 mt-1">
-              <div className={cn("h-2 w-2 rounded-full", jiraStats.isHealthy ? "bg-emerald-500 animate-pulse" : "bg-red-500")} />
+              <div className={cn(
+                "h-2 w-2 rounded-full",
+                jiraStats.failureCount || jiraStats.conflictCount
+                  ? "bg-red-500"
+                  : jiraStats.syncedCount > 0 ? "bg-emerald-500" : "bg-slate-300"
+              )} />
               <span className="text-xs font-semibold text-slate-700">
-                {jiraStats.isHealthy ? "Synced just now" : "Sync issues detected"}
+                {jiraStats.failureCount || jiraStats.conflictCount
+                  ? "Sync issues detected"
+                  : jiraStats.syncedCount > 0 ? "Jira artifacts synchronized" : "No sync activity"}
               </span>
             </div>
-            <div className={cn("text-[10px] font-semibold mt-0.5", jiraStats.isHealthy ? "text-emerald-600" : "text-red-500")}>
-              {jiraStats.isHealthy ? "Healthy" : `${jiraStats.failureCount} failures`}
+            <div className={cn(
+              "text-[10px] font-semibold mt-0.5",
+              jiraStats.failureCount || jiraStats.conflictCount
+                ? "text-red-500" : jiraStats.syncedCount > 0 ? "text-emerald-600" : "text-slate-400"
+            )}>
+              {jiraStats.failureCount || jiraStats.conflictCount
+                ? `${jiraStats.failureCount} failures, ${jiraStats.conflictCount} conflicts`
+                : jiraStats.syncedCount > 0 ? "Healthy" : "No Jira artifacts synchronized"}
             </div>
             <div className="grid grid-cols-3 gap-1 mt-3 pt-2.5 border-t border-slate-50 text-center">
               {[
@@ -1229,7 +1271,7 @@ function DashboardContent() {
               <CardTitle className="text-sm font-semibold">Pending Approvals</CardTitle>
               <CardDescription className="text-[10px]">Quality gate authorization requests</CardDescription>
             </div>
-            <Badge variant="warning" className="text-[9px] font-bold">{pendingApprovals.reduce((s, a) => s + (a.count > 0 ? 1 : 0), 0)}</Badge>
+            <Badge variant="warning" className="text-[9px] font-bold">{pendingApprovals.reduce((sum, item) => sum + item.count, 0)}</Badge>
           </CardHeader>
           <CardContent className="p-4">
             <div className="space-y-3">
@@ -1312,6 +1354,11 @@ function DashboardContent() {
                   </div>
                 </div>
               ))}
+              {filteredActivities.length === 0 && (
+                <div className="sm:col-span-2 rounded-xl border border-dashed border-slate-200 p-5 text-center text-[10px] font-semibold text-slate-400">
+                  No {activityTab === "all" ? "" : `${activityTab} `}activity recorded for this project.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

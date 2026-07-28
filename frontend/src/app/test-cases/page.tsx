@@ -736,8 +736,7 @@ function TestCasesContent() {
       setLoading(false);
     }
 
-    // Loaded separately: a 404 here just means AUTOMATION_CLASSIFICATION_ENABLED
-    // is off and must not break the rest of the (already working) screen.
+    // Classification is loaded separately so a service error does not hide test-case content.
     try {
       const clsRes = await automationClassificationApi.listForProject(selectedProject);
       setClassifications(clsRes.data);
@@ -1403,7 +1402,7 @@ function TestCasesContent() {
               <div>
                 <DrawerTitle>Import Test Cases</DrawerTitle>
                 <DrawerDescription>
-                  Upload a CSV or Excel file in the UAT template format (docs/autonomous-automation-lab/test-case_template.xlsx).
+                  Upload the canonical 35-column CSV or Excel template used by all test-case exports.
                 </DrawerDescription>
               </div>
             </div>
@@ -1769,17 +1768,7 @@ function TestCasesContent() {
                   </DrawerCard>
 
                   <DrawerCard title="Automation Classification" icon={ShieldCheck}>
-                    {!classificationsEnabled ? (
-                      <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-extrabold text-amber-900">Automation Classification is disabled at platform level.</p>
-                        <p className="text-[11px] font-semibold leading-5 text-amber-800">
-                          A platform administrator must set <code className="rounded bg-white px-1 py-0.5 font-mono">AUTOMATION_CLASSIFICATION_ENABLED=true</code> for the backend and worker, then restart both services.
-                        </p>
-                        <p className="text-[10px] font-semibold leading-5 text-amber-700">
-                          Optional: set <code className="rounded bg-white px-1 py-0.5 font-mono">AUTOMATION_CLASSIFICATION_AGENT_ENABLED=true</code> for LLM recommendations. This setting is not configured per project.
-                        </p>
-                      </div>
-                    ) : !selectedTestCase.automation_candidate ? (
+                    {!selectedTestCase.automation_candidate ? (
                       <p className="text-xs font-semibold text-slate-400">Not marked as an automation candidate.</p>
                     ) : !selectedClassification ? (
                       <div className="space-y-3">

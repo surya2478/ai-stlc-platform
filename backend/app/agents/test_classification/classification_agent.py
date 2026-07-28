@@ -75,10 +75,9 @@ Output ONLY a single valid JSON object matching this shape, no extra text:
 
 
 def _deterministic_only_recommendation(context: dict[str, Any]) -> dict[str, Any]:
-    """Fast path when the classification agent LLM step is disabled
-    (AUTONOMOUS_LAB_CLASSIFICATION_AGENT_ENABLED / automation_classification_
-    agent_enabled off): recommend purely from the policy's own routing
-    defaults, never inventing anything the policy doesn't already declare.
+    """Fallback when the classification LLM cannot be used: recommend purely
+    from the policy's own routing defaults, never inventing anything the
+    policy doesn't already declare.
     """
     blocked = bool(context.get("deterministic_blockers"))
     return {

@@ -48,8 +48,7 @@ api_router.include_router(taxonomy.router, prefix="/taxonomy", tags=["Taxonomy"]
 api_router.include_router(
     grounded_poc.router, prefix="/poc/grounded-automation", tags=["Grounded Automation PoC"]
 )
-# Test Automation Classification & Routing (P1-S3 extension) — isolated
-# namespace; every route 404s unless AUTOMATION_CLASSIFICATION_ENABLED=true.
+# Test Automation Classification & Routing (P1-S3 extension) — mandatory.
 api_router.include_router(
     automation_classification.router, prefix="/automation-classifications", tags=["Automation Classification"]
 )

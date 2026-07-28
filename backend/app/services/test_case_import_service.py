@@ -1,7 +1,7 @@
 """CSV/Excel preview and confirm workflow for test case imports.
 
-Accepts the UAT template's 22-column format (docs/autonomous-automation-lab/
-test-case_template.xlsx). Modeled directly on test_data_import_service.py:
+Accepts the canonical 35-column test-case workbook used by platform exports.
+Modeled directly on test_data_import_service.py:
 same preview-token / 15-minute-expiry / single-use pattern.
 
 Column ownership follows the implementation plan's confirmed field
@@ -26,9 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models.approval import ApprovalAction
+from app.models.requirement import Requirement
 from app.models.test_case import TestCase, TestCaseImportPreview
+from app.models.test_scenario import TestScenario
 from app.services.display_id_service import display_id, temporary_id
 from app.services.taxonomy_resolver import TAXONOMY_MODEL_BY_FIELD, TaxonomyResolver
+from app.services.test_case_template import TEST_CASE_TEMPLATE_HEADER_ALIASES
 from app.services.test_data_service import now_utc
 
 settings = get_settings()
@@ -36,34 +39,6 @@ ALLOWED_IMPORT_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
 # Template header -> canonical field key. Matching is case-insensitive and
 # tolerant of the "/" vs " / " header variants seen in the source workbook.
-_HEADER_ALIASES: dict[str, str] = {
-    "id": "id",
-    "domain": "domain",
-    "channel": "channel",
-    "product": "product",
-    "area of test": "area_of_test",
-    "test case id": "test_case_id",
-    "environment": "environment",
-    "sub request type": "sub_request_type",
-    "test case objective": "test_case_objective",
-    "pre-requisites": "preconditions",
-    "prerequisites": "preconditions",
-    "test steps": "steps",
-    "expected results": "expected_result",
-    "atc test case": "atc_test_case",
-    "test case type": "test_case_type",
-    "test case complexity": "test_case_complexity",
-    "tested by": "tested_by",
-    "jira id or ppm": "jira_or_ppm",
-    "overall status": "overall_status",
-    "blocking snag id/other reason": "blocking_snag",
-    "blocking snag id / other reason": "blocking_snag",
-    "sit": "sit",
-    "planned exec sequence": "planned_execution_sequence",
-    "planned execution sequence": "planned_execution_sequence",
-    "critical tc mapping": "is_critical",
-}
-
 # Columns accepted in the file but not stored on TestCase — surfaced as a
 # per-row warning naming where they actually belong.
 _UNPERSISTED_FIELD_NOTE = {
@@ -73,6 +48,8 @@ _UNPERSISTED_FIELD_NOTE = {
     "blocking_snag": "Blocking Snag ID / Other Reason is recorded per execution result (Execution screen).",
     "sit": "SIT status is recorded per execution result (Execution screen), not on the test case.",
     "planned_execution_sequence": "Planned Execution Sequence is set per test-plan enrollment (Test Planning screen).",
+    "approval_status": "Approval Status is governed in Test Case Approval and is not imported.",
+    "created_at": "Created At is assigned by the platform when the test case is imported.",
 }
 
 _TRUE_VALUES = {"yes", "y", "true", "1"}
@@ -103,7 +80,7 @@ def _map_headers(raw_headers: list[str]) -> dict[str, str]:
     """Return {raw_header: canonical_field_key} for headers we recognize."""
     mapping: dict[str, str] = {}
     for header in raw_headers:
-        key = _HEADER_ALIASES.get(_normalize_header(header))
+        key = TEST_CASE_TEMPLATE_HEADER_ALIASES.get(_normalize_header(header))
         if key:
             mapping[header] = key
     return mapping
@@ -164,7 +141,11 @@ def _parse_steps(value: Any) -> list[dict]:
 
 
 async def _resolve_row(
-    resolver: TaxonomyResolver, mapped_row: dict[str, Any], row_number: int
+    resolver: TaxonomyResolver,
+    mapped_row: dict[str, Any],
+    row_number: int,
+    requirement_by_display_id: dict[str, Requirement] | None = None,
+    scenario_by_display_id: dict[str, TestScenario] | None = None,
 ) -> tuple[dict[str, Any], list[dict], list[dict]]:
     """Return (resolved_fields, errors, warnings) for one row."""
     errors: list[dict] = []
@@ -211,6 +192,49 @@ async def _resolve_row(
     if atc:
         resolved["atc_test_case"] = atc
 
+    for field in (
+        "priority",
+        "severity",
+        "bdd_scenario",
+        "test_phase",
+        "product_group",
+        "external_tc_id",
+        "external_tc_url",
+    ):
+        value = str(mapped_row.get(field) or "").strip()
+        if value:
+            resolved[field] = value
+
+    requirement_display_id = str(mapped_row.get("requirement_display_id") or "").strip()
+    if requirement_display_id:
+        requirement = (requirement_by_display_id or {}).get(requirement_display_id.casefold())
+        if requirement:
+            resolved["requirement_id"] = requirement.id
+        else:
+            warnings.append({
+                "row_number": row_number,
+                "message": f"Requirement ID '{requirement_display_id}' was not found in this project; the test case will be imported unlinked.",
+            })
+
+    scenario_display_id = str(mapped_row.get("scenario_display_id") or "").strip()
+    if scenario_display_id:
+        scenario = (scenario_by_display_id or {}).get(scenario_display_id.casefold())
+        if scenario:
+            if resolved.get("requirement_id") and scenario.requirement_id != resolved["requirement_id"]:
+                warnings.append({
+                    "row_number": row_number,
+                    "message": f"Scenario ID '{scenario_display_id}' is linked to a different requirement and was not assigned.",
+                })
+            else:
+                resolved["scenario_id"] = scenario.id
+                if not resolved.get("requirement_id") and scenario.requirement_id:
+                    resolved["requirement_id"] = scenario.requirement_id
+        else:
+            warnings.append({
+                "row_number": row_number,
+                "message": f"Scenario ID '{scenario_display_id}' was not found in this project; the test case will be imported without a scenario.",
+            })
+
     # The template collapses "JIRA ID or PPM" into one column with no reliable
     # way to tell them apart from the value alone (both commonly look like
     # "PROJECT-1234"). Rather than guess, store it as PPM ID — a real Jira
@@ -241,6 +265,31 @@ async def _check_duplicate_test_case_ids(
         select(TestCase.test_case_id).where(TestCase.project_id == project_id, TestCase.test_case_id.in_(ids))
     )
     return {row[0] for row in result.all()}
+
+
+async def _fetch_lineage_maps(
+    db: AsyncSession,
+    project_id: int,
+) -> tuple[dict[str, Requirement], dict[str, TestScenario]]:
+    requirements = list((
+        await db.execute(
+            select(Requirement).where(
+                Requirement.project_id == project_id,
+                Requirement.is_deleted.is_(False),
+            )
+        )
+    ).scalars().all())
+    scenarios = list((
+        await db.execute(
+            select(TestScenario).where(
+                TestScenario.project_id == project_id,
+            )
+        )
+    ).scalars().all())
+    return (
+        {item.requirement_id.casefold(): item for item in requirements if item.requirement_id},
+        {item.scenario_id.casefold(): item for item in scenarios if item.scenario_id},
+    )
 
 
 async def create_import_preview(
@@ -278,6 +327,7 @@ async def create_import_preview(
         )
 
     resolver = TaxonomyResolver(db)
+    requirement_by_display_id, scenario_by_display_id = await _fetch_lineage_maps(db, project_id)
     resolved_rows: list[dict] = []
     all_errors: list[dict] = []
     all_warnings: list[dict] = []
@@ -287,7 +337,13 @@ async def create_import_preview(
             all_warnings.append({"row_number": index, "message": "Row is empty and will be skipped"})
             continue
         mapped_row = {field: row.get(raw_header) for raw_header, field in header_map.items()}
-        resolved, errors, warnings = await _resolve_row(resolver, mapped_row, index)
+        resolved, errors, warnings = await _resolve_row(
+            resolver,
+            mapped_row,
+            index,
+            requirement_by_display_id,
+            scenario_by_display_id,
+        )
         all_errors.extend(errors)
         all_warnings.extend(warnings)
         if not errors:
@@ -374,6 +430,15 @@ async def confirm_import(
             atc_test_case=row.get("atc_test_case"),
             ppm_id=row.get("ppm_id"),
             is_critical=row.get("is_critical", False),
+            priority=row.get("priority") or "Medium",
+            severity=row.get("severity") or "Medium",
+            bdd_scenario=row.get("bdd_scenario"),
+            test_phase=row.get("test_phase"),
+            product_group=row.get("product_group"),
+            external_tc_id=row.get("external_tc_id"),
+            external_tc_url=row.get("external_tc_url"),
+            requirement_id=row.get("requirement_id"),
+            scenario_id=row.get("scenario_id"),
             domain_id=row.get("domain_id"),
             channel_id=row.get("channel_id"),
             product_id=row.get("product_id"),

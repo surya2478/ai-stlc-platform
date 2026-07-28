@@ -205,6 +205,22 @@ function getRequirementQualityScore(req: Requirement): number | null {
   return value <= 5 ? Math.round(value * 20) : clampNumber(value, 0, 100);
 }
 
+function getEditableAnalysisValidationIssues(req: Requirement, isDuplicate: boolean): string[] {
+  const meta = metadataRecord(req);
+  const qualityReview = (meta.quality_review || {}) as Record<string, any>;
+  const conflictCount = asTextList(qualityReview.conflicts).length
+    || asTextList(meta.conflicts).length;
+  const taxonomyReady = Boolean(req.telecom_domain || req.qa_domain || req.business_process)
+    && Boolean(req.product || req.product_group || req.sub_request_type);
+
+  return [
+    ...asTextList(req.missing_information).map((item) => `Missing information: ${item}`),
+    ...(isDuplicate ? ["Potential duplicate requirement requires reviewer decision."] : []),
+    ...(conflictCount > 0 ? ["Potential source conflict requires clarification."] : []),
+    ...(!taxonomyReady ? ["Taxonomy classification is incomplete."] : []),
+  ];
+}
+
 function getAnalysisStatus(req: Requirement, isDuplicate: boolean): AnalysisStatus {
   const status = (req.status || "").toLowerCase();
   const readiness = (req.readiness_status || "").toLowerCase();
@@ -589,6 +605,7 @@ function RequirementsContent() {
   const [analysisDialogSaving, setAnalysisDialogSaving] = useState(false);
   const [analysisDialogError, setAnalysisDialogError] = useState<string | null>(null);
   const analysisDialogSubmittingRef = useRef(false);
+  const analysisActionsRef = useRef<HTMLDivElement | null>(null);
   const [criteriaDraft, setCriteriaDraft] = useState("");
   const [missingInfoDraft, setMissingInfoDraft] = useState("");
   const [resolutionDraft, setResolutionDraft] = useState("");
@@ -659,6 +676,24 @@ function RequirementsContent() {
       setLoading(false);
     }
   }, [selectedProject]);
+
+  const refreshRequirementDrawer = useCallback(async (requirementId: number) => {
+    const [requirementResult, reviewsResult] = await Promise.all([
+      requirementsApi.get(requirementId),
+      requirementsApi.qualityReviews(requirementId),
+    ]);
+    const refreshed = requirementResult.data;
+    setRequirements((current) => current.map((item) => item.id === refreshed.id ? refreshed : item));
+    setSelectedReq((current) => current?.id === refreshed.id ? refreshed : current);
+    setSelectedQualityReviews(reviewsResult.data);
+    return refreshed;
+  }, []);
+
+  const focusAnalysisActions = () => {
+    window.setTimeout(() => {
+      analysisActionsRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 80);
+  };
 
   useEffect(() => {
     loadData();
@@ -1043,6 +1078,9 @@ function RequirementsContent() {
 
   const runQualityAgent = async (reqIds?: number[]) => {
     if (!selectedProject) return;
+    const drawerRequirementId = selectedReq && (!reqIds || reqIds.includes(selectedReq.id))
+      ? selectedReq.id
+      : null;
     setAgentRunning(true);
     setAgentStatus("Agent 2 running -- reviewing requirement quality...");
     setAgentError(null);
@@ -1070,6 +1108,10 @@ function RequirementsContent() {
       return res;
         },
       });
+      if (drawerRequirementId) {
+        await refreshRequirementDrawer(drawerRequirementId);
+        focusAnalysisActions();
+      }
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       setAgentError(detail ? `Quality review failed: ${detail}` : "Quality review failed — check backend logs.");
@@ -1169,8 +1211,15 @@ function RequirementsContent() {
           const res = await requirementsApi.transition(selectedReq.id, "resolve_clarification", resolutionDraft.trim());
           setSelectedReq(res.data);
           setRequirements((current) => current.map((item) => item.id === res.data.id ? res.data : item));
-          setAgentStatus("Clarification saved. Re-run Analysis to validate the updated requirement.");
+          const remainingIssues = getEditableAnalysisValidationIssues(
+            res.data,
+            duplicateRequirementIds.has(res.data.id),
+          );
+          setAgentStatus(remainingIssues.length
+            ? `Clarification saved. Next validation: ${remainingIssues[0]}`
+            : "Clarification saved. All editable validation details are complete; Re-run Analysis is now the required next step.");
           setAnalysisDialog(null);
+          focusAnalysisActions();
           return;
         }
         updates = {
@@ -1178,6 +1227,14 @@ function RequirementsContent() {
           review_notes: resolutionNote,
         };
       } else if (analysisDialog === "classification") {
+        if (!classificationDraft.domain.trim() && !classificationDraft.journey.trim()) {
+          setAnalysisDialogError("Complete either Domain or Journey / Business Process.");
+          return;
+        }
+        if (!classificationDraft.application.trim() && !classificationDraft.requestType.trim()) {
+          setAnalysisDialogError("Complete either Application / Product or Request Type.");
+          return;
+        }
         updates = {
           telecom_domain: classificationDraft.domain.trim() || undefined,
           business_process: classificationDraft.journey.trim() || undefined,
@@ -1207,8 +1264,15 @@ function RequirementsContent() {
       const res = await requirementsApi.update(selectedReq.id, updates);
       setSelectedReq(res.data);
       setRequirements((current) => current.map((item) => item.id === res.data.id ? res.data : item));
-      setAgentStatus("Changes saved. The previous quality score is now stale; select Re-run Analysis to calculate a new score.");
+      const remainingIssues = getEditableAnalysisValidationIssues(
+        res.data,
+        duplicateRequirementIds.has(res.data.id),
+      );
+      setAgentStatus(remainingIssues.length
+        ? `Changes saved. Next validation: ${remainingIssues[0]}`
+        : "Changes saved. All editable validation details are complete; Re-run Analysis is now the required next step.");
       setAnalysisDialog(null);
+      focusAnalysisActions();
     } catch (e: any) {
       const detail = e?.response?.data?.detail;
       const message = typeof detail === "string" ? detail : detail?.message || "Unable to update requirement details.";
@@ -1610,6 +1674,7 @@ function RequirementsContent() {
       const status = getAnalysisStatus(requirement, duplicateCount > 0);
       const qualityScore = getRequirementQualityScore(requirement);
       const qualityVerdict = (requirement.quality_verdict || "").toLowerCase();
+      const isQualityStale = qualityMeta.stale === true;
       const completedAnalysisGates = [
         Boolean(requirement.quality_verdict),
         missingInfoCount === 0,
@@ -1618,13 +1683,13 @@ function RequirementsContent() {
       ].filter(Boolean).length;
       const progress = status === "analyzed" ? 100 : completedAnalysisGates * 25;
       const blockers = [
-        ...(["needs_revision", "fail"].includes((requirement.quality_verdict || "").toLowerCase())
+        ...(isQualityStale
+          ? ["Saved changes must be validated. Re-run Analysis before traceability."]
+          : []),
+        ...(!isQualityStale && ["needs_revision", "fail"].includes((requirement.quality_verdict || "").toLowerCase())
           ? ["Quality analysis must reach a Pass verdict before traceability. Revise the requirement and re-run Analysis."]
           : []),
-        ...asTextList(requirement.missing_information).map((item) => `Missing information: ${item}`),
-        ...(duplicateCount > 0 ? ["Potential duplicate requirement requires reviewer decision."] : []),
-        ...(conflictCount > 0 ? ["Potential source conflict requires clarification."] : []),
-        ...(!taxonomyReady ? ["Taxonomy classification is incomplete."] : []),
+        ...getEditableAnalysisValidationIssues(requirement, duplicateCount > 0),
       ];
 
       return {
@@ -3891,6 +3956,34 @@ function RequirementsContent() {
                   if (!latestQualityReview || Number(latestQualityReview.testability_score) < 3.5 || Number(latestQualityReview.acceptance_criteria_score) < 3.5) improvementActions.push({ label: "Edit acceptance criteria", detail: "Add measurable positive and negative outcomes with expected results.", dialog: "acceptance" });
                   if (!latestQualityReview || Number(latestQualityReview.interface_readiness_score) < 3.5) improvementActions.push({ label: "Map systems & APIs", detail: "Name impacted systems, interfaces, endpoints, protocols, and dependencies.", dialog: "systems" });
                   if (!latestQualityReview || Number(latestQualityReview.telecom_domain_completeness) < 3.5) improvementActions.push({ label: "Edit classification", detail: "Complete domain, application, request type, test phase, and risk level.", dialog: "classification" });
+                  const editableValidationIssues = getEditableAnalysisValidationIssues(
+                    selectedReq,
+                    duplicateRequirementIds.has(selectedReq.id),
+                  );
+                  const needsFreshAnalysis = isQualityStale
+                    || selectedReq.readiness_status === "analysis_pending"
+                    || row?.status === "queued"
+                    || row?.status === "not_analyzed";
+                  const readyForRerun = needsFreshAnalysis && editableValidationIssues.length === 0;
+                  const traceabilityReady = row?.status === "analyzed" && (row?.blockers.length ?? 0) === 0;
+                  const visibleValidationBlockers = row?.blockers.length
+                    ? row.blockers
+                    : !traceabilityReady && !readyForRerun
+                      ? ["Requirement analysis must reach a Pass verdict before traceability."]
+                      : [];
+                  const primaryEditableIssue = editableValidationIssues[0] || "";
+                  const fixDialog: AnalysisDialog | null = primaryEditableIssue.toLowerCase().includes("taxonomy")
+                    ? "classification"
+                    : primaryEditableIssue.toLowerCase().includes("missing")
+                      || primaryEditableIssue.toLowerCase().includes("duplicate")
+                      || primaryEditableIssue.toLowerCase().includes("conflict")
+                        ? "issues"
+                        : null;
+                  const fixLabel = fixDialog === "classification"
+                    ? "Complete Classification"
+                    : fixDialog === "issues"
+                      ? "Resolve Validation Issue"
+                      : null;
                   return (
                     <div className="space-y-3 text-xs">
                       <section className="border-b border-slate-100 pb-3">
@@ -4062,19 +4155,68 @@ function RequirementsContent() {
                         ) : <div className="text-[10px] font-semibold text-slate-400">No persisted quality-review run is available for this requirement.</div>}
                       </section>
 
-                      <section className="space-y-2">
+                      <section ref={analysisActionsRef} className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                         <h4 className="text-xs font-bold text-slate-800">Actions</h4>
+                        {visibleValidationBlockers.length > 0 && !readyForRerun && (
+                          <div role="alert" className="rounded-xl border-2 border-red-300 bg-red-50 p-3 shadow-sm">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-[11px] font-extrabold text-red-800">Traceability is blocked — update the following</div>
+                                <ul className="mt-1.5 space-y-1">
+                                  {visibleValidationBlockers.map((blocker, index) => (
+                                    <li key={`${blocker}-${index}`} className="text-[10px] font-bold leading-snug text-red-700">
+                                      {index + 1}. {blocker}
+                                    </li>
+                                  ))}
+                                </ul>
+                                {fixDialog && fixLabel && (
+                                  <button type="button" onClick={() => openAnalysisDialog(fixDialog)} className="mt-2 inline-flex h-7 items-center gap-1 rounded-lg bg-red-600 px-2.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-red-700">
+                                    {fixLabel}<ChevronRight className="h-3 w-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {readyForRerun && (
+                          <div className="rounded-xl border-2 border-violet-300 bg-violet-50 p-3 shadow-sm">
+                            <div className="flex items-start gap-2">
+                              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
+                              <div>
+                                <div className="text-[11px] font-extrabold text-violet-900">All editable validation details are complete</div>
+                                <p className="mt-1 text-[10px] font-semibold leading-snug text-violet-700">Next step: Re-run Analysis to validate the saved changes and calculate the current quality score.</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {traceabilityReady && (
+                          <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-3 shadow-sm">
+                            <div className="flex items-start gap-2">
+                              <CheckCircle className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                              <div>
+                                <div className="text-[11px] font-extrabold text-emerald-900">All analysis validations passed</div>
+                                <p className="mt-1 text-[10px] font-semibold leading-snug text-emerald-700">Send to Traceability is ready.</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-2">
                           <Button variant="outline" size="sm" disabled={analysisDialogSaving} onClick={() => openAnalysisDialog(selectedReq.readiness_status === "needs_clarification" ? "issues" : "clarification")} className="h-8 bg-white text-[10px] font-bold">{selectedReq.readiness_status === "needs_clarification" ? "Provide Clarification" : "Request Clarification"}</Button>
-                          <Button variant="outline" size="sm" disabled={agentRunning} onClick={() => runQualityAgent([selectedReq.id])} className="h-8 bg-white text-[10px] font-bold">Re-run Analysis</Button>
+                          <Button variant={readyForRerun ? "default" : "outline"} size="sm" disabled={agentRunning} onClick={() => runQualityAgent([selectedReq.id])} className={cn(
+                            "h-8 text-[10px] font-bold",
+                            readyForRerun
+                              ? "bg-violet-600 text-white shadow-md ring-2 ring-violet-200 hover:bg-violet-700"
+                              : "bg-white",
+                          )}>
+                            {agentRunning ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : readyForRerun ? <Sparkles className="mr-1 h-3.5 w-3.5" /> : null}
+                            {readyForRerun ? "Re-run Analysis — Next Step" : "Re-run Analysis"}
+                          </Button>
                         </div>
-                        <Button size="sm" disabled={transitioning || !!row?.blockers.length || row?.status !== "analyzed"} onClick={() => handleRequirementTransition(selectedReq, "send_to_traceability", "traceability")} className="h-8 w-full bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Traceability</Button>
-                        {row && (row.blockers.length > 0 || row.status !== "analyzed") && (
-                          <p className="flex items-start gap-1.5 text-[10px] font-semibold leading-snug text-amber-700">
-                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                            <span>{row.blockers[0] || "Analysis must reach a Pass verdict before this requirement can move to Traceability."}</span>
-                          </p>
-                        )}
+                        <Button size="sm" disabled={transitioning || !traceabilityReady} onClick={() => handleRequirementTransition(selectedReq, "send_to_traceability", "traceability")} className={cn(
+                          "h-8 w-full text-[10px] font-bold text-white",
+                          traceabilityReady ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300",
+                        )}>Send to Traceability</Button>
                       </section>
                     </div>
                   );

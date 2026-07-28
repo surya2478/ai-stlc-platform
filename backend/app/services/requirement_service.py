@@ -51,6 +51,45 @@ def _has_values(value) -> bool:
     return bool(value and (not isinstance(value, str) or value.strip()))
 
 
+def build_quality_agent_input(req: Requirement) -> dict:
+    """Build the complete, revision-aware input used for requirement re-analysis."""
+    metadata = req.metadata_ or {}
+    updated_at = getattr(req, "updated_at", None)
+    return {
+        "id": req.id,
+        "requirement_id": req.requirement_id,
+        "title": req.title,
+        "summary": req.summary,
+        "acceptance_criteria": req.acceptance_criteria,
+        "business_rules": req.business_rules,
+        "user_roles": req.user_roles,
+        "systems_impacted": req.systems_impacted,
+        "impacted_systems": req.impacted_systems,
+        "impacted_interfaces": req.impacted_interfaces,
+        "upstream_systems": req.upstream_systems,
+        "downstream_systems": req.downstream_systems,
+        "ui_pages": req.ui_pages,
+        "apis": req.apis,
+        "dependencies": req.dependencies,
+        "risks": req.risks,
+        "missing_information": req.missing_information,
+        "telecom_domain": req.telecom_domain,
+        "qa_domain": req.qa_domain,
+        "business_process": req.business_process,
+        "product": req.product,
+        "product_group": req.product_group,
+        "sub_request_type": req.sub_request_type,
+        "test_phase": req.test_phase,
+        "risk_level": req.risk_level,
+        "release_version": req.release_version,
+        "clarification_context": req.review_notes if metadata.get("clarification_resolved") else None,
+        # The dispatch service derives its idempotency key from this payload.
+        # Including the persisted revision lets rapid duplicate clicks share an
+        # in-flight run while ensuring a post-edit Re-run creates a fresh one.
+        "quality_revision": updated_at.isoformat() if updated_at else str(req.version or 0),
+    }
+
+
 def requirement_analysis_blockers(req: Requirement) -> list[str]:
     blockers: list[str] = []
     quality_review = (req.metadata_ or {}).get("quality_review") or {}

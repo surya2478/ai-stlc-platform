@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { LLMProvidersTab } from "@/components/settings/LLMProvidersTab";
 import { ApplicationsTab } from "@/components/settings/ApplicationsTab";
+import { AutomationClassificationTab } from "@/components/settings/AutomationClassificationTab";
 
 const settingsNav = [
   { label: "General", icon: Settings },
@@ -31,6 +32,7 @@ const settingsNav = [
   { label: "Integrations", icon: Network },
   { label: "LLM Providers", icon: Bot },
   { label: "Applications & Environments", icon: Globe2 },
+  { label: "Automation Classification", icon: ShieldCheck },
   { label: "AI Preferences", icon: SlidersHorizontal },
   { label: "Webhooks", icon: Webhook },
   { label: "Custom Fields", icon: FileSliders },
@@ -40,7 +42,7 @@ const settingsNav = [
 ] as const;
 
 // Only these tabs have real content today; the rest are placeholders.
-const IMPLEMENTED_TABS = new Set(["LLM Providers", "Applications & Environments"]);
+const IMPLEMENTED_TABS = new Set(["LLM Providers", "Applications & Environments", "Automation Classification"]);
 
 function SettingsContent() {
   const searchParams = useSearchParams();
@@ -109,6 +111,7 @@ function SettingsContent() {
       <div className="min-w-0 flex-1">
         {activeTab === "LLM Providers" && <LLMProvidersTab projectId={projectId} />}
         {activeTab === "Applications & Environments" && <ApplicationsTab projectId={projectId} />}
+        {activeTab === "Automation Classification" && <AutomationClassificationTab projectId={projectId} />}
         {!IMPLEMENTED_TABS.has(activeTab) && (
           <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
             {activeTab} settings are not available yet.

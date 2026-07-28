@@ -339,7 +339,7 @@ export function JourneyGraphView({ projectId }: Props) {
       setLoading(false);
     }
 
-    // Loaded separately: a 404 here just means AUTOMATION_CLASSIFICATION_ENABLED
+    // Loaded separately so classification failures do not hide the journey
     // is off and must not break the rest of the (already working) graph.
     try {
       const clsRes = await automationClassificationApi.listForProject(projectId);

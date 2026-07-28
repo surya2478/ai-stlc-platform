@@ -11,6 +11,7 @@ from app.models.execution import ExecutionRun, ExecutionResult
 from app.models.defect import DefectDraft, JiraDefect
 from app.models.report import Report
 from app.models.user import User
+from app.models.agent import AgentRun
 
 from app.schemas.metrics import (
     DashboardMetricsOut,
@@ -80,7 +81,8 @@ class MetricsService:
             )
         rejected_reqs = (await self.db.execute(req_rejected_stmt)).scalar() or 0
 
-        pending_reqs = total_reqs - approved_reqs
+        # Rejected requirements are a terminal outcome, not work awaiting approval.
+        pending_reqs = max(0, total_reqs - approved_reqs - rejected_reqs)
         req_completion = (
             round((approved_reqs / total_reqs) * 100, 1) if total_reqs > 0 else 0.0
         )
@@ -118,7 +120,8 @@ class MetricsService:
 
         # 3. Test Cases Metrics
         tc_total_stmt = select(func.count(TestCase.id)).where(
-            TestCase.project_id == project_id
+            TestCase.project_id == project_id,
+            TestCase.is_deleted == False,
         )
         if release_version:
             tc_total_stmt = tc_total_stmt.where(
@@ -127,7 +130,13 @@ class MetricsService:
         total_tcs = (await self.db.execute(tc_total_stmt)).scalar() or 0
 
         tc_automated_stmt = select(func.count(TestCase.id)).where(
-            TestCase.project_id == project_id, TestCase.execution_mode == "automated"
+            TestCase.project_id == project_id,
+            TestCase.is_deleted == False,
+            or_(
+                TestCase.execution_mode.in_(["automation", "automated"]),
+                TestCase.automation_status == "automated",
+                TestCase.automation_script_id != None,
+            ),
         )
         if release_version:
             tc_automated_stmt = tc_automated_stmt.where(
@@ -142,7 +151,9 @@ class MetricsService:
 
         # Coverage % = Requirements with at least 1 TC / Total Requirements * 100
         req_with_tc_stmt = select(func.count(distinct(TestCase.requirement_id))).where(
-            TestCase.project_id == project_id, TestCase.requirement_id != None
+            TestCase.project_id == project_id,
+            TestCase.is_deleted == False,
+            TestCase.requirement_id != None,
         )
         if release_version:
             req_with_tc_stmt = req_with_tc_stmt.where(
@@ -249,8 +260,12 @@ class MetricsService:
             ) or 0
 
         executed_tests = passed_tests + failed_tests + blocked_tests
+        # A case may have results in several historical runs. Release completion
+        # cannot exceed 100%, even when those result totals overlap.
         exec_completion = (
-            round((executed_tests / total_tcs) * 100, 1) if total_tcs > 0 else 0.0
+            min(100.0, round((executed_tests / total_tcs) * 100, 1))
+            if total_tcs > 0
+            else 0.0
         )
         exec_pass_rate = (
             round((passed_tests / executed_tests) * 100, 1)
@@ -413,6 +428,7 @@ class MetricsService:
             await self.db.scalar(
                 select(func.count(TestCase.id)).where(
                     TestCase.project_id == project_id,
+                    TestCase.is_deleted == False,
                     TestCase.jira_sync_status == "synced",
                 )
             )
@@ -421,6 +437,7 @@ class MetricsService:
             await self.db.scalar(
                 select(func.count(TestCase.id)).where(
                     TestCase.project_id == project_id,
+                    TestCase.is_deleted == False,
                     TestCase.jira_sync_status == "failed",
                 )
             )
@@ -429,6 +446,7 @@ class MetricsService:
             await self.db.scalar(
                 select(func.count(TestCase.id)).where(
                     TestCase.project_id == project_id,
+                    TestCase.is_deleted == False,
                     TestCase.jira_sync_status == "conflict",
                 )
             )
@@ -462,6 +480,7 @@ class MetricsService:
                 await self.db.scalar(
                     select(func.count(TestCase.id)).where(
                         TestCase.project_id == project_id,
+                        TestCase.is_deleted == False,
                         func.lower(TestCase.telecom_domain) == domain.lower(),
                     )
                 )
@@ -477,6 +496,7 @@ class MetricsService:
                     await self.db.scalar(
                         select(func.count(TestCase.id)).where(
                             TestCase.project_id == project_id,
+                            TestCase.is_deleted == False,
                             func.lower(TestCase.telecom_domain) == domain.lower(),
                             or_(
                                 TestCase.last_automation_status == "passed",
@@ -590,14 +610,6 @@ class MetricsService:
                 )
             )
 
-        # Fallback if no execution runs exist
-        if not execution_trend:
-            execution_trend = [
-                ExecutionTrendItem(name="Run 1", Passed=0, Failed=0, InProgress=0),
-                ExecutionTrendItem(name="Run 2", Passed=0, Failed=0, InProgress=0),
-                ExecutionTrendItem(name="Run 3", Passed=0, Failed=0, InProgress=0),
-            ]
-
         # 14. Pending Approvals list
         pending_approvals = []
         # Requirement signoffs
@@ -646,6 +658,7 @@ class MetricsService:
             await self.db.scalar(
                 select(func.count(TestCase.id)).where(
                     TestCase.project_id == project_id,
+                    TestCase.is_deleted == False,
                     TestCase.status.in_(["draft", "pending_approval"]),
                 )
             )
@@ -712,7 +725,7 @@ class MetricsService:
                 )
             )
 
-        # 15. Recent Activity Feed (last 3 items)
+        # 15. Recent Activity Feed
         recent_activities = []
 
         # Aliases so we can join User twice (updater + creator)
@@ -738,7 +751,7 @@ class MetricsService:
                     user=user_name or "Unknown",
                     action=f"updated requirement {r.requirement_id}",
                     subject=r.title,
-                    time=r.updated_at.isoformat() + "Z" if r.updated_at else "",
+                    time=r.updated_at.isoformat() if r.updated_at else "",
                     is_agent=False,
                 )
             )
@@ -753,7 +766,10 @@ class MetricsService:
             )
             .outerjoin(UpdaterUser2, TestCase.updated_by == UpdaterUser2.id)
             .outerjoin(CreatorUser2, TestCase.created_by == CreatorUser2.id)
-            .where(TestCase.project_id == project_id)
+            .where(
+                TestCase.project_id == project_id,
+                TestCase.is_deleted == False,
+            )
             .order_by(TestCase.updated_at.desc())
             .limit(3)
         )
@@ -764,7 +780,7 @@ class MetricsService:
                     user=user_name or "Unknown",
                     action=f"updated test case {tc.test_case_id}",
                     subject=tc.title,
-                    time=tc.updated_at.isoformat() + "Z" if tc.updated_at else "",
+                    time=tc.updated_at.isoformat() if tc.updated_at else "",
                     is_agent=False,
                 )
             )
@@ -788,15 +804,48 @@ class MetricsService:
                     user=user_name or "Unknown",
                     action=f"logged defect {d.defect_id}",
                     subject=d.summary,
-                    time=d.created_at.isoformat() + "Z" if d.created_at else "",
+                    time=d.created_at.isoformat() if d.created_at else "",
                     is_agent=False,
                 )
             )
 
-        # Sort combined activities and take top 3
+        agent_labels = {
+            "requirement_intake": "Requirement Intake Agent",
+            "requirement_quality": "Requirement Quality Agent",
+            "test_planning": "Test Planning Agent",
+            "test_scenario": "Test Scenario Agent",
+            "test_case": "Test Case Generator Agent",
+            "test_data": "Test Data Agent",
+            "automation_classification": "Automation Classification Agent",
+            "automation_script": "Automation Script Agent",
+            "test_execution": "Test Execution Agent",
+            "defect_analysis": "Defect Analysis Agent",
+            "jira_defect": "Jira Defect Agent",
+            "test_reporting": "Test Reporting Agent",
+        }
+        agent_act_stmt = (
+            select(AgentRun)
+            .where(AgentRun.project_id == project_id)
+            .order_by(AgentRun.updated_at.desc())
+            .limit(6)
+        )
+        agent_acts = (await self.db.execute(agent_act_stmt)).scalars().all()
+        for run in agent_acts:
+            label = agent_labels.get(run.agent_name, run.agent_name.replace("_", " ").title())
+            recent_activities.append(
+                RecentActivityItem(
+                    user="AI Agent",
+                    action=run.progress_message or f"{label} {run.status}",
+                    subject=label,
+                    time=run.updated_at.isoformat() if run.updated_at else "",
+                    is_agent=True,
+                )
+            )
+
+        # Sort the combined audit feed; keep enough entries for Human/Agent tabs.
         recent_activities = sorted(
             recent_activities, key=lambda a: a.time, reverse=True
-        )[:3]
+        )[:12]
 
         # Fallback if no real data found (empty project)
         if not recent_activities:

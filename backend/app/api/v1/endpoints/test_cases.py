@@ -141,7 +141,7 @@ async def preview_test_case_import(
     current_user: CurrentUser,
     file: UploadFile = File(...),
 ):
-    """Parse an uploaded CSV/XLSX against the UAT template's 22-column format
+    """Parse an uploaded CSV/XLSX against the canonical 35-column format
     and return a preview (resolved taxonomy links, per-row errors/warnings)
     without writing anything. Call .../import/confirm with the returned
     preview_token to actually create the test cases."""

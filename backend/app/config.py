@@ -213,16 +213,14 @@ class Settings(BaseSettings):
     # Governed, policy-driven automation-candidate classification for test
     # cases (UI-010-013). Master switch: every /automation-classifications
     # route 404s when off, same isolation pattern as grounded_automation_enabled.
-    automation_classification_enabled: bool = False
     # Deterministic-only mode when off: policy resolution, deterministic
     # rules, capability resolution and scoring still run; the LLM
     # recommendation step is skipped in favor of the policy's own routing
     # defaults (see classification_agent.py::_deterministic_only_recommendation).
-    automation_classification_agent_enabled: bool = False
 
     # ── UI-015 Live Discovery Session (P1-S4 extension) ──────────────────────
     # Master switch: every /discovery route 404s when off, same isolation
-    # pattern as automation_classification_enabled. Phase 1 = Guided User
+    # feature-isolation pattern. Phase 1 = Guided User
     # Recording only (see the implementation plan) — Free/Agent-Driven modes
     # remain refused with an explicit "not implemented in Phase 1" error
     # regardless of this flag.

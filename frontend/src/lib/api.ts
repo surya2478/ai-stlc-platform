@@ -952,6 +952,19 @@ export interface RecentActivityItem {
   action: string;
   subject: string;
   time: string;
+  is_agent: boolean;
+}
+
+export interface RagProjectStatus {
+  rag_enabled: boolean;
+  embedding_model: string;
+  project_id: number;
+  indexed_documents: number;
+  indexed_jira_stories: number;
+  total_active_chunks: number;
+  embedded_chunks: number;
+  unembedded_chunks: number;
+  index_coverage_pct: number;
 }
 
 export interface DashboardMetrics {
@@ -995,6 +1008,11 @@ export const projectsApi = {
     api.patch<ProjectMembership>(`/projects/${projectId}/memberships/${membershipId}`, data),
   removeMembership: (projectId: number, membershipId: number) =>
     api.delete(`/projects/${projectId}/memberships/${membershipId}`),
+};
+
+export const ragApi = {
+  status: (projectId: number) =>
+    api.get<RagProjectStatus>(`/rag/projects/${projectId}/status`),
 };
 
 export const applicationsApi = {
@@ -1337,8 +1355,7 @@ export const planTestCasesApi = {
 // here is either persisted from the deterministic rules engine, the
 // governed classification agent, or a human reviewer/approver — never a
 // static frontend list. See docs/test-automation-classification-routing-
-// implementation-prompt.md. Disabled server-side unless
-// AUTOMATION_CLASSIFICATION_ENABLED=true (every route 404s).
+// implementation-prompt.md. Available for every project.
 
 export type AutomationCandidateStatus =
   | "NOT_EVALUATED"
@@ -1441,15 +1458,15 @@ export interface ClassificationEvaluateResponseItem {
 }
 
 export const automationClassificationApi = {
-  // Every route 404s when AUTOMATION_CLASSIFICATION_ENABLED is off — callers
-  // should treat a 404 from listForProject as "feature disabled, show
-  // Not Evaluated" rather than a hard load error (see isClassificationDisabled).
+  // Project classification state is loaded separately from test-case content.
   listForProject: (projectId: number) =>
     api.get<TestCaseAutomationClassification[]>(`/automation-classifications/projects/${projectId}`),
   effectivePolicy: (projectId: number, applicationId?: number) =>
     api.get<AutomationClassificationPolicy>(`/automation-classifications/projects/${projectId}/policies/effective`, {
       params: applicationId ? { application_id: applicationId } : undefined,
     }),
+  updateProjectPolicy: (projectId: number, data: { name: string; rules: Record<string, unknown> }) =>
+    api.put<AutomationClassificationPolicy>(`/automation-classifications/projects/${projectId}/policies`, data),
   simulatePolicy: (projectId: number, testCaseId: number) =>
     api.post<ClassificationPolicySimulateResponse>(`/automation-classifications/projects/${projectId}/policies/simulate`, {
       test_case_id: testCaseId,
@@ -2992,7 +3009,7 @@ function _triggerDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-// ── Test Case Import (CSV/XLSX, UAT template's 22-column format) ────────────
+// ── Test Case Import (CSV/XLSX, canonical 35-column format) ────────────────
 
 export interface TestCaseImportPreview {
   preview_token: string;
@@ -3037,14 +3054,23 @@ export const exportApi = {
     projectId: number,
     format: "excel" | "csv" | "xray" = "excel",
     include_drafts = false,
+    testCaseIds?: number[],
+    filename?: string,
   ) => {
     const response = await api.get(
       `/traceability/projects/${projectId}/export/test-cases`,
-      { params: { format, include_drafts }, responseType: "blob" }
+      {
+        params: {
+          format,
+          include_drafts,
+          test_case_ids: testCaseIds?.length ? testCaseIds.join(",") : undefined,
+        },
+        responseType: "blob",
+      }
     );
     const ext = format === "excel" ? "xlsx" : "csv";
     const suffix = format === "xray" ? "_xray" : "";
-    _triggerDownload(response.data as Blob, `test_cases_project_${projectId}${suffix}.${ext}`);
+    _triggerDownload(response.data as Blob, filename || `test_cases_project_${projectId}${suffix}.${ext}`);
   },
 
   /**
