@@ -197,6 +197,27 @@ class Settings(BaseSettings):
     # Max concurrently running script containers per batch run.
     studio_max_parallel: int = 4
 
+    # ── Automation Asset Autonomy (UI-020/021/023) ───────────────────────────
+    # Master switch for automatic stage advancement and AI approval of
+    # automation assets. OFF by default: with it off the policy still computes
+    # and displays a verdict, but never writes autonomy_state and never
+    # advances a member, so the workspace behaves exactly as it did before.
+    automation_autonomy_enabled: bool = False
+    # Score (0-100) an asset must reach to be AI-approved, AFTER every hard
+    # precondition has already passed. Approved by the product owner on
+    # 2026-07-30. Stored by value on each decision record, so changing this
+    # never rewrites history.
+    automation_ai_approval_threshold: int = 80
+    # Passing dry runs required before an asset is eligible at all. This is a
+    # precondition, not a score input: without it an asset that has never been
+    # executed can still reach ~70 on automation_confidence_service's neutral
+    # "no evidence" defaults, which would auto-approve the least-evidenced
+    # assets. Set to 1 because no run history exists yet to tune against.
+    automation_min_passing_dry_runs: int = 1
+    # Rubric identity recorded on every decision. Bump when the precondition
+    # set or the weighting changes, so old decisions stay interpretable.
+    automation_autonomy_rubric_id: str = "automation.v1"
+
     # ── Grounded Automation (PoC) ────────────────────────────────────────────
     # Evidence-first script generation: launch the target application, walk
     # the test case's journey capturing Application State Evidence Packages,

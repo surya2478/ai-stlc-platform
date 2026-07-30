@@ -89,6 +89,9 @@ from app.models.automation_suite import (  # noqa: F401
     AutomationSuiteExecutionGroup,
     AutomationSuiteSnapshot,
 )
+from app.models.automation_asset_decision import (  # noqa: F401
+    AutomationAssetDecision,
+)
 from app.models.recording_session import (  # noqa: F401
     RecordingStepState,
     RecordingStepMapping,

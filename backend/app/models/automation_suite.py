@@ -96,6 +96,20 @@ MEMBER_INCLUSION_STATUSES = ("included", "excluded", "manual_only")
 MEMBER_STATUSES = ("NOT_EVALUATED", "READY", "WARNING", "BLOCKED")
 MEMBER_SOURCE_SYSTEMS = ("platform", "external")
 
+# UI-020/021/023 (migration 051). Two independent axes, never one field.
+#   autonomy_state — machine-owned; written only by the autonomy policy.
+#   approval_state — human-owned; written only by a human action.
+# AI_PENDING means the policy has not evaluated this member yet, which is
+# distinct from AI_HELD (evaluated and refused).
+MEMBER_AUTONOMY_STATES = ("AI_PENDING", "AI_HELD", "AI_APPROVED")
+MEMBER_APPROVAL_STATES = ("PENDING_FINAL", "FINAL_APPROVED", "REJECTED")
+
+# The autonomy counterpart of WORKFLOW_OWNED_STATUSES above. Once a human has
+# ruled, re-evaluation may refresh the score for display but must never rewrite
+# autonomy_state — otherwise the next evaluation pass silently undoes or
+# re-grants an approval. UI-018 Phase B hit exactly this bug at suite level.
+APPROVAL_OWNED_STATES = ("FINAL_APPROVED", "REJECTED")
+
 # Gap taxonomy. The first block ports the retired per-test-case engine's
 # blocker types 1:1 so no check's user-visible output changes. The second is
 # new but sourced from real columns. The third is what only a suite can see.
@@ -278,6 +292,14 @@ class AutomationSuiteTestCase(TimestampMixin, Base):
             "source_system IN ('" + "','".join(MEMBER_SOURCE_SYSTEMS) + "')",
             name="ck_automation_suite_test_cases_source_system",
         ),
+        CheckConstraint(
+            "autonomy_state IN ('" + "','".join(MEMBER_AUTONOMY_STATES) + "')",
+            name="ck_automation_suite_test_cases_autonomy_state",
+        ),
+        CheckConstraint(
+            "approval_state IN ('" + "','".join(MEMBER_APPROVAL_STATES) + "')",
+            name="ck_automation_suite_test_cases_approval_state",
+        ),
         UniqueConstraint("suite_id", "test_case_id", name="uq_automation_suite_test_cases"),
     )
 
@@ -338,6 +360,18 @@ class AutomationSuiteTestCase(TimestampMixin, Base):
     # See the module docstring: no entity exists to key these to.
     resolved_framework: Mapped[str | None] = mapped_column(String(50), nullable=True)
     resolved_environment: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # ── UI-020/021/023: the two independent state axes (migration 051) ───────
+    # Deliberately two columns, not one. `autonomy_state` is written only by the
+    # autonomy policy; `approval_state` is written only by a human action. One
+    # combined field would let the generating agent write what a reviewer writes
+    # — the separation-of-duty violation lifecycle.py already refuses for humans.
+    autonomy_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="AI_PENDING", server_default="AI_PENDING"
+    )
+    approval_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PENDING_FINAL", server_default="PENDING_FINAL"
+    )
 
     suite: Mapped["AutomationSuite"] = relationship("AutomationSuite", back_populates="members")
     test_case: Mapped["TestCase"] = relationship("TestCase")

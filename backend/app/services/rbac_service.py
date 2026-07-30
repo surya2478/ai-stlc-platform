@@ -160,6 +160,29 @@ AUTOMATION_SUITE_APPROVE = "automation_suite.approve"
 AUTOMATION_SUITE_PUBLISH = "automation_suite.publish"
 AUTOMATION_SUITE_CREATE_VERSION = "automation_suite.create_version"
 
+# ─── UI-020/021/023 Automation Asset Workspace (P1-S5) ───────────────────────
+# Authoring rides with GENERATE_AUTOMATION; governance rides with
+# APPROVE_TEST_CASES — the same split UI-018 established.
+AUTOMATION_ASSET_VIEW = "automation_asset.view"
+AUTOMATION_ASSET_EDIT_IR = "automation_asset.edit_ir"
+AUTOMATION_ASSET_COMPILE = "automation_asset.compile"
+AUTOMATION_ASSET_DRY_RUN = "automation_asset.dry_run"
+AUTOMATION_ASSET_ACCEPT_EXCEPTION = "automation_asset.accept_exception"
+AUTOMATION_ASSET_FINAL_APPROVE = "automation_asset.final_approve"
+AUTOMATION_ASSET_OVERRIDE_AUTONOMY = "automation_asset.override_autonomy"
+
+_GRANULAR_AUTOMATION_ASSET_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        AUTOMATION_ASSET_VIEW,
+        AUTOMATION_ASSET_EDIT_IR,
+        AUTOMATION_ASSET_COMPILE,
+        AUTOMATION_ASSET_DRY_RUN,
+        AUTOMATION_ASSET_ACCEPT_EXCEPTION,
+        AUTOMATION_ASSET_FINAL_APPROVE,
+        AUTOMATION_ASSET_OVERRIDE_AUTONOMY,
+    }
+)
+
 # ─── UI-019 Live Recorder (P1-S5) ────────────────────────────────────────────
 RECORDER_VIEW = "recorder.view"
 RECORDER_START_RECORDING = "recorder.start_recording"
@@ -231,6 +254,7 @@ GRANULAR_PERMISSIONS: frozenset[str] = (
     | _GRANULAR_NETWORK_EXPLORER_PERMISSIONS
     | _GRANULAR_AUTOMATION_SUITE_PERMISSIONS
     | _GRANULAR_RECORDER_PERMISSIONS
+    | _GRANULAR_AUTOMATION_ASSET_PERMISSIONS
 )
 
 ALL_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -278,6 +302,7 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             NETWORK_EXPLORER_VIEW, NETWORK_EXPLORER_EXPORT, NETWORK_EXPLORER_VIEW_AUDIT,
             AUTOMATION_SUITE_VIEW, AUTOMATION_SUITE_EXPORT, AUTOMATION_SUITE_VIEW_AUDIT,
             RECORDER_VIEW,
+            AUTOMATION_ASSET_VIEW,
         })
     if GENERATE_AUTOMATION in base:
         extra.update({
@@ -316,6 +341,11 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             RECORDER_DISCARD,
             RECORDER_GENERATE_IR,
             RECORDER_CREATE_VERSION,
+            # Editing the IR, compiling and dry-running are engineering work on
+            # an unapproved draft — the same class as generating a script.
+            AUTOMATION_ASSET_EDIT_IR,
+            AUTOMATION_ASSET_COMPILE,
+            AUTOMATION_ASSET_DRY_RUN,
         })
     if APPROVE_TEST_CASES in base:
         extra.update({
@@ -332,6 +362,12 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             AUTOMATION_SUITE_REVIEW,
             AUTOMATION_SUITE_APPROVE,
             AUTOMATION_SUITE_PUBLISH,
+            # Accepting a gate warning, giving final approval and overriding an
+            # autonomy verdict are all governance decisions on an individual
+            # automation asset, so they ride with test-case approval.
+            AUTOMATION_ASSET_ACCEPT_EXCEPTION,
+            AUTOMATION_ASSET_FINAL_APPROVE,
+            AUTOMATION_ASSET_OVERRIDE_AUTONOMY,
         })
     if EXECUTE_TESTS in base:
         extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})
