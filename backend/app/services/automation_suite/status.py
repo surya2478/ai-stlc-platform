@@ -28,6 +28,13 @@ class SuiteRollup:
     conflicts_critical_open: int = 0
     evaluated: bool = False
     archived: bool = False
+    # UI-023. Default 0 so every existing caller is unaffected: a suite whose
+    # members have never been compiled has nothing to validate and keeps its
+    # previous status exactly.
+    #   in_validation  — member has a compiled script, so validation applies
+    #   validation_failed — that script has blocking Static Quality Gate findings
+    members_in_validation: int = 0
+    members_validation_failed: int = 0
 
 
 def compute_rollup(
@@ -37,12 +44,23 @@ def compute_rollup(
     blocking_gaps: list[DetectedGap],
     evaluated: bool,
     archived: bool = False,
+    validation_states: dict[int, str] | None = None,
 ) -> SuiteRollup:
+    """`validation_states` maps member_id -> "none" | "pending" | "failed".
+
+    Optional and defaulting to empty so every pre-UI-023 caller behaves exactly
+    as before: with no validation data the two new counts stay zero and the
+    status precedence is unchanged.
+    """
     included = [m for m in members if m.is_included]
     manual_only = [m for m in members if m.is_manual_only]
     ready = [m for m in included if member_statuses.get(m.member_id) == "READY"]
     blocked = [m for m in included if member_statuses.get(m.member_id) == "BLOCKED"]
     drifted = [m for m in members if m.drift_reasons]
+
+    states = validation_states or {}
+    in_validation = [m for m in included if states.get(m.member_id) == "pending"]
+    validation_failed = [m for m in included if states.get(m.member_id) == "failed"]
 
     return SuiteRollup(
         members_total=len(members),
@@ -51,6 +69,8 @@ def compute_rollup(
         members_blocked=len(blocked),
         members_manual_only=len(manual_only),
         members_drifted=len(drifted),
+        members_in_validation=len(in_validation),
+        members_validation_failed=len(validation_failed),
         gaps_critical_open=len([g for g in blocking_gaps if g.severity == "critical" and g.category == "gap"]),
         gaps_warning_open=len([g for g in blocking_gaps if g.severity == "warning" and g.category == "gap"]),
         conflicts_open=len([g for g in blocking_gaps if g.category == "conflict"]),
@@ -77,4 +97,12 @@ def compute_suite_status(rollup: SuiteRollup) -> str:
         return "CONFLICT_REVIEW_REQUIRED"
     if rollup.members_drifted > 0:
         return "INHERITANCE_REVIEW_REQUIRED"
+    # UI-023 (contract Section 17). Both values were reserved in the CHECK
+    # constraint by migration 046 precisely for this, so no migration is needed
+    # to reach them. A failure outranks pending: "something is broken" is more
+    # actionable than "something is in progress".
+    if rollup.members_validation_failed > 0:
+        return "VALIDATION_FAILED"
+    if rollup.members_in_validation > 0:
+        return "VALIDATION_PENDING"
     return "READY_FOR_VALIDATION"

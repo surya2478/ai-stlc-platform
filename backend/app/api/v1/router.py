@@ -10,7 +10,7 @@ from app.api.v1.endpoints import (
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
     applications, reviews, playwright_studio, mcp_connections, video,
     grounded_poc, automation_classification, discovery, taxonomy, application_models, network_events,
-    automation_suites, recorder,
+    automation_suites, recorder, automation_assets,
 )
 
 api_router = APIRouter()
@@ -74,4 +74,10 @@ api_router.include_router(
 # capture engine as UI-015, so it shares that flag: every route 404s unless
 # DISCOVERY_SESSIONS_ENABLED=true.
 api_router.include_router(recorder.router, prefix="/lab/recorder", tags=["Live Recorder"])
+# UI-020/021/023 Automation Asset Workspace (P1-S5) — one workspace, three
+# tabs, over one suite member. An asset only exists inside a suite, so it
+# shares the suite's flag: every route 404s unless AUTOMATION_SUITE_ENABLED=true.
+api_router.include_router(
+    automation_assets.router, prefix="/lab/automation-assets", tags=["Automation Asset"]
+)
 

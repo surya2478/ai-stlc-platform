@@ -225,6 +225,36 @@ def build_snapshot_payload(suite_inh: inheritance_engine.SuiteInheritance) -> tu
     return members, checksum
 
 
+def _require_final_approval(members: list[AutomationSuiteTestCase]) -> None:
+    """The hard line (UI-023 contract Section 16).
+
+    An AI-approved asset flows freely through IR -> compile -> dry run ->
+    validation. Publication is where that stops: it freezes an immutable
+    snapshot, so it cannot be crossed without a human record. Deferred review is
+    safe precisely because this line is not.
+
+    Takes the member list `publish` has already loaded rather than issuing a
+    second query, and filters in Python. Members that are excluded or
+    manual-only are not automation assets and are not held to this.
+    """
+    lacking = [
+        m
+        for m in members
+        if m.inclusion_status == "included"
+        and getattr(m, "approval_state", "PENDING_FINAL") != "FINAL_APPROVED"
+    ]
+    if not lacking:
+        return
+    ids = ", ".join(f"#{m.id}" for m in lacking[:10])
+    more = "" if len(lacking) <= 10 else f" and {len(lacking) - 10} more"
+    raise AutomationSuiteError(
+        409,
+        "FINAL_APPROVAL_REQUIRED",
+        f"{len(lacking)} member(s) have not been finally approved and cannot be "
+        f"published: {ids}{more}.",
+    )
+
+
 async def publish(db: AsyncSession, suite: AutomationSuite, *, actor_id: int) -> AutomationSuite:
     if suite.status != "APPROVED":
         raise AutomationSuiteError(409, "INVALID_TRANSITION", "Only an approved suite can be published.")
@@ -239,6 +269,9 @@ async def publish(db: AsyncSession, suite: AutomationSuite, *, actor_id: int) ->
         .scalars()
         .all()
     )
+    # The hard line, checked against the members already loaded above.
+    _require_final_approval(members)
+
     suite_inh = await inheritance_engine.resolve_suite_inheritance(db, suite=suite, members=members)
     payload, checksum = build_snapshot_payload(suite_inh)
 

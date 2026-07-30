@@ -589,6 +589,14 @@ export function AutomationSuiteDetail({
                       </span>
                     </td>
                     <td className="text-right">
+                      {/* UI-020/021/023 entry point — opens the Automation Asset
+                          Workspace for this member on its IR Editor tab. */}
+                      <a
+                        href={`/automation?view=ir&member=${member.id}`}
+                        className="mr-2 text-[9px] font-bold text-[#1b59f8] hover:underline"
+                      >
+                        Open asset
+                      </a>
                       {member.inclusion_status === "included" ? (
                         <button
                           type="button"

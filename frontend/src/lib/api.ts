@@ -4723,3 +4723,452 @@ export const recorderApi = {
   activity: (sessionId: number) =>
     api.get<DiscoverySessionEvent[]>(`${RECORDER_BASE}/recordings/${sessionId}/activity`),
 };
+
+// ─── UI-020/021/023 Automation Asset Workspace ────────────────────────────────
+// One workspace, three tabs, over one Automation Suite member.
+
+const AUTOMATION_ASSET_BASE = "/lab/automation-assets";
+
+/** A value resolved from an authoritative source, rendered read-only with that
+ *  source named. Contract Section 5 rule 4 — inherited context is never re-entered. */
+export interface InheritedField {
+  value: string | null;
+  source: string | null;
+  available: boolean;
+  reason: string | null;
+}
+
+export interface AssetHeader {
+  member_id: number;
+  suite_id: number;
+  suite_name: string;
+  suite_version: number;
+  suite_status: AutomationSuiteStatus;
+  test_case_id: number;
+  test_case_display_id: string | null;
+  test_case_title: string | null;
+  requirement_id: number | null;
+  requirement_display_id: string | null;
+  application: InheritedField;
+  framework: InheritedField;
+  environment: InheritedField;
+  member_status: SuiteMemberStatus;
+}
+
+/** Section 10 — plain-English state and exactly one primary action. */
+export interface AssetReadinessStrip {
+  state: string;
+  message: string;
+  primary_action: string | null;
+  primary_action_target: string | null;
+}
+
+export interface AssetTabState {
+  enabled: boolean;
+  reason: string | null;
+}
+
+export interface IrValidationError {
+  field: string;
+  message: string;
+  type: string;
+}
+
+export interface IrValidationSummary {
+  step_count: number;
+  custom_step_count: number;
+  custom_step_indexes: number[];
+  locator_count: number;
+  assertion_count: number;
+  page_object_count: number;
+  binding_count: number;
+  ready_for_compile: boolean;
+}
+
+export interface IrValidationResult {
+  valid: boolean;
+  errors: IrValidationError[];
+  summary: IrValidationSummary | null;
+}
+
+/** One entry from the emitter's readiness map. `kind` is one of ten values;
+ *  the UI must render an unknown kind rather than dropping the row. */
+export interface IrReadinessItem {
+  kind: string;
+  detail: string;
+  action_id?: number | null;
+  checkpoint_id?: number | null;
+  sequence?: number | null;
+}
+
+export interface IrReadiness {
+  unresolved?: IrReadinessItem[];
+  unresolved_count?: number;
+  step_count?: number;
+  assertion_count?: number;
+  custom_step_count?: number;
+  ready_for_script_generation?: boolean;
+}
+
+export interface AssetIr {
+  id: number | null;
+  version: number;
+  is_current: boolean;
+  status: string;
+  contract: Record<string, unknown>;
+  contract_version: string;
+  readiness: IrReadiness;
+  source_action_ids: number[];
+  generated_by: number | null;
+  updated_at?: string | null;
+  /** "ir_draft" is editable; "compiled_script" is a read-only reconstruction. */
+  source: "ir_draft" | "compiled_script";
+  editable: boolean;
+}
+
+export interface AssetPrecondition {
+  code: string;
+  label: string;
+  met: boolean;
+  detail: string;
+}
+
+/** The machine axis. Deliberately separate from `approval_state`, the human axis. */
+export interface AssetAutonomy {
+  autonomy_state: "AI_PENDING" | "AI_HELD" | "AI_APPROVED";
+  approval_state: "PENDING_FINAL" | "FINAL_APPROVED" | "REJECTED";
+  verdict_state: string;
+  score: number | null;
+  threshold: number;
+  rubric_id: string;
+  held_reason: string | null;
+  would_approve: boolean;
+  enabled: boolean;
+  dimensions: Record<string, number>;
+  preconditions: AssetPrecondition[];
+}
+
+export interface AssetScript {
+  id: number;
+  script_id: string;
+  framework: string;
+  version: number;
+  status: string;
+  entry_path: string | null;
+  file_count: number;
+  static_gate_result: Record<string, unknown> | null;
+}
+
+export interface AutomationAsset {
+  header: AssetHeader;
+  readiness_strip: AssetReadinessStrip;
+  tabs: Record<string, AssetTabState>;
+  ir: AssetIr | null;
+  ir_validation: IrValidationResult | null;
+  autonomy: AssetAutonomy;
+  script: AssetScript | null;
+  unavailable: Record<string, string>;
+}
+
+export interface DeclaredElement {
+  page_object: string;
+  name: string;
+  locator_strategy: string | null;
+  locator_value: string | null;
+  role_hint: string | null;
+  nth: number | null;
+  business_meaning: string | null;
+  in_model: boolean;
+}
+
+export interface AvailableElement {
+  name: string;
+  source: "application_model" | "locator_map";
+  in_model: boolean;
+  locator_value: string | null;
+  locator_strategy: string | null;
+  confidence: number | null;
+  business_meaning: string | null;
+}
+
+export interface ElementCatalogue {
+  declared: DeclaredElement[];
+  available: AvailableElement[];
+  element_required_actions: string[];
+}
+
+export interface IrVersionRow {
+  id: number;
+  version: number;
+  is_current: boolean;
+  status: string;
+  /** `is_current` is scoped to one recording session's chain, not the member. */
+  session_id: number;
+  step_count: number;
+  custom_step_count: number;
+  unresolved_count: number;
+  generated_by: number | null;
+  created_at: string | null;
+}
+
+export interface ProvenanceAction {
+  id: number;
+  sequence: number | null;
+  actor: string | null;
+  /** DiscoveryAction's real field. There is no `action_type`/`description`. */
+  action_family: string | null;
+  target_semantic: string | null;
+  target_element_ref: string | null;
+  target_screen_ref: string | null;
+  test_step_ref: string | null;
+  created_at: string | null;
+}
+
+export const automationAssetApi = {
+  get: (memberId: number) =>
+    api.get<AutomationAsset>(`${AUTOMATION_ASSET_BASE}/members/${memberId}`),
+  getIr: (memberId: number) =>
+    api.get<{ ir: AssetIr | null; validation: IrValidationResult | null }>(
+      `${AUTOMATION_ASSET_BASE}/members/${memberId}/ir`,
+    ),
+  /** Validate without saving. Returns 200 with valid:false while mid-edit —
+   *  an invalid draft is a normal state, not an error. */
+  validateIr: (memberId: number, contract: Record<string, unknown>) =>
+    api.post<IrValidationResult>(`${AUTOMATION_ASSET_BASE}/members/${memberId}/ir/validate`, {
+      contract,
+    }),
+  saveIr: (
+    memberId: number,
+    contract: Record<string, unknown>,
+    resolvedReadinessKinds: string[] = [],
+  ) =>
+    api.put<{ ir: AssetIr; validation: IrValidationResult }>(
+      `${AUTOMATION_ASSET_BASE}/members/${memberId}/ir`,
+      { contract, resolved_readiness_kinds: resolvedReadinessKinds },
+    ),
+  irVersions: (memberId: number) =>
+    api.get<{ versions: IrVersionRow[]; other_session_draft_count: number }>(
+      `${AUTOMATION_ASSET_BASE}/members/${memberId}/ir/versions`,
+    ),
+  elements: (memberId: number) =>
+    api.get<ElementCatalogue>(`${AUTOMATION_ASSET_BASE}/members/${memberId}/elements`),
+  provenance: (memberId: number) =>
+    api.get<{ actions: ProvenanceAction[]; unavailable: string | null }>(
+      `${AUTOMATION_ASSET_BASE}/members/${memberId}/provenance`,
+    ),
+  evaluate: (memberId: number) =>
+    api.post<AssetAutonomy & { decision_id: number | null }>(
+      `${AUTOMATION_ASSET_BASE}/members/${memberId}/evaluate`,
+    ),
+};
+
+// ─── UI-021 Script Editor ─────────────────────────────────────────────────────
+
+export interface CompiledScript {
+  id: number;
+  script_id: string;
+  framework: string;
+  version: number;
+  parent_script_id: number | null;
+  status: string;
+  entry_path: string | null;
+  /** The full multi-file bundle: relative path -> source. Read-only. */
+  compiled_files: Record<string, string>;
+  execution_command: string | null;
+  setup_required: string[];
+  static_gate_result: StaticGateResult | null;
+  compiler_version: string | null;
+  created_by: number | null;
+  updated_at: string | null;
+}
+
+// StaticGateResult / StaticGateViolation are already declared above and reused
+// here — the gate has one shape across the whole client.
+
+export interface DryRunTestResult {
+  id: number | null;
+  test_name: string;
+  status: string;
+  duration_ms: number | null;
+  error_message: string | null;
+  screenshot_url?: string | null;
+  video_url?: string | null;
+  trace_path?: string | null;
+  created_at?: string | null;
+}
+
+export interface DryRunOutcome {
+  execution_run_id: number;
+  /** "completed" on a successful run — NOT "passed". The verdict is per-test. */
+  run_status: string;
+  all_passed: boolean;
+  duration_seconds: number | null;
+  error_message: string | null;
+  log_path: string | null;
+  runner: string | null;
+  exit_code: number | null;
+  results: DryRunTestResult[];
+  static_gate_result: StaticGateResult;
+}
+
+export interface RunnerFrameworkStatus {
+  framework: string;
+  available: boolean;
+  detail: string;
+}
+
+export const automationScriptApi = {
+  get: (memberId: number) =>
+    api.get<{
+      script: CompiledScript | null;
+      unavailable: string | null;
+      dry_runs: DryRunTestResult[];
+    }>(`${AUTOMATION_ASSET_BASE}/members/${memberId}/script`),
+  compile: (memberId: number) =>
+    api.post<{
+      id: number;
+      script_id: string;
+      version: number;
+      framework: string;
+      entry_path: string | null;
+      file_count: number;
+      status: string;
+      static_gate_result: StaticGateResult | null;
+    }>(`${AUTOMATION_ASSET_BASE}/members/${memberId}/compile`),
+  dryRun: (memberId: number) =>
+    api.post<DryRunOutcome>(`${AUTOMATION_ASSET_BASE}/members/${memberId}/dry-run`),
+  runnerStatus: () =>
+    api.get<{ frameworks: RunnerFrameworkStatus[] }>(
+      `${AUTOMATION_ASSET_BASE}/runner-status`,
+    ),
+};
+
+// ─── UI-023 Validation and Review ─────────────────────────────────────────────
+
+export interface ValidationCard {
+  label: string;
+  status: "pass" | "fail" | "partial" | "below" | "unknown";
+  detail: string;
+  available: boolean;
+  reason: string | null;
+}
+
+export interface ValidationFinding {
+  code: string;
+  message: string;
+  severity: "block" | "warn";
+  /** Blocking violations are never waivable from this screen. */
+  waivable: boolean;
+  accepted: boolean;
+}
+
+export interface GatingDecision extends AssetAutonomy {
+  state: string;
+}
+
+export interface ValidationPayload {
+  cards: {
+    static_quality: ValidationCard;
+    real_execution: ValidationCard;
+    readiness: ValidationCard;
+    confidence_score: ValidationCard;
+  };
+  gating: GatingDecision;
+  findings: ValidationFinding[];
+  /** Three states. "skipped" is rendered as skipped, never as a pass. */
+  syntax_check: { status: "passed" | "failed" | "skipped"; detail: string | null };
+  readiness_items: IrReadinessItem[];
+  dry_runs: DryRunTestResult[];
+  accepted_exceptions: string[];
+  script_id: string | null;
+  unavailable: Record<string, string>;
+}
+
+export interface FinalApprovalOutcome {
+  decision_id: number;
+  decision: string;
+  approval_state: string;
+  autonomy_state: string;
+  decided_by: number | null;
+  threshold: number;
+  score: number | null;
+}
+
+export interface AssetDecisionRow {
+  id: number;
+  decision: string;
+  decided_by: number | null;
+  rubric_id: string;
+  threshold: number;
+  score: number | null;
+  dimensions: Record<string, number>;
+  preconditions: AssetPrecondition[];
+  model_versions: Record<string, string>;
+  reason: string | null;
+  created_at: string | null;
+}
+
+export const automationValidationApi = {
+  get: (memberId: number) =>
+    api.get<ValidationPayload>(`${AUTOMATION_ASSET_BASE}/members/${memberId}/validation`),
+  acceptException: (memberId: number, code: string, reason: string) =>
+    api.post<StaticGateResult>(
+      `${AUTOMATION_ASSET_BASE}/members/${memberId}/validation/exceptions`,
+      { code, reason },
+    ),
+  finalApproval: (memberId: number, approve: boolean, reason?: string) =>
+    api.post<FinalApprovalOutcome>(
+      `${AUTOMATION_ASSET_BASE}/members/${memberId}/final-approval`,
+      { approve, reason: reason ?? null },
+    ),
+  decisions: (memberId: number) =>
+    api.get<AssetDecisionRow[]>(`${AUTOMATION_ASSET_BASE}/members/${memberId}/decisions`),
+  pendingFinalApproval: (suiteId: number) =>
+    api.get<{
+      pending_final_approval: Array<{
+        member_id: number;
+        test_case_id: number;
+        autonomy_state: string;
+        approval_state: string;
+        last_evaluated_at: string | null;
+      }>;
+      blocking_publish: Array<{
+        member_id: number;
+        test_case_id: number;
+        approval_state: string;
+      }>;
+    }>(`${AUTOMATION_ASSET_BASE}/suites/${suiteId}/pending-final-approval`),
+};
+
+export interface AutomationAssetRow {
+  member_id: number;
+  suite_id: number;
+  suite_name: string;
+  suite_status: AutomationSuiteStatus;
+  test_case_id: number;
+  test_case_display_id: string | null;
+  test_case_title: string | null;
+  member_status: SuiteMemberStatus;
+  inclusion_status: string;
+  autonomy_state: "AI_PENDING" | "AI_HELD" | "AI_APPROVED";
+  approval_state: "PENDING_FINAL" | "FINAL_APPROVED" | "REJECTED";
+  has_script: boolean;
+  framework: string | null;
+  last_evaluated_at: string | null;
+}
+
+export interface AutomationAssetListing {
+  assets: AutomationAssetRow[];
+  counts: {
+    total: number;
+    ai_approved: number;
+    ai_held: number;
+    pending_final_approval: number;
+    final_approved: number;
+  };
+}
+
+export const automationAssetListApi = {
+  list: (projectId: number) =>
+    api.get<AutomationAssetListing>(`${AUTOMATION_ASSET_BASE}/projects/${projectId}/assets`),
+};

@@ -15,6 +15,7 @@ import {
   Network,
   Layers3,
   Video,
+  FileCode2,
   MoreHorizontal,
   Home,
   Workflow,
@@ -90,6 +91,9 @@ const NAV_ITEMS: NavGroup[] = [
     items: [
       { label: "Automation Workspace", href: "/automation?view=workspace", icon: Layers3 },
       { label: "Live Recorder", href: "/automation?view=recorder", icon: Video },
+      // UI-020/021/023. Lands on the asset picker; the three tabs are
+      // per-member routes reached from there.
+      { label: "Automation Assets", href: "/automation?view=ir", icon: FileCode2 },
     ],
   },
   {

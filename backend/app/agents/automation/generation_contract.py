@@ -48,6 +48,16 @@ StepAction = Literal[
     "hover", "wait_for_visible", "wait_for_url", "custom",
 ]
 AssertionType = Literal["visible", "text", "url", "value", "count"]
+
+# Actions that render `{target}.<method>()` — a Locator method call, so the
+# target must resolve to a real declared element and can never be omitted.
+# Module-level so UI-020's element picker can offer exactly the actions that
+# require an element, using the same list the validator enforces. Keeping one
+# definition is the point: a picker that disagreed with the validator would
+# offer a form that cannot be saved.
+ELEMENT_REQUIRED_ACTIONS_TUPLE: tuple[str, ...] = (
+    "fill", "click", "check", "uncheck", "select", "hover", "wait_for_visible",
+)
 CleanupActionType = Literal["api_call", "ui_action"]
 
 
@@ -228,11 +238,9 @@ class AutomationGenerationContract(ContractBaseModel):
                     f"{where} target '{target}' does not match any declared page object element"
                 )
 
-        # Actions that render `{target}.<method>()` — a Locator method call,
-        # so target must resolve to a real element, never be omitted.
-        ELEMENT_REQUIRED_ACTIONS = {
-            "fill", "click", "check", "uncheck", "select", "hover", "wait_for_visible",
-        }
+        # See ELEMENT_REQUIRED_ACTIONS_TUPLE above — one definition, shared with
+        # UI-020's element picker so the form can never offer an unsaveable shape.
+        ELEMENT_REQUIRED_ACTIONS = set(ELEMENT_REQUIRED_ACTIONS_TUPLE)
         for step in self.steps:
             if step.action in ("navigate", "custom", "wait_for_url"):
                 # navigate's target is a raw path; custom is a TODO

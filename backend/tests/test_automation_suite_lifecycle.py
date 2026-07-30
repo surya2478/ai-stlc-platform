@@ -113,12 +113,17 @@ def _suite(**overrides):
     return SimpleNamespace(**defaults)
 
 
-def _member_row(member_id=1, test_case_id=10):
+def _member_row(member_id=1, test_case_id=10, approval_state="FINAL_APPROVED"):
     return SimpleNamespace(
         id=member_id,
         suite_id=1,
         test_case_id=test_case_id,
         inclusion_status="included",
+        # UI-023 contract Section 16: publication is the hard line, so a
+        # publishable member must carry a human final approval. Defaults to
+        # approved here because these fixtures represent a suite in good
+        # standing; the refusal is covered by its own test below.
+        approval_state=approval_state,
         planned_sequence=None,
         source_system="platform",
         source_reference=None,
@@ -288,6 +293,48 @@ def test_publishing_writes_an_immutable_snapshot():
         assert snapshots[0].suite_version == suite.version
         assert len(snapshots[0].checksum) == 64
         assert "published" in _events(db)
+
+    anyio.run(scenario)
+
+
+def test_publishing_is_refused_while_a_member_lacks_final_approval():
+    """UI-023 contract Section 16 — the one line deferred review cannot cross.
+
+    An AI-approved asset flows freely up to publication; publication freezes an
+    immutable snapshot, so it requires a human record.
+    """
+    async def scenario():
+        db = _FakeDB(
+            rows={
+                "automation_suite_test_cases": [
+                    _member_row(member_id=1, approval_state="FINAL_APPROVED"),
+                    _member_row(member_id=2, test_case_id=11, approval_state="PENDING_FINAL"),
+                ]
+            }
+        )
+        suite = _suite(status="APPROVED", submitted_by=3, approved_by=4)
+        with pytest.raises(AutomationSuiteError) as exc:
+            await lifecycle.publish(db, suite, actor_id=5)
+        assert exc.value.detail["code"] == "FINAL_APPROVAL_REQUIRED"
+        assert "#2" in exc.value.detail["message"]
+        assert suite.status == "APPROVED"
+        assert not [a for a in db.added if isinstance(a, AutomationSuiteSnapshot)]
+
+    anyio.run(scenario)
+
+
+def test_excluded_members_do_not_block_publication():
+    """An excluded member is not an automation asset, so it is not held to the
+    final-approval rule."""
+    async def scenario():
+        excluded = _member_row(member_id=2, test_case_id=11, approval_state="PENDING_FINAL")
+        excluded.inclusion_status = "excluded"
+        db = _FakeDB(
+            rows={"automation_suite_test_cases": [_member_row(member_id=1), excluded]}
+        )
+        suite = _suite(status="APPROVED", submitted_by=3, approved_by=4)
+        result = await lifecycle.publish(db, suite, actor_id=5)
+        assert result.status == "PUBLISHED"
 
     anyio.run(scenario)
 

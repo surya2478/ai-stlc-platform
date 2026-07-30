@@ -564,11 +564,28 @@ async def evaluate_suite(db: AsyncSession, suite: AutomationSuite, *, actor_id: 
         member.resolved_framework = member_inh.primary_script.framework if member_inh.primary_script else None
         member.resolved_environment = member_inh.resolved_environment
 
+    # UI-023: a member with a compiled script is in validation; blocking Static
+    # Quality Gate findings on that script make it failed. Read from the
+    # persisted gate verdict — never recomputed here.
+    validation_states: dict[int, str] = {}
+    for member_inh in suite_inh.members:
+        script = member_inh.primary_script
+        if script is None:
+            continue
+        gate = script.static_gate_result or None
+        if gate is None:
+            validation_states[member_inh.member_id] = "pending"
+        elif gate.get("passed"):
+            validation_states[member_inh.member_id] = "pending"
+        else:
+            validation_states[member_inh.member_id] = "failed"
+
     rollup = status_engine.compute_rollup(
         members=suite_inh.members,
         member_statuses=member_statuses,
         blocking_gaps=blocking_gaps,
         evaluated=True,
+        validation_states=validation_states,
     )
     _apply_rollup(suite, rollup)
     # Once a suite is in review, approved or published, its status is a human

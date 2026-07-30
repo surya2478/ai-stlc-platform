@@ -66,6 +66,8 @@ import { DiscoverySessionView } from "@/components/discovery/DiscoverySessionVie
 import { AutomationSuiteDashboard } from "@/components/automation/AutomationSuiteDashboard";
 import { AutomationSuiteDetail } from "@/components/automation/AutomationSuiteDetail";
 import { NewAutomationSuiteWizard } from "@/components/automation/NewAutomationSuiteWizard";
+import { AutomationAssetWorkspace } from "@/components/automation/AutomationAssetWorkspace";
+import { AutomationAssetPicker } from "@/components/automation/AutomationAssetPicker";
 import { LiveRecorderLauncher } from "@/components/automation/LiveRecorderLauncher";
 import { LiveRecorderWorkspace } from "@/components/automation/LiveRecorderWorkspace";
 import { RunnerStatusChip } from "@/app/execution/_components/RunnerStatusChip";
@@ -854,6 +856,53 @@ function AutomationContent() {
         )}
       </div>
     );
+  }
+
+  // UI-020/021/023 Automation Asset Workspace — one workspace, three tabs, over
+  // one suite member. Each tab is its own addressable route so UI-020, UI-021
+  // and UI-023 stay separately deep-linkable and acceptance-testable.
+  {
+    const view = searchParams.get("view");
+    if (view === "ir" || view === "script" || view === "validation") {
+      const memberId = Number(searchParams.get("member")) || null;
+      const setParam = (next: Record<string, string>) => {
+        const params = new URLSearchParams(searchParams.toString());
+        Object.entries(next).forEach(([k, v]) => params.set(k, v));
+        router.push(`/automation?${params.toString()}`);
+      };
+      // No member selected: land on the picker rather than a dead end. It is
+      // also the Section 16 aging queue.
+      if (!memberId) {
+        if (!selectedProject) {
+          return (
+            <div className="p-8 text-sm font-semibold text-slate-400">
+              Select a project to see its automation assets.
+            </div>
+          );
+        }
+        return (
+          <div className="min-h-full pb-8">
+            <AutomationAssetPicker
+              projectId={selectedProject}
+              onOpen={(id) => setParam({ view: "ir", member: String(id) })}
+            />
+          </div>
+        );
+      }
+      return (
+        <div className="min-h-full pb-8">
+          <AutomationAssetWorkspace
+            memberId={memberId}
+            tab={view}
+            onTabChange={(tab) => setParam({ view: tab })}
+            onBackToSuite={(suiteId) =>
+              setParam({ view: "workspace", suite: String(suiteId) })
+            }
+            onOpenRecorder={() => setParam({ view: "recorder" })}
+          />
+        </div>
+      );
+    }
   }
 
   if (searchParams.get("view") === "workspace-new") {
