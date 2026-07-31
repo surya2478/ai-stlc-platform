@@ -51,6 +51,11 @@ def _escape_py(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
+# A locator value that starts like this is an already-rendered expression that
+# leaked into a contract field, never a real accessible name, label or selector.
+_RENDERED_LOCATOR_PREFIX = re.compile(r"^\s*page\.(getBy[A-Za-z]+|locator)\(")
+
+
 def render_locator_playwright(
     strategy: str, value: str, role_hint: str | None = None, nth: int | None = None
 ) -> str:
@@ -70,7 +75,36 @@ def render_locator_playwright(
     "Show password" icon buttons). Without it, the base locator alone
     causes a Playwright "strict mode violation" at runtime (confirmed via a
     live run) since it isn't unique on the real page.
+
+    A value that is *itself* an already-rendered locator is recovered rather
+    than embedded. Confirmed across 8 live failures: the LLM put a whole
+    expression into `locatorValue`, and this function dutifully escaped it
+    into an accessible name, producing
+
+        getByRole('link', { name: 'page.getByRole(\\'link\\', ...)' })
+
+    which cannot match any real element and fails 15 seconds later with a
+    message that blames the page rather than the contract. `ground_page_object_elements`
+    only repairs elements the LLM named after a catalog entry, so anything it
+    renamed reached here uncorrected. Parsing it back is exact — the inverse
+    of this very function — and turns a guaranteed runtime failure into the
+    locator that was meant.
     """
+    if value and _RENDERED_LOCATOR_PREFIX.match(value):
+        recovered = parse_locator_playwright(value)
+        if recovered is None:
+            # Unparseable, and it cannot be a real accessible name either. Fail
+            # at compile time, where the static gate reports it against the
+            # contract, instead of emitting a script that is certain to time out.
+            raise ValueError(
+                "locator_value is a rendered locator expression that could not be "
+                f"parsed back: {value!r}. The contract element must carry a plain "
+                "strategy/value/roleHint, not a compiled locator string."
+            )
+        strategy, value, recovered_role_hint, recovered_nth = recovered
+        role_hint = recovered_role_hint or role_hint
+        nth = recovered_nth if nth is None else nth
+
     value = _escape_js(value)
     if strategy == "role":
         role = _escape_js(role_hint or "button")

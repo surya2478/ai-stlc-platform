@@ -379,3 +379,79 @@ def test_check_url_targets_grounded_no_op_without_explored_paths():
     contract = _contract(steps=[{"phase": "act", "action": "wait_for_url", "value": "/totally-invented"}])
     assert locator_policy.check_url_targets_grounded(contract, None) == []
     assert locator_policy.check_url_targets_grounded(contract, []) == []
+
+
+# ── Rendered-locator recovery ─────────────────────────────────────────────────
+# Regression cover for 8 live failures where the LLM put an already-rendered
+# locator into `locatorValue`. The renderer escaped it into an accessible name,
+# producing getByRole('link', { name: "page.getByRole('link', ...)" }) — a
+# locator that cannot match anything and times out 15s later blaming the page.
+
+
+def test_nested_rendered_locator_is_recovered_not_embedded():
+    nested = "page.getByRole('link', { name: 'Dashboard', exact: true })"
+    rendered = locator_policy.render_locator_playwright("role", nested, "button")
+    assert rendered == "page.getByRole('link', { name: 'Dashboard', exact: true })"
+    # The give-away of the old bug: the expression nested inside a name.
+    assert "name: 'page.getByRole" not in rendered
+
+
+def test_recovered_role_hint_overrides_the_wrong_one():
+    """The nested expression is authoritative — it is what discovery validated."""
+    nested = "page.getByRole('link', { name: 'Dashboard', exact: true })"
+    assert "getByRole('link'" in locator_policy.render_locator_playwright("role", nested, "button")
+
+
+def test_recovery_carries_the_nested_nth():
+    nested = "page.getByRole('button', { name: 'Sign in', exact: true }).nth(2)"
+    assert locator_policy.render_locator_playwright("role", nested, "link").endswith(".nth(2)")
+
+
+def test_explicit_nth_wins_over_the_recovered_one():
+    nested = "page.getByRole('button', { name: 'Sign in', exact: true }).nth(2)"
+    assert locator_policy.render_locator_playwright("role", nested, "link", 0).endswith(".nth(0)")
+
+
+def test_recovery_handles_every_rendered_strategy():
+    for nested, expected in [
+        ("page.getByPlaceholder('name@company.com')", "page.getByPlaceholder('name@company.com')"),
+        ("page.getByLabel('Email')", "page.getByLabel('Email')"),
+        ("page.getByTestId('submit')", "page.getByTestId('submit')"),
+        ("page.getByText('Sign in')", "page.getByText('Sign in')"),
+    ]:
+        assert locator_policy.render_locator_playwright("role", nested, "button") == expected
+
+
+def test_genuine_name_containing_parentheses_is_untouched():
+    """Must not over-trigger: real accessible names contain punctuation."""
+    rendered = locator_policy.render_locator_playwright("role", "Notifications (F8)", "button")
+    assert rendered == "page.getByRole('button', { name: 'Notifications (F8)', exact: true })"
+
+
+def test_plain_values_are_unaffected():
+    assert (
+        locator_policy.render_locator_playwright("placeholder", "name@company.com")
+        == "page.getByPlaceholder('name@company.com')"
+    )
+    # Built rather than written as a literal, so the assertion is not a puzzle
+    # about how many backslashes survive the source encoding. A CSS selector's
+    # own single quotes must come out escaped for the JS string literal.
+    expected_css = "page.locator('input[name=" + chr(92) + "'q" + chr(92) + "']')"
+    assert locator_policy.render_locator_playwright("css", "input[name='q']") == expected_css
+
+
+def test_unparseable_rendered_locator_fails_at_compile_time():
+    """It cannot be a real accessible name either, so failing loudly beats
+    emitting a script guaranteed to time out."""
+    import pytest
+
+    with pytest.raises(ValueError, match="rendered locator expression"):
+        locator_policy.render_locator_playwright("role", "page.getByRole(totally broken", "button")
+
+
+def test_round_trip_is_stable():
+    """Rendering a recovered locator again must not change it."""
+    original = "page.getByRole('link', { name: 'Dashboard', exact: true })"
+    once = locator_policy.render_locator_playwright("role", original, "button")
+    twice = locator_policy.render_locator_playwright("role", once, "button")
+    assert once == twice == original
