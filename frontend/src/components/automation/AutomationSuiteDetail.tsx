@@ -37,6 +37,8 @@ import {
   type AutomationSuiteOverview,
   type AutomationSuiteVersion,
   type InheritedScopeItem,
+  suiteExecutionApi,
+  type SuiteRunListRow,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -60,7 +62,8 @@ type LiveTab =
   | "inherited-scope"
   | "conflicts"
   | "execution-groups"
-  | "versions";
+  | "versions"
+  | "executions";
 
 const LIVE_TABS: { key: LiveTab; label: string }[] = [
   { key: "overview", label: "Overview" },
@@ -69,13 +72,19 @@ const LIVE_TABS: { key: LiveTab; label: string }[] = [
   { key: "conflicts", label: "Conflicts and Gaps" },
   { key: "execution-groups", label: "Execution Groups" },
   { key: "versions", label: "Versions" },
+  // Live as of P1-S7: migration 052 gave execution_runs a snapshot link, so this
+  // tab now launches and lists real runs rather than explaining its own absence.
+  { key: "executions", label: "Executions" },
 ];
 
 const DEFERRED_TABS: { label: string; reason: string }[] = [
   { label: "Automation Assets", reason: "No automation-asset entity exists yet" },
   { label: "Test Data", reason: "Suite-scoped test data selection is P1-S6" },
-  { label: "Executions", reason: "Executions carry no link to a suite yet (P1-S7)" },
-  { label: "Evidence", reason: "No evidence entity exists yet" },
+  {
+    label: "Evidence",
+    reason:
+      "Per-run evidence is on the execution command center; the consolidated evidence report is UI-052",
+  },
 ];
 
 // Statuses whose scope is frozen by a publication snapshot.
@@ -127,6 +136,8 @@ export function AutomationSuiteDetail({
   }>({ split_dimensions: [], unavailable: {} });
   const [versions, setVersions] = useState<AutomationSuiteVersion[]>([]);
   const [impact, setImpact] = useState<AutomationSuiteImpactReview | null>(null);
+  const [runs, setRuns] = useState<SuiteRunListRow[]>([]);
+  const [launching, setLaunching] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -146,6 +157,11 @@ export function AutomationSuiteDetail({
         automationSuiteApi.versions(suiteId).catch(() => null),
         automationSuiteApi.impactReview(suiteId).catch(() => null),
       ]);
+    // Tolerated separately: a user with suite access but without
+    // execution.view_live_runs should still see the rest of the suite rather than
+    // have the whole detail view fail on a 403.
+    const runsRes = await suiteExecutionApi.listForSuite(suiteId).catch(() => null);
+    setRuns(runsRes?.data ?? []);
     setOverview(overviewRes.data);
     setMembers(membersRes.data.items);
     setGaps(gapsRes.data.items);
@@ -1181,6 +1197,95 @@ export function AutomationSuiteDetail({
                   <li key={c.member_id} className="text-[10px] font-semibold text-slate-600">
                     <span className="font-bold text-slate-800">TC-{c.test_case_id}</span>{" "}
                     {c.reasons.join(" ")}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </div>
+      )}
+
+      {tab === "executions" && (
+        <div className="space-y-3">
+          <Panel title="Suite Execution">
+            {overview?.status !== "PUBLISHED" ? (
+              <p className="py-3 text-[10px] font-semibold text-slate-500">
+                Only a published suite can be executed — a run is dispatched against
+                the immutable publication snapshot, not against live scope. This
+                suite is {overview?.status ?? "not loaded"}.
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-2 py-1">
+                <p className="max-w-2xl text-[10px] font-semibold text-slate-600">
+                  A run evaluates environment, application, data, framework and
+                  worker readiness before dispatching anything. If a readiness axis
+                  fails, the run is created and blocked with the reason rather than
+                  started.
+                </p>
+                <button
+                  type="button"
+                  disabled={launching}
+                  onClick={async () => {
+                    setLaunching(true);
+                    setError(null);
+                    try {
+                      const { data } = await suiteExecutionApi.start(suiteId, {});
+                      // Straight into the command center: the gate verdict is
+                      // already computed, so there is nothing to wait for here.
+                      router.push(
+                        `/automation/executions/${data.id}/live?project=${projectId}`,
+                      );
+                    } catch (caught) {
+                      setError(messageFromError(caught));
+                    } finally {
+                      setLaunching(false);
+                    }
+                  }}
+                  className="rounded-md bg-[#1b59f8] px-3 py-1.5 text-[10px] font-bold text-white disabled:opacity-50"
+                >
+                  {launching ? "Starting…" : "Start execution"}
+                </button>
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="Runs">
+            {runs.length === 0 ? (
+              // EmptyRow is a table row; this list is not a table, so the plain
+              // paragraph is the correct element here.
+              <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+                This suite has not been executed yet.
+              </p>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {runs.map((run) => (
+                  <li key={run.id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            `/automation/executions/${run.id}/live?project=${projectId}`,
+                          )
+                        }
+                        className="text-[11px] font-bold text-[#1b59f8] hover:underline"
+                      >
+                        {run.execution_id}
+                      </button>
+                      <p className="text-[9px] font-semibold text-slate-400">
+                        {run.environment ?? "No environment"} ·{" "}
+                        {run.started_at ? formatDateTime(run.started_at) : "not started"}
+                        {run.execution_purpose ? ` · ${run.execution_purpose}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-[9px] font-bold">
+                      <span className="text-slate-500">
+                        {run.passed}/{run.total_tests} passed
+                      </span>
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+                        {run.outcome ?? run.lifecycle_state ?? "—"}
+                      </span>
+                    </div>
                   </li>
                 ))}
               </ul>

@@ -244,7 +244,9 @@ export interface Requirement {
   apis?: string[];
   dependencies?: string[];
   risks?: string[];
-  missing_information?: string[];
+  /** Mixed by design: historical rows are plain strings, the agent now emits
+   *  `{item, severity}`. Normalize with `missingInfoItems` before reading. */
+  missing_information?: Array<string | MissingInfoItem>;
   upstream_systems?: string[];
   downstream_systems?: string[];
   api_interface_refs?: string[];
@@ -1073,6 +1075,38 @@ export const documentsApi = {
 
 // ── Requirements ──────────────────────────────────────────────────────────────
 
+/** How a blocker is actually cleared. The old panel implied "Re-run Analysis"
+ *  for all of them, including two that no re-run could ever fix. */
+export type BlockerResolution = "rerun_analysis" | "human_input" | "clarification";
+
+export interface RequirementBlocker {
+  code: string;
+  message: string;
+  resolution: BlockerResolution;
+  resolution_label: string;
+}
+
+export interface MissingInfoItem {
+  item: string;
+  severity: "blocking" | "advisory";
+}
+
+export interface RequirementBlockerSummary {
+  blockers: RequirementBlocker[];
+  total: number;
+  by_resolution: Record<BlockerResolution, RequirementBlocker[]>;
+  /** True when nothing remaining can be cleared by re-running the agent. */
+  rerun_cannot_help: boolean;
+  traceability: RequirementBlocker[];
+  /** Declared gaps the agent judged non-blocking — shown, never gating. */
+  advisory_missing_information: MissingInfoItem[];
+  taxonomy_not_applicable: {
+    reason: string;
+    by_user_id: number | null;
+    at: string;
+  } | null;
+}
+
 export const requirementsApi = {
   list: (projectId: number, params?: string | {
     status?: string;
@@ -1101,6 +1135,18 @@ export const requirementsApi = {
     api.post<Requirement>(`/requirements/${id}/approve`, { action, notes }),
   transition: (id: number, action: "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability" | "request_clarification" | "resolve_clarification", notes?: string) =>
     api.post<Requirement>(`/requirements/${id}/transition`, { action, notes }),
+  /** What is blocking this requirement, and how each blocker is actually cleared.
+   *  Served by the backend so the screen no longer recomputes the gate itself —
+   *  the two copies could and did disagree. */
+  blockers: (id: number) => api.get<RequirementBlockerSummary>(`/requirements/${id}/blockers`),
+  /** Record (or withdraw) a human decision that taxonomy does not apply. Never
+   *  inferred — the telecom vocabulary genuinely does not fit every source, but
+   *  deciding that is a person's call. */
+  setTaxonomyApplicability: (id: number, applicable: boolean, reason?: string) =>
+    api.post<Requirement>(`/requirements/${id}/taxonomy-not-applicable`, {
+      applicable,
+      reason,
+    }),
   delete: (id: number) => api.delete(`/requirements/${id}`),
   triggerIntake: (projectId: number, documentId: number) =>
     api.post("/requirements/agent/intake", { project_id: projectId, document_id: documentId }),
@@ -5171,4 +5217,338 @@ export interface AutomationAssetListing {
 export const automationAssetListApi = {
   list: (projectId: number) =>
     api.get<AutomationAssetListing>(`${AUTOMATION_ASSET_BASE}/projects/${projectId}/assets`),
+};
+
+// ─── UI-046 Suite Execution Command Center (P1-S7) ────────────────────────────
+// The live transport is polling `events?after={sequence}`, not a socket: this
+// platform has no SSE/WebSocket infrastructure, and a dense sequence cursor is
+// what makes reconnection lossless (contract Sections 2.1.7 and 14.8).
+
+const SUITE_EXECUTION_BASE = "/lab/suite-executions";
+
+export interface ExecutionReadinessCheck {
+  axis: string;
+  name: string;
+  passed: boolean;
+  detail: string;
+  blocking: boolean;
+}
+
+export interface ExecutionReadiness {
+  ready: boolean;
+  axes: Record<string, boolean>;
+  checks: ExecutionReadinessCheck[];
+  blockers: ExecutionReadinessCheck[];
+}
+
+/** Section 3.1 — the server owns which action is primary, so the UI cannot drift
+ *  from the run state machine. */
+export type ExecutionPrimaryAction =
+  | "VIEW_READINESS"
+  | "REVIEW_BLOCKER"
+  | "VIEW_QUEUE_POSITION"
+  | "PAUSE_AFTER_CURRENT"
+  | "VIEW_PAUSE_PROGRESS"
+  | "RESUME"
+  | "VIEW_STOP_PROGRESS"
+  | "OPEN_REPORT";
+
+export type ExecutionLifecycleState =
+  | "READINESS_PENDING"
+  | "BLOCKED_BEFORE_START"
+  | "QUEUED"
+  | "RUNNING"
+  | "PAUSE_REQUESTED"
+  | "PAUSED"
+  | "STOP_REQUESTED"
+  | "STOPPED"
+  | "CANCELLED"
+  | "COMPLETED";
+
+/** The eight deterministic outcomes. */
+export type ExecutionOutcome =
+  | "PASS"
+  | "FAIL"
+  | "INCONCLUSIVE"
+  | "BLOCKED"
+  | "ENVIRONMENT_FAILURE"
+  | "DATA_FAILURE"
+  | "AUTOMATION_FAILURE"
+  | "POLICY_BLOCKED";
+
+/** Plus the two item states that are not a verdict on the application. */
+export type ExecutionItemResult = ExecutionOutcome | "PENDING" | "SKIPPED";
+
+export interface SuiteRunIdentity {
+  id: number;
+  execution_id: string;
+  project_id: number;
+  suite_id: number | null;
+  suite_name: string | null;
+  suite_snapshot_id: number | null;
+  suite_version: number | null;
+  snapshot_checksum: string | null;
+  environment: string | null;
+  execution_purpose: string | null;
+  frameworks: string[];
+  trigger_source: string | null;
+  triggered_by: number | null;
+  triggered_by_name: string | null;
+  lifecycle_state: ExecutionLifecycleState | null;
+  outcome: ExecutionOutcome | null;
+  run_version: number;
+  pending_command: string | null;
+  correlation_id: string | null;
+  parallel_limit: number;
+  started_at: string | null;
+  completed_at: string | null;
+  readiness: ExecutionReadiness | null;
+  primary_action: ExecutionPrimaryAction;
+  is_terminal: boolean;
+  latest_sequence: number;
+  can_control: boolean;
+  can_cancel: boolean;
+}
+
+export interface SuiteRunCounts {
+  passed: number;
+  failed: number;
+  inconclusive: number;
+  blocked: number;
+  environment_failure: number;
+  data_failure: number;
+  automation_failure: number;
+  policy_blocked: number;
+  skipped: number;
+  running: number;
+  queued: number;
+}
+
+export interface SuiteRunSummary {
+  total: number;
+  completed: number;
+  completion_percent: number;
+  counts: SuiteRunCounts;
+  /** Section 4.3 — false means render "Status data delayed" rather than a total
+   *  the backend cannot justify. */
+  reconciled: boolean;
+  reconciliation_detail: string | null;
+  parallel_in_use: number;
+  parallel_allowed: number;
+  queue_depth: number;
+  evidence_captured: number;
+  evidence_required: number;
+  environment_ready: boolean;
+  operational_message: string;
+}
+
+export interface SuiteRunItem {
+  id: number;
+  order_index: number;
+  test_case_id: number | null;
+  test_case_key: string | null;
+  title: string | null;
+  journey: string | null;
+  application_id: number | null;
+  priority: string | null;
+  framework: string | null;
+  runner_name: string | null;
+  lifecycle_state: "QUEUED" | "STARTING" | "RUNNING" | "PAUSED" | "COMPLETED";
+  result: ExecutionItemResult;
+  attempt: number;
+  attempts_allowed: number;
+  steps_total: number;
+  steps_completed: number;
+  /** The mandatory pair the evidence quorum is judged on. */
+  evidence_captured: number;
+  evidence_required: number;
+  /** Every artifact retained, mandatory or not. A test with no declared evidence
+   *  requirement can still have produced a trace and a screenshot. */
+  evidence_total_captured: number;
+  assertions_passed: number;
+  assertions_total: number;
+  duration_ms: number | null;
+  attention_reason: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface SuiteRunItemPage {
+  items: SuiteRunItem[];
+  next_cursor: number | null;
+  total_matching: number;
+}
+
+export interface SuiteTreeChild {
+  framework: string;
+  total: number;
+  complete: number;
+}
+
+export interface SuiteTreeNode {
+  journey: string;
+  total: number;
+  complete: number;
+  worst_result: ExecutionItemResult | null;
+  children: SuiteTreeChild[];
+}
+
+export interface SuiteRunStep {
+  id: number;
+  step_number: number;
+  action_text: string | null;
+  expected_text: string | null;
+  actual_text: string | null;
+  status: "pending" | "running" | "passed" | "failed" | "skipped";
+  application_context: string | null;
+  elapsed_ms: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface SuiteRunAssertion {
+  id: number;
+  source: string;
+  description: string;
+  expected_value: string | null;
+  actual_value: string | null;
+  mandatory: boolean;
+  /** null means never evaluated — shown as pending, not as a failure. */
+  passed: boolean | null;
+  evaluated_at: string | null;
+}
+
+/** Metadata only. Content is served by a separate authenticated, masked download
+ *  because a captured network payload can contain request headers. */
+export interface SuiteRunEvidence {
+  id: number;
+  evidence_type: string;
+  status: "pending" | "captured" | "unavailable";
+  mandatory: boolean;
+  summary: string | null;
+  payload_entry_count: number | null;
+  size_bytes: number | null;
+  has_artifact: boolean;
+  sanitized: boolean;
+  unavailable_reason: string | null;
+  captured_at: string | null;
+}
+
+export interface SuiteRunItemDetail {
+  item: SuiteRunItem;
+  script_id: number | null;
+  test_case_version: number | null;
+  environment: string | null;
+  session_id: string | null;
+  retry_reason: string | null;
+  error_message: string | null;
+  snapshot_member: Record<string, unknown>;
+  current_step: SuiteRunStep | null;
+  steps: SuiteRunStep[];
+  assertions: SuiteRunAssertion[];
+  evidence: SuiteRunEvidence[];
+  quorum_met: boolean;
+  quorum_missing: string[];
+  latest_screenshot_evidence_id: number | null;
+  latest_screenshot_captured_at: string | null;
+}
+
+export interface SuiteRunEvent {
+  sequence: number;
+  event_type: string;
+  message: string;
+  item_id: number | null;
+  payload: Record<string, unknown> | null;
+  occurred_at: string;
+}
+
+export interface SuiteRunEventPage {
+  events: SuiteRunEvent[];
+  latest_sequence: number;
+  newest_event_age_seconds: number | null;
+  has_more: boolean;
+}
+
+export type SuiteRunControlAction =
+  | "PAUSE_AFTER_CURRENT"
+  | "RESUME"
+  | "STOP_GRACEFULLY"
+  | "CANCEL_NOW"
+  | "EMERGENCY_STOP";
+
+export interface SuiteRunControlResponse {
+  commandId: string;
+  accepted: boolean;
+  currentState: string;
+  runVersion: number;
+  message: string;
+}
+
+export interface SuiteRunItemQuery {
+  cursor?: number;
+  limit?: number;
+  result?: string[];
+  lifecycle_state?: string[];
+  search?: string;
+  journey?: string;
+  framework?: string;
+  priority?: string;
+}
+
+/** Thin projection for the suite's Executions tab list. */
+export interface SuiteRunListRow {
+  id: number;
+  execution_id: string;
+  lifecycle_state: ExecutionLifecycleState | null;
+  outcome: ExecutionOutcome | null;
+  environment: string | null;
+  execution_purpose: string | null;
+  total_tests: number;
+  passed: number;
+  failed: number;
+  started_at: string | null;
+  completed_at: string | null;
+  is_terminal: boolean;
+}
+
+export const suiteExecutionApi = {
+  start: (suiteId: number, body: { environment?: string; execution_purpose?: string }) =>
+    api.post<SuiteRunIdentity>(`${SUITE_EXECUTION_BASE}/suites/${suiteId}/runs`, body),
+  listForSuite: (suiteId: number, limit = 20) =>
+    api.get<SuiteRunListRow[]>(`${SUITE_EXECUTION_BASE}/suites/${suiteId}/runs`, {
+      params: { limit },
+    }),
+  get: (runId: number) => api.get<SuiteRunIdentity>(`${SUITE_EXECUTION_BASE}/runs/${runId}`),
+  summary: (runId: number) =>
+    api.get<SuiteRunSummary>(`${SUITE_EXECUTION_BASE}/runs/${runId}/summary`),
+  tree: (runId: number) =>
+    api.get<SuiteTreeNode[]>(`${SUITE_EXECUTION_BASE}/runs/${runId}/tree`),
+  items: (runId: number, query: SuiteRunItemQuery = {}) =>
+    api.get<SuiteRunItemPage>(`${SUITE_EXECUTION_BASE}/runs/${runId}/items`, {
+      params: query,
+      // `result` and `lifecycle_state` are repeatable query parameters. Axios
+      // defaults to `result[]=A&result[]=B`, which FastAPI's `list[str] = Query()`
+      // does not parse — it silently sees no filter and returns everything. This
+      // emits `result=A&result=B` instead.
+      paramsSerializer: { indexes: null },
+    }),
+  item: (runId: number, itemId: number) =>
+    api.get<SuiteRunItemDetail>(`${SUITE_EXECUTION_BASE}/runs/${runId}/items/${itemId}`),
+  /** Poll with the cursor last received, so a gap replays exactly once. */
+  events: (runId: number, after: number, limit = 200) =>
+    api.get<SuiteRunEventPage>(`${SUITE_EXECUTION_BASE}/runs/${runId}/events`, {
+      params: { after, limit },
+    }),
+  control: (
+    runId: number,
+    body: {
+      action: SuiteRunControlAction;
+      reason?: string;
+      expectedRunVersion?: number;
+    },
+  ) =>
+    api.post<SuiteRunControlResponse>(
+      `${SUITE_EXECUTION_BASE}/runs/${runId}/controls`,
+      body,
+    ),
 };

@@ -637,15 +637,158 @@ Screen: **Data Search and Selection**.
 
 Screens: **Live Execution Monitor**, **Execution Report and Evidence**.
 
-- [ ] Require environment, application, data, framework and worker readiness before start.
-- [ ] Execute the approved Phase 1 journey on compatible infrastructure.
-- [ ] Stream persisted progress with correlation IDs.
-- [ ] Support pause, resume, stop, cancel and emergency termination where applicable.
+Taken before P1-S6 on 30 July 2026 at the user's explicit direction, which
+overrides delivery rule 2's ordering for this section only. Scoped to a one-week
+bound; the in/out boundary is recorded in the UI-046 contract Section 2.1.12.
+
+- [x] Require environment, application, data, framework and worker readiness before start.
+      Five-way gate in `execution_command_center/readiness.py`, reusing
+      `automation_runner/readiness.py` and adding the worker (broker ping) axis.
+      The data axis reports but does not block, because P1-S6 does not exist to
+      reserve anything yet.
+- [x] Execute the approved Phase 1 journey on compatible infrastructure.
+- [x] Stream persisted progress with correlation IDs. Polling over a monotonic
+      per-run event sequence, not SSE — no socket transport exists in this
+      platform (contract Section 2.1.7).
+- [x] Support pause, resume, stop, cancel and emergency termination where applicable.
+      Pause/resume/stop/cancel are live with acknowledgement and optimistic
+      concurrency. **Emergency stop refuses with `EMERGENCY_STOP_UNAVAILABLE`**:
+      it needs the project-wide kill path that belongs to P2-S1.
 - [ ] Collect UI, DOM, accessibility, API, database, event, log, trace, screenshot and optional video evidence.
+      Screenshot, trace, log, network/API and console are captured for real.
+      DOM, accessibility, telecom-event, database and video have no capture path
+      and are recorded as `unavailable` with a reason, which is what lets them
+      drive INCONCLUSIVE rather than vanish.
 - [ ] Evaluate deterministic business assertions across order, billing, charging, inventory and provisioning as configured.
-- [ ] Apply journey-specific evidence quorum.
-- [ ] Produce PASS, FAIL, INCONCLUSIVE, BLOCKED, ENVIRONMENT_FAILURE, DATA_FAILURE, AUTOMATION_FAILURE or POLICY_BLOCKED.
-- [ ] Build complete requirement-to-defect evidence lineage.
+      **Not reachable in this slice.** Automation IR v1.0 can only express UI
+      assertions (`visible`, `text`, `value`, `url` — see `CHECKPOINT_ASSERTIONS`
+      in `recorder/ir_emitter.py`). No IR construct, checkpoint type or adapter
+      produces a backend assertion, so every assertion is recorded with
+      `source='ui'` and no backend expectation is faked. The other sources stay
+      in the vocabulary for the adapter work that would deliver them.
+- [ ] Apply journey-specific evidence quorum. Minimum-present quorum only: every
+      mandatory artifact must be captured. A weighted per-journey policy has no
+      entity to read from, and inventing one would be a fabricated business rule.
+- [x] Produce PASS, FAIL, INCONCLUSIVE, BLOCKED, ENVIRONMENT_FAILURE, DATA_FAILURE, AUTOMATION_FAILURE or POLICY_BLOCKED.
+      All eight, as an ordered precedence in `outcomes.py`, with DB check
+      constraints. Infrastructure outcomes are evaluated before any application
+      verdict so a broken environment can never be reported as a product defect.
+- [ ] Build complete requirement-to-defect evidence lineage. Belongs to UI-052.
+
+**UI-046 Suite Execution Command Center (2026-07-30):** implemented against the
+approved UI-046 v2 contract and reference image. Migration `052`, additive only:
+17 columns on `execution_runs` (including `suite_snapshot_id`, the suite-to-
+execution link UI-018 Phase B deliberately left out) plus six new tables —
+`execution_run_items`, `_item_steps`, `_assertions`, `_evidence`, `_events`,
+`_commands`. Round-tripped both directions before use.
+
+`lifecycle_state` is a new column rather than a widening of `status`: `status`
+carries its own constraint and vocabulary that the Execution Dashboard aggregates
+on (migration 024), and overloading it would change the meaning of every
+historical manual and AI run. A suite run writes both, and also writes the
+portable `ExecutionResult` row so a governed run stays visible to the dashboard,
+Jira sync and reporting — with the eight-outcome verdict in `metadata_` rather
+than forced into a shared column.
+
+Services: `execution_command_center/{readiness,outcomes,events,controls,
+orchestrator,views}.py`. `outcomes.py` is pure, so all eight branches are testable
+without an execution. Its precedence is the rule, not an implementation detail:
+POLICY_BLOCKED → BLOCKED → ENVIRONMENT_FAILURE → DATA_FAILURE →
+AUTOMATION_FAILURE → SKIPPED → FAIL → INCONCLUSIVE → PASS. Infrastructure
+outcomes are decided before any application verdict, which is how "a system error
+must not become an application FAIL" is enforced rather than hoped for.
+
+The event stream allocates its sequence with a single
+`UPDATE … RETURNING`, so concurrent emitters serialize on the run row instead of
+racing between a SELECT and an UPDATE. Controls use the DB `pending_command`
+pattern (same as `DiscoverySession`), carry `expectedRunVersion` optimistic
+concurrency, and persist rejected commands with their reason — "the operator
+tried to cancel and was refused" is audit-relevant. A pause exits the Celery task
+rather than sleeping in it; RESUME enqueues a fresh task from the next queued
+item.
+
+Three new permissions, deliberately separated: `execution.control_run` (rides
+with EXECUTE_TESTS), `execution.cancel_run` (MANAGE_PROJECT — cancelling discards
+in-progress work and releases shared runners), `execution.emergency_stop`
+(reaches Project Admin only via ALL_PERMISSIONS).
+
+Frontend at `/automation/executions/{runId}/live`, nested under `/automation` so
+it inherits that shell rather than adding a top-level page. The reference image's
+own sidebar and header are treated as mock, not as a nav redesign — contract
+Section 2.1.1. Entry point is the suite's **Executions tab, now live** (it
+previously explained its own absence with "Executions carry no link to a suite
+yet"); the Evidence tab stays deferred and now points at UI-052.
+
+Verified end to end on project 1's published suite #1 (`Postpaid Order
+Provisioning E2E`, snapshot v1): all five readiness axes passed, two members
+expanded with 9 real steps seeded from the Automation IR, a genuine 17.4s
+`local_playwright` execution captured 5 evidence artifacts including 60 network
+entries, and the run finalized as `BLOCKED` with counts reconciling exactly.
+
+The two item outcomes are worth recording because both are the contract behaving
+correctly rather than failing:
+
+* `TC-0008` → `INCONCLUSIVE`. The runner reported a failure, but the IR declares
+  no accepted checkpoint, so there is no mandatory assertion to attribute it to.
+  Calling that a product defect would over-claim; calling it a pass would violate
+  Section 14.11. This is also why a green run cannot pass here without a proven
+  assertion.
+* `TC-0001` → `BLOCKED`. No compiled script in the published snapshot, so there
+  was nothing to execute. Not a failure of the application.
+
+Backend: 79 focused tests across 3 modules (all eight outcomes and their
+precedence, the quorum rule, the five-axis gate, every control transition, reason
+enforcement, optimistic concurrency). Full suite 1506 passed with the same 3
+pre-existing failures (`test_jira_foundation` ×2,
+`test_security::test_xss_attempt_in_json_body`), confirmed unchanged by re-running
+the suite with the three new test modules excluded. Frontend
+lint/typecheck/build clean; the route builds as a dynamic segment.
+
+**Browser verification (same day).** Driven live against run 35 on project 1.
+Header identity, status strip, journey tree, matrix, inspector and operations bar
+all render real data; the inspector showed the genuine Playwright
+`TimeoutError` and all five captured artifacts with their entry counts; status-card
+filtering narrowed the matrix to `Showing 1 of 1` and round-tripped through the
+URL (`?status=INCONCLUSIVE`), and a deep link reproduced the filtered view;
+selecting a row wrote `?item=3` and populated the inspector. Console clean.
+
+It found four defects that static checking could not, all fixed:
+
+1. **`use(params)` threw at runtime.** Next 14 passes `params` as a plain object,
+   not a promise. Because the prop's type is whatever the page declares, `tsc` and
+   `next build` both passed while every request 500'd. Now uses `useParams`, which
+   is correct regardless of how params are delivered. This is the reason a green
+   build is not evidence a screen works.
+2. **Array query parameters were silently dropped.** Axios serializes
+   `result: ["INCONCLUSIVE"]` as `result[]=…`, which FastAPI's
+   `list[str] = Query()` does not parse — the backend saw no filter and returned
+   everything, with no error anywhere. Fixed with `paramsSerializer: {indexes: null}`.
+3. **Evidence counts came back zero.** The session is built with
+   `autoflush=False` (`app/database.py`), so evidence rows added by
+   `_persist_runner_evidence` were invisible to the counting SELECT that followed.
+   The rows committed correctly, so only the rollup was wrong. Fixed with explicit
+   flushes in `_recount_item` and `_recount_evidence`.
+4. **Two misleading displays.** A completed item read `STEPS 0 / 9`, which implies
+   it failed on the first step, when in fact the runner reports no per-step
+   progress at all — now `9 declared` with that stated in the tooltip. And an item
+   that captured five artifacts read `EVIDENCE —` because the column counted only
+   mandatory evidence; a third count (`evidence_total_captured`) now distinguishes
+   "nothing captured" from "nothing was mandatory".
+
+**Still outstanding for UI-046**, and why the Evidence column stays unticked:
+
+* Per-step progress never advances. Steps are seeded from the IR and the schema
+  supports the transitions, but the Playwright runner surfaces no per-step signal,
+  so the inspector's step counter cannot move during a run. Closing this needs a
+  reporter-level integration, not a UI change.
+* Section 6.2's double-click detail drawer and Section 13's `Enter` binding are
+  not implemented. `j`/`k`, arrows and `Esc` are.
+* Matrix rows are click targets but are not focusable and carry no role, so
+  assistive technology cannot reach them even though `j`/`k` work.
+* Pause, resume, stop and cancel have not been exercised through the browser
+  against a running suite — the verified run reached a terminal state in 19
+  seconds, which is too short a window. Their transition logic is covered by 29
+  focused tests, but the buttons themselves are unproven.
 
 Phase 1 exit criteria:
 
@@ -865,7 +1008,7 @@ Use `-` for not applicable and add approval/evidence links when work starts.
 | UI-043 | 3 | P3-S2 | Evidence, Causality and Impact | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-044 | 2 | P2-S7 | Execution Planner | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-045 | 2 | P2-S7 | Intelligent Scheduler and Queue | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| UI-046 | 1 | P1-S7 | Live Execution Monitor | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
+| UI-046 | 1 | P1-S7 | Live Execution Monitor | [x] | [x] | [x] | [x] | [x] | [x] | [ ] |
 | UI-047 | 2 | P2-S7 | Run Details and Assignments | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-048 | 3 | P3-S3 | Failure Diagnosis | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | UI-049 | 3 | P3-S3 | Healing Proposals | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |

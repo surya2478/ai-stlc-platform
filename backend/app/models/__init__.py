@@ -20,6 +20,14 @@ from app.models.test_data import TestData, TestDataImportPreview, TestDataRecord
 from app.models.automation_mapping import AutomationTestMapping  # noqa: F401
 from app.models.automation_script import AutomationScript  # noqa: F401
 from app.models.execution import ExecutionRun, ExecutionResult, ManualStepResult  # noqa: F401
+from app.models.execution_command_center import (  # noqa: F401
+    ExecutionRunItem,
+    ExecutionRunItemStep,
+    ExecutionRunAssertion,
+    ExecutionRunEvidence,
+    ExecutionRunEvent,
+    ExecutionRunCommand,
+)
 from app.models.defect import DefectDraft, JiraDefect  # noqa: F401
 from app.models.report import Report  # noqa: F401
 from app.models.agent import AgentRun, AgentLog  # noqa: F401

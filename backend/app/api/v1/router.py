@@ -10,7 +10,7 @@ from app.api.v1.endpoints import (
     reports, agents, settings, jira, traceability, llm, rag, assistant, resource_ops,
     applications, reviews, playwright_studio, mcp_connections, video,
     grounded_poc, automation_classification, discovery, taxonomy, application_models, network_events,
-    automation_suites, recorder, automation_assets,
+    automation_suites, recorder, automation_assets, suite_executions,
 )
 
 api_router = APIRouter()
@@ -79,5 +79,12 @@ api_router.include_router(recorder.router, prefix="/lab/recorder", tags=["Live R
 # shares the suite's flag: every route 404s unless AUTOMATION_SUITE_ENABLED=true.
 api_router.include_router(
     automation_assets.router, prefix="/lab/automation-assets", tags=["Automation Asset"]
+)
+# UI-046 Suite Execution Command Center (P1-S7 Execution and Evidence) — executes
+# a published suite snapshot, so it shares the suite's flag too. No /stream route:
+# the live transport is GET /events with a sequence cursor, because this platform
+# has no socket infrastructure (contract Section 2.1.7).
+api_router.include_router(
+    suite_executions.router, prefix="/lab/suite-executions", tags=["Suite Execution"]
 )
 

@@ -386,10 +386,12 @@ class AutomationSuiteExecutionGroup(TimestampMixin, Base):
     `MULTIPLE_ENVIRONMENTS` conflict into groups is what resolves it without
     overwriting anything at source.
 
-    Parallelism, retry, timeout and agent-pool policy are deliberately absent:
-    they only take effect at execution time, and no suite-to-execution path
-    exists yet (there is no FK from `execution_runs` to a suite, and no runner
-    integration). Storing policy nothing honours would misrepresent it.
+    Parallelism, retry, timeout and agent-pool policy are deliberately absent
+    from this table: they are execution-time concerns, and P1-S7 put them where
+    they belong. As of migration 052 a suite-to-execution path does exist —
+    `execution_runs.suite_snapshot_id` — and the run row owns `parallel_limit`
+    and the per-item `attempts_allowed`, because those apply to one dispatch of
+    a snapshot rather than to the grouping decision recorded here.
     """
 
     __tablename__ = "automation_suite_execution_groups"

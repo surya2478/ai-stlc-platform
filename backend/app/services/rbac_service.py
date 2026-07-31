@@ -57,6 +57,14 @@ EXECUTION_RUN_AI_ASSISTED = "execution.run_ai_assisted"
 EXECUTION_VIEW_LIVE_RUNS = "execution.view_live_runs"
 EXECUTION_CREATE_DEFECT_DRAFT = "execution.create_defect_draft"
 
+# ─── P1-S7 UI-046 Suite Execution Command Center ────────────────────────────
+# Control is separated from launch: whoever may start a governed suite run is not
+# automatically the person who may abort one mid-flight, and an emergency stop
+# affects shared infrastructure rather than one run. Three keys, not one.
+EXECUTION_CONTROL_RUN = "execution.control_run"
+EXECUTION_CANCEL_RUN = "execution.cancel_run"
+EXECUTION_EMERGENCY_STOP = "execution.emergency_stop"
+
 # ─── Test Automation Classification & Routing (P1-S3 extension) ─────────────
 AUTOMATION_CLASSIFICATION_VIEW = "automation_classification.view"
 AUTOMATION_CLASSIFICATION_EVALUATE = "automation_classification.evaluate"
@@ -243,6 +251,9 @@ _GRANULAR_EXECUTION_PERMISSIONS: frozenset[str] = frozenset(
         EXECUTION_RUN_AI_ASSISTED,
         EXECUTION_VIEW_LIVE_RUNS,
         EXECUTION_CREATE_DEFECT_DRAFT,
+        EXECUTION_CONTROL_RUN,
+        EXECUTION_CANCEL_RUN,
+        EXECUTION_EMERGENCY_STOP,
     }
 )
 GRANULAR_PERMISSIONS: frozenset[str] = (
@@ -371,6 +382,10 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
         })
     if EXECUTE_TESTS in base:
         extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})
+        # Pausing and gracefully stopping a run you are permitted to start is
+        # part of running it — the operator watching a suite must be able to
+        # halt it without escalating.
+        extra.add(EXECUTION_CONTROL_RUN)
     if RAISE_DEFECTS in base:
         extra.add(EXECUTION_CREATE_DEFECT_DRAFT)
     if APPROVE_RELEASE_REPORT in base:
@@ -381,6 +396,16 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
         # Phase-1 policy drawer editing/simulation and separation-of-duty
         # override — not the future UI-055 admin screen, just this drawer.
         extra.update({AUTOMATION_CLASSIFICATION_MANAGE_POLICY, AUTOMATION_CLASSIFICATION_SIMULATE_POLICY, AUTOMATION_CLASSIFICATION_OVERRIDE})
+        # Cancelling a run mid-flight discards in-progress work and releases
+        # shared runners, so it sits with project management rather than with
+        # executing tests.
+        #
+        # EXECUTION_EMERGENCY_STOP is deliberately granted by no branch here. It
+        # still reaches Project Admin, which holds ALL_PERMISSIONS, and that is
+        # the correct blast radius for a project-wide kill. The capability it
+        # guards ships with P2-S1; until then the endpoint refuses the action
+        # with EMERGENCY_STOP_UNAVAILABLE regardless of permission.
+        extra.add(EXECUTION_CANCEL_RUN)
     return base | frozenset(extra)
 
 

@@ -61,9 +61,66 @@ class ExecutionRun(TimestampMixin, Base):
     simulated: Mapped[bool] = mapped_column(default=False)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
+    # ── UI-046 Suite Execution Command Center (migration 052) ────────────────
+    # All nullable or defaulted: a manual, AI or single-script automation run
+    # has no command-center lifecycle and must not acquire a fake one.
+    #
+    # `lifecycle_state` is deliberately NOT a widening of `status` above.
+    # `status` carries its own constraint and vocabulary that the Execution
+    # Dashboard aggregates on (migration 024); overloading it would change the
+    # meaning of every historical run. A suite run writes both.
+    suite_id: Mapped[int | None] = mapped_column(
+        ForeignKey("automation_suites.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # The snapshot, not the suite, is what executed — a suite can open a new
+    # version afterwards and the run must keep pointing at the frozen scope.
+    suite_snapshot_id: Mapped[int | None] = mapped_column(
+        ForeignKey("automation_suite_snapshots.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    lifecycle_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    outcome: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Optimistic concurrency for control commands: a command carrying a stale
+    # expectedRunVersion is rejected rather than applied to a run whose state
+    # moved underneath the operator.
+    run_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The single field the orchestrator re-reads at each dispatch boundary —
+    # same DB-as-source-of-truth pattern as DiscoverySession.pending_command,
+    # which is why this needs no pub/sub infrastructure.
+    pending_command: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    pending_command_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pending_command_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # High-water mark for ExecutionRunEvent.sequence, allocated under this row's
+    # lock rather than by scanning the event table.
+    event_sequence: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Gate result held by value, so "why was this run blocked" stays answerable
+    # after the environment recovers.
+    readiness: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    readiness_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    parallel_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    evidence_required_total: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    evidence_captured_total: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    trigger_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    execution_purpose: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    correlation_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     project: Mapped["Project"] = relationship("Project", back_populates="execution_runs")
     results: Mapped[list["ExecutionResult"]] = relationship("ExecutionResult", back_populates="execution_run", cascade="all, delete-orphan")
+    items: Mapped[list["ExecutionRunItem"]] = relationship(
+        "ExecutionRunItem",
+        back_populates="execution_run",
+        cascade="all, delete-orphan",
+        order_by="ExecutionRunItem.order_index",
+    )
 
 
 class ExecutionResult(TimestampMixin, Base):

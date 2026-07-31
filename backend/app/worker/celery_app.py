@@ -19,6 +19,7 @@ celery_app = Celery(
         "app.worker.tasks.jira_tasks",
         "app.worker.tasks.rag_tasks",
         "app.worker.tasks.retention_tasks",
+        "app.worker.tasks.suite_execution_tasks",
     ],
 )
 
