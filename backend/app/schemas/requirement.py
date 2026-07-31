@@ -123,6 +123,19 @@ class RequirementTransitionRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class TaxonomyNotApplicableRequest(BaseModel):
+    """Record — or withdraw — a human decision that taxonomy does not apply.
+
+    `applicable=False` waives the taxonomy blockers and requires a reason;
+    `applicable=True` withdraws the waiver and restores them. Never inferred: the
+    telecom taxonomy genuinely does not fit every source, but deciding that is a
+    person's call, not the agent's.
+    """
+
+    applicable: bool = False
+    reason: str | None = Field(default=None, max_length=1000)
+
+
 class RequirementOut(BaseModel):
     id: int
     project_id: int

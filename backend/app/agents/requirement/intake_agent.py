@@ -49,7 +49,20 @@ For each distinct requirement you identify, output a JSON object with these keys
 - apis: list of API endpoints, protocols, or integrations (e.g. "Gy diameter interface", "REST /api/billing/invoice")
 - dependencies: list of dependencies on other requirements or systems
 - risks: list of identified risks
-- missing_information: list of unclear or missing details that need clarification
+- missing_information: list of objects, each {"item": "<the unclear or missing detail>",
+  "severity": "blocking" | "advisory"}.
+  Judge severity by one test only: can a tester write and execute a meaningful
+  test case without this answer?
+    blocking — they cannot. The detail is required to exercise the behaviour or
+      to know whether it passed. Examples: the API endpoint and payload, the
+      authoritative business rule, the expected calculation, which system owns a
+      step, mandatory validation limits.
+    advisory — they can, and the result would still be trustworthy; the answer
+      would only improve polish or wording. Examples: exact success or error
+      message text, label wording, colour and styling, analytics event naming.
+  Default to "blocking" only when genuinely unsure. Do not inflate severity to
+  seem thorough: every blocking item stops the requirement from progressing, so
+  marking cosmetic gaps as blocking holds up work for no benefit.
 - telecom_domain: best-fit domain from [Mobile, Fixed, Digital, Billing, Charging, CRM, OSS, BSS, Middleware, Integration, Network, Data] or null
 - impacted_interfaces: list of interfaces or protocols (e.g. "Diameter Gy", "SOAP billing API")
 - risk_level: "Critical" | "High" | "Medium" | "Low" based on revenue/regulatory/customer impact

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
+from app.services.requirement_blockers import analysis_blockers
 from app.services.requirement_service import (
     approve_requirement,
     requirement_analysis_blockers,
@@ -192,4 +193,8 @@ async def test_quality_relevant_edit_marks_previous_review_stale():
     assert req.metadata_["quality_review"]["stale"] is True
     assert req.metadata_["quality_review"]["stale_fields"] == ["summary"]
     assert req.readiness_status == "analysis_pending"
-    assert any("stale" in blocker.lower() for blocker in requirement_analysis_blockers(req))
+    # Asserted on the structured blocker code rather than on the wording. The
+    # message is user-facing copy and was reworded ("Saved changes have not been
+    # validated…") when blockers gained a resolution route; the invariant this
+    # test actually cares about is that a stale review still gates.
+    assert "quality_stale" in [b.code for b in analysis_blockers(req)]

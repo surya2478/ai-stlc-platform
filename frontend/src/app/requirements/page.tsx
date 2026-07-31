@@ -26,6 +26,10 @@ import {
   type JiraIssueFilters,
   type JiraIssuePage,
   type ApprovalAction,
+  type BlockerResolution,
+  type MissingInfoItem,
+  type RequirementBlocker,
+  type RequirementBlockerSummary,
 } from "@/lib/api";
 import { AuditStamp } from "@/components/ui/AuditStamp";
 import { useUserDirectory } from "@/hooks/useUserDirectory";
@@ -159,7 +163,7 @@ function getRequirementWorkflowStage(req: Requirement): "intake" | "analysis" | 
   if (["traceability_pending", "ready_for_traceability"].includes(readiness)) return "traceability";
   if (["analysis_pending", "analysis_complete", "ai_review_pending", "ai_review_completed", "needs_clarification"].includes(readiness)) return "analysis";
   const legacyAnalysisComplete = (req.quality_verdict || "").toLowerCase() === "pass"
-    && asTextList(req.missing_information).length === 0
+    && blockingMissingInfo(req.missing_information).length === 0
     && Boolean(req.telecom_domain || req.qa_domain || req.business_process)
     && Boolean(req.product || req.product_group || req.sub_request_type);
   if (readiness === "ready_for_test_planning" && legacyAnalysisComplete) return "traceability";
@@ -196,6 +200,52 @@ function asTextList(value: unknown): string[] {
   return [];
 }
 
+/**
+ * Missing information, normalized across both shapes.
+ *
+ * Historical rows are plain strings; the agent now emits
+ * `{item, severity}`. A bare string is treated as blocking — defaulting legacy
+ * data to advisory would retroactively unblock requirements that no agent has
+ * re-judged. This mirrors `requirement_blockers.py` on the server.
+ */
+/** Grouping order for the blockers panel: what a person can act on first. */
+const BLOCKER_ROUTE_ORDER: BlockerResolution[] = ["human_input", "clarification", "rerun_analysis"];
+
+const BLOCKER_ROUTE_HEADING: Record<BlockerResolution, string> = {
+  human_input: "Needs your input — Re-run Analysis will not clear these",
+  clarification: "Needs an answer from the requirement owner",
+  rerun_analysis: "Will clear on the next Analysis run",
+};
+
+function missingInfoItems(value: unknown): MissingInfoItem[] {
+  if (typeof value === "string" && value.trim()) {
+    return [{ item: value.trim(), severity: "blocking" }];
+  }
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry): MissingInfoItem | null => {
+      if (entry === null || entry === undefined) return null;
+      if (typeof entry === "object") {
+        const obj = entry as Record<string, unknown>;
+        const text = String(obj.item ?? obj.text ?? "").trim();
+        const severity = String(obj.severity ?? "blocking").toLowerCase();
+        return text
+          ? { item: text, severity: severity === "advisory" ? "advisory" : "blocking" }
+          : null;
+      }
+      const text = String(entry).trim();
+      return text ? { item: text, severity: "blocking" } : null;
+    })
+    .filter((entry): entry is MissingInfoItem => entry !== null);
+}
+
+/** Only these gate. Advisory gaps are shown elsewhere, never as blockers. */
+function blockingMissingInfo(value: unknown): string[] {
+  return missingInfoItems(value)
+    .filter((entry) => entry.severity === "blocking")
+    .map((entry) => entry.item);
+}
+
 function getRequirementQualityScore(req: Requirement): number | null {
   const meta = metadataRecord(req);
   const review = meta.quality_review as Record<string, any> | undefined;
@@ -214,7 +264,7 @@ function getEditableAnalysisValidationIssues(req: Requirement, isDuplicate: bool
     && Boolean(req.product || req.product_group || req.sub_request_type);
 
   return [
-    ...asTextList(req.missing_information).map((item) => `Missing information: ${item}`),
+    ...blockingMissingInfo(req.missing_information).map((item) => `Missing information: ${item}`),
     ...(isDuplicate ? ["Potential duplicate requirement requires reviewer decision."] : []),
     ...(conflictCount > 0 ? ["Potential source conflict requires clarification."] : []),
     ...(!taxonomyReady ? ["Taxonomy classification is incomplete."] : []),
@@ -225,7 +275,7 @@ function getAnalysisStatus(req: Requirement, isDuplicate: boolean): AnalysisStat
   const status = (req.status || "").toLowerCase();
   const readiness = (req.readiness_status || "").toLowerCase();
   const quality = (req.quality_verdict || "").toLowerCase();
-  const missingCount = asTextList(req.missing_information).length;
+  const missingCount = blockingMissingInfo(req.missing_information).length;
   const qualityReview = metadataRecord(req).quality_review as Record<string, any> | undefined;
 
   if (status === "approved") return "analyzed";
@@ -325,6 +375,13 @@ function renderInsightItem(item: unknown): string {
   if (typeof item === "number" || typeof item === "boolean") return String(item);
   if (typeof item === "object") {
     const obj = item as Record<string, unknown>;
+    // Missing-information entries carry a severity now. Handled first so every
+    // display site renders the text rather than a stringified object; older rows
+    // are still plain strings and are caught above.
+    if ("item" in obj && "severity" in obj) {
+      const text = String(obj.item ?? "").trim();
+      return obj.severity === "advisory" ? `${text} (advisory)` : text;
+    }
     // Common shape from the UI Analysis Agent — a field validation rule
     if ("field_name" in obj) {
       const field = obj.field_name;
@@ -582,6 +639,11 @@ function RequirementsContent() {
 
   // Drawer states
   const [selectedReq, setSelectedReq] = useState<Requirement | null>(null);
+  // The gate, as the server judges it. Previously this screen recomputed the
+  // rules itself, so the panel and the backend could disagree about what was
+  // blocking and neither said which blockers a re-run could not clear.
+  const [blockerSummary, setBlockerSummary] = useState<RequirementBlockerSummary | null>(null);
+  const [taxonomyWaiverBusy, setTaxonomyWaiverBusy] = useState(false);
   // GAP-4d: coverage insights for the selected requirement
   const [coverage, setCoverage] = useState<RequirementCoverage | null>(null);
   const [coverageLoading, setCoverageLoading] = useState(false);
@@ -736,6 +798,25 @@ function RequirementsContent() {
   useEffect(() => {
     loadApprovalActions();
   }, [loadApprovalActions]);
+
+  const loadBlockerSummary = useCallback(async (requirementId: number | null) => {
+    if (requirementId == null) {
+      setBlockerSummary(null);
+      return;
+    }
+    try {
+      const { data } = await requirementsApi.blockers(requirementId);
+      setBlockerSummary(data);
+    } catch {
+      // The panel falls back to the locally derived list rather than showing
+      // nothing; a failed read must not make a blocked requirement look clear.
+      setBlockerSummary(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBlockerSummary(selectedReq?.id ?? null);
+  }, [selectedReq?.id, selectedReq?.updated_at, loadBlockerSummary]);
 
   // Poll documents list if any document is in "uploaded" or "processing" state
   useEffect(() => {
@@ -1161,7 +1242,11 @@ function RequirementsContent() {
     if (!selectedReq) return;
     setAnalysisDialogError(null);
     setCriteriaDraft((selectedReq.acceptance_criteria || []).join("\n"));
-    setMissingInfoDraft((selectedReq.missing_information || []).join("\n"));
+    // Normalized, not `.join("\n")` — entries are objects now and would render
+    // as "[object Object]" in the textarea.
+    setMissingInfoDraft(
+      missingInfoItems(selectedReq.missing_information).map((entry) => entry.item).join("\n"),
+    );
     setResolutionDraft("");
     setMarkMissingResolved(false);
     setSummaryDraft(selectedReq.summary || "");
@@ -1222,8 +1307,22 @@ function RequirementsContent() {
           focusAnalysisActions();
           return;
         }
+        // The textarea edits text only, so severity is carried over by matching
+        // the line back to the original entry. A line the reviewer added by hand
+        // is new information nobody has triaged, so it defaults to blocking.
+        const existingSeverity = new Map(
+          missingInfoItems(selectedReq?.missing_information).map((entry) => [
+            entry.item,
+            entry.severity,
+          ]),
+        );
         updates = {
-          missing_information: markMissingResolved ? [] : splitLines(missingInfoDraft),
+          missing_information: markMissingResolved
+            ? []
+            : splitLines(missingInfoDraft).map((item) => ({
+                item,
+                severity: existingSeverity.get(item) ?? "blocking",
+              })),
           review_notes: resolutionNote,
         };
       } else if (analysisDialog === "classification") {
@@ -1663,7 +1762,7 @@ function RequirementsContent() {
       const ambiguityCount = asTextList(qualityMeta.ambiguities).length
         || asTextList(qualityMeta.ambiguity_findings).length
         || (String(requirement.quality_feedback || "").toLowerCase().includes("ambiguous") ? 1 : 0);
-      const missingInfoCount = asTextList(requirement.missing_information).length
+      const missingInfoCount = blockingMissingInfo(requirement.missing_information).length
         || asTextList(qualityMeta.missing_information).length;
       const duplicateCount = duplicateRequirementIds.has(requirement.id) ? 1 : 0;
       const conflictCount = asTextList(qualityMeta.conflicts).length
@@ -1871,7 +1970,7 @@ function RequirementsContent() {
       const applicationMapped = Boolean(requirement.systems_impacted?.length || requirement.impacted_interfaces?.length || requirement.upstream_systems?.length || requirement.downstream_systems?.length || requirement.product || requirement.product_group);
       const blockers = [
         ...(analysisStatus !== "analyzed" ? ["Requirement analysis has not passed."] : []),
-        ...(asTextList(requirement.missing_information).length ? ["Missing information must be resolved."] : []),
+        ...(blockingMissingInfo(requirement.missing_information).length ? ["Missing information must be resolved."] : []),
         ...(duplicateRequirementIds.has(requirement.id) ? ["Potential duplicate requires resolution."] : []),
         ...(!taxonomyReady ? ["Taxonomy classification is incomplete."] : []),
         ...(!applicationMapped ? ["Application or system mapping is incomplete."] : []),
@@ -3966,11 +4065,23 @@ function RequirementsContent() {
                     || row?.status === "not_analyzed";
                   const readyForRerun = needsFreshAnalysis && editableValidationIssues.length === 0;
                   const traceabilityReady = row?.status === "analyzed" && (row?.blockers.length ?? 0) === 0;
-                  const visibleValidationBlockers = row?.blockers.length
-                    ? row.blockers
-                    : !traceabilityReady && !readyForRerun
-                      ? ["Requirement analysis must reach a Pass verdict before traceability."]
-                      : [];
+                  // Prefer the server's judgement. The locally derived list is
+                  // kept only as a fallback for when the blockers read failed —
+                  // a failed request must not make a blocked requirement look
+                  // clear.
+                  const serverBlockers = blockerSummary?.blockers ?? null;
+                  const visibleValidationBlockers = serverBlockers
+                    ? serverBlockers.map((blocker) => blocker.message)
+                    : row?.blockers.length
+                      ? row.blockers
+                      : !traceabilityReady && !readyForRerun
+                        ? ["Requirement analysis must reach a Pass verdict before traceability."]
+                        : [];
+                  // Grouped so the panel stops offering one route for all of them.
+                  const blockersByRoute = blockerSummary?.by_resolution ?? null;
+                  const rerunCannotHelp = blockerSummary?.rerun_cannot_help ?? false;
+                  const advisoryGaps = blockerSummary?.advisory_missing_information ?? [];
+                  const taxonomyWaiver = blockerSummary?.taxonomy_not_applicable ?? null;
                   const primaryEditableIssue = editableValidationIssues[0] || "";
                   const fixDialog: AnalysisDialog | null = primaryEditableIssue.toLowerCase().includes("taxonomy")
                     ? "classification"
@@ -4157,24 +4268,132 @@ function RequirementsContent() {
 
                       <section ref={analysisActionsRef} className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                         <h4 className="text-xs font-bold text-slate-800">Actions</h4>
+                        {taxonomyWaiver && (
+                          <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+                            <div className="text-[10px] font-bold text-slate-700">
+                              Taxonomy recorded as not applicable
+                            </div>
+                            <p className="mt-0.5 text-[10px] font-semibold leading-snug text-slate-500">
+                              {taxonomyWaiver.reason}
+                            </p>
+                            <button
+                              type="button"
+                              disabled={taxonomyWaiverBusy}
+                              onClick={async () => {
+                                setTaxonomyWaiverBusy(true);
+                                try {
+                                  await requirementsApi.setTaxonomyApplicability(selectedReq.id, true);
+                                  await loadBlockerSummary(selectedReq.id);
+                                  await loadData();
+                                } catch (e: any) {
+                                  const detail = e?.response?.data?.detail;
+                                  setAnalysisDialogError(typeof detail === "string" ? detail : detail?.message || "Unable to restore the taxonomy requirement.");
+                                } finally {
+                                  setTaxonomyWaiverBusy(false);
+                                }
+                              }}
+                              className="mt-1 text-[10px] font-bold text-[#1b59f8] disabled:opacity-50"
+                            >
+                              Taxonomy does apply — restore the requirement
+                            </button>
+                          </div>
+                        )}
+                        {advisoryGaps.length > 0 && (
+                          // Shown, never gating. The agent judged a tester can
+                          // still write a meaningful case without these.
+                          <div className="rounded-lg border border-slate-200 bg-white p-2.5">
+                            <div className="text-[10px] font-bold text-slate-600">
+                              Open questions that are not blocking ({advisoryGaps.length})
+                            </div>
+                            <ul className="mt-1 space-y-0.5">
+                              {advisoryGaps.map((gap: MissingInfoItem) => (
+                                <li key={gap.item} className="text-[10px] font-semibold leading-snug text-slate-500">
+                                  • {gap.item}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                         {visibleValidationBlockers.length > 0 && !readyForRerun && (
                           <div role="alert" className="rounded-xl border-2 border-red-300 bg-red-50 p-3 shadow-sm">
                             <div className="flex items-start gap-2">
                               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
                               <div className="min-w-0 flex-1">
                                 <div className="text-[11px] font-extrabold text-red-800">Traceability is blocked — update the following</div>
-                                <ul className="mt-1.5 space-y-1">
-                                  {visibleValidationBlockers.map((blocker, index) => (
-                                    <li key={`${blocker}-${index}`} className="text-[10px] font-bold leading-snug text-red-700">
-                                      {index + 1}. {blocker}
-                                    </li>
-                                  ))}
-                                </ul>
-                                {fixDialog && fixLabel && (
-                                  <button type="button" onClick={() => openAnalysisDialog(fixDialog)} className="mt-2 inline-flex h-7 items-center gap-1 rounded-lg bg-red-600 px-2.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-red-700">
-                                    {fixLabel}<ChevronRight className="h-3 w-3" />
-                                  </button>
+                                {blockersByRoute ? (
+                                  <div className="mt-1.5 space-y-2">
+                                    {rerunCannotHelp && (
+                                      // The gap that started this: the panel led
+                                      // with "re-run Analysis" for blockers no
+                                      // re-run could ever clear.
+                                      <p className="rounded-md bg-red-100 px-2 py-1 text-[10px] font-bold text-red-800">
+                                        Re-running Analysis will not clear any of these. They need a person.
+                                      </p>
+                                    )}
+                                    {BLOCKER_ROUTE_ORDER.map((route: BlockerResolution) => {
+                                      const group = blockersByRoute[route] ?? [];
+                                      if (group.length === 0) return null;
+                                      return (
+                                        <div key={route}>
+                                          <div className="text-[9px] font-extrabold uppercase tracking-wide text-red-500">
+                                            {BLOCKER_ROUTE_HEADING[route]}
+                                          </div>
+                                          <ul className="mt-0.5 space-y-1">
+                                            {group.map((blocker: RequirementBlocker) => (
+                                              <li key={blocker.code + blocker.message} className="text-[10px] font-bold leading-snug text-red-700">
+                                                • {blocker.message}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <ul className="mt-1.5 space-y-1">
+                                    {visibleValidationBlockers.map((blocker: string, index: number) => (
+                                      <li key={`${blocker}-${index}`} className="text-[10px] font-bold leading-snug text-red-700">
+                                        {index + 1}. {blocker}
+                                      </li>
+                                    ))}
+                                  </ul>
                                 )}
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  {fixDialog && fixLabel && (
+                                    <button type="button" onClick={() => openAnalysisDialog(fixDialog)} className="inline-flex h-7 items-center gap-1 rounded-lg bg-red-600 px-2.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-red-700">
+                                      {fixLabel}<ChevronRight className="h-3 w-3" />
+                                    </button>
+                                  )}
+                                  {/* Only offered when taxonomy is what is
+                                      blocking, and only as a recorded human
+                                      decision with a reason — never inferred. */}
+                                  {(blockersByRoute?.human_input ?? []).some((b: RequirementBlocker) => b.code.startsWith("taxonomy")) && (
+                                    <button
+                                      type="button"
+                                      disabled={taxonomyWaiverBusy}
+                                      onClick={async () => {
+                                        const reason = window.prompt(
+                                          "Why does the taxonomy not apply to this requirement? This is recorded against your name.",
+                                        );
+                                        if (!reason || !reason.trim()) return;
+                                        setTaxonomyWaiverBusy(true);
+                                        try {
+                                          await requirementsApi.setTaxonomyApplicability(selectedReq.id, false, reason.trim());
+                                          await loadBlockerSummary(selectedReq.id);
+                                          await loadData();
+                                        } catch (e: any) {
+                                          const detail = e?.response?.data?.detail;
+                                          setAnalysisDialogError(typeof detail === "string" ? detail : detail?.message || "Unable to record the taxonomy decision.");
+                                        } finally {
+                                          setTaxonomyWaiverBusy(false);
+                                        }
+                                      }}
+                                      className="inline-flex h-7 items-center rounded-lg border border-red-300 bg-white px-2.5 text-[10px] font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                                    >
+                                      Taxonomy does not apply
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -4490,7 +4709,9 @@ function RequirementsContent() {
                   ["User Roles Involved", selectedReq.user_roles],
                   ["Systems Impacted", selectedReq.systems_impacted],
                   ["Risks", selectedReq.risks],
-                  ["Missing Specs / Info", selectedReq.missing_information]
+                  // Normalized: entries carry a severity now and would otherwise
+                  // render as "[object Object]".
+                  ["Missing Specs / Info", asTextList(selectedReq.missing_information)]
                 ] as const).map(([label, array]) => array && array.length > 0 ? (
                   <div key={label} className="space-y-1.5">
                     <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</label>

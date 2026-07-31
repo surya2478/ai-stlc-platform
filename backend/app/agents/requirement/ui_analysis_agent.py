@@ -74,7 +74,14 @@ For each requirement output a JSON object with these keys:
 - apis: list of likely backend APIs invoked (e.g. "POST /api/register")
 - dependencies: list of dependencies
 - risks: list of identified risks
-- missing_information: list of details not visible in the screenshot that need clarification
+- missing_information: list of objects, each {"item": "<detail not visible in the
+  screenshot>", "severity": "blocking" | "advisory"}.
+  Severity test: can a tester write and execute a meaningful test case without
+  this answer? "blocking" if not (the endpoint behind a button, the validation
+  rule, the destination of a navigation); "advisory" if it would only improve
+  polish (exact message wording, label text, styling). A screenshot shows
+  behaviour, not intent, so expect several genuine unknowns — but only mark as
+  blocking the ones that actually prevent testing.
 - telecom_domain: best-fit domain from [Mobile, Fixed, Digital, Billing, Charging, CRM, OSS, BSS, Middleware, Integration, Network, Data] or null
 - impacted_interfaces: list of interfaces/protocols
 - risk_level: "Critical" | "High" | "Medium" | "Low"

@@ -8,6 +8,7 @@ from sqlalchemy import select, func, or_
 from app.models.requirement import Requirement
 from app.models.requirement_review import RequirementQualityReview
 from app.schemas.requirement import RequirementCreate, RequirementUpdate, RequirementStatsOut
+from app.services import requirement_blockers
 from app.services.display_id_service import display_id, temporary_id
 
 # Requirements whose approval status cannot be changed again
@@ -91,30 +92,22 @@ def build_quality_agent_input(req: Requirement) -> dict:
 
 
 def requirement_analysis_blockers(req: Requirement) -> list[str]:
-    blockers: list[str] = []
-    quality_review = (req.metadata_ or {}).get("quality_review") or {}
-    if quality_review.get("stale") is True:
-        blockers.append("Quality analysis is stale after requirement changes. Re-run Analysis.")
-    if str(req.quality_verdict or "").lower() != "pass":
-        blockers.append("Quality analysis must pass before traceability.")
-    if _has_values(req.missing_information):
-        blockers.append("Missing information must be resolved before traceability.")
-    if not _has_values(req.telecom_domain or req.qa_domain or req.business_process):
-        blockers.append("Domain or business-process classification is required.")
-    if not _has_values(req.product or req.product_group or req.sub_request_type):
-        blockers.append("Product or request-type classification is required.")
-    return blockers
+    """Messages only, for the 409 payloads that already return a string list.
+
+    The rules themselves live in `requirement_blockers`, so the transition guard,
+    the approval guard and the screen all judge a requirement identically. Two
+    behaviour changes came with that move, both deliberate:
+
+    * only *blocking* missing-information items gate, per the UI-007 contract's
+      "mandatory ... missing-information blockers" wording; and
+    * the taxonomy blockers are skipped when a human has recorded that taxonomy
+      does not apply to this requirement.
+    """
+    return [b.message for b in requirement_blockers.analysis_blockers(req)]
 
 
 def requirement_traceability_blockers(req: Requirement) -> list[str]:
-    blockers = requirement_analysis_blockers(req)
-    mapped_systems = (
-        req.systems_impacted or req.impacted_systems or req.impacted_interfaces
-        or req.upstream_systems or req.downstream_systems or req.product or req.product_group
-    )
-    if not _has_values(mapped_systems):
-        blockers.append("At least one application, product, system, or interface mapping is required.")
-    return blockers
+    return [b.message for b in requirement_blockers.traceability_blockers(req)]
 
 
 async def transition_requirement(

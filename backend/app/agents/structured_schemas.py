@@ -30,6 +30,58 @@ class LLMBaseModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+class MissingInfoLLMItem(LLMBaseModel):
+    """One declared unknown, with the agent's judgement of whether it gates.
+
+    Severity exists because the old bare-string list made every unknown a hard
+    blocker, which punished a thorough extraction — an agent that declared nothing
+    advanced further than one that did its job. "Exact API endpoint and payload
+    structure" genuinely stops a tester writing a case; "success message wording"
+    does not.
+    """
+
+    item: str = ""
+    severity: str = "blocking"
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def _clean_severity(cls, value: Any) -> str:
+        text = str(value or "").strip().lower()
+        # Anything unrecognized is treated as blocking: an unreadable severity
+        # must not quietly downgrade a real gap.
+        return text if text in ("blocking", "advisory") else "blocking"
+
+
+def _missing_info_list(value: Any) -> list[dict]:
+    """Accept the legacy bare-string list as well as the object form.
+
+    Historical rows and any older prompt still produce plain strings; those
+    normalize to blocking, so nothing silently unblocks without an agent having
+    re-judged it.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return []
+    normalized: list[dict] = []
+    for entry in value:
+        # `str(None)` is "None"; a null in the model's array must not become an
+        # item literally reading "None".
+        if entry is None:
+            continue
+        if isinstance(entry, dict):
+            text = str(entry.get("item") or entry.get("text") or "").strip()
+            severity = entry.get("severity")
+        else:
+            text = str(entry).strip()
+            severity = "blocking"
+        if text:
+            normalized.append({"item": text, "severity": severity})
+    return normalized
+
+
 class RequirementLLMOutput(LLMBaseModel):
     title: str = "Untitled requirement"
     summary: str = ""
@@ -41,7 +93,7 @@ class RequirementLLMOutput(LLMBaseModel):
     apis: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
-    missing_information: list[str] = Field(default_factory=list)
+    missing_information: list[MissingInfoLLMItem] = Field(default_factory=list)
     # Telecom-specific fields (extracted by intake agent when detectable)
     telecom_domain: str | None = None
     impacted_interfaces: list[str] = Field(default_factory=list)
@@ -62,12 +114,16 @@ class RequirementLLMOutput(LLMBaseModel):
         "apis",
         "dependencies",
         "risks",
-        "missing_information",
         "impacted_interfaces",
         "upstream_systems",
         "downstream_systems",
         mode="before",
     )(_string_list)
+
+    # Not a plain string list — it carries severity, and older data is strings.
+    _normalize_missing_info = field_validator("missing_information", mode="before")(
+        _missing_info_list
+    )
 
 
 class ScenarioReviewLLMOutput(LLMBaseModel):

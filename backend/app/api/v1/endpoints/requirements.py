@@ -1,4 +1,5 @@
 """Requirements endpoints — updated with telecom fields, stats, filters, fixed permissions."""
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -13,9 +14,17 @@ from app.schemas.requirement import (
     RequirementCreate, RequirementUpdate, RequirementOut,
     RequirementListOut, AgentTriggerRequest, ApprovalRequest, RequirementStatsOut,
     URLAnalysisRequest, CodeAnalysisRequest, RequirementTransitionRequest,
+    TaxonomyNotApplicableRequest,
 )
 from app.schemas.common import MessageResponse
-from app.services import agent_run_service, approval_service, coverage_service, requirement_service, traceability_service
+from app.services import (
+    agent_run_service,
+    approval_service,
+    coverage_service,
+    requirement_blockers,
+    requirement_service,
+    traceability_service,
+)
 from app.services.agent_dispatch_service import enqueue_agent_run
 from app.services.rbac_service import APPROVE_REQUIREMENTS, VIEW_PROJECT
 from app.agents.requirement.intake_agent import RequirementIntakeAgent
@@ -286,6 +295,101 @@ async def transition_requirement(
         new_value={"workflow_stage": requirement_service.requirement_workflow_stage(req)},
     )
     await db.commit()
+    return req
+
+
+@router.get("/{req_id}/blockers")
+async def get_requirement_blockers(
+    req_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """What is blocking this requirement, and how each blocker is actually cleared.
+
+    Served from the backend so the Analysis screen stops recomputing the gate
+    client-side. The two copies could disagree, and did: the panel said
+    "Quality analysis must reach a Pass verdict before traceability" while the
+    server's own message was different, and neither said which blockers a re-run
+    could not touch.
+    """
+    req = await requirement_service.get_requirement(db, req_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    # Reading why something is blocked is a view action, matching the rest of
+    # this module's read endpoints.
+    await require_project_access(req.project_id, current_user, db)
+
+    analysis = requirement_blockers.analysis_blockers(req)
+    payload = requirement_blockers.summarize(analysis)
+    payload["traceability"] = requirement_blockers.summarize(
+        requirement_blockers.traceability_blockers(req)
+    )["blockers"]
+    # Advisory gaps are shown, never as blockers — the agent judged that a tester
+    # can still write a meaningful case without them.
+    payload["advisory_missing_information"] = [
+        m.as_dict()
+        for m in requirement_blockers.advisory_missing_information(req.missing_information)
+    ]
+    payload["taxonomy_not_applicable"] = requirement_blockers.taxonomy_waiver(req)
+    return payload
+
+
+@router.post("/{req_id}/taxonomy-not-applicable", response_model=RequirementOut)
+async def set_taxonomy_not_applicable(
+    req_id: int,
+    body: TaxonomyNotApplicableRequest,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Record, once, that taxonomy does not apply to this requirement.
+
+    The taxonomy vocabulary is telecom-shaped (`Mobile`, `Billing`, `Charging`,
+    `OSS`, `BSS`, …). A requirement derived from a generic web form belongs to
+    none of it, so the agent correctly returns null — and the gate then demanded a
+    value no re-run could ever produce.
+
+    This is deliberately a human decision with a reason and an actor, never an
+    inference. UI-007 Section 95 forbids AI inventing taxonomy; auto-deciding
+    "this project is not telecom" would be the same error in the other direction.
+    Clearing the waiver restores the blockers.
+    """
+    req = await requirement_service.get_requirement(db, req_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    await require_permission(APPROVE_REQUIREMENTS, req.project_id, current_user, db)
+
+    metadata = dict(req.metadata_ or {})
+    previous = metadata.get("taxonomy_not_applicable")
+    if body.applicable:
+        metadata.pop("taxonomy_not_applicable", None)
+    else:
+        if not (body.reason or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail="A reason is required when recording that taxonomy does not apply.",
+            )
+        metadata["taxonomy_not_applicable"] = {
+            "reason": body.reason.strip(),
+            "by_user_id": current_user.id,
+            "at": datetime.now(timezone.utc).isoformat(),
+        }
+    # JSONB columns need a new object for SQLAlchemy to detect the change.
+    req.metadata_ = metadata
+
+    await approval_service.create_approval_action(
+        db,
+        project_id=req.project_id,
+        user_id=current_user.id,
+        entity_type="requirement",
+        entity_id=req.id,
+        action="taxonomy_not_applicable" if not body.applicable else "taxonomy_applicable",
+        notes=body.reason,
+        decision="waived" if not body.applicable else "restored",
+        old_value={"taxonomy_not_applicable": previous},
+        new_value={"taxonomy_not_applicable": metadata.get("taxonomy_not_applicable")},
+    )
+    await db.commit()
+    await db.refresh(req)
     return req
 
 
