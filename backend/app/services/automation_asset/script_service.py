@@ -162,9 +162,39 @@ async def _base_url(
     if application is None:
         application = await resolve_default_application(db, suite.project_id)
     if application is None:
-        return None
-    environment = member.resolved_environment or "QA"
-    return resolve_environment_url(application, environment)
+        raise AutomationSuiteError(
+            422,
+            "NO_APPLICATION",
+            "This asset resolves to no application, so there is no base URL to run "
+            "against. Map the test case to an application in the Application Registry.",
+        )
+
+    configured = application.environment_urls or {}
+    # Resolution order, most specific first. The old code fell back to a
+    # hardcoded "QA" — a name the application need not have. When it did not,
+    # the lookup returned None, the Playwright config got no baseURL, and the
+    # run died on `page.goto("/")` with "Cannot navigate to invalid URL", a
+    # message that never mentions environments. Guessing an environment name is
+    # worse than either using the real one or refusing.
+    for candidate in (member.resolved_environment, suite.default_environment):
+        if candidate and resolve_environment_url(application, candidate):
+            return resolve_environment_url(application, candidate)
+
+    # Exactly one environment configured is unambiguous — use it rather than
+    # refusing over a name nobody chose.
+    if len(configured) == 1:
+        return next(iter(configured.values()))
+
+    known = ", ".join(sorted(configured)) or "none"
+    raise AutomationSuiteError(
+        422,
+        "NO_ENVIRONMENT_URL",
+        f"No base URL could be resolved for application '{application.name}'. "
+        f"The asset's environment is "
+        f"{member.resolved_environment or suite.default_environment or 'not set'}, "
+        f"and the application has these environments configured: {known}. "
+        "Set the environment on the suite, or add the URL in the Application Registry.",
+    )
 
 
 async def dry_run_asset(

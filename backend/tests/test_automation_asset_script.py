@@ -137,3 +137,97 @@ def test_element_required_actions_is_the_list_the_validator_enforces():
         AutomationGenerationContract.model_validate(payload)
     assert "click" in ELEMENT_REQUIRED_ACTIONS_TUPLE
     assert "navigate" not in ELEMENT_REQUIRED_ACTIONS_TUPLE
+
+
+# ── Base URL resolution ───────────────────────────────────────────────────────
+# A live run failed with `page.goto: Cannot navigate to invalid URL ... "/"`
+# because _base_url fell back to a hardcoded "QA" the application did not have,
+# resolved nothing, and left the Playwright config with no baseURL. Guessing an
+# environment name is worse than using the real one or refusing.
+
+import pytest
+from types import SimpleNamespace
+
+from app.services.automation_asset import script_service
+from app.services.automation_suite.errors import AutomationSuiteError
+
+
+class _DB:
+    def __init__(self, test_case=None, application=None):
+        self._test_case = test_case
+        self._application = application
+
+    async def get(self, model, pk):
+        name = getattr(model, "__name__", "")
+        if name == "TestCase":
+            return self._test_case
+        if name == "ProjectApplication":
+            return self._application
+        return None
+
+
+def _app(**urls):
+    return SimpleNamespace(id=13, name="WebApp", environment_urls=dict(urls))
+
+
+def _member(environment=None):
+    return SimpleNamespace(id=21, test_case_id=25, resolved_environment=environment)
+
+
+def _suite(default_environment=None):
+    return SimpleNamespace(id=6, project_id=5, default_environment=default_environment)
+
+
+def _test_case(application_id=13):
+    return SimpleNamespace(id=25, application_id=application_id)
+
+
+@pytest.mark.asyncio
+async def test_member_environment_is_used_when_it_resolves():
+    db = _DB(_test_case(), _app(Regression="https://rankix.ai/", QA="https://qa.example"))
+    url = await script_service._base_url(db, _member("Regression"), _suite())
+    assert url == "https://rankix.ai/"
+
+
+@pytest.mark.asyncio
+async def test_suite_default_environment_is_the_next_fallback():
+    db = _DB(_test_case(), _app(Regression="https://rankix.ai/", QA="https://qa.example"))
+    url = await script_service._base_url(db, _member(None), _suite("QA"))
+    assert url == "https://qa.example"
+
+
+@pytest.mark.asyncio
+async def test_sole_configured_environment_is_used_rather_than_guessing():
+    """The live failure: environment unset, and the app has only 'Regression'.
+    The old code guessed 'QA', found nothing, and produced goto('/')."""
+    db = _DB(_test_case(), _app(Regression="https://rankix.ai/"))
+    url = await script_service._base_url(db, _member(None), _suite(None))
+    assert url == "https://rankix.ai/"
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_environment_refuses_and_names_the_options():
+    """Two environments and no stated choice — refusing beats picking one."""
+    db = _DB(_test_case(), _app(SIT="https://sit.example", QA="https://qa.example"))
+    with pytest.raises(AutomationSuiteError) as exc:
+        await script_service._base_url(db, _member(None), _suite(None))
+    assert exc.value.detail["code"] == "NO_ENVIRONMENT_URL"
+    assert "QA" in exc.value.detail["message"] and "SIT" in exc.value.detail["message"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_environment_name_refuses_rather_than_running_blind():
+    db = _DB(_test_case(), _app(SIT="https://sit.example", QA="https://qa.example"))
+    with pytest.raises(AutomationSuiteError) as exc:
+        await script_service._base_url(db, _member("Staging"), _suite(None))
+    assert exc.value.detail["code"] == "NO_ENVIRONMENT_URL"
+    assert "Staging" in exc.value.detail["message"]
+
+
+@pytest.mark.asyncio
+async def test_application_with_no_urls_refuses():
+    db = _DB(_test_case(), _app())
+    with pytest.raises(AutomationSuiteError) as exc:
+        await script_service._base_url(db, _member(None), _suite(None))
+    assert exc.value.detail["code"] == "NO_ENVIRONMENT_URL"
+    assert "none" in exc.value.detail["message"]
