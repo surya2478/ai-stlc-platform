@@ -42,9 +42,21 @@ URL_DERIVE_SUFFIX = """
 IMPORTANT — this analysis came from a LIVE rendered page, not a screenshot.
 
 `links` is a deterministic inventory read from the DOM. Each entry has:
-  - label: the visible link text
-  - href:  the destination as authored in the markup
-  - url:   the resolved absolute URL
+  - label:       the visible link text
+  - href:        the destination as authored in the markup
+  - url:         the resolved absolute URL, or null when there is none
+  - placeholder: true when the markup points the link nowhere (href="#")
+
+A placeholder link is OBSERVED INFORMATION, not a gap. The markup states that
+the link currently goes nowhere — that is a fact about the page, not something
+the requirement owner has failed to tell you. Do NOT ask for its destination in
+`missing_information`; that would block the requirement on an answer nobody owes
+you, and re-running the analysis can never clear it.
+
+Instead, record placeholder links as a `risk` or a negative-path acceptance
+criterion — for example "footer social links are placeholders (href=#) and do
+not navigate" — and exclude them from navigation acceptance criteria that assert
+a destination.
 
 These destinations are KNOWN. Use them:
   - `ui_pages` entries are PLAIN STRINGS, never objects. Write each as
@@ -56,6 +68,8 @@ These destinations are KNOWN. Use them:
 Reserve `missing_information` for what genuinely is not observable from a
 rendered page: server-side behaviour behind a form submit, validation rules not
 expressed as markup attributes, business intent, and downstream system effects.
+The test is whether a person could answer it — not whether the page happens to
+be incomplete.
 """
 
 DOM_FALLBACK_SYSTEM = """You are a senior QA engineer. You receive a DOM inventory of a web page

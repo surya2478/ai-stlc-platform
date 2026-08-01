@@ -106,17 +106,31 @@ def link_inventory(page_url: str, dom_summary: dict) -> list[dict]:
         if not href:
             continue
         label = str(link.get("label") or "").strip()
-        try:
-            absolute = urljoin(page_url, href)
-        except ValueError:
-            # A malformed href is still worth reporting as a link the page
-            # declares; it just has no resolvable destination.
-            absolute = href
-        key = (label.lower(), absolute)
+
+        # A bare "#" is a placeholder — the markup says this link goes nowhere.
+        # urljoin resolves it to the page's own URL, which would have this
+        # function assert that a social icon's destination is the homepage. That
+        # is a false claim about an observed fact, and it fed straight into the
+        # navigation map as a real target. An in-page anchor like "#pricing" is
+        # a genuine destination and is left alone.
+        placeholder = href == "#"
+        if placeholder:
+            absolute = None
+        else:
+            try:
+                absolute = urljoin(page_url, href)
+            except ValueError:
+                # A malformed href is still worth reporting as a link the page
+                # declares; it just has no resolvable destination.
+                absolute = href
+
+        key = (label.lower(), absolute or "#placeholder")
         if key in seen:
             continue
         seen.add(key)
-        out.append({"label": label, "href": href, "url": absolute})
+        out.append(
+            {"label": label, "href": href, "url": absolute, "placeholder": placeholder}
+        )
         if len(out) >= MAX_LINKS:
             break
     return out

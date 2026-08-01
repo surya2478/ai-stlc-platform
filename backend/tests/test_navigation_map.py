@@ -69,6 +69,17 @@ def test_a_link_without_a_destination_is_never_offered_as_known():
     assert out == []
 
 
+def test_placeholder_links_are_never_offered_as_known_targets():
+    """A placeholder has a label and no destination. Offering it would tell the
+    agent that "LinkedIn" is a resolvable target when the markup says it goes
+    nowhere."""
+    out = merge_link_inventories([[
+        {"label": "LinkedIn", "href": "#", "url": None, "placeholder": True},
+        {"label": "About", "href": "/about", "url": "https://x.com/about", "placeholder": False},
+    ]])
+    assert out == [{"label": "About", "url": "https://x.com/about"}]
+
+
 def test_an_unlabelled_destination_is_skipped():
     """It cannot be matched to anything on a screen, so it is noise."""
     assert merge_link_inventories([[{"label": "", "url": "https://x.com/a"}]]) == []

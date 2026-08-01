@@ -71,8 +71,9 @@ def merge_link_inventories(inventories: list[Any]) -> list[dict]:
             label = str(link.get("label") or "").strip()
             # A target with no destination is exactly what this map exists to
             # avoid claiming, and an unlabelled one cannot be matched to a
-            # screen element.
-            if not url or not label:
+            # screen element. A placeholder ("#") has a label and no
+            # destination, so it must not be offered as a known target either.
+            if not url or not label or link.get("placeholder"):
                 continue
             if url in seen_urls:
                 continue

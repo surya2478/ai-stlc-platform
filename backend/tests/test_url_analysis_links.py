@@ -22,7 +22,42 @@ def test_a_labelled_link_keeps_its_destination():
     """The regression itself: previously `label or href` returned "Home" and
     the URL was gone."""
     out = link_inventory(PAGE, {"links": [{"label": "Home", "href": "/"}]})
-    assert out == [{"label": "Home", "href": "/", "url": "https://example.com/"}]
+    assert out == [
+        {"label": "Home", "href": "/", "url": "https://example.com/", "placeholder": False}
+    ]
+
+
+# ── Placeholder links ───────────────────────────────────────────────────────
+
+
+def test_a_placeholder_link_claims_no_destination():
+    """href="#" means the markup points this link nowhere. urljoin resolves it
+    to the page's own URL, which asserted that a social icon navigates to the
+    homepage — a false claim about an observed fact, and one that fed the
+    navigation map a target that does not exist."""
+    out = link_inventory(PAGE, {"links": [{"label": "LinkedIn", "href": "#"}]})
+    assert out[0]["url"] is None
+    assert out[0]["placeholder"] is True
+    assert out[0]["href"] == "#"
+
+
+def test_an_in_page_anchor_is_a_real_destination():
+    """"#pricing" scrolls somewhere real and must not be lumped in with "#"."""
+    out = link_inventory(PAGE, {"links": [{"label": "Pricing", "href": "#pricing"}]})
+    assert out[0]["placeholder"] is False
+    assert out[0]["url"] == "https://example.com/products/#pricing"
+
+
+def test_several_placeholders_are_all_kept_separately():
+    """Four social icons all pointing nowhere are four distinct observations,
+    not one — deduping them would hide how much of the footer is inert."""
+    out = link_inventory(PAGE, {"links": [
+        {"label": "LinkedIn", "href": "#"},
+        {"label": "Twitter", "href": "#"},
+        {"label": "GitHub", "href": "#"},
+    ]})
+    assert [l["label"] for l in out] == ["LinkedIn", "Twitter", "GitHub"]
+    assert all(l["placeholder"] for l in out)
 
 
 def test_relative_hrefs_resolve_against_the_page():
