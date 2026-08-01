@@ -78,6 +78,50 @@ DOM_SUMMARY_JS = """
 """
 
 
+MAX_LINKS = 30
+
+
+def link_inventory(page_url: str, dom_summary: dict) -> list[dict]:
+    """Label *and* destination for every anchor the DOM inventory captured.
+
+    This used to be `[l.get("label") or l.get("href") for l in ...]`, which kept
+    the href only when a link had no text. Real navigation links almost always
+    have text, so the URL was discarded essentially every time: the derivation
+    step received `["Home", "About", "Services"]` and — correctly, given its
+    input — reported "Exact URLs for each navigation target" as *blocking*
+    missing information, for a page the platform had just rendered and read the
+    hrefs from. The requirement then sat waiting on a human for an answer the
+    system already had.
+
+    `href` is kept as authored (relative links are what a tester reads in the
+    markup) alongside the resolved absolute `url`, which is what an automated
+    check actually needs.
+    """
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for link in dom_summary.get("links") or []:
+        if not isinstance(link, dict):
+            continue
+        href = str(link.get("href") or "").strip()
+        if not href:
+            continue
+        label = str(link.get("label") or "").strip()
+        try:
+            absolute = urljoin(page_url, href)
+        except ValueError:
+            # A malformed href is still worth reporting as a link the page
+            # declares; it just has no resolvable destination.
+            absolute = href
+        key = (label.lower(), absolute)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"label": label, "href": href, "url": absolute})
+        if len(out) >= MAX_LINKS:
+            break
+    return out
+
+
 class UnsafeURLError(ValueError):
     """Raised when a URL fails SSRF/scheme validation."""
 

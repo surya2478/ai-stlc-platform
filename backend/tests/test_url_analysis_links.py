@@ -12,12 +12,8 @@ derivation step genuinely had nothing but labels to work with.
 """
 from __future__ import annotations
 
-from app.agents.requirement.url_analysis_agent import (
-    DERIVE_SYSTEM,
-    MAX_LINKS,
-    URL_DERIVE_SUFFIX,
-    link_inventory,
-)
+from app.agents.requirement.url_analysis_agent import DERIVE_SYSTEM, URL_DERIVE_SUFFIX
+from app.services.url_capture_service import MAX_LINKS, link_inventory
 
 PAGE = "https://example.com/products/"
 

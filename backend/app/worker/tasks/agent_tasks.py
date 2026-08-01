@@ -62,6 +62,7 @@ from app.services import artifact_review_service
 from app.services import automation_service
 from app.services import coverage_matrix_service
 from app.services import locator_map_service
+from app.services import navigation_map
 from app.services import static_quality_gate
 from app.services.script_compiler import locator_policy
 from app.services import requirement_service
@@ -104,21 +105,48 @@ async def _requirement_enrichment(input_data: dict[str, Any]) -> Any:
     )
 
 
+async def _resolve_navigation_map(project_id: int) -> dict:
+    """What this project already knows about where its navigation goes.
+
+    Resolved here rather than inside the agent so the agents stay
+    database-free, matching how every other input reaches them. A failure to
+    build the map must not fail the analysis — the agent simply falls back to
+    declaring destinations unknown, which is the behaviour it had before.
+    """
+    if not project_id:
+        return {}
+    try:
+        async with AsyncSessionLocal() as db:
+            return await navigation_map.resolve(db, project_id)
+    except Exception:
+        logger.exception("Could not build the navigation map for project %s", project_id)
+        return {}
+
+
 async def _ui_image_analysis(input_data: dict[str, Any]) -> Any:
+    project_id = input_data.get("project_id", 0)
     return await UIAnalysisAgent().run(
         image_path=input_data["image_path"],
         image_name=input_data.get("image_name", "screenshot"),
         context_note=input_data.get("context_note", ""),
-        project_id=input_data.get("project_id", 0),
+        project_id=project_id,
+        # A screenshot has no hrefs. Anything this project has already read from
+        # the live application is the only way the agent can resolve a
+        # navigation target instead of asking a person for it.
+        navigation=await _resolve_navigation_map(project_id),
     )
 
 
 async def _url_analysis(input_data: dict[str, Any]) -> Any:
+    project_id = input_data.get("project_id", 0)
     return await URLAnalysisAgent().run(
         url=input_data["url"],
         crawl_depth=input_data.get("crawl_depth", 0),
         context_note=input_data.get("context_note", ""),
-        project_id=input_data.get("project_id", 0),
+        project_id=project_id,
+        # This agent reads its own page's links, but a multi-page site's targets
+        # may have been observed on a page it is not currently rendering.
+        navigation=await _resolve_navigation_map(project_id),
     )
 
 

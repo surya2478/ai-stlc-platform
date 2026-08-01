@@ -85,11 +85,14 @@ def test_url_analysis_task_uses_agent_signature(monkeypatch):
     calls = {}
 
     class FakeURLAgent:
-        async def run(self, url, crawl_depth=0, context_note="", project_id=0):
+        async def run(self, url, crawl_depth=0, context_note="", project_id=0, navigation=None):
             calls.update(url=url, crawl_depth=crawl_depth, context_note=context_note, project_id=project_id)
             return {"ok": True}
 
     monkeypatch.setattr(agent_tasks, "URLAnalysisAgent", lambda: FakeURLAgent())
+    async def _nav(_project_id):
+        return {"targets": [], "base_urls": {}}
+    monkeypatch.setattr(agent_tasks, "_resolve_navigation_map", _nav)
 
     result = anyio.run(
         agent_tasks._url_analysis,

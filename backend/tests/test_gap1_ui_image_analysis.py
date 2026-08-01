@@ -110,16 +110,23 @@ def test_ui_image_analysis_task_uses_agent_signature(monkeypatch):
     calls = {}
 
     class FakeUIAgent:
-        async def run(self, image_path, image_name="screenshot", context_note="", project_id=0):
+        async def run(self, image_path, image_name="screenshot", context_note="",
+                      project_id=0, navigation=None):
             calls.update(
                 image_path=image_path,
                 image_name=image_name,
                 context_note=context_note,
                 project_id=project_id,
+                navigation=navigation,
             )
             return {"ok": True}
 
     monkeypatch.setattr(agent_tasks, "UIAnalysisAgent", lambda: FakeUIAgent())
+    # The map is resolved from the database; this test is about the call
+    # signature, not about what the project happens to have observed.
+    async def _nav(_project_id):
+        return {"targets": [{"label": "About", "url": "https://x/about"}], "base_urls": {}}
+    monkeypatch.setattr(agent_tasks, "_resolve_navigation_map", _nav)
 
     result = anyio.run(
         agent_tasks._ui_image_analysis,
@@ -133,6 +140,9 @@ def test_ui_image_analysis_task_uses_agent_signature(monkeypatch):
     assert result == {"ok": True}
     assert calls["image_path"] == "/storage/uploads/1/x.png"
     assert calls["project_id"] == 9
+    # A screenshot has no hrefs, so the known-destination map is the only way
+    # the agent can resolve a navigation target instead of asking a person.
+    assert calls["navigation"]["targets"][0]["url"] == "https://x/about"
 
 
 # ── GAP-1: JSON block parsing in the UI agent ─────────────────────────────────

@@ -24,6 +24,7 @@ from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.structured_schemas import RequirementLLMOutput
 from app.llm.provider import get_llm, get_vision_llm
 from app.llm.structured import validate_structured_output
+from app.services.navigation_map import render_navigation_prompt
 from app.config import get_settings
 
 settings = get_settings()
@@ -36,6 +37,10 @@ class UIAnalysisState(TypedDict):
     image_name: str
     context_note: str
     project_id: int
+    # Destinations this project has already observed on the live application.
+    # A screenshot has no hrefs, so this is the only way a navigation target can
+    # be resolved rather than asked of a person.
+    navigation: dict
     ui_analysis: dict
     requirements: list[dict]
     errors: list[str]
@@ -159,9 +164,13 @@ async def _derive_requirements(state: UIAnalysisState) -> UIAnalysisState:
         "Convert this into requirement objects. Return a JSON array."
     )
     requirements: list[dict] = []
+    # Known destinations are appended rather than baked into DERIVE_SYSTEM:
+    # with none observed the prompt must say nothing at all, since an empty
+    # heading reads as "this screen has no navigation targets".
+    nav_prompt = render_navigation_prompt(state.get("navigation") or {})
     try:
         response = await llm.generate(
-            system=DERIVE_SYSTEM,
+            system=DERIVE_SYSTEM + nav_prompt,
             user=prompt,
             temperature=0.1,
             max_tokens=4000,
@@ -206,6 +215,7 @@ class UIAnalysisAgent(BaseAgent):
         image_name: str = "screenshot",
         context_note: str = "",
         project_id: int = 0,
+        navigation: dict | None = None,
     ) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Analysing UI screenshot '{image_name}' for project {project_id}")
@@ -220,6 +230,7 @@ class UIAnalysisAgent(BaseAgent):
             "image_name": image_name,
             "context_note": context_note or "",
             "project_id": project_id,
+            "navigation": navigation or {},
             "ui_analysis": {},
             "requirements": [],
             "errors": [],

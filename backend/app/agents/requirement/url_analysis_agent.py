@@ -16,7 +16,6 @@ import base64
 import json
 import uuid
 from pathlib import Path
-from urllib.parse import urljoin
 
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.requirement.ui_analysis_agent import (
@@ -28,53 +27,10 @@ from app.agents.structured_schemas import RequirementLLMOutput
 from app.llm.provider import get_llm, get_vision_llm
 from app.llm.structured import validate_structured_output
 from app.config import get_settings
-from app.services.url_capture_service import capture_pages
+from app.services.navigation_map import render_navigation_prompt
+from app.services.url_capture_service import MAX_LINKS, capture_pages, link_inventory
 
 settings = get_settings()
-
-MAX_LINKS = 30
-
-
-def link_inventory(page_url: str, dom_summary: dict) -> list[dict]:
-    """Label *and* destination for every anchor the DOM inventory captured.
-
-    This used to be `[l.get("label") or l.get("href") for l in ...]`, which kept
-    the href only when a link had no text. Real navigation links almost always
-    have text, so the URL was discarded essentially every time: the derivation
-    step received `["Home", "About", "Services"]` and — correctly, given its
-    input — reported "Exact URLs for each navigation target" as *blocking*
-    missing information, for a page the platform had just rendered and read the
-    hrefs from. The requirement then sat waiting on a human for an answer the
-    system already had.
-
-    `href` is kept as authored (relative links are what a tester reads in the
-    markup) alongside the resolved absolute `url`, which is what an automated
-    check actually needs.
-    """
-    out: list[dict] = []
-    seen: set[tuple[str, str]] = set()
-    for link in dom_summary.get("links") or []:
-        if not isinstance(link, dict):
-            continue
-        href = str(link.get("href") or "").strip()
-        if not href:
-            continue
-        label = str(link.get("label") or "").strip()
-        try:
-            absolute = urljoin(page_url, href)
-        except ValueError:
-            # A malformed href is still worth reporting as a link the page
-            # declares; it just has no resolvable destination.
-            absolute = href
-        key = (label.lower(), absolute)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append({"label": label, "href": href, "url": absolute})
-        if len(out) >= MAX_LINKS:
-            break
-    return out
-
 
 # Appended to the shared DERIVE_SYSTEM for this agent only. That prompt is
 # written for a screenshot, where a navigation destination genuinely cannot be
@@ -125,6 +81,7 @@ class URLAnalysisAgent(BaseAgent):
         crawl_depth: int = 0,
         context_note: str = "",
         project_id: int = 0,
+        navigation: dict | None = None,
     ) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Analysing portal URL {url} (depth {crawl_depth}) for project {project_id}")
@@ -168,7 +125,9 @@ class URLAnalysisAgent(BaseAgent):
             analysis.setdefault("screen_name", page.title)
 
             # 4. Derive structured requirements.
-            requirements = await self._derive_requirements(llm, page, analysis, errors)
+            requirements = await self._derive_requirements(
+                llm, page, analysis, errors, navigation or {}
+            )
 
             page_results.append({
                 "url": page.url,
@@ -250,7 +209,9 @@ class URLAnalysisAgent(BaseAgent):
             errors.append(f"{page.url}: DOM fallback failed: {exc}")
         return {}
 
-    async def _derive_requirements(self, llm, page, analysis: dict, errors: list[str]) -> list[dict]:
+    async def _derive_requirements(
+        self, llm, page, analysis: dict, errors: list[str], navigation: dict | None = None
+    ) -> list[dict]:
         """Convert the merged analysis into validated requirement dicts."""
         if not analysis:
             return []
@@ -265,7 +226,9 @@ class URLAnalysisAgent(BaseAgent):
                 # DERIVE_SYSTEM is shared with the screenshot agent, where a
                 # navigation destination is genuinely unknowable. The suffix
                 # tells this agent the opposite is true here.
-                system=DERIVE_SYSTEM + URL_DERIVE_SUFFIX,
+                system=DERIVE_SYSTEM
+                + URL_DERIVE_SUFFIX
+                + render_navigation_prompt(navigation or {}),
                 user=prompt,
                 temperature=0.1,
                 max_tokens=4000,
