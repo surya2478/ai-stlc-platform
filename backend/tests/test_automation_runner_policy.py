@@ -171,14 +171,26 @@ _ESSENTIALS = {"PATH": "/usr/bin", "HOME": "/root"}
 _TEST_FACING = {"BASE_URL": "https://sit.example.com"}
 
 
+def test_enforcement_is_the_default():
+    """The audit ran, showed 68 of 73 variables withheld with nothing a test
+    legitimately reads among them, and the switch was thrown. A deployment that
+    regresses this default silently hands every provider key back to generated
+    test code."""
+    env, withheld = build_runner_env(
+        source={**_ESSENTIALS, **_TEST_FACING, **_SECRETS}, settings=_settings()
+    )
+    assert "DATABASE_URL" not in env
+    assert set(withheld) == set(_SECRETS)
+
+
 def test_audit_mode_passes_everything_through_but_reports_what_would_be_withheld():
+    """Still available for a deployment whose scripts read something unusual."""
     env, withheld = build_runner_env(
         source={**_ESSENTIALS, **_TEST_FACING, **_SECRETS},
         settings=_settings(automation_runner_env_allowlist_enforced=False),
     )
-    # Nothing is filtered yet — this is the flagged rollout step.
     assert env["DATABASE_URL"] == _SECRETS["DATABASE_URL"]
-    # ...but the audit list is accurate, which is what makes enforcement safe.
+    # The audit list is accurate, which is what made enforcement safe to enable.
     assert withheld == ["APP_SECRET_KEY", "DATABASE_URL", "OPENAI_API_KEY"]
 
 

@@ -5,10 +5,14 @@ generated or hand-edited test script receives every secret the worker holds:
 database URL, LLM provider keys, JWT signing key, Redis credentials. Test code
 has no business reading any of them.
 
-This module narrows that to an allowlist. It ships in *audit* mode
-(`automation_runner_env_allowlist_enforced=False`): nothing is filtered, but
-everything that would be filtered is logged and reported in the runner
-metadata, so existing scripts can be checked before the switch is thrown.
+This module narrows that to an allowlist, enforced by default. It shipped in
+*audit* mode first — nothing filtered, everything that would be filtered logged
+— so the effect could be measured before the switch was thrown. On a standard
+deployment the audit withheld 68 of 73 variables, including every LLM provider
+key, `DATABASE_URL`, `REDIS_URL`, `APP_SECRET_KEY`, `JIRA_API_TOKEN` and the
+runner executor's own token; nothing a test legitimately reads was in that set.
+Audit mode remains available (`automation_runner_env_allowlist_enforced=False`)
+for a deployment whose scripts read something unusual.
 
 The allowlist has two parts. `_ALWAYS_ALLOWED` covers the OS/runtime variables
 without which `npx` or `python` simply will not start — stripping PATH does not

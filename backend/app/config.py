@@ -248,10 +248,17 @@ class Settings(BaseSettings):
     automation_runner_env_allowlist: str = (
         "BASE_URL,DB_VALIDATION_ENDPOINT,AUTOMATION_ENV,PLAYWRIGHT_*,PW_*,NODE_*,PYTEST_*"
     )
-    # False (default): nothing is filtered, but every variable that *would* be
-    # filtered is logged so existing scripts can be audited before enforcement.
-    # True: the subprocess receives only the allowlisted variables.
-    automation_runner_env_allowlist_enforced: bool = False
+    # True (default): the subprocess receives only the allowlisted variables.
+    # False: nothing is filtered, but every variable that *would* be filtered is
+    # logged, so a deployment with unusual scripts can audit before enforcing.
+    #
+    # Shipped as False while the audit ran, then flipped once the audit showed
+    # what enforcement actually removes: on a standard deployment, 68 of 73
+    # variables — every LLM provider key, DATABASE_URL, REDIS_URL,
+    # APP_SECRET_KEY, JIRA_API_TOKEN and the executor token — with only PATH,
+    # HOME, LANG, LC_ALL and PLAYWRIGHT_BROWSERS_PATH surviving. Nothing a test
+    # legitimately reads was in the withheld set.
+    automation_runner_env_allowlist_enforced: bool = True
 
     # Whether binary execution evidence (screenshot, video, trace) may be
     # downloaded. No text pass can mask a screenshot, so serving one is a policy
