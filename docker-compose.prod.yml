@@ -94,8 +94,8 @@ services:
     user: "1000:1000"
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL in .env}
       DB_POOL_ENABLED: "false"
       APP_ENV: production
     volumes:

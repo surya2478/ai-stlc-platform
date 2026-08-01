@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-stlc_local}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-stlc_agents}
     volumes:
       - pg_data:/var/lib/postgresql/data
@@ -23,13 +23,13 @@ services:
     image: redis:7-alpine
     container_name: stlc_redis
     restart: unless-stopped
-    command: redis-server --requirepass 30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm --appendonly yes --save 60 1
+    command: redis-server --requirepass ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env} --appendonly yes --save 60 1
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -44,8 +44,8 @@ services:
     user: "root"
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://stlc_local:30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm@db:5432/stlc_agents}
-      REDIS_URL: ${REDIS_URL:-redis://:30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm@redis:6379/0}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL in .env}
     volumes:
       - stlc_storage:/app/storage
       - .:/repo
@@ -67,8 +67,8 @@ services:
     user: "root"
     env_file: .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://stlc_local:30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm@db:5432/stlc_agents}
-      REDIS_URL: ${REDIS_URL:-redis://:30Yt-n1ESxols_rl6Zc3fbD7pMwRZmxm@redis:6379/0}
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      REDIS_URL: ${REDIS_URL:?set REDIS_URL in .env}
       DB_POOL_ENABLED: "false"
     volumes:
       - stlc_storage:/app/storage
@@ -107,7 +107,12 @@ services:
     user: "root"
     environment:
       APP_ENV: ${APP_ENV:-local}
-      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me-executor-placeholder-value}
+      # A literal, deliberately NOT ${APP_SECRET_KEY}. Settings validation wants
+      # a non-placeholder key of sufficient length in production, but this
+      # service signs nothing and authenticates nobody — handing it the real
+      # application secret would give away the credential-free property that is
+      # the reason it exists.
+      APP_SECRET_KEY: "executor-does-not-sign-anything-unused-placeholder"
       AUTOMATION_EXECUTOR_TOKEN: ${AUTOMATION_EXECUTOR_TOKEN:?set AUTOMATION_EXECUTOR_TOKEN in .env}
       AUTOMATION_DOCKER_IMAGE: ${AUTOMATION_DOCKER_IMAGE:-stlc-platform-worker}
       AUTOMATION_DOCKER_VOLUME: ${AUTOMATION_DOCKER_VOLUME:-stlc-platform_stlc_storage}
