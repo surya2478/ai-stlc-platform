@@ -236,6 +236,25 @@ function asTextList(value: unknown): string[] {
  * data to advisory would retroactively unblock requirements that no agent has
  * re-judged. This mirrors `requirement_blockers.py` on the server.
  */
+/** The dimensions behind the single quality number, with the weights the backend
+ *  actually uses (`QUALITY_SCORE_WEIGHTS` in quality_agent.py). Shown so a score
+ *  that moves after an edit can be traced to the dimension that moved, and so it
+ *  is obvious which fix is worth the most.
+ *
+ *  `gating` marks a dimension with its own pass threshold: scenario readiness
+ *  must reach 3/5 regardless of the overall score, so a requirement can sit
+ *  above 70/100 and still read "Needs Revision". */
+const QUALITY_DIMENSIONS: Array<{ key: string; label: string; weight: number; gating?: boolean }> = [
+  { key: "testability_score", label: "Testability", weight: 0.2 },
+  { key: "acceptance_criteria_score", label: "Acceptance criteria", weight: 0.2 },
+  { key: "completeness_score", label: "Completeness", weight: 0.15 },
+  { key: "clarity_score", label: "Clarity", weight: 0.1 },
+  { key: "ambiguity_score", label: "Ambiguity", weight: 0.1 },
+  { key: "interface_readiness_score", label: "Interface readiness", weight: 0.1 },
+  { key: "scenario_generation_readiness", label: "Scenario readiness", weight: 0.1, gating: true },
+  { key: "qa_domain_completeness", label: "Domain completeness", weight: 0.05 },
+];
+
 /** Grouping order for the blockers panel: what a person can act on first. */
 const BLOCKER_ROUTE_ORDER: BlockerResolution[] = ["human_input", "clarification", "rerun_analysis"];
 
@@ -4095,6 +4114,20 @@ function RequirementsContent() {
                   const previousScore = previousReview?.quality_score == null ? null : Math.round(Number(previousReview.quality_score) * 20);
                   const scoreDelta = row?.qualityScore != null && previousScore != null ? row.qualityScore - previousScore : null;
                   const isQualityStale = qualityMeta?.stale === true;
+                  const qualityDimensions = QUALITY_DIMENSIONS.map((dim) => {
+                    const raw = latestQualityReview?.[dim.key as keyof typeof latestQualityReview];
+                    const prior = previousReview?.[dim.key as keyof typeof previousReview];
+                    const value = raw == null || raw === "" ? null : Number(raw);
+                    const before = prior == null || prior === "" ? null : Number(prior);
+                    return {
+                      ...dim,
+                      value: value != null && Number.isFinite(value) ? value : null,
+                      delta:
+                        value != null && before != null && Number.isFinite(value) && Number.isFinite(before)
+                          ? Number((value - before).toFixed(1))
+                          : null,
+                    };
+                  }).filter((dim) => dim.value != null);
                   const improvementActions: Array<{ label: string; detail: string; dialog: AnalysisDialog }> = [];
                   if (!latestQualityReview || Number(latestQualityReview.completeness_score) < 3.5 || Number(latestQualityReview.clarity_score) < 3.5) improvementActions.push({ label: "Edit core details", detail: "State the actor, business outcome, trigger, rules, constraints, and risks.", dialog: "content" });
                   if (!latestQualityReview || Number(latestQualityReview.testability_score) < 3.5 || Number(latestQualityReview.acceptance_criteria_score) < 3.5) improvementActions.push({ label: "Edit acceptance criteria", detail: "Add measurable positive and negative outcomes with expected results.", dialog: "acceptance" });
@@ -4164,6 +4197,46 @@ function RequirementsContent() {
                           </div>
                         </div>
                         {isQualityStale && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-bold text-amber-800">This score is from before the latest edits and cannot be used to pass. Re-run Analysis.</div>}
+                        {/* The overall number is a weighted average of eight
+                            dimensions. Without the breakdown, a score that moves
+                            after an edit looks arbitrary — you cannot see that a
+                            single dimension shifted by one point, or which one is
+                            actually holding the requirement back. The weights are
+                            shown because they decide how much a fix is worth. */}
+                        {qualityDimensions.length > 0 && (
+                          <div className="mt-3 rounded-lg border border-blue-100 bg-white p-2">
+                            <div className="mb-1.5 text-[9px] font-bold uppercase text-blue-700">Score breakdown</div>
+                            <ul className="space-y-1">
+                              {qualityDimensions.map((dim) => (
+                                <li key={dim.key} className="flex items-center justify-between gap-2 text-[10px]">
+                                  <span className="flex min-w-0 items-center gap-1.5">
+                                    <span className="truncate font-semibold text-slate-700">{dim.label}</span>
+                                    <span className="shrink-0 text-[9px] font-bold text-slate-400">×{dim.weight.toFixed(2)}</span>
+                                    {dim.gating && (
+                                      <span className="shrink-0 rounded bg-amber-100 px-1 text-[8px] font-bold uppercase text-amber-800" title="This dimension has its own pass gate, independent of the overall score">
+                                        gate
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="flex shrink-0 items-center gap-1.5">
+                                    <span className={cn("font-bold", dim.value != null && dim.value <= 2 ? "text-red-600" : dim.value != null && dim.value < 3.5 ? "text-amber-600" : "text-slate-700")}>
+                                      {dim.value == null ? "—" : dim.value.toFixed(1)}/5
+                                    </span>
+                                    {dim.delta != null && dim.delta !== 0 && (
+                                      <span className={cn("w-8 text-right font-bold", dim.delta > 0 ? "text-emerald-700" : "text-red-700")}>
+                                        {dim.delta > 0 ? "+" : ""}{dim.delta.toFixed(1)}
+                                      </span>
+                                    )}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-1.5 text-[9px] font-semibold leading-snug text-slate-500">
+                              Weights sum to 1. A one-point move on a 0.20 dimension is worth 4 points of 100, so
+                              small swings between runs are expected — the agent scores in whole points.
+                            </p>
+                          </div>
+                        )}
                         <div className="mt-3 space-y-2">
                           {improvementActions.map((action) => (
                             <button key={action.label} type="button" onClick={() => openAnalysisDialog(action.dialog)} className="flex w-full items-start justify-between gap-3 rounded-lg border border-blue-100 bg-white p-2 text-left transition hover:border-blue-300">
