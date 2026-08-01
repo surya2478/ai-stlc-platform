@@ -382,6 +382,16 @@ function renderInsightItem(item: unknown): string {
       const text = String(obj.item ?? "").trim();
       return obj.severity === "advisory" ? `${text} (advisory)` : text;
     }
+    // A captured navigation link. The URL analysis agent now keeps the
+    // destination alongside the label — it used to keep only one or the other,
+    // so the URL was lost. Rendered as "Label → /path" rather than falling
+    // through to JSON.stringify.
+    if ("href" in obj || ("label" in obj && "url" in obj)) {
+      const label = String(obj.label ?? "").trim();
+      const target = String(obj.url ?? obj.href ?? "").trim();
+      if (label && target) return `${label} → ${target}`;
+      return label || target;
+    }
     // Common shape from the UI Analysis Agent — a field validation rule
     if ("field_name" in obj) {
       const field = obj.field_name;

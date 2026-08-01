@@ -16,6 +16,7 @@ import base64
 import json
 import uuid
 from pathlib import Path
+from urllib.parse import urljoin
 
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
 from app.agents.requirement.ui_analysis_agent import (
@@ -30,6 +31,75 @@ from app.config import get_settings
 from app.services.url_capture_service import capture_pages
 
 settings = get_settings()
+
+MAX_LINKS = 30
+
+
+def link_inventory(page_url: str, dom_summary: dict) -> list[dict]:
+    """Label *and* destination for every anchor the DOM inventory captured.
+
+    This used to be `[l.get("label") or l.get("href") for l in ...]`, which kept
+    the href only when a link had no text. Real navigation links almost always
+    have text, so the URL was discarded essentially every time: the derivation
+    step received `["Home", "About", "Services"]` and — correctly, given its
+    input — reported "Exact URLs for each navigation target" as *blocking*
+    missing information, for a page the platform had just rendered and read the
+    hrefs from. The requirement then sat waiting on a human for an answer the
+    system already had.
+
+    `href` is kept as authored (relative links are what a tester reads in the
+    markup) alongside the resolved absolute `url`, which is what an automated
+    check actually needs.
+    """
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for link in dom_summary.get("links") or []:
+        if not isinstance(link, dict):
+            continue
+        href = str(link.get("href") or "").strip()
+        if not href:
+            continue
+        label = str(link.get("label") or "").strip()
+        try:
+            absolute = urljoin(page_url, href)
+        except ValueError:
+            # A malformed href is still worth reporting as a link the page
+            # declares; it just has no resolvable destination.
+            absolute = href
+        key = (label.lower(), absolute)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"label": label, "href": href, "url": absolute})
+        if len(out) >= MAX_LINKS:
+            break
+    return out
+
+
+# Appended to the shared DERIVE_SYSTEM for this agent only. That prompt is
+# written for a screenshot, where a navigation destination genuinely cannot be
+# known and is meant to be declared missing. Here the page was rendered and its
+# hrefs read, so the same instruction would make the agent report as unknown
+# something sitting in its own input.
+URL_DERIVE_SUFFIX = """
+
+IMPORTANT — this analysis came from a LIVE rendered page, not a screenshot.
+
+`links` is a deterministic inventory read from the DOM. Each entry has:
+  - label: the visible link text
+  - href:  the destination as authored in the markup
+  - url:   the resolved absolute URL
+
+These destinations are KNOWN. Use them:
+  - put the resolved URLs in `ui_pages` next to the page names they belong to;
+  - reference them in acceptance criteria for navigation behaviour;
+  - do NOT list navigation targets, link destinations or page URLs in
+    `missing_information` — they are present in the input above.
+
+Reserve `missing_information` for what genuinely is not observable from a
+rendered page: server-side behaviour behind a form submit, validation rules not
+expressed as markup attributes, business intent, and downstream system effects.
+"""
 
 DOM_FALLBACK_SYSTEM = """You are a senior QA engineer. You receive a DOM inventory of a web page
 (title, headings, forms, fields with validation attributes, buttons, links).
@@ -94,7 +164,7 @@ class URLAnalysisAgent(BaseAgent):
             # Merge the deterministic DOM inventory (exact) over LLM guesses.
             analysis["fields"] = page.dom_summary.get("fields", [])
             analysis["buttons"] = page.dom_summary.get("buttons", [])
-            analysis["links"] = [l.get("label") or l.get("href") for l in page.dom_summary.get("links", [])][:30]
+            analysis["links"] = link_inventory(page.url, page.dom_summary)
             analysis.setdefault("screen_name", page.title)
 
             # 4. Derive structured requirements.
@@ -192,7 +262,10 @@ class URLAnalysisAgent(BaseAgent):
         requirements: list[dict] = []
         try:
             response = await llm.generate(
-                system=DERIVE_SYSTEM,
+                # DERIVE_SYSTEM is shared with the screenshot agent, where a
+                # navigation destination is genuinely unknowable. The suffix
+                # tells this agent the opposite is true here.
+                system=DERIVE_SYSTEM + URL_DERIVE_SUFFIX,
                 user=prompt,
                 temperature=0.1,
                 max_tokens=4000,
