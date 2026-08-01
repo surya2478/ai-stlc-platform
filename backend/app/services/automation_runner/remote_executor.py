@@ -33,6 +33,12 @@ settings = get_settings()
 class RemoteExecutorRunner(AutomationRunner):
     name = "remote_executor"
 
+    def __init__(self, framework: str = "playwright") -> None:
+        # Which runner the executor should use. It is a name from a closed set
+        # the executor validates, not a command — the caller still cannot
+        # influence the container itself.
+        self.framework = framework
+
     async def run(
         self,
         *,
@@ -62,6 +68,7 @@ class RemoteExecutorRunner(AutomationRunner):
             # workspace resolves identically on either side.
             "workspace_path": str(workspace_dir.resolve()),
             "script_file_name": script_file_name,
+            "framework": self.framework,
             "environment": environment,
             "timeout_seconds": timeout_seconds,
         }

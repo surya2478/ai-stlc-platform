@@ -1,25 +1,26 @@
-"""Playwright runner that executes each script in an ephemeral Docker
-container (Playwright AI Studio's "Docker based execution").
+"""Pytest runner that executes each test module in an ephemeral container.
 
-Spawned via the docker CLI against the host's Docker socket (mounted into
-the worker — see docker-compose.yml). Each run gets a throwaway sibling
-container from the worker's own image, sharing the storage volume so the
-already-materialized workspace resolves at the SAME path inside the
-container — no path mapping, no per-run npm installs, and exact
-Node/@playwright/test/Chromium version parity with the local runner.
+Until this existed, `pytest` had no containerized runner at all. An isolated
+runner mode therefore had two bad options: silently fall back to the worker's
+own subprocess — running untrusted code inside the worker precisely when the
+operator had asked for it to be contained — or block the framework outright.
+Blocking was the honest choice, and this is what makes it unnecessary.
 
-Inherits ALL result handling from LocalPlaywrightRunner (JSON reporter
-parsing, attachment lifting, console/network evidence) — only process
-launch/kill differs. On timeout the container is killed by name (killing
-just the `docker run` client process would leave the container running).
+Inherits ALL result handling from LocalPytestRunner (json-report parsing, the
+synthesized-row fallback, outcome mapping); only process launch and teardown
+differ. Sandbox flags, workspace ownership and container teardown come from
+`docker_common`, so pytest and Playwright are confined identically rather than
+each carrying its own copy of the controls.
+
+One difference from the Playwright runner is worth knowing: pytest's structured
+output goes to a file in the workspace, not to stdout, so stdout and stderr are
+both captured to run.log and the report is read from disk afterwards.
 """
 from __future__ import annotations
 
 import asyncio
 import os
 import shlex
-import shutil
-import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -32,15 +33,13 @@ from app.services.automation_runner.docker_common import (
     kill_container,
     prepare_workspace_ownership,
 )
-from app.services.automation_runner.local_playwright import LocalPlaywrightRunner
+from app.services.automation_runner.local_pytest import LocalPytestRunner
 
 settings = get_settings()
 
-__all__ = ["DockerPlaywrightRunner", "docker_available"]
 
-
-class DockerPlaywrightRunner(LocalPlaywrightRunner):
-    name = "docker_playwright"
+class DockerPytestRunner(LocalPytestRunner):
+    name = "docker_pytest"
 
     async def run(
         self,
@@ -67,8 +66,9 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
                 run_status="failed", results=[], duration_seconds=0.0, log_path=None,
                 error_message=(
                     f"Workspace {workspace_dir} is not under the shared storage mount "
-                    f"{mount_root} — the spawned container could not see it. Docker mode "
-                    "requires the compose deployment (file_storage_path on the shared volume)."
+                    f"{mount_root} — the spawned container could not see it. Container "
+                    "mode requires the compose deployment (file_storage_path on the "
+                    "shared volume)."
                 ),
                 metadata={"runner": self.name},
             )
@@ -77,52 +77,51 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
         if ownership_error:
             return RunnerResult(
                 run_status="failed", results=[], duration_seconds=0.0, log_path=None,
-                error_message=ownership_error,
-                metadata={"runner": self.name},
+                error_message=ownership_error, metadata={"runner": self.name},
             )
 
-        container_name = f"stlc-pw-{uuid.uuid4().hex[:12]}"
+        report_path = workspace_dir / "pytest-report.json"
+        log_path = workspace_dir / "run.log"
+        container_name = f"stlc-pt-{uuid.uuid4().hex[:12]}"
+
+        # The same forced json-report arguments as the local runner: the LLM's
+        # suggested command is ignored because it routinely omits the reporter,
+        # and without structured rows there is no result to score.
         cmd = build_run_command(
             container_name=container_name,
             workspace_dir=workspace_dir,
             environment=environment,
             image_command=[
-                "npx", "--yes", "playwright", "test",
+                "python", "-m", "pytest",
                 script_file_name,
-                "--reporter=json",
+                "-q",
+                "--maxfail=0",
+                "--disable-warnings",
+                f"--json-report-file={report_path.name}",
+                "--json-report",
             ],
+            # With a read-only root filesystem pytest cannot write bytecode
+            # beside the image's own modules, and HOME is not writable either.
+            extra_env={"PYTHONDONTWRITEBYTECODE": "1", "HOME": "/tmp"},
         )
 
-        log_path = workspace_dir / "run.log"
         start = time.monotonic()
-        json_stdout = bytearray()
         try:
             with log_path.open("wb") as log_fh:
                 proc = await asyncio.create_subprocess_exec(
                     *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=log_fh,
+                    stdout=log_fh,
+                    stderr=asyncio.subprocess.STDOUT,
                 )
-
-                async def drain_stdout() -> None:
-                    assert proc.stdout is not None
-                    while True:
-                        chunk = await proc.stdout.read(64 * 1024)
-                        if not chunk:
-                            break
-                        json_stdout.extend(chunk)
-
-                drain_task = asyncio.create_task(drain_stdout())
                 outcome = await await_process(
                     proc, timeout_seconds=timeout_seconds, cancellation=cancellation
                 )
                 if outcome != "exited":
                     # Killing the `docker run` client alone would leave the
-                    # container executing, so the container goes first.
+                    # container executing.
                     await kill_container(container_name)
                     proc.kill()
                     await proc.wait()
-                    drain_task.cancel()
                     cancelled = outcome == "cancelled"
                     return RunnerResult(
                         run_status="cancelled" if cancelled else "failed",
@@ -133,7 +132,7 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
                             "The run was cancelled while this test was executing; "
                             "the runner container was terminated."
                             if cancelled
-                            else f"dockerized playwright run timed out after {timeout_seconds}s"
+                            else f"dockerized pytest run timed out after {timeout_seconds}s"
                         ),
                         metadata={
                             "runner": self.name, "container": container_name,
@@ -141,11 +140,9 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
                             "cancelled": cancelled,
                         },
                     )
-                await drain_task
         except FileNotFoundError as exc:
             return RunnerResult(
-                run_status="failed", results=[],
-                duration_seconds=time.monotonic() - start, log_path=None,
+                run_status="failed", results=[], duration_seconds=0.0, log_path=None,
                 error_message=f"Could not start docker: {exc}",
                 metadata={"runner": self.name},
             )
@@ -153,30 +150,17 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
         duration = time.monotonic() - start
         exit_code = proc.returncode if proc.returncode is not None else -1
 
-        results_json_path = workspace_dir / "results.json"
-        if json_stdout:
-            results_json_path.write_bytes(bytes(json_stdout))
-
-        results, parse_failure = self._parse_results(
-            json_stdout, workspace_dir, script_file_name, exit_code
-        )
-        # Same convention as the local runner: 0=ok, 1=tests ran with failures;
-        # docker itself uses 125-127 for daemon/image errors, which land in
-        # the else branch as a runner failure.
-        if exit_code in (0, 1):
+        results = self._parse_results(report_path, log_path, script_file_name, exit_code)
+        # Pytest exit codes: 0=ok, 1=tests failed, 2=interrupted, 3=internal,
+        # 4=usage, 5=no tests. Docker itself uses 125-127 for daemon/image
+        # errors, which land in the else branch as a runner failure.
+        if exit_code in (0, 1, 2):
             run_status = "completed"
             error_message = None
         else:
             run_status = "failed"
-            error_message = f"docker/playwright exited with code {exit_code}"
+            error_message = f"docker/pytest exited with code {exit_code}"
 
-        # No parsed result is a harness failure regardless of exit code — see
-        # the local runner for the reasoning (AUT-006).
-        if parse_failure:
-            run_status = "failed"
-            error_message = (
-                f"{parse_failure} (docker/playwright exit code {exit_code}; see run.log)"
-            )
         return RunnerResult(
             run_status=run_status,
             results=results,
@@ -191,4 +175,3 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
                 "exit_code": exit_code,
             },
         )
-

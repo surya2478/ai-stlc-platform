@@ -115,6 +115,11 @@ services:
       AUTOMATION_DOCKER_NETWORK: ${AUTOMATION_DOCKER_NETWORK:-}
       DB_POOL_ENABLED: "false"
     volumes:
+      # Same source mount as backend and worker. Without it the executor runs
+      # whatever code was baked into the image, and a skew across this boundary
+      # is not obvious from the outside — it shows up as a job running the wrong
+      # framework's runner.
+      - ./backend:/app
       # Same volume at the same path as the worker and the spawned runners, so
       # a workspace path means the same thing in all three.
       - stlc_storage:/app/storage

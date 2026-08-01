@@ -106,11 +106,47 @@ def test_missing_workspace_is_reported_not_created(client, tmp_path):
 
 def test_request_schema_offers_no_way_to_influence_the_container():
     """The security property is what the caller *cannot* say. If this list ever
-    grows an image, mount, user or flag field, the boundary is gone."""
+    grows an image, mount, user, command or flag field, the boundary is gone.
+
+    `framework` selects among runners the executor itself defines, so it names a
+    runner rather than describing a container — which is why it does not widen
+    the boundary the way an image or a flag would.
+    """
     allowed = set(executor_mod.RunJobRequest.model_fields)
     assert allowed == {
-        "job_id", "workspace_path", "script_file_name", "environment", "timeout_seconds",
+        "job_id", "workspace_path", "script_file_name", "framework",
+        "environment", "timeout_seconds",
     }
+
+
+def test_an_unknown_field_is_rejected_not_silently_dropped(client, tmp_path):
+    """Found live: an executor running older code than the worker dropped
+    `framework` and ran its default runner, so a pytest job executed as
+    Playwright and reported as an ordinary test failure. Version skew across
+    this boundary has to fail loudly."""
+    response = client.post(
+        "/jobs",
+        json={
+            "job_id": "j1", "workspace_path": str(tmp_path),
+            "script_file_name": "x", "privileged": True,
+        },
+        headers={"X-Executor-Token": TOKEN},
+    )
+    assert response.status_code == 422
+
+
+def test_framework_is_a_closed_set_not_a_free_string(client, tmp_path):
+    """A free-form framework would let a caller reach whatever the executor
+    happened to import next."""
+    response = client.post(
+        "/jobs",
+        json={
+            "job_id": "j1", "workspace_path": str(tmp_path), "framework": "katalon",
+            "script_file_name": "x",
+        },
+        headers={"X-Executor-Token": TOKEN},
+    )
+    assert response.status_code == 422
 
 
 def test_a_job_runs_the_sandboxed_runner_and_returns_its_result(client, monkeypatch, tmp_path):

@@ -13,14 +13,15 @@ from __future__ import annotations
 
 import pytest
 
+import app.services.automation_runner.docker_common as sandbox_mod
 import app.services.automation_runner.docker_playwright as docker_mod
 from app.config import Settings
 
 
 def _apply(monkeypatch, **overrides) -> list[str]:
     overrides.setdefault("app_secret_key", "test-secret-key-with-sufficient-length-1234")
-    monkeypatch.setattr(docker_mod, "settings", Settings(**overrides))
-    return docker_mod._sandbox_args()
+    monkeypatch.setattr(sandbox_mod, "settings", Settings(**overrides))
+    return sandbox_mod.sandbox_args()
 
 
 def test_runner_does_not_run_as_root_by_default(monkeypatch):
@@ -111,6 +112,9 @@ def test_the_full_run_command_carries_the_sandbox(monkeypatch, tmp_path):
     monkeypatch.setattr(docker_mod, "docker_available", lambda: (True, "ok"))
     monkeypatch.setattr(
         docker_mod.settings, "automation_docker_storage_mount", str(tmp_path)
+    )
+    monkeypatch.setattr(
+        sandbox_mod.settings, "automation_docker_storage_mount", str(tmp_path)
     )
 
     captured = {}

@@ -29,16 +29,24 @@ import logging
 import os
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
 from app.services.automation_runner.base import RunnerResult
-from app.services.automation_runner.docker_playwright import (
-    DockerPlaywrightRunner,
-    docker_available,
-)
+from app.services.automation_runner.docker_common import docker_available
+from app.services.automation_runner.docker_playwright import DockerPlaywrightRunner
+from app.services.automation_runner.docker_pytest import DockerPytestRunner
+
+# The closed set a job may select from. Adding an entry here is the only way to
+# make a new runner reachable, which keeps the decision on this side of the
+# boundary rather than in the caller's request.
+_RUNNERS = {
+    "playwright": DockerPlaywrightRunner(),
+    "pytest": DockerPytestRunner(),
+}
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -58,11 +66,24 @@ _JOBS: dict[str, asyncio.Event] = {}
 class RunJobRequest(BaseModel):
     """Everything the caller may influence. Nothing here reaches docker as a
     flag: the workspace is validated against the storage root and the rest of
-    the command is built from server configuration."""
+    the command is built from server configuration.
+
+    Unknown fields are rejected rather than ignored. Pydantic's default is to
+    drop them, which meant an executor running older code than the worker
+    silently discarded `framework` and ran its default runner — a pytest job
+    executed as Playwright, reported as a normal test failure. A version skew
+    across this boundary has to fail loudly.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     job_id: str = Field(min_length=1, max_length=100)
     workspace_path: str
     script_file_name: str = Field(min_length=1, max_length=500)
+    # Selects one of the executor's own runners from a closed set. It names a
+    # runner, never a command or an image, so it does not widen what the caller
+    # can ask the container to be.
+    framework: Literal["playwright", "pytest"] = "playwright"
     environment: str | None = None
     timeout_seconds: int = Field(default=600, ge=1, le=7200)
 
@@ -128,10 +149,12 @@ async def run_job(request: RunJobRequest) -> dict:
     """Run one test bundle and return the normalized runner result."""
     workspace = _validated_workspace(request.workspace_path)
 
+    runner = _RUNNERS[request.framework]
+
     cancellation = asyncio.Event()
     _JOBS[request.job_id] = cancellation
     try:
-        result: RunnerResult = await DockerPlaywrightRunner().run(
+        result: RunnerResult = await runner.run(
             workspace_dir=workspace,
             script_file_name=request.script_file_name,
             execution_command=None,

@@ -20,6 +20,7 @@ from pathlib import Path
 
 from app.services.automation_runner.base import AutomationRunner, RunnerResult
 from app.services.automation_runner.docker_playwright import DockerPlaywrightRunner
+from app.services.automation_runner.docker_pytest import DockerPytestRunner
 from app.services.automation_runner.local_playwright import LocalPlaywrightRunner
 from app.services.automation_runner.local_pytest import LocalPytestRunner
 from app.services.automation_runner.policy import resolve_runner_mode
@@ -32,16 +33,16 @@ _RUNNER_BY_FRAMEWORK: dict[str, AutomationRunner] = {
 }
 
 _DOCKER_RUNNER_BY_FRAMEWORK: dict[str, AutomationRunner] = {
-    # Pytest scripts have no docker runner yet — they fall back to the local
-    # subprocess (get_runner_for_framework below), which stays correct, just
-    # not containerized.
     "playwright": DockerPlaywrightRunner(),
+    "pytest": DockerPytestRunner(),
 }
 
-# Executor mode brokers the same container through a service that owns the
-# Docker socket, so the worker does not have to (AUT-002).
+# Executor mode brokers the same containers through a service that owns the
+# Docker socket, so the worker does not have to (AUT-002). One client covers
+# both frameworks; the executor picks the runner from the requested framework.
 _EXECUTOR_RUNNER_BY_FRAMEWORK: dict[str, AutomationRunner] = {
-    "playwright": RemoteExecutorRunner(),
+    "playwright": RemoteExecutorRunner("playwright"),
+    "pytest": RemoteExecutorRunner("pytest"),
 }
 
 _RUNNERS_BY_MODE: dict[str, dict[str, AutomationRunner]] = {

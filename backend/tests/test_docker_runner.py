@@ -15,6 +15,7 @@ from app.models.execution import ExecutionResult, ExecutionRun
 from app.services.automation_runner.base import PerTestResult, RunnerResult
 from app.services.automation_runner.dispatcher import get_runner_for_framework
 from app.services.automation_runner.docker_playwright import DockerPlaywrightRunner
+from app.services.automation_runner.docker_pytest import DockerPytestRunner
 from app.services.automation_runner.local_playwright import LocalPlaywrightRunner
 from app.services.automation_runner.local_pytest import LocalPytestRunner
 from app.worker.tasks.automation_tasks import _execute_batch
@@ -32,12 +33,17 @@ def test_dispatcher_defaults_to_local_runner():
     assert not isinstance(get_runner_for_framework("playwright", "local"), DockerPlaywrightRunner)
 
 
-def test_dispatcher_refuses_pytest_in_docker_mode_rather_than_downgrading():
-    """There is no containerized pytest runner. Falling back to the local
-    subprocess would run untrusted code inside the worker exactly when the
-    operator asked for it to be contained (AUT-002), so the framework is
-    blocked instead."""
-    assert get_runner_for_framework("pytest", "docker") is None
+def test_dispatcher_uses_the_containerized_pytest_runner():
+    """pytest used to have no containerized runner and was blocked in isolated
+    modes rather than downgraded into the worker. It now has one."""
+    assert isinstance(get_runner_for_framework("pytest", "docker"), DockerPytestRunner)
+
+
+def test_dispatcher_still_refuses_an_unregistered_framework_in_an_isolated_mode():
+    """The no-silent-downgrade rule stands for anything without a container
+    runner: blocked, never quietly executed inside the worker."""
+    assert get_runner_for_framework("katalon", "docker") is None
+    assert get_runner_for_framework("katalon", "executor") is None
 
 
 # ── DockerPlaywrightRunner ───────────────────────────────────────────────────
@@ -160,7 +166,9 @@ def test_docker_runner_kills_container_on_timeout(monkeypatch, tmp_path):
         hanging.kill()
 
     monkeypatch.setattr(docker_mod.asyncio, "create_subprocess_exec", fake_exec)
-    monkeypatch.setattr(DockerPlaywrightRunner, "_kill_container", staticmethod(fake_kill))
+    # Teardown moved to docker_common when the pytest runner arrived; both
+    # containerized runners now share one implementation.
+    monkeypatch.setattr(docker_mod, "kill_container", fake_kill)
 
     result = _run_docker(DockerPlaywrightRunner(), workspace, timeout_seconds=1)
 
