@@ -27,7 +27,11 @@ class StudioRunCreate(BaseModel):
     # the LLM to self-limit across calls it can't coordinate.
     target_test_case_count: int | None = Field(default=None, ge=1, le=200)
     framework: str = Field(default="playwright", pattern="^(playwright|pytest)$")
-    runner_mode: str = Field(default="local", pattern="^(local|docker)$")
+    # None means "let the server decide" — the runner policy owns this
+    # (AUT-018). Defaulting to "local" here pinned every Studio batch to the
+    # least isolated runner regardless of how the deployment was configured,
+    # and would now simply be refused wherever local mode is not permitted.
+    runner_mode: str | None = Field(default=None, pattern="^(local|docker|executor)$")
     parallelism: int = Field(default=4, ge=1, le=16)
     timeout_seconds: int = Field(default=600, ge=30, le=3600)
 

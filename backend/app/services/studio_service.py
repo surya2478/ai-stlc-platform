@@ -425,7 +425,9 @@ async def approve_scripts(
             run_name=f"{run.name}{suffix}",
             extra_metadata={
                 "studio_run_id": run.id,
-                "runner_mode": config.get("runner_mode") or "local",
+                # Absent means the server's configured mode applies; see the
+                # schema. Never coerced to "local" here.
+                "runner_mode": config.get("runner_mode"),
                 "parallelism": config.get("parallelism") or 1,
             },
         )
