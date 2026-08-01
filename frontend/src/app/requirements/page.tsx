@@ -152,6 +152,34 @@ function splitLines(value: string) {
   return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
 }
 
+/** How an advisory gap is written in the plain-text editor.
+ *
+ *  The textarea carries text only, so severity used to survive an edit purely by
+ *  matching a line back to its original entry — change one character of an
+ *  advisory line and it silently became blocking, gating the requirement on
+ *  something cosmetic. That is the exact failure the severity model was added to
+ *  prevent. Showing the marker makes severity visible and, deliberately,
+ *  editable: a reviewer can downgrade a gap by typing it. */
+const ADVISORY_SUFFIX = /\s*\(advisory\)\s*$/i;
+
+function formatMissingInfoLine(entry: MissingInfoItem): string {
+  return entry.severity === "advisory" ? `${entry.item} (advisory)` : entry.item;
+}
+
+function parseMissingInfoLine(
+  line: string,
+  known: Map<string, MissingInfoItem["severity"]>,
+): MissingInfoItem {
+  const markedAdvisory = ADVISORY_SUFFIX.test(line);
+  const item = line.replace(ADVISORY_SUFFIX, "").trim();
+  return {
+    item,
+    // An unmarked line keeps whatever severity it already had; a line the
+    // reviewer added by hand is untriaged and blocks until an agent judges it.
+    severity: markedAdvisory ? "advisory" : known.get(item) ?? "blocking",
+  };
+}
+
 function getRequirementWorkflowStage(req: Requirement): "intake" | "analysis" | "traceability" | "review" {
   if (["approved", "rejected"].includes((req.status || "").toLowerCase())) return "review";
   const persisted = String(metadataRecord(req).workflow_stage || "").toLowerCase();
@@ -243,6 +271,14 @@ function missingInfoItems(value: unknown): MissingInfoItem[] {
 function blockingMissingInfo(value: unknown): string[] {
   return missingInfoItems(value)
     .filter((entry) => entry.severity === "blocking")
+    .map((entry) => entry.item);
+}
+
+/** The rest — listed so the reader sees them, counted so a "1" above a list of
+ *  two stops looking like a bug. */
+function advisoryMissingInfo(value: unknown): string[] {
+  return missingInfoItems(value)
+    .filter((entry) => entry.severity === "advisory")
     .map((entry) => entry.item);
 }
 
@@ -1255,7 +1291,7 @@ function RequirementsContent() {
     // Normalized, not `.join("\n")` — entries are objects now and would render
     // as "[object Object]" in the textarea.
     setMissingInfoDraft(
-      missingInfoItems(selectedReq.missing_information).map((entry) => entry.item).join("\n"),
+      missingInfoItems(selectedReq.missing_information).map(formatMissingInfoLine).join("\n"),
     );
     setResolutionDraft("");
     setMarkMissingResolved(false);
@@ -1317,9 +1353,9 @@ function RequirementsContent() {
           focusAnalysisActions();
           return;
         }
-        // The textarea edits text only, so severity is carried over by matching
-        // the line back to the original entry. A line the reviewer added by hand
-        // is new information nobody has triaged, so it defaults to blocking.
+        // Severity comes from the "(advisory)" marker the editor shows, falling
+        // back to the line's original severity when it is unmarked and
+        // unchanged. Matching on text alone could not survive an edit.
         const existingSeverity = new Map(
           missingInfoItems(selectedReq?.missing_information).map((entry) => [
             entry.item,
@@ -1329,10 +1365,9 @@ function RequirementsContent() {
         updates = {
           missing_information: markMissingResolved
             ? []
-            : splitLines(missingInfoDraft).map((item) => ({
-                item,
-                severity: existingSeverity.get(item) ?? "blocking",
-              })),
+            : splitLines(missingInfoDraft)
+                .map((line) => parseMissingInfoLine(line, existingSeverity))
+                .filter((entry) => entry.item),
           review_notes: resolutionNote,
         };
       } else if (analysisDialog === "classification") {
@@ -4825,6 +4860,9 @@ function RequirementsContent() {
           ...asTextList(qualityMeta?.missing_information),
           ...asTextList(selectedQualityReviews[0]?.missing_details),
         ].filter((item, index, items) => items.indexOf(item) === index);
+        const missingInfoAdvisoryCount = advisoryMissingInfo(
+          selectedReq.missing_information,
+        ).length;
         const dialogTitle = analysisDialog === "content" ? "Edit Core Requirement Details"
           : analysisDialog === "acceptance" ? "Edit Acceptance Criteria"
           : analysisDialog === "issues" ? "Analysis Issues & Missing Information"
@@ -4858,12 +4896,23 @@ function RequirementsContent() {
                 </>}
                 {analysisDialog === "issues" && <>
                   <div className="grid grid-cols-4 gap-2">
-                    {[["Findings", asTextList(selectedQualityReviews[0]?.ambiguities).length || asTextList(qualityMeta?.findings).length], ["Missing", analysisRow?.missingInfoCount || 0], ["Duplicates", analysisRow?.duplicateCount || 0], ["Conflicts", analysisRow?.conflictCount || 0]].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="text-[9px] font-bold uppercase text-slate-400">{label}</div><div className="mt-1 text-lg font-bold text-slate-800">{value}</div></div>)}
+                    {/* "Missing" counts only what blocks, but the list below shows
+                        every gap — so a requirement with one blocking and one
+                        advisory item read "1" above a list of two. The tile now
+                        says which number it is. */}
+                    {[["Blocking", analysisRow?.missingInfoCount || 0, `${missingInfoAdvisoryCount} advisory gap(s) are listed but do not block`], ["Findings", asTextList(selectedQualityReviews[0]?.ambiguities).length || asTextList(qualityMeta?.findings).length, "Ambiguities and conflicts raised by quality analysis"], ["Duplicates", analysisRow?.duplicateCount || 0, ""], ["Conflicts", analysisRow?.conflictCount || 0, ""]].map(([label, value, hint]) => <div key={String(label)} title={String(hint || "")} className="rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="text-[9px] font-bold uppercase text-slate-400">{label}</div><div className="mt-1 text-lg font-bold text-slate-800">{value}</div></div>)}
                   </div>
                   {(asTextList(qualityMeta?.ambiguities).length > 0 || asTextList(qualityMeta?.conflicts).length > 0) && <div className="rounded-lg border border-amber-100 bg-amber-50 p-3"><div className="mb-1 text-[10px] font-bold uppercase text-amber-700">Other findings</div>{[...asTextList(qualityMeta?.ambiguities), ...asTextList(qualityMeta?.conflicts)].map((item) => <div key={item} className="mt-1 font-semibold text-amber-800">• {item}</div>)}</div>}
                   {missingInfoItems.length > 0 && (
                     <div className="rounded-lg border border-red-100 bg-red-50 p-3">
-                      <div className="mb-2 text-[10px] font-bold uppercase text-red-700">What is missing</div>
+                      <div className="mb-2 text-[10px] font-bold uppercase text-red-700">
+                        What is missing
+                        {missingInfoAdvisoryCount > 0 && (
+                          <span className="ml-1 font-semibold normal-case text-red-500">
+                            ({analysisRow?.missingInfoCount || 0} blocking, {missingInfoAdvisoryCount} advisory)
+                          </span>
+                        )}
+                      </div>
                       <ul className="space-y-1.5">
                         {missingInfoItems.map((item, index) => (
                           <li key={`${item}-${index}`} className="flex items-start gap-2 font-semibold leading-snug text-red-800">
