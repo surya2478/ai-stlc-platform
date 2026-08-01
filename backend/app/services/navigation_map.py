@@ -185,9 +185,12 @@ def render_navigation_prompt(nav: dict) -> str:
         "",
         "Use these when the screen you are analysing references one of them, "
         "matching on the visible label even if the wording differs slightly "
-        "(\"Services Page\" is the \"Services\" target). Put the resolved URL in "
-        "`ui_pages` beside the page name and reference it in acceptance "
-        "criteria for navigation behaviour.",
+        "(\"Services Page\" is the \"Services\" target).",
+        "",
+        "`ui_pages` entries are PLAIN STRINGS, never objects. Write each as "
+        "\"Page Name (URL)\" — for example \"Services Page "
+        "(https://example.com/services.html)\". Reference the same URL in "
+        "acceptance criteria for navigation behaviour.",
         "",
         "Do NOT report a destination listed above as missing information — it "
         "is known. Equally, do NOT invent a URL for a label that is absent from "

@@ -652,9 +652,24 @@ async def trigger_url_analysis_agent(
         },
         metadata={"source_url": normalized_url, "crawl_depth": body.crawl_depth},
     )
+    # A freshly queued run is "pending"; anything already complete came back
+    # from the idempotency cache. Saying so matters — the caller previously got
+    # "queued" for a run that had finished the day before, polled it, saw
+    # success, and reported requirements generated when nothing had run.
+    reused = agent_run.status == "completed"
     return JSONResponse(
         status_code=202,
-        content={"message": "Portal URL analysis queued", "agent_run_id": agent_run.id, "task_id": task_id},
+        content={
+            "message": (
+                "Reused an identical portal analysis from the last few minutes; "
+                "no new run was queued."
+                if reused
+                else "Portal URL analysis queued"
+            ),
+            "agent_run_id": agent_run.id,
+            "task_id": task_id,
+            "reused": reused,
+        },
     )
 
 

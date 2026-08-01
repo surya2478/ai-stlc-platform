@@ -47,8 +47,9 @@ IMPORTANT — this analysis came from a LIVE rendered page, not a screenshot.
   - url:   the resolved absolute URL
 
 These destinations are KNOWN. Use them:
-  - put the resolved URLs in `ui_pages` next to the page names they belong to;
-  - reference them in acceptance criteria for navigation behaviour;
+  - `ui_pages` entries are PLAIN STRINGS, never objects. Write each as
+    "Page Name (URL)", e.g. "Services Page (https://example.com/services.html)";
+  - reference the same URLs in acceptance criteria for navigation behaviour;
   - do NOT list navigation targets, link destinations or page URLs in
     `missing_information` — they are present in the input above.
 

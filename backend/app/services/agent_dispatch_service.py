@@ -1,6 +1,7 @@
 """Agent dispatch helpers shared by API endpoints."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -14,7 +15,35 @@ from app.services import agent_run_service
 from app.worker.tasks.agent_tasks import run_agent
 
 
+# Agents whose input names a *source* rather than the content itself. The same
+# URL, repository or uploaded image can legitimately produce different
+# requirements on a later run — the page changed, the repo moved on, or the
+# analysis itself improved — but the idempotency key never changes, because it
+# is derived from project, user, agent, prompt version and input.
+#
+# Without a bound, the first completed run answers that input forever: an
+# operator re-analysing a portal gets "generated successfully" and no new
+# requirements, with nothing queued and nothing to look at. Reuse here is a
+# double-click guard, not a permanent verdict.
+_SOURCE_ANALYSIS_AGENTS = frozenset(
+    {"url_analysis", "ui_image_analysis", "code_analysis"}
+)
+_SOURCE_ANALYSIS_REUSE_WINDOW = timedelta(minutes=10)
+
+
+def _within_reuse_window(run: AgentRun) -> bool:
+    finished = run.updated_at or run.created_at
+    if finished is None:
+        return False
+    if finished.tzinfo is None:
+        finished = finished.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - finished) <= _SOURCE_ANALYSIS_REUSE_WINDOW
+
+
 async def _completed_run_is_reusable(db: AsyncSession, run: AgentRun, agent_name: str) -> bool:
+    if agent_name in _SOURCE_ANALYSIS_AGENTS:
+        return _within_reuse_window(run)
+
     if agent_name == "test_planning":
         plan_id = (run.output_data or {}).get("plan_id")
         if not plan_id:
@@ -95,14 +124,21 @@ async def enqueue_agent_run(
             return existing, existing.celery_task_id or ""
         existing.status = "cancelled"
         existing.output_data = None
-        existing.error_message = "Completed run output artifact is no longer available."
-        existing.progress_message = "Output artifact missing; requeued"
+        # Two reasons reach here: the artifacts the run claimed are gone, or the
+        # run is a source analysis old enough that its answer should not stand
+        # in for a fresh one. The wording covers both because the requeue below
+        # clears it either way.
+        existing.error_message = "Completed run is no longer reusable; requeued."
+        existing.progress_message = "Superseded by a new run"
         await agent_run_service.add_log(
             db,
             existing,
-            level="warning",
+            level="info",
             step="idempotency_stale",
-            message=f"Completed agent '{agent_name}' run output was missing; requeueing",
+            message=(
+                f"Completed agent '{agent_name}' run is no longer reusable "
+                "(output missing or outside the reuse window); requeueing"
+            ),
         )
     if existing is not None and existing.status in {"failed", "cancelled"}:
         previous_status = existing.status

@@ -1,17 +1,51 @@
 """Schemas for validating structured JSON returned by LLM agents."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+# Keys an LLM commonly uses when it answers a string-list field with objects.
+# Ordered by how specific they are, so "name" wins over a generic "value".
+_ENTRY_NAME_KEYS = ("name", "label", "page", "title", "screen", "item", "text", "value")
+_ENTRY_URL_KEYS = ("url", "href", "endpoint", "path", "link")
+
+
+def _flatten_entry(item: Any) -> str:
+    """Render one list entry as readable text.
+
+    These fields are typed `list[str]`, but a model asked for a page *and* its
+    URL will answer with objects. `str(dict)` then stores a Python repr —
+    `{'name': 'Services Page', 'url': 'https://...'}`, single quotes and all —
+    straight into user-facing data. Recognising the common shapes keeps the
+    information and drops the syntax.
+    """
+    if isinstance(item, dict):
+        name = next(
+            (str(item[k]).strip() for k in _ENTRY_NAME_KEYS if str(item.get(k) or "").strip()),
+            "",
+        )
+        url = next(
+            (str(item[k]).strip() for k in _ENTRY_URL_KEYS if str(item.get(k) or "").strip()),
+            "",
+        )
+        if name and url:
+            return f"{name} ({url})"
+        if name or url:
+            return name or url
+        # Nothing recognisable: JSON at least parses, unlike a Python repr.
+        return json.dumps(item, ensure_ascii=False, sort_keys=True)
+    return str(item)
 
 
 def _string_list(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
-        return [str(item) for item in value]
-    return [str(value)]
+        return [_flatten_entry(item) for item in value]
+    return [_flatten_entry(value)]
 
 
 def _optional_text(value: Any) -> str | None:
