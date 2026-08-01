@@ -49,6 +49,7 @@ import {
   type SuiteRunControlAction,
   type SuiteRunIdentity,
   type SuiteRunItem,
+  type SuiteRunEvidence,
   type SuiteRunItemDetail,
   type SuiteRunSummary,
 } from "@/lib/api";
@@ -282,6 +283,31 @@ export function SuiteExecutionCommandCenter({ runId }: { runId: number }) {
     [runId, live, toast],
   );
 
+  const downloadEvidence = useCallback(
+    async (evidence: SuiteRunEvidence) => {
+      try {
+        const { data } = await suiteExecutionApi.evidence(runId, evidence.id);
+        const url = URL.createObjectURL(data);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${evidence.evidence_type}-${evidence.id}`;
+        link.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        // The server refuses unmaskable artifacts where policy says so, and
+        // refuses any artifact whose bytes no longer match its capture
+        // checksum. Both are answers the operator needs, not noise to swallow.
+        const detail = await readBlobErrorDetail(error);
+        toast({
+          variant: "error",
+          title: "Evidence not available",
+          description: detail ?? "The evidence could not be downloaded.",
+        });
+      }
+    },
+    [runId, toast],
+  );
+
   const requestWithReason = useCallback(
     (action: SuiteRunControlAction, prompt: string) => {
       const reason = window.prompt(prompt);
@@ -396,6 +422,7 @@ export function SuiteExecutionCommandCenter({ runId }: { runId: number }) {
           detail={detail}
           selectedItemId={selectedItemId}
           events={live.events}
+          onDownloadEvidence={downloadEvidence}
         />
       </div>
 
@@ -1180,22 +1207,19 @@ function ExecutionMatrix({
                       <ResultPill result={item.result} reason={item.attention_reason} />
                     </td>
                     <td className="px-2 py-1.5 text-slate-600">
-                      {/* A completed item whose steps never advanced means the
-                          runner reported no per-step progress — not that it
-                          failed on step one. Saying "0 / 9" would imply the
-                          latter, so the declared count is shown instead. */}
+                      {/* No runner reports per-step progress, so there is no
+                          completion count to show against the declared total.
+                          "0 / 9" would read as "failed on step one", which is a
+                          different and wrong claim. */}
                       {item.steps_total === 0 ? (
                         "—"
-                      ) : item.lifecycle_state === "COMPLETED" &&
-                        item.steps_completed === 0 ? (
+                      ) : (
                         <span
                           className="text-slate-400"
-                          title={`${item.steps_total} steps declared by the Automation IR. The runner does not report per-step progress, so no step was individually marked complete.`}
+                          title={`${item.steps_total} steps declared by the Automation IR. No runner reports per-step progress, so per-step completion is not tracked yet.`}
                         >
                           {item.steps_total} declared
                         </span>
-                      ) : (
-                        `${item.steps_completed} / ${item.steps_total}`
                       )}
                     </td>
                     <td className="px-2 py-1.5 text-slate-500">
@@ -1246,16 +1270,40 @@ function ExecutionMatrix({
   );
 };
 
+/** Pull the FastAPI `detail` out of a failed blob request.
+ *
+ *  With `responseType: "blob"` the error body arrives as a Blob too, so the
+ *  usual `response.data.detail` read yields nothing and the operator sees a
+ *  generic failure instead of the actual reason — which for evidence is always
+ *  the useful part (policy refusal, checksum mismatch, artifact gone). */
+async function readBlobErrorDetail(error: unknown): Promise<string | null> {
+  const data = (error as { response?: { data?: unknown } })?.response?.data;
+  try {
+    if (data instanceof Blob) {
+      const parsed = JSON.parse(await data.text());
+      return typeof parsed?.detail === "string" ? parsed.detail : null;
+    }
+    if (data && typeof (data as { detail?: unknown }).detail === "string") {
+      return (data as { detail: string }).detail;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 // ─── Inspector ───────────────────────────────────────────────────────────────
 
 function InspectorPanel({
   detail,
   selectedItemId,
   events,
+  onDownloadEvidence,
 }: {
   detail: SuiteRunItemDetail | null;
   selectedItemId: number | null;
   events: { sequence: number; event_type: string; message: string; occurred_at: string }[];
+  onDownloadEvidence: (evidence: SuiteRunEvidence) => void;
 }) {
   if (selectedItemId == null) {
     return (
@@ -1279,6 +1327,13 @@ function InspectorPanel({
   const { item } = detail;
   const pendingAssertions = detail.assertions.filter((a) => a.passed == null).length;
   const failedAssertions = detail.assertions.filter((a) => a.passed === false);
+  // Every evaluated assertion came from the test-level verdict rather than from
+  // a per-assertion report. Sound, but the reader should not take the count as
+  // evidence each expectation was checked individually.
+  const evaluated = detail.assertions.filter((a) => a.passed != null);
+  const allInferred =
+    evaluated.length > 0 &&
+    evaluated.every((a) => a.evaluation_source === "runner_verdict");
 
   return (
     <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
@@ -1325,7 +1380,9 @@ function InspectorPanel({
         )}
       </div>
 
-      <Section title={`Current step${item.steps_total ? ` — ${item.steps_completed} of ${item.steps_total}` : ""}`}>
+      <Section
+        title={`Steps${item.steps_total ? ` — ${item.steps_total} declared` : ""}`}
+      >
         {detail.current_step ? (
           <div className="rounded border border-slate-200 bg-slate-50 p-2">
             <p className="text-[11px] font-bold text-slate-800">
@@ -1346,7 +1403,10 @@ function InspectorPanel({
           <p className="text-[10px] text-slate-400">
             {item.steps_total === 0
               ? "No steps were declared by the Automation IR for this test."
-              : "No step has started yet."}
+              : // Not "no step has started yet" — that implies one will be
+                // reported shortly. Nothing reports step state at all, so the
+                // absence is structural rather than a matter of timing.
+                `${item.steps_total} steps are declared for this test. Per-step execution state is not reported by the runner, so no step detail is available.`}
           </p>
         )}
       </Section>
@@ -1413,6 +1473,15 @@ function InspectorPanel({
           </p>
         )}
 
+        {allInferred && (
+          <p className="mt-1.5 text-[10px] text-slate-500">
+            Assertion verdicts are inferred from the test-level result: the
+            runner fails the whole test when any assertion fails, but does not
+            report which one. Per-assertion attribution arrives with adapter
+            step telemetry.
+          </p>
+        )}
+
         {failedAssertions.length > 0 && (
           <ul className="mt-1.5 space-y-1">
             {failedAssertions.map((assertion) => (
@@ -1450,6 +1519,26 @@ function InspectorPanel({
                 </span>
                 {evidence.payload_entry_count != null && (
                   <span className="text-slate-400"> · {evidence.payload_entry_count} entries</span>
+                )}
+                {evidence.downloadable && (
+                  <button
+                    type="button"
+                    className="ml-1.5 font-semibold text-[#1b59f8] hover:underline"
+                    onClick={() => onDownloadEvidence(evidence)}
+                    title={
+                      evidence.redaction_state === "not_maskable"
+                        ? "A screenshot, video or trace cannot be masked. The server refuses this download where deployment policy says so."
+                        : "Downloaded through the masking pass."
+                    }
+                  >
+                    Download
+                  </button>
+                )}
+                {/* Stating this on the row rather than only in the tooltip: an
+                    artifact that could not be masked is the one a reader most
+                    needs to be told about before opening it. */}
+                {evidence.redaction_state === "not_maskable" && (
+                  <span className="ml-1 text-amber-600">not masked</span>
                 )}
                 {evidence.unavailable_reason && (
                   <span className="block text-slate-500">{evidence.unavailable_reason}</span>

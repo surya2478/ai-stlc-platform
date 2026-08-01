@@ -207,8 +207,97 @@ def test_api_and_db_validations_pull_in_their_utils():
     assert "utils/apiClient.ts" in bundle.files
     assert "utils/dbValidator.ts" in bundle.files
     spec = bundle.files[bundle.entry_path]
-    assert "getJson('/api/orders/latest', BASE_URL)" in spec
+    # The declared method and status are both rendered — expectedStatus used to
+    # be dropped entirely, so a contract expecting 201 accepted any 2xx.
+    assert "requestJson('/api/orders/latest', BASE_URL, { method: 'GET', expectedStatus: 200 })" in spec
+    assert "expect(apiResult1.status).toBe(200);" in spec
+    assert "expect(apiResult1.body.status).toBe('created');" in spec
     assert "assertRowExists(DB_VALIDATION_ENDPOINT" in spec
+
+
+def test_api_validation_honours_non_default_status_and_method():
+    bundle = compile_contract(_contract(
+        apiValidations=[{"method": "POST", "path": "/api/orders", "expectedStatus": 201}],
+    ))
+    spec = bundle.files[bundle.entry_path]
+    assert "method: 'POST', expectedStatus: 201" in spec
+    assert "expect(apiResult1.status).toBe(201);" in spec
+
+
+def test_api_validation_rejects_unsafe_expected_field_name():
+    with pytest.raises(ValueError, match="not a valid property path"):
+        compile_contract(_contract(
+            apiValidations=[{
+                "path": "/api/orders",
+                "expectedFields": {"status'] ; process.exit(0); //": "created"},
+            }],
+        ))
+
+
+def test_db_validation_expect_found_false_asserts_absence():
+    """expect_found=false used to render assertRowExists plus a TODO comment —
+    the exact opposite of the declared contract (AUT-005)."""
+    bundle = compile_contract(_contract(
+        dbValidations=[{
+            "table": "billing_ledger",
+            "query": {"order_id": "cancelled"},
+            "expectFound": False,
+        }],
+    ))
+    spec = bundle.files[bundle.entry_path]
+    assert "assertRowAbsent(DB_VALIDATION_ENDPOINT" in spec
+    assert "assertRowExists" not in spec
+    assert "TODO" not in spec
+    assert "import { assertRowAbsent } from '../utils/dbValidator';" in spec
+    assert "assertRowAbsent" in bundle.files["utils/dbValidator.ts"]
+
+
+def test_pytest_db_validation_expect_found_false_asserts_absence():
+    bundle = compile_contract(_contract(
+        scriptType="pytest-python",
+        dbValidations=[{
+            "table": "billing_ledger",
+            "query": {"order_id": "cancelled"},
+            "expectFound": False,
+        }],
+    ))
+    module = bundle.files[bundle.entry_path]
+    assert "assert_row_absent(DB_VALIDATION_ENDPOINT" in module
+    assert "from db_validator import assert_row_absent" in module
+    assert "TODO" not in module
+    assert "def assert_row_absent" in bundle.files["db_validator.py"]
+
+
+def test_declared_evidence_is_not_rendered_as_captured():
+    """The contract carries evidence names with no value binding, so the old
+    attachEvidence(name, name) attached the label as its own content and read
+    as captured evidence (AUT-005)."""
+    bundle = compile_contract(_contract(evidenceRequired=["order_id", "invoice_pdf"]))
+    spec = bundle.files[bundle.entry_path]
+    assert "declareRequiredEvidence(testInfo, 'order_id');" in spec
+    assert "attachEvidence(testInfo, 'order_id', 'order_id')" not in spec
+    assert "not_captured" in bundle.files["utils/evidenceHelper.ts"]
+
+
+def test_pytest_declared_evidence_is_not_printed_as_captured():
+    bundle = compile_contract(_contract(
+        scriptType="pytest-python", evidenceRequired=["order_id"],
+    ))
+    module = bundle.files[bundle.entry_path]
+    assert "evidence:order_id=not_captured" in module
+    assert "=captured" not in module
+
+
+def test_api_cleanup_action_ships_the_api_client_it_calls():
+    """A contract whose only API usage is a cleanup action still renders
+    getJson and BASE_URL, so both the helper file and the constant must exist."""
+    bundle = compile_contract(_contract(
+        cleanupActions=[{"type": "api_call", "description": "delete order", "target": "/api/orders/1"}],
+    ))
+    spec = bundle.files[bundle.entry_path]
+    assert "utils/apiClient.ts" in bundle.files
+    assert "import { getJson } from '../utils/apiClient';" in spec
+    assert "const BASE_URL = process.env.BASE_URL ?? '';" in spec
 
 
 def test_compile_pytest_produces_flat_file_bundle():

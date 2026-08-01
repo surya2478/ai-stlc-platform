@@ -7,9 +7,49 @@ script's framework.
 """
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+async def await_process(
+    proc: asyncio.subprocess.Process,
+    *,
+    timeout_seconds: int,
+    cancellation: asyncio.Event | None = None,
+) -> str:
+    """Wait for a runner subprocess, racing the timeout and a cancel signal.
+
+    Returns "exited", "timeout" or "cancelled". The caller kills the process for
+    the latter two — this only decides which happened.
+
+    Shared by every runner because cancellation has to be honoured identically
+    in all of them: the suite command center's Cancel used to be read only
+    *between* items, so an in-flight test kept running for up to the full item
+    timeout after an operator asked for it to stop (AUT-013).
+
+    A process that exited wins over a cancel that arrived at the same moment —
+    a real result is better evidence than an abandoned one.
+    """
+    exit_waiter = asyncio.ensure_future(proc.wait())
+    waiters: set[asyncio.Future] = {exit_waiter}
+    cancel_waiter: asyncio.Future | None = None
+    if cancellation is not None:
+        cancel_waiter = asyncio.ensure_future(cancellation.wait())
+        waiters.add(cancel_waiter)
+
+    done, pending = await asyncio.wait(
+        waiters, timeout=timeout_seconds, return_when=asyncio.FIRST_COMPLETED
+    )
+    for task in pending:
+        task.cancel()
+
+    if exit_waiter in done:
+        return "exited"
+    if cancel_waiter is not None and cancel_waiter in done:
+        return "cancelled"
+    return "timeout"
 
 
 @dataclass(slots=True)
@@ -67,6 +107,7 @@ class AutomationRunner(ABC):
         execution_command: str | None,
         environment: str | None,
         timeout_seconds: int = 600,
+        cancellation: asyncio.Event | None = None,
     ) -> RunnerResult:
         """Execute the script under workspace_dir and return a normalized result.
 
@@ -79,5 +120,9 @@ class AutomationRunner(ABC):
           to the script via the AUTOMATION_ENV env var so tests can branch on it.
         - timeout_seconds: hard cap. Runner kills the subprocess on timeout and
           reports run_status="failed", error_message="Timed out after Ns".
+        - cancellation: set by the caller to ask the runner to stop now. The
+          runner terminates the process and reports run_status="cancelled" with
+          whatever partial artifacts it already wrote. Ignoring this parameter
+          would make the command center's Cancel control a lie.
         """
         raise NotImplementedError

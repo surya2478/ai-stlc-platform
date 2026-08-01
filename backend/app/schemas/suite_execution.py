@@ -128,8 +128,12 @@ class ItemOut(BaseModel):
     result: str
     attempt: int
     attempts_allowed: int
+    # `steps_total` is real: the orchestrator writes it from the Automation IR
+    # at seeding time. `steps_completed` is deliberately NOT exposed — no runner
+    # reports per-step progress, so the column never moves off zero, and
+    # publishing it made the API claim a progress figure that does not exist.
+    # The column stays for the adapter step telemetry that will populate it.
     steps_total: int
-    steps_completed: int
     evidence_captured: int
     evidence_required: int
     evidence_total_captured: int
@@ -172,6 +176,10 @@ class AssertionOut(BaseModel):
     # None means not evaluated — the UI shows a pending count rather than
     # collapsing it into a failure.
     passed: bool | None
+    # How the verdict was reached: "runner_verdict" is inferred from the
+    # test-level result, "reported" is a per-assertion evaluation by the
+    # adapter. NULL whenever `passed` is NULL.
+    evaluation_source: str | None = None
     evaluated_at: datetime | None
 
 
@@ -188,6 +196,13 @@ class EvidenceOut(BaseModel):
     size_bytes: int | None
     has_artifact: bool
     sanitized: bool
+    # Why `sanitized` reads as it does: "masked" means the pass rewrote the
+    # content, "not_maskable" means no text pass applies (screenshot, video,
+    # trace) and serving it is a policy decision.
+    redaction_state: str = "pending"
+    checksum_sha256: str | None = None
+    content_type: str | None = None
+    downloadable: bool = False
     unavailable_reason: str | None
     captured_at: datetime | None
 

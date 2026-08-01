@@ -167,21 +167,51 @@ def _render_assertion_line(a: ContractAssertion, page_var_map: dict[str, str]) -
     raise ValueError(f"Unhandled assertion type: {a.type}")
 
 
+# An expected_fields key is rendered as a JS property path, so it has to *be*
+# one. Anything else (a bracket expression, a call, a quote) would either emit
+# broken TypeScript or splice caller-controlled text into the generated test.
+_JS_PROPERTY_PATH_RE = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*$")
+
+
 def _render_api_validation_lines(v: ApiValidation, index: int) -> list[str]:
     var_name = f"apiResult{index}"
-    lines = [f"const {var_name} = await getJson({js_string_literal(v.path)}, BASE_URL);"]
+    options = [f"method: {js_string_literal(v.method)}", f"expectedStatus: {v.expected_status}"]
+    lines = [
+        f"const {var_name} = await requestJson("
+        f"{js_string_literal(v.path)}, BASE_URL, {{ {', '.join(options)} }});",
+        # requestJson already throws on a mismatch; asserting it again makes the
+        # declared status visible in the report as its own expectation rather
+        # than only as a thrown error.
+        f"expect({var_name}.status).toBe({v.expected_status});",
+    ]
     for field, expected in v.expected_fields.items():
-        lines.append(f"expect({var_name}.{field}).toBe({js_string_literal(expected)});")
+        if not _JS_PROPERTY_PATH_RE.match(field or ""):
+            raise ValueError(
+                f"API validation for {v.path!r} declares expected field {field!r}, which is "
+                "not a valid property path. Use dotted identifiers such as 'data.orderId'."
+            )
+        lines.append(f"expect({var_name}.body.{field}).toBe({js_string_literal(expected)});")
     return lines
 
 
 def _render_db_validation_lines(v: DbValidation = None, *, db_validation=None) -> list[str]:
     validation = db_validation or v
     query_json = json.dumps(validation.query)
-    line = f"await assertRowExists(DB_VALIDATION_ENDPOINT, {query_json});"
-    if not validation.expect_found:
-        line += "  // TODO: expect_found=false is not yet rendered — verify absence manually"
-    return [line]
+    # expect_found=false previously still rendered assertRowExists with a TODO,
+    # asserting the exact opposite of the contract (AUT-005).
+    helper = "assertRowExists" if validation.expect_found else "assertRowAbsent"
+    return [f"await {helper}(DB_VALIDATION_ENDPOINT, {query_json});"]
+
+
+def _has_api_cleanup(contract: AutomationGenerationContract) -> bool:
+    """Whether any cleanup action renders a getJson call.
+
+    These need apiClient.ts and BASE_URL just as apiValidations do. Before this
+    the import and the constant were gated on api_validations alone, so a
+    contract with only an api_call cleanup compiled to a spec referencing an
+    undefined helper and an absent bundle file.
+    """
+    return any(c.type == "api_call" and c.target for c in contract.cleanup_actions)
 
 
 def _render_cleanup_line(c: CleanupAction) -> str:
@@ -203,15 +233,28 @@ def render_spec(contract: AutomationGenerationContract, *, compiler_version: str
         imports.append(f"import {{ {po.name} }} from '../pages/{po.name}';")
     if needs_fixture:
         imports.append("import { TEST_DATA } from '../fixtures/testData.fixture';")
-    if needs_api_client:
-        imports.append("import { getJson } from '../utils/apiClient';")
+    if needs_api_client or _has_api_cleanup(contract):
+        api_imports = ["getJson"] if _has_api_cleanup(contract) else []
+        if needs_api_client:
+            api_imports.insert(0, "requestJson")
+        imports.append(
+            f"import {{ {', '.join(api_imports)} }} from '../utils/apiClient';"
+        )
     if needs_db_validator:
-        imports.append("import { assertRowExists } from '../utils/dbValidator';")
+        db_helpers = sorted(
+            {
+                "assertRowExists" if v.expect_found else "assertRowAbsent"
+                for v in contract.db_validations
+            }
+        )
+        imports.append(f"import {{ {', '.join(db_helpers)} }} from '../utils/dbValidator';")
     if needs_evidence_helper:
-        imports.append("import { attachEvidence } from '../utils/evidenceHelper';")
+        imports.append(
+            "import { declareRequiredEvidence } from '../utils/evidenceHelper';"
+        )
 
     preamble: list[str] = []
-    if needs_api_client or needs_db_validator:
+    if needs_api_client or needs_db_validator or _has_api_cleanup(contract):
         preamble.append("const BASE_URL = process.env.BASE_URL ?? '';")
     if needs_db_validator:
         preamble.append("const DB_VALIDATION_ENDPOINT = process.env.DB_VALIDATION_ENDPOINT ?? '';")
@@ -285,10 +328,14 @@ def render_spec(contract: AutomationGenerationContract, *, compiler_version: str
     body.append("")
 
     if needs_evidence_helper:
-        body.append("    // Evidence")
+        # The contract carries evidence *names* with no value expression, so
+        # there is nothing real to attach. Emitting attachEvidence(name, name)
+        # produced an attachment that looked captured but only contained its own
+        # label (AUT-005); these are recorded as outstanding requirements.
+        body.append("    // Evidence (declared by the contract, not yet capturable)")
         for name in contract.evidence_required:
             body.append(
-                f"    await attachEvidence(testInfo, {js_string_literal(name)}, {js_string_literal(name)});"
+                f"    await declareRequiredEvidence(testInfo, {js_string_literal(name)});"
             )
         body.append("")
 

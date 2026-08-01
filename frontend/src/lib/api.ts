@@ -5357,8 +5357,11 @@ export interface SuiteRunItem {
   result: ExecutionItemResult;
   attempt: number;
   attempts_allowed: number;
+  /** Steps declared by the Automation IR. There is deliberately no
+   *  `steps_completed`: no runner reports per-step progress, so the server
+   *  stopped publishing a completion count it could not substantiate. It
+   *  returns once adapter step telemetry exists. */
   steps_total: number;
-  steps_completed: number;
   /** The mandatory pair the evidence quorum is judged on. */
   evidence_captured: number;
   evidence_required: number;
@@ -5415,6 +5418,12 @@ export interface SuiteRunAssertion {
   mandatory: boolean;
   /** null means never evaluated — shown as pending, not as a failure. */
   passed: boolean | null;
+  /** How the verdict was reached. "runner_verdict" is inferred from the
+   *  test-level result — Playwright fails the whole test when any web-first
+   *  assertion fails, so a green test does mean every assertion held, but that
+   *  is not a per-assertion evaluation. "reported" means the adapter evaluated
+   *  this assertion individually. null whenever `passed` is null. */
+  evaluation_source: "runner_verdict" | "reported" | "manual" | null;
   evaluated_at: string | null;
 }
 
@@ -5430,6 +5439,17 @@ export interface SuiteRunEvidence {
   size_bytes: number | null;
   has_artifact: boolean;
   sanitized: boolean;
+  /** Why `sanitized` reads as it does. "masked" means the pass rewrote the
+   *  content; "not_maskable" means no text pass applies (screenshot, video,
+   *  trace) and serving it is a deployment policy decision. */
+  redaction_state: "pending" | "masked" | "not_maskable";
+  /** SHA-256 of the bytes as captured, so a download can be checked against
+   *  what the run actually produced. */
+  checksum_sha256: string | null;
+  content_type: string | null;
+  /** False when the row records no artifact and no payload — the viewer must
+   *  not offer a link to nothing. */
+  downloadable: boolean;
   unavailable_reason: string | null;
   captured_at: string | null;
 }
@@ -5551,4 +5571,11 @@ export const suiteExecutionApi = {
       `${SUITE_EXECUTION_BASE}/runs/${runId}/controls`,
       body,
     ),
+  /** Fetch one evidence artifact. Text and JSON come back masked; binary
+   *  artifacts cannot be masked and the server refuses them where policy says
+   *  so, which surfaces here as a normal request error with the reason. */
+  evidence: (runId: number, evidenceId: number) =>
+    api.get<Blob>(`${SUITE_EXECUTION_BASE}/runs/${runId}/evidence/${evidenceId}`, {
+      responseType: "blob",
+    }),
 };

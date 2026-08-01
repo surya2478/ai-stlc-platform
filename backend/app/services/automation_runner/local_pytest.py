@@ -15,7 +15,13 @@ import shutil
 import time
 from pathlib import Path
 
-from app.services.automation_runner.base import AutomationRunner, PerTestResult, RunnerResult
+from app.services.automation_runner.base import (
+    AutomationRunner,
+    PerTestResult,
+    RunnerResult,
+    await_process,
+)
+from app.services.automation_runner.env_policy import build_runner_env
 from app.services.automation_runner.preflight import is_available
 
 
@@ -40,6 +46,7 @@ class LocalPytestRunner(AutomationRunner):
         execution_command: str | None,
         environment: str | None,
         timeout_seconds: int = 600,
+        cancellation: asyncio.Event | None = None,
     ) -> RunnerResult:
         available, detail = is_available("pytest")
         if not available:
@@ -68,9 +75,12 @@ class LocalPytestRunner(AutomationRunner):
             "--json-report",
         ]
 
-        env = {**os.environ, "AUTOMATION_ENV": environment or ""}
         # Force unbuffered output so stdout/stderr land in the log file in order.
-        env.setdefault("PYTHONUNBUFFERED", "1")
+        env, withheld_env = build_runner_env(
+            source=os.environ,
+            overrides={"AUTOMATION_ENV": environment or "", "PYTHONUNBUFFERED": "1"},
+            runner_name=self.name,
+        )
 
         start = time.monotonic()
         try:
@@ -82,19 +92,30 @@ class LocalPytestRunner(AutomationRunner):
                     stderr=asyncio.subprocess.STDOUT,
                     env=env,
                 )
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=timeout_seconds)
-                except asyncio.TimeoutError:
+                outcome = await await_process(
+                    proc, timeout_seconds=timeout_seconds, cancellation=cancellation
+                )
+                if outcome != "exited":
                     proc.kill()
                     await proc.wait()
                     duration = time.monotonic() - start
+                    cancelled = outcome == "cancelled"
                     return RunnerResult(
-                        run_status="failed",
+                        run_status="cancelled" if cancelled else "failed",
                         results=[],
                         duration_seconds=duration,
                         log_path=str(log_path),
-                        error_message=f"pytest run timed out after {timeout_seconds}s",
-                        metadata={"runner": self.name, "command": " ".join(shlex.quote(a) for a in pytest_args)},
+                        error_message=(
+                            "The run was cancelled while this test was executing; "
+                            "the pytest process was terminated."
+                            if cancelled
+                            else f"pytest run timed out after {timeout_seconds}s"
+                        ),
+                        metadata={
+                            "runner": self.name,
+                            "command": " ".join(shlex.quote(a) for a in pytest_args),
+                            "cancelled": cancelled,
+                        },
                     )
         except FileNotFoundError as exc:
             return RunnerResult(
@@ -127,6 +148,7 @@ class LocalPytestRunner(AutomationRunner):
                 "runner": self.name,
                 "command": " ".join(shlex.quote(a) for a in pytest_args),
                 "exit_code": exit_code,
+                "env_withheld_count": len(withheld_env),
             },
         )
 
@@ -146,17 +168,35 @@ class LocalPytestRunner(AutomationRunner):
             except (OSError, json.JSONDecodeError):
                 pass
 
-        # Fallback: synthesize a single row from the exit code.
+        # Fallback: synthesize a single row from the exit code. Unlike
+        # Playwright — where the JSON reporter is forced and its absence means
+        # the harness misbehaved — pytest's exit code is itself meaningful:
+        # 0 means it collected and passed tests, 5 means it collected none.
+        # The row is flagged as synthesized so nothing downstream mistakes it
+        # for parsed per-test detail.
         if exit_code == 0:
             status = "pass"
             error = None
         elif exit_code == 5:
-            status = "skip"
-            error = "pytest collected 0 tests"
+            # Previously "skip", which read as "this test was intentionally
+            # skipped". Nothing ran at all — that is a harness failure, and
+            # hiding it behind a skip is the pytest sibling of AUT-006.
+            status = "error"
+            error = (
+                "pytest collected 0 tests from this file, so nothing executed "
+                "and there is no result to score."
+            )
         else:
             status = "fail"
             error = f"pytest exit code {exit_code}; see {log_path.name}"
-        return [PerTestResult(name=script_file_name, status=status, error_message=error)]
+        return [
+            PerTestResult(
+                name=script_file_name,
+                status=status,
+                error_message=error,
+                raw={"synthesized": True, "reason": "pytest-json-report produced no rows"},
+            )
+        ]
 
     def _row_from_pytest_test(self, t: dict) -> PerTestResult:
         outcome = (t.get("outcome") or "").lower()

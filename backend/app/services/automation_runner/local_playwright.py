@@ -19,7 +19,13 @@ import shlex
 import time
 from pathlib import Path
 
-from app.services.automation_runner.base import AutomationRunner, PerTestResult, RunnerResult
+from app.services.automation_runner.base import (
+    AutomationRunner,
+    PerTestResult,
+    RunnerResult,
+    await_process,
+)
+from app.services.automation_runner.env_policy import build_runner_env
 from app.services.automation_runner.preflight import is_available
 
 
@@ -55,6 +61,7 @@ class LocalPlaywrightRunner(AutomationRunner):
         execution_command: str | None,
         environment: str | None,
         timeout_seconds: int = 600,
+        cancellation: asyncio.Event | None = None,
     ) -> RunnerResult:
         available, detail = is_available("playwright")
         if not available:
@@ -74,7 +81,11 @@ class LocalPlaywrightRunner(AutomationRunner):
             script_file_name,
             "--reporter=json",
         ]
-        env = {**os.environ, "AUTOMATION_ENV": environment or "", "CI": "1"}
+        env, withheld_env = build_runner_env(
+            source=os.environ,
+            overrides={"AUTOMATION_ENV": environment or "", "CI": "1"},
+            runner_name=self.name,
+        )
 
         start = time.monotonic()
         json_stdout = bytearray()
@@ -100,20 +111,31 @@ class LocalPlaywrightRunner(AutomationRunner):
                         json_stdout.extend(chunk)
 
                 drain_task = asyncio.create_task(drain_stdout())
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=timeout_seconds)
-                except asyncio.TimeoutError:
+                outcome = await await_process(
+                    proc, timeout_seconds=timeout_seconds, cancellation=cancellation
+                )
+                if outcome != "exited":
                     proc.kill()
                     await proc.wait()
                     drain_task.cancel()
                     duration = time.monotonic() - start
+                    cancelled = outcome == "cancelled"
                     return RunnerResult(
-                        run_status="failed",
+                        run_status="cancelled" if cancelled else "failed",
                         results=[],
                         duration_seconds=duration,
                         log_path=str(log_path),
-                        error_message=f"playwright run timed out after {timeout_seconds}s",
-                        metadata={"runner": self.name, "command": " ".join(shlex.quote(a) for a in cmd)},
+                        error_message=(
+                            "The run was cancelled while this test was executing; "
+                            "the browser process was terminated."
+                            if cancelled
+                            else f"playwright run timed out after {timeout_seconds}s"
+                        ),
+                        metadata={
+                            "runner": self.name,
+                            "command": " ".join(shlex.quote(a) for a in cmd),
+                            "cancelled": cancelled,
+                        },
                     )
                 await drain_task
         except FileNotFoundError as exc:
@@ -134,24 +156,38 @@ class LocalPlaywrightRunner(AutomationRunner):
         if json_stdout:
             results_json_path.write_bytes(bytes(json_stdout))
 
-        results = self._parse_results(json_stdout, workspace_dir, script_file_name, exit_code)
+        results, parse_failure = self._parse_results(
+            json_stdout, workspace_dir, script_file_name, exit_code
+        )
         # Playwright exit codes: 0=ok, 1=test failed, 2=interrupted/timeout, others=runner failure
-        if exit_code == 0:
-            run_status = "completed"
-        elif exit_code == 1:
-            run_status = "completed"  # tests ran, some failed
+        if exit_code in (0, 1):
+            run_status = "completed"  # tests ran; some may have failed
+            error_message = None
         else:
             run_status = "failed"
+            error_message = f"playwright exited with code {exit_code}"
+
+        # No parsed result outranks a clean exit code. Reporting this as a run
+        # that merely "completed" would let a harness defect — a broken config,
+        # a spec that matched nothing, a reporter that never wrote — reach the
+        # caller as a scoreable outcome (AUT-006).
+        if parse_failure:
+            run_status = "failed"
+            error_message = (
+                f"{parse_failure} (playwright exit code {exit_code}; see run.log)"
+            )
+
         return RunnerResult(
             run_status=run_status,
             results=results,
             duration_seconds=duration,
             log_path=str(log_path),
-            error_message=None if exit_code in (0, 1) else f"playwright exited with code {exit_code}",
+            error_message=error_message,
             metadata={
                 "runner": self.name,
                 "command": " ".join(shlex.quote(a) for a in cmd),
                 "exit_code": exit_code,
+                "env_withheld_count": len(withheld_env),
             },
         )
 
@@ -161,20 +197,36 @@ class LocalPlaywrightRunner(AutomationRunner):
         workspace_dir: Path,
         script_file_name: str,
         exit_code: int,
-    ) -> list[PerTestResult]:
+    ) -> tuple[list[PerTestResult], str | None]:
+        """Parse the JSON reporter output.
+
+        Returns `(rows, parse_failure_reason)`. An empty row list is never
+        substituted with a synthesized outcome: a zero exit code proves the
+        process ended cleanly, not that a test ran or an assertion held, so the
+        caller reports an automation failure instead (AUT-006).
+        """
         if not raw_json:
-            return [self._fallback_row(script_file_name, exit_code)]
+            return [], (
+                "The Playwright JSON reporter produced no output, so no test "
+                "result could be read. The run cannot be scored."
+            )
         try:
             report = json.loads(raw_json.decode("utf-8", errors="replace"))
         except json.JSONDecodeError:
-            return [self._fallback_row(script_file_name, exit_code)]
+            return [], (
+                "The Playwright JSON reporter output could not be parsed, so no "
+                "test result could be read. The run cannot be scored."
+            )
 
         rows: list[PerTestResult] = []
         for suite in report.get("suites", []):
             self._collect_specs(suite, workspace_dir, rows)
         if rows:
-            return rows
-        return [self._fallback_row(script_file_name, exit_code)]
+            return rows, None
+        return [], (
+            "The Playwright JSON reporter reported no tests. Nothing executed, "
+            "so there is no result to score."
+        )
 
     def _collect_specs(self, suite: dict, workspace_dir: Path, sink: list[PerTestResult]) -> None:
         for spec in suite.get("specs", []):
@@ -302,11 +354,3 @@ class LocalPlaywrightRunner(AutomationRunner):
             return None
         return data if isinstance(data, list) else None
 
-    def _fallback_row(self, script_file_name: str, exit_code: int) -> PerTestResult:
-        if exit_code == 0:
-            return PerTestResult(name=script_file_name, status="pass")
-        return PerTestResult(
-            name=script_file_name,
-            status="fail",
-            error_message=f"playwright exit code {exit_code}; see run.log",
-        )

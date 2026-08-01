@@ -195,6 +195,29 @@ def _canonical(members: list[dict[str, Any]]) -> str:
     return json.dumps(members, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def compiled_bundle_digest(script: Any) -> str | None:
+    """SHA-256 over the compiled file bundle a member will actually execute.
+
+    A snapshot that freezes `script_id` and `script_version` records *which*
+    executable was chosen, not *what it contained*. The legacy PATCH route can
+    still rewrite `compiled_files` on an existing row without opening a new
+    version (AUT-003), so those two references can point at different bytes
+    tomorrow than they did at publication, and the snapshot checksum would not
+    move (AUT-012).
+
+    Hashing the bundle closes that gap for reads: a run can now be checked
+    against the content that was approved, and drift is detectable even though
+    immutability itself is not yet enforced.
+    """
+    if script is None:
+        return None
+    files = getattr(script, "compiled_files", None) or {}
+    if not files:
+        return None
+    canonical = json.dumps(files, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def build_snapshot_payload(suite_inh: inheritance_engine.SuiteInheritance) -> tuple[list[dict[str, Any]], str]:
     """Freeze the resolved scope: source ids and versions, not editable values."""
     members: list[dict[str, Any]] = []
@@ -216,6 +239,9 @@ def build_snapshot_payload(suite_inh: inheritance_engine.SuiteInheritance) -> tu
                 "classification_id": (m.classification.id if m.classification else None),
                 "script_id": (script.id if script else None),
                 "script_version": (script.version if script else None),
+                # The content behind script_id/script_version, so the manifest
+                # identifies bytes rather than a mutable pointer to them.
+                "script_content_digest": compiled_bundle_digest(script),
                 "framework": (script.framework if script else None),
                 "environment": m.resolved_environment,
             }

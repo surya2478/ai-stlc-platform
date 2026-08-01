@@ -57,7 +57,12 @@ def _compile_playwright(contract: AutomationGenerationContract) -> CompiledBundl
         files[f"pages/{page_object.name}.ts"] = playwright_renderer.render_page_object(page_object)
     if contract.test_data_bindings:
         files["fixtures/testData.fixture.ts"] = playwright_renderer.render_fixture(contract)
-    if contract.api_validations:
+    # api_call cleanup actions render getJson too, so the helper has to ship
+    # whenever either one is present — not just for apiValidations.
+    needs_api_client = bool(contract.api_validations) or any(
+        c.type == "api_call" and c.target for c in contract.cleanup_actions
+    )
+    if needs_api_client:
         files["utils/apiClient.ts"] = _read_golden_util(_GOLDEN_PLAYWRIGHT_UTILS_DIR / "apiClient.ts")
     if contract.db_validations:
         files["utils/dbValidator.ts"] = _read_golden_util(_GOLDEN_PLAYWRIGHT_UTILS_DIR / "dbValidator.ts")

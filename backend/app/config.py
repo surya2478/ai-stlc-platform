@@ -197,6 +197,54 @@ class Settings(BaseSettings):
     # Max concurrently running script containers per batch run.
     studio_max_parallel: int = 4
 
+    # ── Automation Runner Policy (Wave 1 / P0-01) ────────────────────────────
+    # The runner mode is *server-owned*. A caller may request a mode, but
+    # `automation_runner.policy` decides what actually runs. Local mode executes
+    # test code as a child of the worker process, inheriting the worker's
+    # credentials and filesystem, so it is only permitted where explicitly
+    # allowed. Leave unset to derive from app_env: allowed on "local", refused
+    # on "staging"/"production" (fail closed).
+    automation_allow_local_runner: bool | None = None
+
+    # Environment variables a test subprocess may inherit from the worker.
+    # OS/runtime essentials (PATH, HOME, SystemRoot, …) are always allowed —
+    # see automation_runner/env_policy.py — this list is for the *test-facing*
+    # variables generated scripts legitimately read. Entries ending in "*" are
+    # prefix matches.
+    automation_runner_env_allowlist: str = (
+        "BASE_URL,DB_VALIDATION_ENDPOINT,AUTOMATION_ENV,PLAYWRIGHT_*,PW_*,NODE_*,PYTEST_*"
+    )
+    # False (default): nothing is filtered, but every variable that *would* be
+    # filtered is logged so existing scripts can be audited before enforcement.
+    # True: the subprocess receives only the allowlisted variables.
+    automation_runner_env_allowlist_enforced: bool = False
+
+    # Whether binary execution evidence (screenshot, video, trace) may be
+    # downloaded. No text pass can mask a screenshot, so serving one is a policy
+    # decision rather than a sanitization one. Leave unset to derive from
+    # app_env: permitted outside production, refused in it.
+    automation_evidence_allow_unmasked: bool | None = None
+
+    @property
+    def local_runner_permitted(self) -> bool:
+        """Whether the in-worker subprocess runner may be used at all.
+
+        Explicit configuration wins; otherwise only the "local" app_env allows
+        it, so a staging/production deployment refuses local execution unless
+        somebody opts in deliberately.
+        """
+        if self.automation_allow_local_runner is not None:
+            return self.automation_allow_local_runner
+        return self.app_env == "local"
+
+    @property
+    def automation_runner_env_allowlist_entries(self) -> list[str]:
+        return [
+            e.strip().upper()
+            for e in (self.automation_runner_env_allowlist or "").split(",")
+            if e.strip()
+        ]
+
     # ── Automation Asset Autonomy (UI-020/021/023) ───────────────────────────
     # Master switch for automatic stage advancement and AI approval of
     # automation assets. OFF by default: with it off the policy still computes

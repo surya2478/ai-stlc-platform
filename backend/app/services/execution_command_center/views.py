@@ -489,7 +489,8 @@ async def build_item_detail(db: AsyncSession, item: ExecutionRunItem) -> dict:
 
 def _evidence_out(row: ExecutionRunEvidence) -> dict:
     """Metadata only. A payload's entries can carry request headers, so the count
-    is returned and the content is left to the masked download endpoint."""
+    is returned and the content is left to the masked download endpoint at
+    `GET /runs/{run_id}/evidence/{evidence_id}`."""
     entries = None
     if isinstance(row.payload, dict):
         value = row.payload.get("entries")
@@ -505,6 +506,13 @@ def _evidence_out(row: ExecutionRunEvidence) -> dict:
         "size_bytes": row.size_bytes,
         "has_artifact": bool(row.file_path),
         "sanitized": row.sanitized,
+        "redaction_state": row.redaction_state,
+        "checksum_sha256": row.checksum_sha256,
+        "content_type": row.content_type,
+        # Whether the viewer should offer a download at all. A row with no
+        # artifact and no payload has nothing behind the link.
+        "downloadable": row.status == "captured"
+        and bool(row.file_path or row.payload is not None),
         "unavailable_reason": row.unavailable_reason,
         "captured_at": row.captured_at,
     }

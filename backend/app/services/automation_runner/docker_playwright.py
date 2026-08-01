@@ -24,7 +24,7 @@ import uuid
 from pathlib import Path
 
 from app.config import get_settings
-from app.services.automation_runner.base import RunnerResult
+from app.services.automation_runner.base import RunnerResult, await_process
 from app.services.automation_runner.local_playwright import LocalPlaywrightRunner
 
 settings = get_settings()
@@ -63,6 +63,7 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
         execution_command: str | None,
         environment: str | None,
         timeout_seconds: int = 600,
+        cancellation: asyncio.Event | None = None,
     ) -> RunnerResult:
         available, detail = docker_available()
         if not available:
@@ -127,21 +128,32 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
                         json_stdout.extend(chunk)
 
                 drain_task = asyncio.create_task(drain_stdout())
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=timeout_seconds)
-                except asyncio.TimeoutError:
+                outcome = await await_process(
+                    proc, timeout_seconds=timeout_seconds, cancellation=cancellation
+                )
+                if outcome != "exited":
+                    # Killing the `docker run` client alone would leave the
+                    # container executing, so the container goes first.
                     await self._kill_container(container_name)
                     proc.kill()
                     await proc.wait()
                     drain_task.cancel()
+                    cancelled = outcome == "cancelled"
                     return RunnerResult(
-                        run_status="failed", results=[],
+                        run_status="cancelled" if cancelled else "failed",
+                        results=[],
                         duration_seconds=time.monotonic() - start,
                         log_path=str(log_path),
-                        error_message=f"dockerized playwright run timed out after {timeout_seconds}s",
+                        error_message=(
+                            "The run was cancelled while this test was executing; "
+                            "the runner container was terminated."
+                            if cancelled
+                            else f"dockerized playwright run timed out after {timeout_seconds}s"
+                        ),
                         metadata={
                             "runner": self.name, "container": container_name,
                             "command": " ".join(shlex.quote(a) for a in cmd),
+                            "cancelled": cancelled,
                         },
                     )
                 await drain_task
@@ -160,7 +172,9 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
         if json_stdout:
             results_json_path.write_bytes(bytes(json_stdout))
 
-        results = self._parse_results(json_stdout, workspace_dir, script_file_name, exit_code)
+        results, parse_failure = self._parse_results(
+            json_stdout, workspace_dir, script_file_name, exit_code
+        )
         # Same convention as the local runner: 0=ok, 1=tests ran with failures;
         # docker itself uses 125-127 for daemon/image errors, which land in
         # the else branch as a runner failure.
@@ -170,6 +184,14 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
         else:
             run_status = "failed"
             error_message = f"docker/playwright exited with code {exit_code}"
+
+        # No parsed result is a harness failure regardless of exit code — see
+        # the local runner for the reasoning (AUT-006).
+        if parse_failure:
+            run_status = "failed"
+            error_message = (
+                f"{parse_failure} (docker/playwright exit code {exit_code}; see run.log)"
+            )
         return RunnerResult(
             run_status=run_status,
             results=results,

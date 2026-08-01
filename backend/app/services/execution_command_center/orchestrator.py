@@ -26,12 +26,14 @@ vocabulary for the adapter work that would deliver them.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.automation_script import AutomationScript
@@ -59,8 +61,14 @@ from app.services.automation_runner.workspace import (
     write_playwright_config,
     write_pytest_config,
 )
+from app.services.automation_suite import lifecycle as suite_lifecycle
 from app.services.automation_suite.errors import AutomationSuiteError
-from app.services.execution_command_center import events, outcomes, readiness
+from app.services.execution_command_center import (
+    events,
+    evidence_service,
+    outcomes,
+    readiness,
+)
 from app.services.project_application_service import resolve_environment_url
 
 ITEM_TIMEOUT_SECONDS = 600
@@ -424,16 +432,58 @@ async def _base_url(db: AsyncSession, item: ExecutionRunItem) -> str | None:
     return resolve_environment_url(application, item.environment)
 
 
-async def dispatch_item(db: AsyncSession, run: ExecutionRun, item: ExecutionRunItem) -> None:
-    """Execute one item and persist everything it produced.
+@dataclass(slots=True)
+class ItemExecutionPlan:
+    """Everything the runner needs, resolved before the session is released.
 
-    Every early return classifies the item rather than raising: a member that
-    cannot run is a governed outcome (BLOCKED, POLICY_BLOCKED,
-    AUTOMATION_FAILURE), not an orchestration crash that would abandon the rest
-    of the suite.
+    Dispatch is split into three phases — `prepare_item`, `execute_plan`,
+    `finalize_item` — for one reason: the middle phase can take up to
+    ITEM_TIMEOUT_SECONDS, and it used to run with the worker's database session
+    open. That pinned a connection (idle in transaction) for the entire duration
+    of every test, which caps suite concurrency at the pool size no matter what
+    `parallel_limit` says.
+
+    Only the outer phases touch the database. The plan carries the state across
+    the gap, keyed by id so the two sessions need not share ORM identity.
+    """
+
+    item_id: int
+    framework: str = ""
+    workspace: Path | None = None
+    script_file: str | None = None
+    execution_command: str | None = None
+    environment: str | None = None
+    # Set when the item cannot run at all. Mirrors the ItemFacts kwargs so
+    # finalize_item can pass them straight through to the classifier.
+    blocked_reason: str | None = None
+    automation_failure_reason: str | None = None
+
+    @property
+    def runnable(self) -> bool:
+        return (
+            self.blocked_reason is None
+            and self.automation_failure_reason is None
+            and self.workspace is not None
+        )
+
+
+async def prepare_item(
+    db: AsyncSession,
+    run: ExecutionRun,
+    item: ExecutionRunItem,
+    *,
+    worker_id: str | None = None,
+) -> ItemExecutionPlan:
+    """Phase 1: mark the item started and resolve what to run.
+
+    Every failure here is classified rather than raised: a member that cannot
+    run is a governed outcome (BLOCKED, POLICY_BLOCKED, AUTOMATION_FAILURE), not
+    an orchestration crash that would abandon the rest of the suite.
     """
     item.lifecycle_state = "STARTING"
     item.started_at = _now()
+    item.worker_id = (worker_id or "")[:100] or None
+    item.heartbeat_at = _now()
     await events.emit(
         db,
         run.id,
@@ -442,70 +492,135 @@ async def dispatch_item(db: AsyncSession, run: ExecutionRun, item: ExecutionRunI
         item_id=item.id,
     )
 
-    facts_kwargs: dict[str, Any] = {}
+    plan = ItemExecutionPlan(item_id=item.id, environment=item.environment)
     framework = (item.framework or "").lower()
+    plan.framework = framework
 
     if item.script_id is None:
-        facts_kwargs["blocked_reason"] = (
+        plan.blocked_reason = (
             "This member has no compiled script in the published snapshot, so there "
             "is nothing to execute."
         )
-    elif not framework:
-        facts_kwargs["blocked_reason"] = "The snapshot declares no framework for this member."
+        return plan
+    if not framework:
+        plan.blocked_reason = "The snapshot declares no framework for this member."
+        return plan
+
+    available, detail = is_available(framework)
+    if not available:
+        # Contract Section 2.1.8: a framework with no registered runner is
+        # BLOCKED with the runner's own reason, never reported as passing.
+        plan.blocked_reason = detail
+        return plan
+
+    script = await db.get(AutomationScript, item.script_id)
+    compiled_files = (script.compiled_files or {}) if script else {}
+    if script is None:
+        plan.blocked_reason = "The compiled script row is missing."
+        return plan
+    if not compiled_files:
+        plan.blocked_reason = (
+            "This script has no compiled bundle. Recompile the asset before "
+            "including it in an execution."
+        )
+        return plan
+
+    # Content drift. The snapshot freezes script_id and script_version, but the
+    # legacy PATCH route can still rewrite an approved row's compiled_files in
+    # place (AUT-003), so those references can point at different bytes than
+    # they did at publication without the snapshot checksum moving (AUT-012).
+    # Executing the changed bytes under the approved snapshot's name is the
+    # audit failure, so it is refused rather than warned about.
+    frozen_digest = (item.snapshot_member or {}).get("script_content_digest")
+    if frozen_digest:
+        current_digest = suite_lifecycle.compiled_bundle_digest(script)
+        if current_digest != frozen_digest:
+            plan.blocked_reason = (
+                "This script's compiled bundle no longer matches the content frozen "
+                "when the suite was published, so running it would not be running "
+                "what was approved. Publish a new suite version to adopt the change."
+            )
+            return plan
+
+    workspace: Path = reset_workspace(f"run-{run.id}-item-{item.id}")
+    if framework == "playwright":
+        write_playwright_config(
+            workspace,
+            base_url=await _base_url(db, item),
+            test_dir="specs" if compiled_files else ".",
+        )
     else:
-        available, detail = is_available(framework)
-        if not available:
-            # Contract Section 2.1.8: a framework with no registered runner is
-            # BLOCKED with the runner's own reason, never reported as passing.
-            facts_kwargs["blocked_reason"] = detail
+        write_pytest_config(workspace)
+    materialize_bundle(workspace=workspace, compiled_files=compiled_files)
 
-    runner_result = None
+    plan.workspace = workspace
+    plan.script_file = script.file_path or next(iter(compiled_files))
+    plan.execution_command = script.execution_command
+    item.lifecycle_state = "RUNNING"
+    return plan
+
+
+async def execute_plan(
+    plan: ItemExecutionPlan, *, cancellation: asyncio.Event | None = None
+) -> Any:
+    """Phase 2: run the script. Deliberately takes no session.
+
+    Nothing in here may touch the database — that is the whole point of the
+    split. `cancellation` is forwarded so an operator's Cancel terminates the
+    process instead of waiting for the item to finish.
+    """
+    if not plan.runnable:
+        return None
+    return await run_script_for_execution(
+        framework=plan.framework,
+        workspace=plan.workspace,
+        script_file_name=plan.script_file,
+        execution_command=plan.execution_command,
+        environment=plan.environment,
+        timeout_seconds=ITEM_TIMEOUT_SECONDS,
+        cancellation=cancellation,
+    )
+
+
+async def finalize_item(
+    db: AsyncSession,
+    run: ExecutionRun,
+    item: ExecutionRunItem,
+    plan: ItemExecutionPlan,
+    runner_result: Any = None,
+) -> None:
+    """Phase 3: persist everything the run produced and classify the item."""
+    facts_kwargs: dict[str, Any] = {}
+    if plan.blocked_reason:
+        facts_kwargs["blocked_reason"] = plan.blocked_reason
+    if plan.automation_failure_reason:
+        facts_kwargs["automation_failure_reason"] = plan.automation_failure_reason
+
     per_test = None
+    cancelled_reason: str | None = None
+    if runner_result is not None:
+        item.runner_name = str(runner_result.metadata.get("runner") or "")[:100] or None
 
-    if not facts_kwargs:
-        script = await db.get(AutomationScript, item.script_id)
-        compiled_files = (script.compiled_files or {}) if script else {}
-        if script is None:
-            facts_kwargs["blocked_reason"] = "The compiled script row is missing."
-        elif not compiled_files:
-            facts_kwargs["blocked_reason"] = (
-                "This script has no compiled bundle. Recompile the asset before "
-                "including it in an execution."
+        if getattr(runner_result, "run_status", None) == "cancelled":
+            # An operator stopped this test mid-flight. It is not an application
+            # verdict and not a harness defect, so it is neither FAIL nor
+            # AUTOMATION_FAILURE — nothing was proven either way, which is what
+            # the classifier's no-assertion path already reports as INCONCLUSIVE.
+            cancelled_reason = (
+                runner_result.error_message
+                or "Cancelled by an operator while this test was running."
             )
+        elif runner_result.results:
+            per_test = runner_result.results[0]
+        elif runner_result.error_message:
+            # The runner could not start or produced nothing. That is the
+            # harness failing, not the application — Section 10.
+            facts_kwargs["automation_failure_reason"] = runner_result.error_message
         else:
-            workspace: Path = reset_workspace(f"run-{run.id}-item-{item.id}")
-            if framework == "playwright":
-                write_playwright_config(
-                    workspace,
-                    base_url=await _base_url(db, item),
-                    test_dir="specs" if compiled_files else ".",
-                )
-            else:
-                write_pytest_config(workspace)
-            materialize_bundle(workspace=workspace, compiled_files=compiled_files)
-            script_file = script.file_path or next(iter(compiled_files))
-
-            item.lifecycle_state = "RUNNING"
-            runner_result = await run_script_for_execution(
-                framework=framework,
-                workspace=workspace,
-                script_file_name=script_file,
-                execution_command=script.execution_command,
-                environment=item.environment,
-                timeout_seconds=ITEM_TIMEOUT_SECONDS,
+            facts_kwargs["automation_failure_reason"] = (
+                "The runner completed without reporting any test result."
             )
-            item.runner_name = str(runner_result.metadata.get("runner") or "")[:100] or None
-
-            if runner_result.results:
-                per_test = runner_result.results[0]
-            elif runner_result.error_message:
-                # The runner could not start or produced nothing. That is the
-                # harness failing, not the application — Section 10.
-                facts_kwargs["automation_failure_reason"] = runner_result.error_message
-            else:
-                facts_kwargs["automation_failure_reason"] = (
-                    "The runner completed without reporting any test result."
-                )
+        facts_kwargs = {k: v for k, v in facts_kwargs.items() if v is not None}
 
     if per_test is not None:
         await _persist_runner_evidence(db, run, item, runner_result, per_test)
@@ -529,11 +644,16 @@ async def dispatch_item(db: AsyncSession, run: ExecutionRun, item: ExecutionRunI
     classification = outcomes.classify_item(facts)
 
     item.result = classification.result
-    # Preserve a reason already recorded at seeding time (e.g. "no IR found")
-    # rather than overwriting the more specific explanation.
-    item.attention_reason = classification.attention_reason or item.attention_reason
+    # Cancellation is the most specific thing that can be said about this item,
+    # so it outranks the classifier's generic "nothing was asserted" text.
+    # Otherwise: preserve a reason already recorded at seeding time (e.g. "no IR
+    # found") rather than overwriting the more specific explanation.
+    item.attention_reason = (
+        cancelled_reason or classification.attention_reason or item.attention_reason
+    )
     item.lifecycle_state = "COMPLETED"
     item.completed_at = _now()
+    item.heartbeat_at = None
 
     await _write_portable_result(db, run, item, runner_result, per_test)
 
@@ -556,6 +676,77 @@ async def dispatch_item(db: AsyncSession, run: ExecutionRun, item: ExecutionRunI
     )
 
 
+async def recount_after_fault(db: AsyncSession, run_id: int, item_id: int) -> None:
+    """Refresh the rollups an aborted dispatch never got to write.
+
+    The fault path marks the item terminal but skipped `_recount_item`, so its
+    assertion/evidence counters kept their seeded values and the run's evidence
+    rollup stayed stale — the summary tiles disagreed with the item list for the
+    remainder of the run.
+    """
+    item = await db.get(ExecutionRunItem, item_id)
+    if item is not None:
+        await _recount_item(db, item)
+    run = await db.get(ExecutionRun, run_id)
+    if run is not None:
+        await _recount_evidence(db, run)
+
+
+async def touch_heartbeat(db: AsyncSession, item_id: int) -> None:
+    """Record that the worker owning this item is still alive.
+
+    Called on the same cadence as the control poll while a test executes. A
+    stale heartbeat is what lets `reconcile_stranded_items` tell an item whose
+    worker died from one that is simply slow.
+    """
+    await db.execute(
+        update(ExecutionRunItem)
+        .where(ExecutionRunItem.id == item_id)
+        .values(heartbeat_at=_now())
+    )
+
+
+async def reconcile_stranded_items(
+    db: AsyncSession, run: ExecutionRun, *, reason: str
+) -> int:
+    """Close out items left mid-flight by a worker that never came back.
+
+    `_mark_run_faulted` used to close the run while leaving its items in
+    STARTING/RUNNING forever, so the command center showed a test spinning
+    indefinitely against a run that had already finished. An item whose worker
+    is gone produced no verdict, and saying so is the only honest option.
+
+    Returns the number of items reconciled.
+    """
+    rows = (
+        await db.execute(
+            select(ExecutionRunItem).where(
+                ExecutionRunItem.execution_run_id == run.id,
+                ExecutionRunItem.lifecycle_state.in_(("STARTING", "RUNNING")),
+            )
+        )
+    ).scalars().all()
+
+    for item in rows:
+        item.lifecycle_state = "COMPLETED"
+        item.result = "AUTOMATION_FAILURE"
+        item.attention_reason = reason
+        item.completed_at = _now()
+        item.heartbeat_at = None
+        await _recount_item(db, item)
+        await events.emit(
+            db,
+            run.id,
+            event_type="runner_warning",
+            message=f"{item.test_case_key or 'Test case'} was recovered: {reason}",
+            item_id=item.id,
+        )
+
+    if rows:
+        await _recount_evidence(db, run)
+    return len(rows)
+
+
 async def _mark_assertions_passed(db: AsyncSession, item: ExecutionRunItem) -> None:
     rows = (
         await db.execute(
@@ -566,6 +757,10 @@ async def _mark_assertions_passed(db: AsyncSession, item: ExecutionRunItem) -> N
     ).scalars().all()
     for row in rows:
         row.passed = True
+        # Recorded as inferred, not observed: the reporter gives a test-level
+        # verdict, so this is sound but not a per-assertion evaluation. Storing
+        # the verdict without the method let the evidence overstate itself.
+        row.evaluation_source = "runner_verdict"
         row.evaluated_at = _now()
 
 
@@ -657,9 +852,12 @@ async def _persist_runner_evidence(
         row.payload = payload
         row.status = "captured"
         row.captured_at = _now()
-        # Artifacts are served through an authenticated endpoint that applies the
-        # masking pass; nothing is marked sanitized until it has been through it.
-        row.sanitized = False
+        # Size, checksum, content type and redaction state, recorded now because
+        # this is the only moment the bytes are known to be the bytes the run
+        # produced. Artifacts are served through an authenticated endpoint that
+        # applies the masking pass; nothing is marked sanitized until it has been
+        # through it.
+        evidence_service.record_artifact_facts(row)
         await events.emit(
             db,
             run.id,
@@ -674,18 +872,18 @@ async def _persist_runner_evidence(
     for evidence_type, (file_path, payload) in produced.items():
         if evidence_type in required_types:
             continue
-        db.add(
-            ExecutionRunEvidence(
-                execution_run_id=run.id,
-                execution_run_item_id=item.id,
-                evidence_type=evidence_type,
-                status="captured",
-                mandatory=False,
-                file_path=file_path,
-                payload=payload,
-                captured_at=_now(),
-            )
+        extra = ExecutionRunEvidence(
+            execution_run_id=run.id,
+            execution_run_item_id=item.id,
+            evidence_type=evidence_type,
+            status="captured",
+            mandatory=False,
+            file_path=file_path,
+            payload=payload,
+            captured_at=_now(),
         )
+        evidence_service.record_artifact_facts(extra)
+        db.add(extra)
 
 
 async def _recount_item(db: AsyncSession, item: ExecutionRunItem) -> None:

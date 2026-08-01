@@ -14,18 +14,24 @@ aspirational. See contract Section 2.1.7.
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 
 from app.api.deps import CurrentUser, DBSession, require_permission
 from app.config import get_settings
 from app.models.automation_suite import AutomationSuite
 from app.models.execution import ExecutionRun
-from app.models.execution_command_center import ExecutionRunItem
+from app.models.execution_command_center import ExecutionRunEvidence, ExecutionRunItem
 from app.schemas.suite_execution import (
     ControlRequest,
     ControlResponse,
     StartRunRequest,
 )
-from app.services.execution_command_center import controls, orchestrator, views
+from app.services.execution_command_center import (
+    controls,
+    evidence_service,
+    orchestrator,
+    views,
+)
 from app.models.project import Project
 from app.services.rbac_service import (
     EXECUTION_CANCEL_RUN,
@@ -238,6 +244,64 @@ async def get_run_events(
     run = await _load_run(db, run_id)
     await require_permission(EXECUTION_VIEW_LIVE_RUNS, run.project_id, current_user, db)
     return await views.build_event_page(db, run, after=after, limit=limit)
+
+
+# ─── Evidence content ────────────────────────────────────────────────────────
+
+
+@router.get("/runs/{run_id}/evidence/{evidence_id}")
+async def download_run_evidence(
+    run_id: int,
+    evidence_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Stream one evidence artifact, masked where masking is possible.
+
+    Until now the command center returned evidence metadata and `views.py`
+    referred to a masked-download endpoint that did not exist, so the viewer
+    linked to nothing (AUT-014). The service decides what may be served:
+
+    * text and JSON go through the masking pass and are marked `masked`;
+    * binary artifacts cannot be masked at all, so serving them is governed by
+      `AUTOMATION_EVIDENCE_ALLOW_UNMASKED` and refused in production by default;
+    * a file whose bytes no longer match the checksum recorded at capture is
+      refused rather than streamed.
+
+    The masking outcome is persisted, which is what finally moves `sanitized`
+    off the false it was permanently stuck on.
+    """
+    run = await _load_run(db, run_id)
+    await require_permission(EXECUTION_VIEW_LIVE_RUNS, run.project_id, current_user, db)
+
+    row = await db.get(ExecutionRunEvidence, evidence_id)
+    if row is None or row.execution_run_id != run.id:
+        raise HTTPException(
+            status_code=404, detail="Evidence not found in this execution run"
+        )
+
+    try:
+        resolved = evidence_service.resolve(row)
+    except evidence_service.EvidenceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    await db.commit()
+
+    return Response(
+        content=resolved.content,
+        media_type=resolved.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{resolved.filename}"',
+            # Stated on the response so a downloaded artifact carries its own
+            # provenance rather than relying on the caller to remember it.
+            "X-Evidence-Masked": "true" if resolved.masked else "false",
+            "X-Evidence-Mask-Hits": str(resolved.mask_hits),
+            "X-Evidence-Integrity-Verified": (
+                "true" if resolved.integrity_verified else "false"
+            ),
+            "X-Evidence-Checksum-Sha256": resolved.checksum_sha256 or "",
+        },
+    )
 
 
 # ─── Controlling a run ───────────────────────────────────────────────────────

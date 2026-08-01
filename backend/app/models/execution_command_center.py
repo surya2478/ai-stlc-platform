@@ -129,7 +129,26 @@ DEFERRED_EVIDENCE_TYPES = tuple(
 )
 
 EVIDENCE_STATUSES = ("pending", "captured", "unavailable")
+
+# How an artifact stands with respect to masking.
+#   pending       captured but not yet through the pass
+#   masked        text/JSON content that the pass has rewritten
+#   not_maskable  binary (screenshot, video, trace) — no text pass applies, so
+#                 serving it is a policy decision rather than a masking one
+REDACTION_STATES = ("pending", "masked", "not_maskable")
 ASSERTION_SOURCES = ("ui", "api", "db", "oms", "billing", "provisioning", "network")
+
+# How a `passed` verdict was arrived at. The distinction matters because
+# Playwright's reporter does not attribute a result to an individual expect():
+# a green test means every declared assertion held, but that is an inference
+# from the test-level verdict, not an observation of each assertion. Recording
+# the verdict without recording how it was reached lets the evidence claim a
+# per-assertion evaluation the run never performed.
+ASSERTION_EVALUATION_SOURCES = (
+    "runner_verdict",   # inferred from the test-level pass/fail
+    "reported",         # the adapter reported this assertion individually
+    "manual",           # a human recorded the verdict
+)
 
 TRIGGER_SOURCES = ("user", "schedule", "ci_cd", "api")
 
@@ -193,6 +212,16 @@ class ExecutionRunItem(TimestampMixin, Base):
     runner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Lease/liveness. `worker_id` names the task that claimed this item;
+    # `heartbeat_at` is refreshed while it executes and cleared when it reaches a
+    # terminal state. Together they distinguish an item that is slow from one
+    # whose worker died — without them a crashed worker left rows in RUNNING
+    # forever and the command center spun against a finished run.
+    worker_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     lifecycle_state: Mapped[str] = mapped_column(
         String(20), nullable=False, default="QUEUED", server_default="QUEUED"
     )
@@ -205,6 +234,10 @@ class ExecutionRunItem(TimestampMixin, Base):
         Integer, nullable=False, default=1, server_default="1"
     )
     steps_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Not currently written by anything: no runner reports per-step progress, so
+    # this stays at zero for the life of a run. It is kept because the adapter
+    # step-telemetry work will populate it, and deliberately not exposed through
+    # the API in the meantime — see ItemOut in schemas/suite_execution.py.
     steps_completed: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
@@ -308,6 +341,17 @@ class ExecutionRunAssertion(TimestampMixin, Base):
     __tablename__ = "execution_run_assertions"
     __table_args__ = (
         CheckConstraint(_in("source", ASSERTION_SOURCES), name="ck_execution_run_assertions_source"),
+        CheckConstraint(
+            _in("evaluation_source", ASSERTION_EVALUATION_SOURCES)
+            + " OR evaluation_source IS NULL",
+            name="ck_execution_run_assertions_evaluation_source",
+        ),
+        # An evaluated assertion must say how it was evaluated; an unevaluated
+        # one must not claim a method.
+        CheckConstraint(
+            "(passed IS NULL) = (evaluation_source IS NULL)",
+            name="ck_execution_run_assertions_evaluation_pairing",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -326,6 +370,9 @@ class ExecutionRunAssertion(TimestampMixin, Base):
         Boolean, nullable=False, default=True, server_default="true"
     )
     passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # NULL alongside `passed IS NULL`. See ASSERTION_EVALUATION_SOURCES: this is
+    # what stops an inferred verdict from reading as an observed one.
+    evaluation_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     item: Mapped["ExecutionRunItem"] = relationship(
@@ -353,6 +400,16 @@ class ExecutionRunEvidence(TimestampMixin, Base):
             "status <> 'captured' OR file_path IS NOT NULL OR payload IS NOT NULL",
             name="ck_execution_run_evidence_captured_artifact",
         ),
+        CheckConstraint(
+            _in("redaction_state", REDACTION_STATES),
+            name="ck_execution_run_evidence_redaction_state",
+        ),
+        # `sanitized` is a view of `redaction_state`, not an independent claim:
+        # only content the masking pass actually rewrote may assert it.
+        CheckConstraint(
+            "sanitized = false OR redaction_state = 'masked'",
+            name="ck_execution_run_evidence_sanitized_pairing",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -377,10 +434,23 @@ class ExecutionRunEvidence(TimestampMixin, Base):
 
     file_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # SHA-256 of the bytes as captured, recorded at capture time. This is what
+    # makes an audit record verifiable: without it a stored path proves only
+    # that a file was there once, not that the file served later is the file
+    # the run produced.
+    checksum_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # False means the artifact has not been through the masking pass and must
     # not be served (Section 14.14).
     sanitized: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
+    )
+    # Why `sanitized` holds the value it does. A screenshot or trace cannot be
+    # masked by any text pass, so "not sanitized" means two very different
+    # things depending on the artifact, and collapsing them into one boolean is
+    # what made the flag unusable as a serving gate.
+    redaction_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", server_default="pending"
     )
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

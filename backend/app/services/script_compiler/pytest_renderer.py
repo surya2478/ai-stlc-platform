@@ -102,16 +102,21 @@ def _render_api_validation_lines(v: ApiValidation, index: int) -> list[str]:
     if v.expected_fields:
         lines.append(f"{var_name}_body = {var_name}.json()")
         for field, expected in v.expected_fields.items():
-            lines.append(f"assert {var_name}_body['{field}'] == {py_string_literal(expected)}")
+            # The key goes through the literal renderer rather than being
+            # spliced between raw quotes, so a field name containing a quote
+            # cannot break out of the subscript.
+            lines.append(
+                f"assert {var_name}_body[{py_string_literal(field)}] == {py_string_literal(expected)}"
+            )
     return lines
 
 
 def _render_db_validation_lines(v) -> list[str]:
     query_json = json.dumps(v.query)
-    line = f"assert_row_exists(DB_VALIDATION_ENDPOINT, {query_json})"
-    if not v.expect_found:
-        line += "  # TODO: expect_found=false is not yet rendered — verify absence manually"
-    return [line]
+    # expect_found=False previously still rendered assert_row_exists with a
+    # TODO, asserting the exact opposite of the contract (AUT-005).
+    helper = "assert_row_exists" if v.expect_found else "assert_row_absent"
+    return [f"{helper}(DB_VALIDATION_ENDPOINT, {query_json})"]
 
 
 def _render_cleanup_line(c: CleanupAction) -> str:
@@ -143,7 +148,13 @@ def render_test_module(contract: AutomationGenerationContract, *, compiler_versi
         # Sibling module materialized flat alongside this file in the
         # automation workspace (see automation_runner/workspace.py) —
         # pytest's rootdir-based collection resolves it without a package.
-        imports.append("from db_validator import assert_row_exists")
+        db_helpers = sorted(
+            {
+                "assert_row_exists" if v.expect_found else "assert_row_absent"
+                for v in contract.db_validations
+            }
+        )
+        imports.append(f"from db_validator import {', '.join(db_helpers)}")
 
     preamble: list[str] = []
     if needs_api_client or needs_db_validator:
@@ -207,9 +218,15 @@ def render_test_module(contract: AutomationGenerationContract, *, compiler_versi
     body.append("")
 
     if contract.evidence_required:
-        body.append("    # Evidence")
+        # Printing "=captured" claimed a capture that never happened — the
+        # pytest sibling of the attachEvidence(name, name) defect (AUT-005).
+        # The requirement is recorded as outstanding instead.
+        body.append("    # Evidence (declared by the contract, not yet capturable)")
         for name in contract.evidence_required:
-            body.append(f'    print(f"evidence:{name}=captured")')
+            body.append(
+                f'    print("evidence:{name}=not_captured "'
+                f' "(declared by the contract; no value binding available)")'
+            )
         body.append("")
 
     body.append("    # Cleanup")
