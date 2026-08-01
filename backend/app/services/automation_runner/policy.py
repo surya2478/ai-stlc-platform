@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from app.config import Settings, get_settings
 
-VALID_MODES = ("local", "docker")
+VALID_MODES = ("local", "docker", "executor")
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +75,22 @@ def resolve_runner_mode(
                 "worker process with the worker's own credentials. Configure "
                 "AUTOMATION_RUNNER_MODE=docker, or set "
                 "AUTOMATION_ALLOW_LOCAL_RUNNER=true to accept that risk explicitly."
+            ),
+        )
+
+    if effective == "executor" and not (
+        cfg.automation_executor_url and cfg.automation_executor_token
+    ):
+        # Falling back to a lesser mode here would silently undo the isolation
+        # the operator asked for, which is the failure this module exists to
+        # prevent.
+        return RunnerPolicyDecision(
+            mode=effective,
+            requested=requested,
+            permitted=False,
+            reason=(
+                "Runner mode 'executor' requires both AUTOMATION_EXECUTOR_URL and "
+                "AUTOMATION_EXECUTOR_TOKEN to be configured."
             ),
         )
 

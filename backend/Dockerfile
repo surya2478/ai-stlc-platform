@@ -23,6 +23,15 @@ ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
+# Browsers outside /root so a non-root process can reach them (AUT-002).
+# The image installs Playwright as root during build; with the default cache
+# location that put Chromium under /root/.cache/ms-playwright, readable only by
+# root — which is why spawned runner containers had to run as root, and why a
+# test that escaped Playwright inherited root in its container. Both the Python
+# and the npm Playwright installs below honour this variable, so one setting
+# relocates every browser.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 WORKDIR /app
 
 COPY requirements.txt .
@@ -69,7 +78,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @playwright/test@1.44.0 \
-    && npx --yes playwright install chromium
+    && npx --yes playwright install chromium \
+    # World-readable and traversable: the runner container executes as an
+    # unprivileged uid and must still be able to launch Chromium.
+    && chmod -R a+rX /ms-playwright
 
 # Docker CLI (client only, no daemon) — Playwright AI Studio's "docker"
 # runner mode spawns ephemeral sibling runner containers through the host

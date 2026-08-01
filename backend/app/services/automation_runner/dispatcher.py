@@ -23,6 +23,7 @@ from app.services.automation_runner.docker_playwright import DockerPlaywrightRun
 from app.services.automation_runner.local_playwright import LocalPlaywrightRunner
 from app.services.automation_runner.local_pytest import LocalPytestRunner
 from app.services.automation_runner.policy import resolve_runner_mode
+from app.services.automation_runner.remote_executor import RemoteExecutorRunner
 
 
 _RUNNER_BY_FRAMEWORK: dict[str, AutomationRunner] = {
@@ -37,13 +38,32 @@ _DOCKER_RUNNER_BY_FRAMEWORK: dict[str, AutomationRunner] = {
     "playwright": DockerPlaywrightRunner(),
 }
 
+# Executor mode brokers the same container through a service that owns the
+# Docker socket, so the worker does not have to (AUT-002).
+_EXECUTOR_RUNNER_BY_FRAMEWORK: dict[str, AutomationRunner] = {
+    "playwright": RemoteExecutorRunner(),
+}
+
+_RUNNERS_BY_MODE: dict[str, dict[str, AutomationRunner]] = {
+    "docker": _DOCKER_RUNNER_BY_FRAMEWORK,
+    "executor": _EXECUTOR_RUNNER_BY_FRAMEWORK,
+}
+
 
 def get_runner_for_framework(framework: str, runner_mode: str | None = None) -> AutomationRunner | None:
+    """Resolve the runner, never downgrading the isolation that was asked for.
+
+    An isolated mode with no runner for this framework returns None so the
+    caller reports a blocked framework. Falling back to the local subprocess
+    would run untrusted code inside the worker precisely when the operator had
+    asked for it to be contained — the same silent-downgrade defect as AUT-018,
+    one level down.
+    """
     key = (framework or "").lower()
-    if (runner_mode or "").lower() == "docker":
-        docker_runner = _DOCKER_RUNNER_BY_FRAMEWORK.get(key)
-        if docker_runner is not None:
-            return docker_runner
+    mode = (runner_mode or "").lower()
+    mode_runners = _RUNNERS_BY_MODE.get(mode)
+    if mode_runners is not None:
+        return mode_runners.get(key)
     return _RUNNER_BY_FRAMEWORK.get(key)
 
 
@@ -80,8 +100,15 @@ async def run_script_for_execution(
             duration_seconds=0.0,
             log_path=None,
             error_message=(
-                f"No runner registered for framework '{framework}'. "
-                "Supported frameworks: playwright, pytest."
+                f"No '{decision.mode}' runner is registered for framework "
+                f"'{framework}'. Running it locally instead would put untrusted "
+                "code back inside the worker, so it is blocked rather than "
+                "downgraded."
+                if decision.mode in _RUNNERS_BY_MODE
+                else (
+                    f"No runner registered for framework '{framework}'. "
+                    "Supported frameworks: playwright, pytest."
+                )
             ),
             metadata={"runner": "none", **decision.as_metadata()},
         )

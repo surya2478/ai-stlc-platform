@@ -16,6 +16,7 @@ just the `docker run` client process would leave the container running).
 from __future__ import annotations
 
 import asyncio
+import os
 import shlex
 import shutil
 import subprocess
@@ -52,6 +53,119 @@ def docker_available() -> tuple[bool, str]:
     return True, f"docker server {proc.stdout.strip()}"
 
 
+def _sandbox_args() -> list[str]:
+    """Confinement flags for a spawned runner container (AUT-002).
+
+    The container executes generated or user-edited test code, which is
+    untrusted by definition. Before this it ran as root with every capability,
+    a writable root filesystem, no resource ceiling and no privilege-escalation
+    guard — so a script that broke out of Playwright had the same authority as
+    the runner image itself.
+
+    Each flag is separately configurable rather than hidden behind one
+    "sandbox on/off" switch: loosening a specific control should be a visible,
+    individually justified decision, not a single toggle that silently removes
+    all of them.
+
+    What this does NOT fix: the worker still reaches the daemon through the
+    host socket, so this hardens the sibling container without removing the
+    delegation that lets it be created at all. See AUTOMATION_RUNNER.md.
+    """
+    args: list[str] = []
+
+    if settings.automation_docker_run_as_root:
+        # Retained as an escape hatch for images built before
+        # PLAYWRIGHT_BROWSERS_PATH moved out of /root, where a non-root process
+        # cannot reach Chromium at all.
+        args += ["--user", "root"]
+    else:
+        args += ["--user", settings.automation_docker_run_as_user]
+
+    if settings.automation_docker_drop_capabilities:
+        # A browser test needs no Linux capabilities whatsoever.
+        args += ["--cap-drop", "ALL"]
+
+    if settings.automation_docker_no_new_privileges:
+        # Blocks setuid binaries inside the image from regaining privilege.
+        args += ["--security-opt", "no-new-privileges"]
+
+    if settings.automation_docker_seccomp_profile:
+        args += ["--security-opt", f"seccomp={settings.automation_docker_seccomp_profile}"]
+    if settings.automation_docker_apparmor_profile:
+        args += ["--security-opt", f"apparmor={settings.automation_docker_apparmor_profile}"]
+
+    if settings.automation_docker_read_only_rootfs:
+        # Chromium and npx both need scratch space, and with a read-only root
+        # they must get it somewhere that does not persist: a tmpfs is discarded
+        # with the container, so nothing a script writes outlives its own run.
+        args += [
+            "--read-only",
+            "--tmpfs",
+            f"/tmp:rw,noexec,nosuid,size={settings.automation_docker_tmpfs_size_mb}m",
+        ]
+
+    if settings.automation_docker_memory_limit:
+        args += ["--memory", settings.automation_docker_memory_limit]
+    if settings.automation_docker_cpu_limit:
+        args += ["--cpus", settings.automation_docker_cpu_limit]
+    if settings.automation_docker_pids_limit:
+        # A fork bomb in generated code should exhaust its own container, not
+        # the host's process table.
+        args += ["--pids-limit", str(settings.automation_docker_pids_limit)]
+
+    return args
+
+
+def _runner_uid_gid() -> tuple[int, int] | None:
+    """The uid:gid the container will run as, or None when it runs as root."""
+    if settings.automation_docker_run_as_root:
+        return None
+    raw = (settings.automation_docker_run_as_user or "").strip()
+    try:
+        uid_str, _, gid_str = raw.partition(":")
+        return int(uid_str), int(gid_str or uid_str)
+    except ValueError:
+        return None
+
+
+def _prepare_workspace_ownership(workspace_dir: Path) -> str | None:
+    """Make the workspace writable by the unprivileged runner uid.
+
+    The worker creates workspaces as root, and Playwright writes `test-results/`
+    and its reporter output back into that directory. A non-root container
+    therefore fails with EACCES partway through the run — after Chromium has
+    launched, so the failure surfaces as a confusing "0 tests" rather than as a
+    permissions problem.
+
+    Returns None on success, or a message explaining why the run cannot proceed.
+    Chowning requires the worker to be privileged; when it is not, the honest
+    answer is to refuse up front rather than let the run fail obscurely.
+    """
+    target = _runner_uid_gid()
+    if target is None:
+        return None
+    if not hasattr(os, "chown"):  # non-POSIX host; only reachable in tests
+        return None
+
+    uid, gid = target
+    try:
+        for path in [workspace_dir, *workspace_dir.rglob("*")]:
+            # Symlinks (workspace/node_modules → the npm global root) must not
+            # be followed: chowning through one would rewrite the image's own
+            # module tree.
+            if path.is_symlink():
+                continue
+            os.chown(path, uid, gid)
+    except (OSError, PermissionError) as exc:
+        return (
+            f"The runner container is configured to execute as {uid}:{gid}, but the "
+            f"workspace could not be given to that user ({exc}). Either run the "
+            "worker with enough privilege to chown its workspaces, or set "
+            "AUTOMATION_DOCKER_RUN_AS_ROOT=true to accept an unconfined runner."
+        )
+    return None
+
+
 class DockerPlaywrightRunner(LocalPlaywrightRunner):
     name = "docker_playwright"
 
@@ -86,14 +200,19 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
                 metadata={"runner": self.name},
             )
 
+        ownership_error = _prepare_workspace_ownership(workspace_dir)
+        if ownership_error:
+            return RunnerResult(
+                run_status="failed", results=[], duration_seconds=0.0, log_path=None,
+                error_message=ownership_error,
+                metadata={"runner": self.name},
+            )
+
         container_name = f"stlc-pw-{uuid.uuid4().hex[:12]}"
         cmd = [
             "docker", "run", "--rm",
             "--name", container_name,
-            # Compose runs the worker as root (browsers were provisioned under
-            # /root/.cache at build time); spawned containers must match or
-            # Chromium won't resolve.
-            "--user", "root",
+            *_sandbox_args(),
             "-v", f"{settings.automation_docker_volume}:{settings.automation_docker_storage_mount}",
             "-w", workspace_dir.resolve().as_posix(),
             "-e", f"AUTOMATION_ENV={environment or ''}",

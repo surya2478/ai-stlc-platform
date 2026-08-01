@@ -73,17 +73,55 @@ services:
     volumes:
       - stlc_storage:/app/storage
       - .:/repo
-      # Playwright AI Studio "docker" runner mode: the worker spawns
-      # ephemeral sibling runner containers through the host's Docker
-      # daemon. Runner containers mount the same stlc_storage volume, so
-      # script workspaces resolve at identical paths inside them.
-      - /var/run/docker.sock:/var/run/docker.sock
+      # The Docker socket is deliberately NOT mounted here (AUT-002). Daemon
+      # access is host-level authority, and the worker — which runs
+      # LLM-generated code paths and holds database, Redis and LLM credentials —
+      # is the worst process in the deployment to hold it. Runner containers are
+      # created by the `runner-executor` service instead; set
+      # AUTOMATION_RUNNER_MODE=executor to use it.
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
     command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=4
+
+  # ── Runner Executor ─────────────────────────────────────────────────────────
+  # The only service that touches the Docker daemon (AUT-002). It exposes one
+  # typed operation — run this materialized workspace as a test — and builds the
+  # sandbox flags itself, so a caller cannot request a privileged container, a
+  # different image, or an arbitrary mount.
+  #
+  # Deliberately credential-free: no DATABASE_URL, no REDIS_URL, no LLM keys.
+  # The only secret it needs is the token proving a request came from inside the
+  # deployment. It is not published to the host; only the compose network can
+  # reach it.
+  runner-executor:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: stlc_runner_executor
+    restart: unless-stopped
+    # Root is load-bearing here and nowhere else: the executor chowns each
+    # workspace to the unprivileged uid the runner container executes as.
+    user: "root"
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-change-me-executor-placeholder-value}
+      AUTOMATION_EXECUTOR_TOKEN: ${AUTOMATION_EXECUTOR_TOKEN:?set AUTOMATION_EXECUTOR_TOKEN in .env}
+      AUTOMATION_DOCKER_IMAGE: ${AUTOMATION_DOCKER_IMAGE:-stlc-platform-worker}
+      AUTOMATION_DOCKER_VOLUME: ${AUTOMATION_DOCKER_VOLUME:-stlc-platform_stlc_storage}
+      AUTOMATION_DOCKER_STORAGE_MOUNT: ${AUTOMATION_DOCKER_STORAGE_MOUNT:-/app/storage}
+      AUTOMATION_DOCKER_NETWORK: ${AUTOMATION_DOCKER_NETWORK:-}
+      DB_POOL_ENABLED: "false"
+    volumes:
+      # Same volume at the same path as the worker and the spawned runners, so
+      # a workspace path means the same thing in all three.
+      - stlc_storage:/app/storage
+      - /var/run/docker.sock:/var/run/docker.sock
+    expose:
+      - "8100"
+    command: uvicorn app.executor.main:app --host 0.0.0.0 --port 8100
 
 
   # ── Next.js Frontend ────────────────────────────────────────────────────────

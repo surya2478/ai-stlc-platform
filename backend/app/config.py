@@ -179,7 +179,14 @@ class Settings(BaseSettings):
     # "docker" = ephemeral sibling containers via the Docker socket — requires
     # /var/run/docker.sock mounted into the worker and the docker CLI in its
     # image (see docker-compose.yml + backend/Dockerfile).
-    automation_runner_mode: Literal["local", "docker"] = "local"
+    # "executor" is the hardened path: the worker holds no Docker socket and
+    # asks a separate, credential-free service to run the bundle. "docker" keeps
+    # the socket in the worker and is retained for single-host development.
+    automation_runner_mode: Literal["local", "docker", "executor"] = "local"
+    # Where the runner executor lives, and the shared secret proving a request
+    # came from inside the deployment. Both are required for executor mode.
+    automation_executor_url: str = ""
+    automation_executor_token: str = ""
     # Image for spawned runner containers. Defaults to the worker's own image
     # (same Node + @playwright/test + Chromium the local runner uses — exact
     # version parity, nothing downloaded at container start). Compose v2 names
@@ -196,6 +203,33 @@ class Settings(BaseSettings):
     automation_docker_network: str = ""
     # Max concurrently running script containers per batch run.
     studio_max_parallel: int = 4
+
+    # ── Runner container sandbox (Wave 4 / AUT-002) ──────────────────────────
+    # Spawned runner containers execute generated or user-edited code, which is
+    # untrusted by definition. These bound what that code can reach. Every one
+    # is applied by `docker_playwright._sandbox_args`; the defaults are the
+    # hardened values, and each is loosened individually rather than by a single
+    # "disable sandbox" switch, so weakening one is a deliberate, visible act.
+    #
+    # Non-root requires an image whose Playwright browsers live outside /root —
+    # backend/Dockerfile sets PLAYWRIGHT_BROWSERS_PATH=/ms-playwright for this.
+    # An older image needs a rebuild before this can be false→true safely.
+    automation_docker_run_as_root: bool = False
+    # UID:GID for the runner process. Matches the appuser the image creates.
+    automation_docker_run_as_user: str = "10001:10001"
+    automation_docker_drop_capabilities: bool = True
+    automation_docker_no_new_privileges: bool = True
+    # Read-only root filesystem. Playwright still needs somewhere to write, so a
+    # tmpfs is mounted at /tmp and the workspace mount stays writable.
+    automation_docker_read_only_rootfs: bool = True
+    automation_docker_tmpfs_size_mb: int = 512
+    automation_docker_memory_limit: str = "2g"
+    automation_docker_cpu_limit: str = "2.0"
+    automation_docker_pids_limit: int = 512
+    # Optional seccomp/AppArmor profile paths passed to --security-opt. Empty
+    # leaves docker's defaults, which are already non-trivial.
+    automation_docker_seccomp_profile: str = ""
+    automation_docker_apparmor_profile: str = ""
 
     # ── Automation Runner Policy (Wave 1 / P0-01) ────────────────────────────
     # The runner mode is *server-owned*. A caller may request a mode, but

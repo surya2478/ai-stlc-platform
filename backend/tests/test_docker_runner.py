@@ -32,8 +32,12 @@ def test_dispatcher_defaults_to_local_runner():
     assert not isinstance(get_runner_for_framework("playwright", "local"), DockerPlaywrightRunner)
 
 
-def test_dispatcher_docker_pytest_falls_back_to_local():
-    assert isinstance(get_runner_for_framework("pytest", "docker"), LocalPytestRunner)
+def test_dispatcher_refuses_pytest_in_docker_mode_rather_than_downgrading():
+    """There is no containerized pytest runner. Falling back to the local
+    subprocess would run untrusted code inside the worker exactly when the
+    operator asked for it to be contained (AUT-002), so the framework is
+    blocked instead."""
+    assert get_runner_for_framework("pytest", "docker") is None
 
 
 # ── DockerPlaywrightRunner ───────────────────────────────────────────────────
@@ -120,7 +124,9 @@ def test_docker_runner_builds_container_command_and_parses_results(monkeypatch, 
 
     cmd = captured["cmd"]
     assert cmd[:3] == ["docker", "run", "--rm"]
-    assert "--user" in cmd and cmd[cmd.index("--user") + 1] == "root"
+    # Non-root since AUT-002; the sandbox flags themselves are asserted in
+    # test_runner_container_sandbox.py.
+    assert "--user" in cmd and cmd[cmd.index("--user") + 1] == "10001:10001"
     assert "stlc-platform_stlc_storage:" + str(tmp_path) in " ".join(cmd)
     assert "--network" in cmd and cmd[cmd.index("--network") + 1] == "stlc-net"
     assert "stlc-platform-worker" in cmd
