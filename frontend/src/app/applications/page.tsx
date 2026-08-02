@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle, Boxes, ChevronRight, CircleDot, Download, HeartPulse,
-  Layers3, Loader2, Plug, Plus, RefreshCw, Search, ShieldCheck, X,
+  Layers3, Loader2, Plug, Plus, Radar, RefreshCw, Search, ShieldCheck, X,
 } from "lucide-react";
 import {
   applicationsApi,
@@ -25,6 +25,8 @@ import { ApplicationInspector } from "@/components/applications/ApplicationInspe
 import { ApplicationDrawer } from "@/components/applications/ApplicationDrawer";
 import { ApplicationModelView } from "@/components/applications/ApplicationModelView";
 import { NetworkExplorerView } from "@/components/applications/NetworkExplorerView";
+import { ApplicationsTabs } from "@/components/applications/ApplicationsTabs";
+import { DiscoverySessionView } from "@/components/discovery/DiscoverySessionView";
 import {
   applicationHasEnvironment,
   applicationHasProductMapping,
@@ -292,26 +294,50 @@ function ApplicationsContent() {
     URL.revokeObjectURL(url);
   }
 
-  if (searchParams.get("view") === "model") {
+  const view = searchParams.get("view");
+  const applicationParam = Number(searchParams.get("application")) || null;
+
+  if (view === "discovery") {
+    if (!selectedProject) {
+      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Live Discovery Session.</div>;
+    }
+    return (
+      <div className="min-h-full space-y-4 pb-8">
+        <ApplicationsTabs active="discovery" projectId={selectedProject} />
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-2.5">
+            <Radar className="h-6 w-6 text-[#1b59f8]" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Live Discovery Session</h1>
+            <p className="mt-1 text-xs text-slate-500">Observe, record and ground application behaviour with governed evidence.</p>
+          </div>
+        </div>
+        <DiscoverySessionView projectId={selectedProject} />
+      </div>
+    );
+  }
+
+  if (view === "model") {
     if (!selectedProject) {
       return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Application Model.</div>;
     }
-    const applicationParam = Number(searchParams.get("application")) || null;
     const modelParam = Number(searchParams.get("model")) || null;
     return (
-      <div className="min-h-full pb-8">
+      <div className="min-h-full space-y-4 pb-8">
+        <ApplicationsTabs active="model" projectId={selectedProject} />
         <ApplicationModelView projectId={selectedProject} applicationId={applicationParam} modelId={modelParam} />
       </div>
     );
   }
 
-  if (searchParams.get("view") === "api-network") {
+  if (view === "api-network") {
     if (!selectedProject) {
       return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open API &amp; Network Explorer.</div>;
     }
-    const applicationParam = Number(searchParams.get("application")) || null;
     return (
-      <div className="min-h-full pb-8">
+      <div className="min-h-full space-y-4 pb-8">
+        <ApplicationsTabs active="api-network" projectId={selectedProject} />
         <NetworkExplorerView projectId={selectedProject} applicationId={applicationParam} />
       </div>
     );
@@ -323,10 +349,12 @@ function ApplicationsContent() {
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           <span>e&amp; STLC</span>
           <ChevronRight className="h-3 w-3 text-slate-300" />
-          <span>Application Discovery</span>
+          <span>Applications</span>
           <ChevronRight className="h-3 w-3 text-slate-300" />
           <span className="text-[#1b59f8]">Application Registry</span>
         </div>
+
+        <ApplicationsTabs active="registry" projectId={selectedProject} />
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">

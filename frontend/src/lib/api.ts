@@ -350,6 +350,31 @@ export interface ProjectCoverageSummary {
   };
 }
 
+/** One pair similar enough to need a reviewer's decision. Candidates, not
+ *  conclusions — the backend never merges or deletes on this basis. */
+export interface RequirementDuplicatePair {
+  left_id: number;
+  right_id: number;
+  left_display_id: string;
+  right_display_id: string;
+  score: number;
+  title_similarity: number;
+  criteria_similarity: number;
+  description_similarity: number;
+  shared_terms: string[];
+  /** Which signal fired, in reviewer's terms — shown instead of a bare score. */
+  reason: string;
+}
+
+export interface RequirementDuplicateReport {
+  threshold: number;
+  pairs: RequirementDuplicatePair[];
+  /** Connected components: one subject to settle, not N pairwise decisions. */
+  groups: number[][];
+  duplicate_requirement_ids: number[];
+  evaluated_count: number;
+}
+
 export interface RequirementStats {
   total: number;
   approved: number;
@@ -1195,6 +1220,13 @@ export const requirementsApi = {
     api.get<RequirementCoverage>(`/requirements/${reqId}/coverage`),
   coverageSummary: (projectId: number) =>
     api.get<ProjectCoverageSummary>(`/requirements/project/${projectId}/coverage-summary`),
+  // Scored server-side over every requirement in the project, not just the page
+  // the client happens to have loaded.
+  duplicates: (projectId: number, threshold?: number) =>
+    api.get<RequirementDuplicateReport>(
+      `/requirements/project/${projectId}/duplicates`
+        + (threshold === undefined ? "" : `?threshold=${threshold}`)
+    ),
 };
 
 // ── Test Plans ────────────────────────────────────────────────────────────────
@@ -3606,6 +3638,10 @@ export interface ApplicationModelKpis {
 export interface ApplicationModelDetail extends ApplicationModel {
   kpis: ApplicationModelKpis;
   stale: boolean;
+  /** Whether this deployment requires a different person to approve than the
+   *  one who built. The server enforces it regardless; this only lets the UI
+   *  state the rule actually in force instead of assuming it. */
+  requires_separate_approver: boolean;
 }
 
 export type ApplicationModelNodeType =

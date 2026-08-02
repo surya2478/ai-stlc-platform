@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Suspense } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   FileText, Upload, Bot, CheckCircle, XCircle, RefreshCw, AlertTriangle, Star, Trash2, X, Plug, Search, Download, Plus, Settings, ChevronRight, Loader2, ShieldCheck, Clock, Globe, GitBranch, BarChart2, ChevronDown, ClipboardPaste, Braces, Layers3, CircleDot, Link2, Filter, Sparkles, ArrowRight
@@ -15,6 +16,9 @@ import {
   traceabilityApi,
   exportApi,
   type Requirement,
+  applicationsApi,
+  type ProjectApplication,
+  type RequirementDuplicateReport,
   type RequirementQualityReview,
   type RequirementCoverage,
   type RequirementTraceabilityChain,
@@ -34,6 +38,7 @@ import {
 import { AuditStamp } from "@/components/ui/AuditStamp";
 import { useUserDirectory } from "@/hooks/useUserDirectory";
 import { cn } from "@/lib/utils";
+import { applicationsHref } from "@/components/applications/ApplicationsTabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -310,7 +315,11 @@ function getRequirementQualityScore(req: Requirement): number | null {
   return value <= 5 ? Math.round(value * 20) : clampNumber(value, 0, 100);
 }
 
-function getEditableAnalysisValidationIssues(req: Requirement, isDuplicate: boolean): string[] {
+function getEditableAnalysisValidationIssues(
+  req: Requirement,
+  isDuplicate: boolean,
+  duplicateReason?: string,
+): string[] {
   const meta = metadataRecord(req);
   const qualityReview = (meta.quality_review || {}) as Record<string, any>;
   const conflictCount = asTextList(qualityReview.conflicts).length
@@ -320,7 +329,11 @@ function getEditableAnalysisValidationIssues(req: Requirement, isDuplicate: bool
 
   return [
     ...blockingMissingInfo(req.missing_information).map((item) => `Missing information: ${item}`),
-    ...(isDuplicate ? ["Potential duplicate requirement requires reviewer decision."] : []),
+    // Naming the counterpart and the signal turns "resolve this" into something
+    // a reviewer can actually act on without opening every other requirement.
+    ...(isDuplicate
+      ? [`Potential duplicate requires reviewer decision. ${duplicateReason ?? ""}`.trim()]
+      : []),
     ...(conflictCount > 0 ? ["Potential source conflict requires clarification."] : []),
     ...(!taxonomyReady ? ["Taxonomy classification is incomplete."] : []),
   ];
@@ -646,6 +659,9 @@ function RequirementsContent() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [duplicateReport, setDuplicateReport] = useState<RequirementDuplicateReport | null>(null);
+  // null = registry not loaded (say nothing); [] = loaded and genuinely empty.
+  const [registeredApplications, setRegisteredApplications] = useState<ProjectApplication[] | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
   const [agentRunning, setAgentRunning] = useState(false);
@@ -791,12 +807,22 @@ function RequirementsContent() {
     setLoadError(null);
     setLoading(true);
     try {
-      const [reqRes, docRes] = await Promise.all([
+      const [reqRes, docRes, dupRes, appsRes] = await Promise.all([
         requirementsApi.list(selectedProject),
         documentsApi.list(selectedProject),
+        // Detection is server-side and project-wide. A failure here must not
+        // blank the workspace, so it degrades to "no candidates known" rather
+        // than taking the whole load down with it.
+        requirementsApi.duplicates(selectedProject).catch(() => null),
+        // Only to tell the user when portal URL analysis has no registered
+        // application to resolve a base URL against. Same degrade-quietly rule:
+        // an unreachable registry must not stop requirements loading.
+        applicationsApi.getForProject(selectedProject).catch(() => null),
       ]);
       setRequirements(reqRes.data);
       setDocuments(docRes.data);
+      setDuplicateReport(dupRes?.data ?? null);
+      setRegisteredApplications(appsRes?.data.applications ?? null);
     } catch (e: any) {
       setLoadError(e?.response?.data?.detail || e?.message || "Failed to load requirements data.");
     } finally {
@@ -1805,19 +1831,24 @@ function RequirementsContent() {
   const selectedProjectRecord = projects.find((project) => project.id === selectedProject);
   const selectedProjectPpmId = selectedProjectRecord?.ppm_id || "Not set";
 
-  const duplicateRequirementIds = useMemo(() => {
-    const byTitle = requirements.reduce<Record<string, Requirement[]>>((groups, requirement) => {
-      const key = requirement.title.trim().toLowerCase();
-      if (!key) return groups;
-      groups[key] = [...(groups[key] || []), requirement];
-      return groups;
-    }, {});
-    return new Set(
-      Object.values(byTitle)
-        .filter((items) => items.length > 1)
-        .flatMap((items) => items.map((item) => item.id))
-    );
-  }, [requirements]);
+  // Server-side, scored over requirement content. This was previously exact
+  // lowercased title equality computed here in the browser, which found nothing
+  // on the case that actually produces duplicates — a portal crawl deriving the
+  // same fact from every page, titled differently each time.
+  const duplicateRequirementIds = useMemo(
+    () => new Set(duplicateReport?.duplicate_requirement_ids ?? []),
+    [duplicateReport]
+  );
+
+  // Why a given requirement was flagged, so the drawer can say more than "1".
+  const duplicateReasonById = useMemo(() => {
+    const byId = new Map<number, string>();
+    for (const pair of duplicateReport?.pairs ?? []) {
+      if (!byId.has(pair.left_id)) byId.set(pair.left_id, `${pair.reason} Similar to ${pair.right_display_id}.`);
+      if (!byId.has(pair.right_id)) byId.set(pair.right_id, `${pair.reason} Similar to ${pair.left_display_id}.`);
+    }
+    return byId;
+  }, [duplicateReport]);
 
   const analysisRows = useMemo<AnalysisRow[]>(() => {
     return requirementsByStage.analysis.map((requirement) => {
@@ -1852,7 +1883,9 @@ function RequirementsContent() {
         ...(!isQualityStale && ["needs_revision", "fail"].includes((requirement.quality_verdict || "").toLowerCase())
           ? ["Quality analysis must reach a Pass verdict before traceability. Revise the requirement and re-run Analysis."]
           : []),
-        ...getEditableAnalysisValidationIssues(requirement, duplicateCount > 0),
+        ...getEditableAnalysisValidationIssues(
+          requirement, duplicateCount > 0, duplicateReasonById.get(requirement.id),
+        ),
       ];
 
       return {
@@ -1872,7 +1905,7 @@ function RequirementsContent() {
         blockers,
       };
     });
-  }, [duplicateRequirementIds, requirementsByStage.analysis, resolveUser, selectedProjectPpmId]);
+  }, [duplicateReasonById, duplicateRequirementIds, requirementsByStage.analysis, resolveUser, selectedProjectPpmId]);
 
   const filteredAnalysisRows = useMemo(() => {
     const query = analysisSearch.trim().toLowerCase();
@@ -2154,12 +2187,11 @@ function RequirementsContent() {
   // UI-006 intake-governance metrics. Values are derived from persisted sources and
   // requirements so their ownership stays deterministic and auditable.
   const stats = useMemo(() => {
-    const titleCounts = requirements.reduce<Record<string, number>>((counts, requirement) => {
-      const key = requirement.title.trim().toLowerCase();
-      if (key) counts[key] = (counts[key] || 0) + 1;
-      return counts;
-    }, {});
-    const duplicateCandidates = Object.values(titleCounts).reduce((count, occurrences) => count + Math.max(0, occurrences - 1), 0);
+    // Requirements involved in at least one candidate pair. Counting
+    // requirements rather than pairs matches what the reviewer acts on: five
+    // restatements of one fact are five records to settle, not ten pairings.
+    const duplicateCandidates = duplicateReport?.duplicate_requirement_ids.length ?? 0;
+    const duplicateGroups = duplicateReport?.groups.length ?? 0;
     const ready = intakeSources.filter((source) => source.status === "completed" && source.validationIssues.length === 0 && source.requirementIds.length > 0).length;
     const processing = intakeSources.filter((source) => source.status === "processing").length;
     const blocked = intakeSources.filter((source) => source.status === "blocked").length;
@@ -2169,10 +2201,10 @@ function RequirementsContent() {
       { title: "Ready for Analysis", icon: CheckCircle, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: ready.toLocaleString(), sublabel: "Ready", footer: "Validated with extracted content" },
       { title: "Processing", icon: RefreshCw, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: processing.toLocaleString(), sublabel: "Active", footer: "AI intake jobs in progress" },
       { title: "Blocked", icon: AlertTriangle, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: blocked.toLocaleString(), sublabel: "Sources", footer: "Validation or processing issues" },
-      { title: "Duplicate Candidates", icon: CircleDot, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: duplicateCandidates.toLocaleString(), sublabel: "Review", footer: "Title-based candidate matches" },
+      { title: "Duplicate Candidates", icon: CircleDot, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: duplicateCandidates.toLocaleString(), sublabel: "Review", footer: duplicateReport ? `${duplicateGroups} subject${duplicateGroups === 1 ? "" : "s"} · matched on title and acceptance criteria` : "Candidate matching unavailable" },
       { title: "Requirements Extracted", icon: FileText, iconBg: "bg-cyan-50 border-cyan-100", iconColor: "text-cyan-600", value: requirements.length.toLocaleString(), sublabel: "Records", footer: "All extracted requirement records" },
     ];
-  }, [intakeSources, requirements]);
+  }, [duplicateReport, intakeSources, requirements]);
 
   const selectedJiraConnectionRecord = jiraConnections.find((c) => c.id === selectedJiraConnection);
 
@@ -3215,7 +3247,26 @@ function RequirementsContent() {
                     <Bot className="h-3.5 w-3.5 mr-1" />Analyze URL
                   </Button>
                 </div>
-                <p className="text-[10px] text-slate-400 font-semibold">Public/reachable pages only · same-origin crawling · max 5 pages · internal/private addresses are blocked</p>
+                <p className="text-[10px] text-slate-400 font-semibold">Public/reachable pages only · same-origin crawling · max 5 pages · internal/private addresses are blocked unless the host is explicitly allowed</p>
+                {/* Registering an application is a prerequisite here and nowhere
+                    says so: the derivation step resolves navigation targets
+                    against the project's configured base URLs, so with an empty
+                    registry it can only report destinations as unknown. Shown
+                    only once the registry has actually loaded and come back
+                    empty — never while it is still unknown. */}
+                {registeredApplications !== null && registeredApplications.length === 0 && (
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <p className="text-[10px] font-semibold text-amber-800">
+                      No application is registered for this project. Analysis will still run, but navigation
+                      destinations cannot be resolved against a known base URL and will be reported as missing.{" "}
+                      <Link href={applicationsHref("registry", selectedProject)} className="font-bold underline">
+                        Register an application
+                      </Link>
+                      .
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Requirements generated from URLs */}

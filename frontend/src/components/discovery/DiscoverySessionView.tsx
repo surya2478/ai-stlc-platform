@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import {
   AlertTriangle, CheckCircle2, ChevronRight, Clock, Loader2, Pause, Play,
   Radar, RefreshCw, Square, StopCircle, XCircle,
 } from "lucide-react";
-import { applicationsApi, type DiscoveryLocatorEvidence, type ProjectApplication } from "@/lib/api";
+import { applicationsApi, type DiscoveryAction, type DiscoveryLocatorEvidence, type ProjectApplication } from "@/lib/api";
 import {
   useCaptureContent, useCorrectDiscoveryAction, useCreateDiscoverySession, useCurrentStep, useDiscoveryActions,
   useDiscoveryActivity, useDiscoveryCaptures, useDiscoveryCheckpoints, useDiscoveryReadiness, useDiscoverySession,
@@ -31,6 +32,38 @@ const STATE_BADGE: Record<string, "success" | "warning" | "destructive" | "info"
   COMPLETED: "success", CANCELLED: "secondary", FAILED: "destructive", EMERGENCY_STOPPED: "destructive",
 };
 
+/**
+ * The twelve persisted states, as the four a user actually decides between.
+ *
+ * PAUSE_REQUESTED, RESUMING and STOP_REQUESTED are transitional bookkeeping —
+ * the session is between two places and the user has no decision to make until
+ * it arrives. Showing them made the session look like it had twelve modes when
+ * it has four, and made a request-then-settle transition read as an error.
+ *
+ * Failure and cancellation stay distinct rather than folding into "Finished":
+ * a session that failed did not finish, and saying otherwise would hide the
+ * one outcome most worth noticing. The exact state is always still shown
+ * beside this, so nothing is concealed from someone debugging.
+ */
+const SESSION_PHASE: Record<string, { label: string; hint: string }> = {
+  NOT_STARTED: { label: "Not started", hint: "Evaluate readiness, then start." },
+  INITIALISING: { label: "Recording", hint: "Opening the browser session." },
+  RECORDING: { label: "Recording", hint: "Performing and capturing each step." },
+  RESUMING: { label: "Recording", hint: "Picking up from the last checkpoint." },
+  PAUSE_REQUESTED: { label: "Paused", hint: "Finishing the current step first." },
+  PAUSED: { label: "Paused", hint: "Resume, or stop to finish the session." },
+  STOP_REQUESTED: { label: "Paused", hint: "Finishing the current step first." },
+  STOPPED: { label: "Paused", hint: "Complete the session to build a model from it." },
+  COMPLETED: { label: "Finished", hint: "Ready to build an Application Model." },
+  CANCELLED: { label: "Cancelled", hint: "Ended without producing evidence." },
+  FAILED: { label: "Failed", hint: "See the failure detail below." },
+  EMERGENCY_STOPPED: { label: "Failed", hint: "Stopped immediately on request." },
+};
+
+function sessionPhase(status: string) {
+  return SESSION_PHASE[status] ?? { label: status, hint: "" };
+}
+
 const INSPECTOR_TABS = ["Live State", "Actions", "Checkpoints", "Activity"] as const;
 type InspectorTab = (typeof INSPECTOR_TABS)[number];
 
@@ -40,6 +73,100 @@ const FREE_ACTION_FAMILIES = [
   { value: "input", label: "Type" },
   { value: "read", label: "Observe" },
 ] as const;
+
+/**
+ * What this session actually produced, on the screen where the work happened.
+ *
+ * The value of a discovery session only became visible three modules later, as
+ * `MODEL_NOT_APPROVED` in a suite gate — so there was no way to tell a session
+ * that captured real structure from one that captured nothing until long after
+ * the fact. This answers "did that work?" immediately.
+ *
+ * Every number here is counted from persisted actions, never assumed: a screen
+ * appears because an action recorded landing on it.
+ */
+function DiscoveryFindings({
+  actions,
+  status,
+  projectId,
+  applicationId,
+}: {
+  actions: DiscoveryAction[];
+  status: string;
+  projectId: number;
+  applicationId: number | null;
+}) {
+  const included = actions.filter((a) => a.inclusion_state !== "excluded");
+  const screens = Array.from(
+    new Set(included.map((a) => a.target_screen_ref).filter((s): s is string => Boolean(s)))
+  );
+  const performed = included.filter((a) => a.action_family !== "read");
+  const observed = included.filter((a) => a.action_family === "read");
+  const withIssues = included.filter((a) => a.issue_note);
+  const grounded = included.filter((a) => a.locator_confidence != null);
+
+  if (!included.length) return null;
+
+  // A session that recorded no screen cannot produce a model — the Application
+  // Model build now refuses it. Saying so here saves a round trip through two
+  // more screens to find that out.
+  const blocked = screens.length === 0;
+  const finished = ["COMPLETED", "STOPPED", "CANCELLED", "FAILED", "EMERGENCY_STOPPED"].includes(status);
+
+  return (
+    <Card className={blocked ? "border-amber-200 bg-amber-50/40" : "border-emerald-200 bg-emerald-50/30"}>
+      <CardContent className="space-y-2 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-extrabold text-slate-700">What this session found</p>
+          {finished && !blocked && applicationId && (
+            <Link
+              href={`/applications?view=model&project=${projectId}&application=${applicationId}`}
+              className="text-[11px] font-bold text-[#1b59f8] underline"
+            >
+              Build an Application Model from it →
+            </Link>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] font-semibold text-slate-600">
+          <span><b className="text-slate-900">{screens.length}</b> screen{screens.length === 1 ? "" : "s"}</span>
+          <span><b className="text-slate-900">{performed.length}</b> action{performed.length === 1 ? "" : "s"} performed</span>
+          <span><b className="text-slate-900">{observed.length}</b> observed</span>
+          <span><b className="text-slate-900">{grounded.length}</b> with locator evidence</span>
+          {withIssues.length > 0 && (
+            <span className="text-amber-700"><b>{withIssues.length}</b> could not be performed</span>
+          )}
+        </div>
+
+        {blocked ? (
+          <p className="text-[11px] font-semibold text-amber-800">
+            No action recorded which screen it acted on, so there is nothing to ground tests against —
+            an Application Model built from this session would be empty and is refused. Re-record it so
+            each step names a screen.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {screens.map((screen) => (
+              <span key={screen} className="rounded-md border border-slate-200 bg-white px-2 py-0.5 font-mono text-[10px] font-bold text-slate-600">
+                {screen}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {withIssues.length > 0 && (
+          <ul className="space-y-0.5 border-t border-amber-200/70 pt-1.5">
+            {withIssues.slice(0, 3).map((a) => (
+              <li key={a.id} className="text-[10px] font-semibold text-amber-800">
+                Step {a.sequence}: {a.issue_note}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function messageFromError(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "response" in error) {
@@ -390,9 +517,18 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
             {session && (
               <div className="flex flex-col gap-1 text-xs font-bold text-slate-500">
                 Session
-                <Badge variant={STATE_BADGE[session.status] ?? "outline"} className="h-9 justify-center px-3 text-xs">
-                  #{session.id} · {session.status}
+                {/* Phase first, exact state underneath: a user reads the phase,
+                    someone debugging still gets the precise one. */}
+                <Badge
+                  variant={STATE_BADGE[session.status] ?? "outline"}
+                  className="h-9 justify-center px-3 text-xs"
+                  title={sessionPhase(session.status).hint}
+                >
+                  #{session.id} · {sessionPhase(session.status).label}
                 </Badge>
+                <span className="text-center text-[10px] font-semibold text-slate-400">
+                  {sessionPhase(session.status).hint || session.status}
+                </span>
               </div>
             )}
           </div>
@@ -529,6 +665,13 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
               </Button>
             )}
           </div>
+
+          <DiscoveryFindings
+            actions={actionsQuery.data ?? []}
+            status={session.status}
+            projectId={projectId}
+            applicationId={session.application_id ?? null}
+          />
 
           {/* Three-region workspace */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr_360px]">
@@ -863,7 +1006,11 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                   <tr key={s.id} className="border-t border-slate-50">
                     <td className="py-2 font-semibold text-slate-700">#{s.id}</td>
                     <td className="py-2">{s.mode}</td>
-                    <td className="py-2"><Badge variant={STATE_BADGE[s.status] ?? "outline"} className="text-[10px]">{s.status}</Badge></td>
+                    <td className="py-2">
+                      <Badge variant={STATE_BADGE[s.status] ?? "outline"} className="text-[10px]" title={s.status}>
+                        {sessionPhase(s.status).label}
+                      </Badge>
+                    </td>
                     <td className="py-2">{s.started_at ?? "—"}</td>
                     <td className="py-2">
                       <button

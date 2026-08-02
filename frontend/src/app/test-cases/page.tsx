@@ -53,6 +53,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
+import { TestCasesTabs } from "@/components/test-cases/TestCasesTabs";
 import { JourneyGraphView } from "./JourneyGraphView";
 import { TestCaseApprovalView } from "./TestCaseApprovalView";
 import { useAIAction } from "@/hooks/useAIAction";
@@ -1071,16 +1072,28 @@ function TestCasesContent() {
   }
 
   if (view === "journey-graph") {
-    return <JourneyGraphView projectId={selectedProject} />;
+    return (
+      <>
+        <TestCasesTabs active="journey-graph" projectId={selectedProject} />
+        <JourneyGraphView projectId={selectedProject} />
+      </>
+    );
   }
 
   if (view === "approval") {
     const requestedCaseId = Number(searchParams.get("case"));
-    return <TestCaseApprovalView projectId={selectedProject} initialTestCaseId={Number.isFinite(requestedCaseId) ? requestedCaseId : null} />;
+    return (
+      <>
+        <TestCasesTabs active="approval" projectId={selectedProject} />
+        <TestCaseApprovalView projectId={selectedProject} initialTestCaseId={Number.isFinite(requestedCaseId) ? requestedCaseId : null} />
+      </>
+    );
   }
 
   if (view === "editor") {
     return (
+      <>
+      <TestCasesTabs active="editor" projectId={selectedProject} />
       <TestCaseEditorView
         testCases={testCases}
         filtered={filtered}
@@ -1113,12 +1126,14 @@ function TestCasesContent() {
         classificationsEnabled={classificationsEnabled}
         onClassificationsChanged={loadData}
       />
+      </>
     );
   }
 
   return (
     <div className="min-h-full">
       <section className="space-y-5 pb-4">
+        <TestCasesTabs active="generated" projectId={selectedProject} />
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           <span>e&amp; STLC</span>
           <ChevronRight className="h-3 w-3 text-slate-300" />

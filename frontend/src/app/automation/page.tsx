@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   AlertTriangle,
@@ -12,7 +13,6 @@ import {
   Link2,
   Loader2,
   PlayCircle,
-  Radar,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -62,7 +62,7 @@ import { IntelligenceAssistantPanel } from "@/components/automation/Intelligence
 import { AutomationInventoryPanel, type InventoryItem } from "@/components/automation/AutomationInventoryPanel";
 import { AutomationWorkspace } from "@/components/automation/AutomationWorkspace";
 import { ConvertManualToAutomationDialog } from "@/components/automation/ConvertManualToAutomationDialog";
-import { DiscoverySessionView } from "@/components/discovery/DiscoverySessionView";
+import { applicationsHref } from "@/components/applications/ApplicationsTabs";
 import { AutomationSuiteDashboard } from "@/components/automation/AutomationSuiteDashboard";
 import { AutomationSuiteDetail } from "@/components/automation/AutomationSuiteDetail";
 import { NewAutomationSuiteWizard } from "@/components/automation/NewAutomationSuiteWizard";
@@ -793,22 +793,19 @@ function AutomationContent() {
     },
   ];
 
+  // Live Discovery Session moved to /applications?view=discovery, alongside the
+  // registry and model it feeds. Bookmarks and any link still pointing here are
+  // forwarded rather than 404'd — see the discovery branch in
+  // app/applications/page.tsx.
   if (searchParams.get("view") === "discovery") {
-    if (!selectedProject) {
-      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Live Discovery Session.</div>;
-    }
+    const target = applicationsHref("discovery", selectedProject);
     return (
-      <div className="space-y-6 select-none pb-8 animate-fade-in">
-        <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            <Radar className="h-6 w-6 text-[#1b59f8]" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Live Discovery Session</h1>
-            <p className="text-xs text-slate-500 mt-1">Observe, record and ground application behaviour with governed evidence.</p>
-          </div>
-        </div>
-        <DiscoverySessionView projectId={selectedProject} />
+      <div className="p-8 text-sm font-semibold text-slate-500">
+        Live Discovery Session has moved to Applications.{" "}
+        <Link href={target} className="font-bold text-[#1b59f8] underline">
+          Open it there
+        </Link>
+        .
       </div>
     );
   }

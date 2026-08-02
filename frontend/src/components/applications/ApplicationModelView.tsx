@@ -215,6 +215,9 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
   const openGaps = useMemo(() => gaps.filter((g) => g.status === "open"), [gaps]);
   const criticalOpenGaps = useMemo(() => openGaps.filter((g) => g.severity === "critical"), [openGaps]);
   const isBuilder = model?.built_by != null && currentUserId != null && model.built_by === currentUserId;
+  // Defaults to the strict rule while the detail is still loading, so the
+  // Approve button is never briefly enabled on a deployment that forbids it.
+  const requiresSeparateApprover = model?.requires_separate_approver ?? true;
   const isMutable = model ? ["draft", "pending_review", "changes_requested"].includes(model.status) : false;
 
   async function run(action: () => Promise<unknown>, successMessage: string) {
@@ -373,22 +376,62 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                 state={model.source_session_id ? "pass" : "blocked"}
                 detail={model.source_session_id ? `Session #${model.source_session_id}` : "No source session"}
               />
+              {/* These rows are phrased as the absence of a gap, which made an
+                  empty model pass every one of them: nothing discovered means
+                  nothing to find fault with. Zero is now reported as a failure
+                  in its own right, so "grounded" and "empty" stop looking
+                  identical. */}
               <ReadinessRow
                 label="Screen/component mappings reviewed"
-                state={gaps.some((g) => g.status === "open" && ["MISSING_SCREEN", "MISSING_COMPONENT"].includes(g.gap_type)) ? "blocked" : "pass"}
-                detail={`${screens.length} screens, ${components.length} components discovered`}
+                state={
+                  screens.length === 0
+                    // Severity, not type: a warning-level MISSING_COMPONENT is
+                    // something a reviewer accepted, and showing it as blocked
+                    // contradicted this model's own "0 critical" gap count.
+                    || gaps.some((g) => g.status === "open" && g.severity === "critical"
+                      && ["MISSING_SCREEN", "MISSING_COMPONENT"].includes(g.gap_type))
+                    ? "blocked"
+                    : gaps.some((g) => g.status === "open" && ["MISSING_SCREEN", "MISSING_COMPONENT"].includes(g.gap_type))
+                      ? "warning"
+                      : "pass"
+                }
+                detail={
+                  screens.length === 0
+                    ? "No screens discovered — nothing to ground tests against"
+                    : `${screens.length} screens, ${components.length} components discovered`
+                }
               />
               <ReadinessRow
                 label="Element semantics and locators validated"
-                state={gaps.some((g) => g.status === "open" && ["AMBIGUOUS_ELEMENT", "UNSTABLE_LOCATOR"].includes(g.gap_type)) ? "warning" : "pass"}
-                detail={`${elements.length} elements discovered`}
+                state={
+                  gaps.some((g) => g.status === "open" && g.severity === "critical" && g.gap_type === "MISSING_ELEMENT")
+                    ? "blocked"
+                    : elements.length === 0
+                      || gaps.some((g) => g.status === "open" && ["AMBIGUOUS_ELEMENT", "UNSTABLE_LOCATOR"].includes(g.gap_type))
+                      ? "warning"
+                      : "pass"
+                }
+                detail={
+                  elements.length === 0
+                    ? "No elements discovered — no locators to validate"
+                    : `${elements.length} elements discovered`
+                }
               />
               <ReadinessRow label="Journey/test-case relationships valid" state="not_evaluated" detail="Not evaluated in this phase" />
               <ReadinessRow label="API/network relationships reviewed" state="not_evaluated" detail="Not evaluated in this phase" />
+              {/* States the rule this deployment actually enforces. A
+                  single-operator deployment turns it off, and claiming a
+                  separate reviewer is required there would be false. */}
               <ReadinessRow
                 label="Separation of duties valid"
-                state={isBuilder && model.status === "pending_review" ? "warning" : "pass"}
-                detail={isBuilder ? "You built this draft — a different reviewer must approve it" : "Builder and approver can differ"}
+                state={requiresSeparateApprover && isBuilder && model.status === "pending_review" ? "warning" : "pass"}
+                detail={
+                  !requiresSeparateApprover
+                    ? "Not required in this deployment — the approver is still recorded"
+                    : isBuilder
+                      ? "You built this draft — a different reviewer must approve it"
+                      : "Builder and approver can differ"
+                }
               />
               <ReadinessRow
                 label="No unresolved critical blocker"
@@ -436,8 +479,12 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                     <Button
                       size="sm"
                       onClick={() => run(() => applicationModelsApi.approve(model.id, null), "Model approved.")}
-                      disabled={busy || !canApprove || isBuilder || criticalOpenGaps.length > 0}
-                      title={isBuilder ? "The user who built this draft cannot approve it" : criticalOpenGaps.length > 0 ? "Resolve critical gaps first" : undefined}
+                      disabled={busy || !canApprove || (requiresSeparateApprover && isBuilder) || criticalOpenGaps.length > 0}
+                      title={
+                        requiresSeparateApprover && isBuilder
+                          ? "The user who built this draft cannot approve it"
+                          : criticalOpenGaps.length > 0 ? "Resolve critical gaps first" : undefined
+                      }
                     >
                       <ShieldCheck className="h-3.5 w-3.5" /> Approve
                     </Button>

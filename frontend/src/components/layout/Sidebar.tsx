@@ -7,12 +7,10 @@ import {
   LayoutDashboard, FileText, ClipboardList,
   TestTube2, Play, Bug, BarChart3, Settings,
   Bot, ChevronRight, ChevronDown, Users, Database,
-  ChevronLeft, BookOpen, ShieldCheck,
+  ChevronLeft, BookOpen,
   Hand, Cpu, Sparkles, Gauge, Target,
   Radar,
-  GitBranch,
   Boxes,
-  Network,
   Layers3,
   Video,
   FileCode2,
@@ -39,6 +37,11 @@ type NavGroup = {
   // Group headers render as nav rows (same treatment as a parent item like
   // Test Planning), so each one carries its own icon.
   icon: LucideIcon;
+  // A section that is one destination rather than a list of them. The header
+  // becomes the link and there is nothing to expand — used where the screens
+  // in the section are tabs on a single page (Applications), so the sidebar
+  // does not repeat what the tab bar already shows.
+  href?: string;
   items: NavItem[];
 };
 
@@ -57,10 +60,10 @@ const NAV_ITEMS: NavGroup[] = [
     items: [
       { label: "Requirements", href: "/requirements", icon: FileText },
       { label: "Test Planning & Scenarios", href: "/test-planning", icon: ClipboardList },
-      { label: "Test Cases", href: "/test-cases?view=generated", icon: TestTube2 },
-      { label: "Test Editor", href: "/test-cases?view=editor", icon: TestTube2 },
-      { label: "Test Case Approval", href: "/test-cases?view=approval", icon: ShieldCheck },
-      { label: "Journey Graph", href: "/test-cases?view=journey-graph", icon: GitBranch },
+      // One entry, not four. Test Editor, Test Case Approval and Journey Graph
+      // are tabs on this same page (see TestCasesTabs) — same treatment as
+      // Requirements and Applications.
+      { label: "Test Cases", href: "/test-cases", icon: TestTube2 },
       {
         label: "Execution",
         href: "/execution",
@@ -76,14 +79,17 @@ const NAV_ITEMS: NavGroup[] = [
     ],
   },
   {
-    group: "Application Discovery",
+    // Renamed from "Application Discovery": the registry is not discovery, and
+    // the section's route has always been /applications.
+    //
+    // One entry, not four. Discovery, Model and API & Network are tabs on this
+    // page (see ApplicationsTabs), the same way Analysis and Traceability are
+    // tabs under a single "Requirements" entry rather than sidebar items of
+    // their own. Listing every tab twice is what made this section feel large.
+    group: "Applications",
     icon: Compass,
-    items: [
-      { label: "Application Registry", href: "/applications", icon: Boxes },
-      { label: "Live Discovery Session", href: "/automation?view=discovery", icon: Radar },
-      { label: "Application Model", href: "/applications?view=model", icon: GitBranch },
-      { label: "API & Network Explorer", href: "/applications?view=api-network", icon: Network },
-    ],
+    href: "/applications",
+    items: [],
   },
   {
     group: "Automation Studio Core",
@@ -151,14 +157,17 @@ function isActiveHref(pathname: string, currentQuery: string, href: string): boo
   const currentParams = new URLSearchParams(currentQuery);
   const expectedView = params.get("view");
   if (expectedView) {
-    const currentView = currentParams.get("view") || (path === "/test-cases" ? "generated" : null);
+    const currentView = currentParams.get("view");
     return currentView === expectedView;
   }
-  // "/automation" has a sibling view-scoped nav item (Live Discovery
-  // Session, view=discovery) — the base "AI Automation Studio" entry must
-  // not also light up while that view is active. "/applications" has the
-  // same relationship with Application Model (view=model).
-  if (path === "/automation" || path === "/applications") {
+  // "/automation" has sibling view-scoped nav items (Automation Workspace,
+  // Live Recorder, Automation Assets) — the base studio entry must not also
+  // light up while one of those views is active.
+  //
+  // "/applications" deliberately does NOT get this treatment: its views are
+  // tabs on one page with a single nav entry, so that entry should stay lit
+  // across all four, exactly as "Requirements" stays lit on its own tabs.
+  if (path === "/automation") {
     return !currentParams.get("view");
   }
   return true;
@@ -170,6 +179,9 @@ function isParentActive(pathname: string, currentQuery: string, item: NavItem): 
 }
 
 function isGroupActive(pathname: string, currentQuery: string, group: NavGroup): boolean {
+  // A single-destination section has no items to derive activity from — its own
+  // href is the only thing to match.
+  if (group.href) return isActiveHref(pathname, currentQuery, group.href);
   return group.items.some((item) => isParentActive(pathname, currentQuery, item));
 }
 
@@ -306,7 +318,28 @@ function SidebarContent() {
 
           return (
             <div key={group.group} className="px-2">
-              {!collapsed ? (
+              {group.href ? (
+                // A single-destination section: the header navigates instead of
+                // expanding. Rendered in both rail states — when collapsed the
+                // icon alone is the link, since there are no items beneath it to
+                // fall back to.
+                <Link
+                  href={withProject(group.href, projectId)}
+                  title={collapsed ? group.group : undefined}
+                  className={cn(
+                    "mb-1.5 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-150",
+                    collapsed && "justify-center px-0",
+                    groupActive
+                      ? "bg-[#1b59f8] text-white"
+                      : "text-slate-300 hover:bg-[#13223f] hover:text-white",
+                  )}
+                >
+                  <group.icon
+                    className={cn("h-4 w-4 shrink-0", groupActive ? "text-white" : "text-slate-400")}
+                  />
+                  {!collapsed && <span className="flex-1 truncate text-left">{group.group}</span>}
+                </Link>
+              ) : !collapsed ? (
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.group)}
