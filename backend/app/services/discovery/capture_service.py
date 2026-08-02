@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -30,11 +31,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.automation.mcp_session import MCPSession, MCPSessionConfig, mask_snapshot_text
+from app.agents.automation.snapshot_parser import parse_snapshot
 from app.models.discovery_session import DiscoveryAction, DiscoveryCapture, DiscoveryCheckpoint, DiscoverySession
 from app.models.project_application import ProjectApplication
 from app.models.test_case import TestCase
 from app.services import locator_map_service
 from app.services.discovery import locator_ranking
+from app.services.discovery.step_interpreter import (
+    InterpretedStep,
+    interpret_step,
+    resolve_target_ref,
+    screen_ref_for,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +249,13 @@ def _step_ref(step) -> str | None:
     return str(step.get("step_number")) if isinstance(step, dict) and step.get("step_number") else None
 
 
+def _slug(text: str) -> str:
+    """Stable identifier for an element, derived from the label the step named
+    and the page it was found on — so the same control keeps the same reference
+    across rebuilds."""
+    return re.sub(r"[^A-Za-z0-9]+", "-", (text or "")).strip("-").lower()[:120] or "unnamed"
+
+
 async def get_current_step(db: AsyncSession, session: DiscoverySession) -> dict | None:
     """The step a Guided/Agent-Driven session would act on next, without
     executing anything — used by Agent-Driven mode to show what it's about
@@ -266,13 +281,83 @@ async def capture_one_step(
         return None
 
     step = steps[session.current_step_index]
+    step_text = _step_text(step)
+
+    # Read the step, then do what it says. This used to record every step as
+    # `read` and snapshot without touching the browser, so "Click the 'Home'
+    # link" stored a screenshot of whatever page was already loaded as that
+    # step's evidence — real capture, wrong claim.
+    interpreted = interpret_step(step_text)
+    target_ref: str | None = None
+    failure: str | None = None
+
+    if interpreted.needs_target:
+        # Resolve against the page as it stands right now, not against the page
+        # the step was written for.
+        try:
+            parsed = parse_snapshot(await mcp_session.snapshot())
+            target_ref = resolve_target_ref(parsed, interpreted)
+        except Exception:
+            logger.warning(
+                "capture_service: could not resolve target for step %s of session %s",
+                session.current_step_index, session.id, exc_info=True,
+            )
+        if not target_ref:
+            # Nothing unambiguous to act on. Degrade to an observation rather
+            # than click a best guess: the action is then recorded with no
+            # element reference, which surfaces as a MISSING_ELEMENT gap for a
+            # human to resolve instead of a confident-looking wrong click.
+            failure = (
+                f"Could not identify '{interpreted.target_label}' on this page — "
+                "recorded as an observation instead of performing it."
+            )
+            interpreted = InterpretedStep(action_family="read", target_label=interpreted.target_label)
+
+    if interpreted.action_family != "read":
+        try:
+            semantic, input_binding = await _execute_action_family(
+                mcp_session,
+                action_family=interpreted.action_family,
+                target_ref=target_ref,
+                target_semantic=step_text,
+                input_text=interpreted.input_text,
+                url=interpreted.url,
+            )
+        except Exception as exc:
+            # The step named something real and it did not work. That is a
+            # finding about the application, so it is recorded against the step
+            # rather than raised — the session continues and a human reads it.
+            logger.warning(
+                "capture_service: step %s of session %s failed to execute: %s",
+                session.current_step_index, session.id, exc,
+            )
+            failure = f"{interpreted.action_family} failed: {exc}"
+            interpreted = InterpretedStep(action_family="read", target_label=interpreted.target_label)
+            target_ref = None
 
     action = await _capture_evidence_and_persist_action(
         db, session, mcp_session, output_dir,
-        actor=actor, action_family="read", target_semantic=_step_text(step),
+        actor=actor, action_family=interpreted.action_family, target_semantic=step_text,
         sequence=session.current_step_index, label=f"step_{session.current_step_index}",
-        test_step_ref=_step_ref(step),
+        test_step_ref=_step_ref(step), target_ref=target_ref,
+        provenance_call=f"browser_{interpreted.action_family}",
     )
+
+    # The screen the browser actually ended up on. Without this the Application
+    # Model has no screen nodes to build from and every session produces an
+    # empty model.
+    try:
+        after = parse_snapshot(await mcp_session.snapshot())
+        action.target_screen_ref = screen_ref_for(after)
+        if target_ref and interpreted.target_label:
+            action.target_element_ref = f"element-{_slug(interpreted.target_label)}"
+    except Exception:
+        logger.warning(
+            "capture_service: could not record screen reference for session %s", session.id, exc_info=True,
+        )
+    if failure:
+        action.issue_note = failure[:2000]
+
     session.current_step_index += 1
     await db.flush()
     return action

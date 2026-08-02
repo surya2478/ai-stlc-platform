@@ -29,6 +29,7 @@ from app.models.application_model import (
     ApplicationModelLocatorEvidence,
     ApplicationModelNode,
 )
+from app.config import get_settings
 from app.models.discovery_session import DiscoveryAction, DiscoverySession
 from app.models.project_application import ProjectApplication
 
@@ -265,6 +266,34 @@ async def build_or_rebuild_draft(
                 await add_edge("NAVIGATES_TO", previous_screen_node, screen_node)
             previous_screen_node = screen_node
 
+    # A model that discovered nothing is not a clean model — it is no model.
+    #
+    # Every check downstream is phrased as the *absence* of a gap ("no missing
+    # screens", "no unresolved critical blocker"), so a walk that produced zero
+    # nodes satisfied all of them vacuously: 0 screens, 0 elements, 0 gaps, and
+    # an approvable draft grounding nothing. Observed in practice — a completed
+    # session whose actions carried no screen/component/element references built
+    # a model that passed every governance row while being empty.
+    #
+    # Raised as a gap rather than a special case so it flows through the
+    # controls that already exist: approve() and publish() refuse on any open
+    # critical gap, and the readiness rows key off MISSING_SCREEN.
+    if not any(node.node_type == "screen" for node in nodes_by_key.values()):
+        gaps.append({
+            "gap_type": "MISSING_SCREEN",
+            "severity": "critical",
+            "evidence": {
+                "session_id": session_id,
+                "actions_walked": len(actions),
+                "reason": "no action in the source session identified a screen",
+            },
+            "remediation": (
+                "This session recorded no screen references, so there is nothing to ground "
+                "tests against. Re-record it so each action names the screen it acted on, "
+                "then rebuild."
+            ),
+        })
+
     for gap in gaps:
         db.add(ApplicationModelGap(model_id=model.id, status="open", **gap))
 
@@ -347,9 +376,11 @@ async def reject(db: AsyncSession, model: ApplicationModel, *, actor_id: int, re
 async def approve(db: AsyncSession, model: ApplicationModel, *, actor_id: int, reason: str | None) -> ApplicationModel:
     if model.status != "pending_review":
         raise ApplicationModelError(409, "INVALID_TRANSITION", "Only a model pending review can be approved.")
-    if model.built_by == actor_id:
+    if model.built_by == actor_id and get_settings().require_separate_approver:
         raise ApplicationModelError(
-            409, "SEPARATION_OF_DUTY_VIOLATION", "The user who built this model cannot also approve it."
+            409, "SEPARATION_OF_DUTY_VIOLATION",
+            "The user who built this model cannot also approve it. Set "
+            "REQUIRE_SEPARATE_APPROVER=false for a single-operator deployment.",
         )
     gaps_result = await db.execute(
         select(ApplicationModelGap).where(
