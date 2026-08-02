@@ -43,6 +43,85 @@ def test_allows_public_ip_literal():
     assert validate_url_safety("http://93.184.216.34/page") == "http://93.184.216.34/page"
 
 
+# ── Internal-host exemption ───────────────────────────────────────────────────
+#
+# A local test target (fixtures/static-site) resolves to a private compose
+# address, so the guard blocks it — correctly, by its own rule. The exemption
+# exists for that case and is keyed on the hostname, never an address range.
+
+def _allow(monkeypatch, hosts: str) -> None:
+    import app.services.url_capture_service as mod
+    monkeypatch.setattr(
+        type(mod.settings),
+        "url_analysis_allowed_internal_host_set",
+        property(lambda self: frozenset(h.strip().lower() for h in hosts.split(",") if h.strip())),
+    )
+
+
+def test_nothing_is_exempt_by_default():
+    """The whole guard rests on this: a fresh deployment exempts no host.
+
+    Asserts the declared field default rather than instantiating Settings —
+    pydantic reads the environment, and a developer machine that has set
+    URL_ANALYSIS_ALLOWED_INTERNAL_HOSTS would otherwise make this pass or fail
+    based on local config instead of on the code.
+    """
+    from app.config import Settings
+
+    assert Settings.model_fields["url_analysis_allowed_internal_hosts"].default == ""
+
+
+def test_an_empty_setting_exempts_nothing():
+    """And an empty value really does derive an empty set — no accidental
+    exemption of "" as a hostname."""
+    _blank = type(
+        "S", (), {"url_analysis_allowed_internal_hosts": "  ,  ,"},
+    )()
+    from app.config import Settings
+
+    derived = Settings.url_analysis_allowed_internal_host_set.fget(_blank)
+    assert derived == frozenset()
+
+
+def test_an_exempted_host_is_allowed(monkeypatch):
+    _allow(monkeypatch, "static-test")
+    assert validate_url_safety("http://static-test/index.html") == "http://static-test/index.html"
+
+
+def test_exempting_one_host_does_not_exempt_its_neighbours(monkeypatch):
+    """The reason this is a hostname list and not a CIDR: naming the fixture
+    must not open the subnet it happens to sit in."""
+    _allow(monkeypatch, "static-test")
+    for url in ("http://10.0.0.5/internal", "http://192.168.1.1/router", "http://127.0.0.1/admin"):
+        with pytest.raises(UnsafeURLError):
+            validate_url_safety(url)
+
+
+def test_the_cloud_metadata_endpoint_stays_blocked(monkeypatch):
+    """The single most valuable thing the guard refuses. An exemption elsewhere
+    must never reach it."""
+    _allow(monkeypatch, "static-test")
+    with pytest.raises(UnsafeURLError):
+        validate_url_safety("http://169.254.169.254/latest/meta-data")
+
+
+def test_exemption_is_exact_not_a_suffix_match(monkeypatch):
+    """"evil-static-test" contains "static-test" but is a different host."""
+    _allow(monkeypatch, "static-test")
+    with pytest.raises(UnsafeURLError):
+        validate_url_safety("http://127.0.0.1/")  # sanity: guard still live
+    import app.services.url_capture_service as mod
+    assert "evil-static-test" not in mod.settings.url_analysis_allowed_internal_host_set
+
+
+def test_exemption_does_not_bypass_the_scheme_check(monkeypatch):
+    """Being an allowed host says nothing about file:// or javascript:."""
+    _allow(monkeypatch, "static-test")
+    for url in ("file://static-test/etc/passwd", "javascript:alert(1)"):
+        with pytest.raises(UnsafeURLError):
+            validate_url_safety(url)
+
+
 # ── Same-origin crawling helpers ──────────────────────────────────────────────
 
 def test_same_origin_matching():

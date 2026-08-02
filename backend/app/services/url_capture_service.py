@@ -7,7 +7,9 @@ full-page screenshot for the vision pass.
 
 Safety:
   - http/https only
-  - private/loopback/link-local/reserved IPs are blocked (SSRF guard)
+  - private/loopback/link-local/reserved IPs are blocked (SSRF guard), except
+    for hostnames an operator has explicitly named in
+    URL_ANALYSIS_ALLOWED_INTERNAL_HOSTS (empty by default)
   - same-origin crawling only, with depth and page-count caps
   - analysed pages are never executed beyond rendering; no credentials are sent
 """
@@ -19,7 +21,11 @@ import socket
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
+from app.config import get_settings
+
 logger = logging.getLogger(__name__)
+
+settings = get_settings()
 
 MAX_CRAWL_DEPTH = 2
 MAX_PAGES = 5
@@ -165,6 +171,12 @@ def validate_url_safety(url: str) -> str:
         infos = socket.getaddrinfo(host, None)
     except socket.gaierror as exc:
         raise UnsafeURLError(f"Could not resolve host '{host}'") from exc
+
+    # Resolution runs first even for an exempted host, so a typo in the
+    # allowlist surfaces as "could not resolve" here rather than as a render
+    # timeout several layers down.
+    if host.lower() in settings.url_analysis_allowed_internal_host_set:
+        return parsed.geturl()
 
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])

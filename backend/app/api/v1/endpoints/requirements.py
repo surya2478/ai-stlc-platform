@@ -22,6 +22,7 @@ from app.services import (
     approval_service,
     coverage_service,
     requirement_blockers,
+    requirement_duplicates,
     requirement_service,
     traceability_service,
 )
@@ -111,6 +112,49 @@ async def list_requirements(
         has_quality_review=has_quality_review,
         source=source,
     )
+
+
+@router.get("/project/{project_id}/duplicates")
+async def get_duplicate_candidates(
+    project_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+    threshold: float = Query(
+        requirement_duplicates.DEFAULT_THRESHOLD,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity for a pair to be offered for review.",
+    ),
+):
+    """Requirement pairs similar enough to warrant a reviewer's decision.
+
+    Scored over the whole project rather than the caller's current page: a
+    duplicate that happens to sit on page two is still a duplicate, and the
+    client-side detector this replaces could only ever see what it had loaded.
+
+    Candidates, not conclusions — nothing here merges or deletes.
+    """
+    await require_project_access(project_id, current_user, db)
+
+    rows = (
+        await db.execute(
+            select(Requirement).where(
+                Requirement.project_id == project_id,
+                Requirement.is_deleted.is_(False),
+            )
+        )
+    ).scalars().all()
+
+    pairs = requirement_duplicates.find_duplicate_pairs(rows, threshold=threshold)
+    return {
+        "threshold": threshold,
+        "pairs": [p.as_dict() for p in pairs],
+        "groups": requirement_duplicates.group_duplicates(pairs),
+        "duplicate_requirement_ids": sorted(
+            requirement_duplicates.duplicate_requirement_ids(pairs)
+        ),
+        "evaluated_count": len(rows),
+    }
 
 
 @router.get("/{req_id}", response_model=RequirementOut)
