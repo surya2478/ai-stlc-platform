@@ -28,7 +28,12 @@ from app.schemas.test_plan import (
     TestCaseSummaryOut,
     TestCaseUpdate,
 )
-from app.services import test_case_import_service, test_plan_service
+from app.services import (
+    execution_path,
+    execution_path_gather,
+    test_case_import_service,
+    test_plan_service,
+)
 from app.services.rbac_service import APPROVE_TEST_CASES, SYNC_JIRA
 
 router = APIRouter()
@@ -48,6 +53,32 @@ async def list_project_test_cases(
 ):
     await require_project_access(project_id, current_user, db)
     return await test_plan_service.list_test_cases(db, project_id, scenario_id, requirement_id, status, automation_only, skip, limit)
+
+
+@router.get("/projects/{project_id}/execution-path/{tc_id}")
+async def test_case_execution_path(
+    project_id: int,
+    tc_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+):
+    """Everything standing between this test case and a governed execution.
+
+    Read-only, and derived entirely from state other services already own — it
+    decides nothing. Exists because the path crosses six modules and every
+    blocker was previously found by being refused, usually in a module other
+    than the one that fixes it.
+    """
+    await require_project_access(project_id, current_user, db)
+    facts = await execution_path_gather.gather(db, project_id=project_id, test_case_id=tc_id)
+    steps = execution_path.build_path(facts)
+    return {
+        **execution_path.summarize(steps),
+        "test_case_id": tc_id,
+        "test_case_key": facts.test_case_key,
+        "steps": [s.as_dict() for s in steps],
+        "errors": facts.errors,
+    }
 
 
 @router.get("/projects/{project_id}/summary", response_model=TestCaseSummaryOut)
