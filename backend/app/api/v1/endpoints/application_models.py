@@ -64,7 +64,12 @@ def _require_enabled() -> None:
 async def _detail(db: DBSession, model: ApplicationModel) -> ApplicationModelDetailOut:
     kpis = await svc.compute_kpis(db, model)
     stale = await svc.is_stale(db, model)
-    return ApplicationModelDetailOut(**ApplicationModelOut.model_validate(model).model_dump(), kpis=kpis, stale=stale)
+    return ApplicationModelDetailOut(
+        **ApplicationModelOut.model_validate(model).model_dump(),
+        kpis=kpis,
+        stale=stale,
+        requires_separate_approver=get_settings().require_separate_approver,
+    )
 
 
 @router.get("/projects/{project_id}/applications/{application_id}/models", response_model=list[ApplicationModelOut])

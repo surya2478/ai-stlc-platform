@@ -33,6 +33,10 @@ class ApplicationModelOut(BaseModel):
 class ApplicationModelDetailOut(ApplicationModelOut):
     kpis: dict
     stale: bool
+    # Whether this deployment requires a different person to approve than the
+    # one who built. Sent so the UI states the rule actually in force rather
+    # than assuming it — the server remains the authority either way.
+    requires_separate_approver: bool = True
 
 
 class ApplicationModelNodeOut(BaseModel):

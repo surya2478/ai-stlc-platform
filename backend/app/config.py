@@ -286,6 +286,28 @@ class Settings(BaseSettings):
             if e.strip()
         ]
 
+    # Hostnames exempt from the URL-analysis SSRF guard's private-address rule.
+    #
+    # Empty by default, and deliberately keyed on the *hostname* rather than an
+    # address range. The guard's value is that an operator cannot be talked into
+    # pointing analysis at 169.254.169.254 or an internal admin panel; exempting
+    # a CIDR would hand all of that back at once. Exempting a name exempts that
+    # one name — a bare IP literal, or any other host resolving into the same
+    # subnet, is still refused.
+    #
+    # Intended for a deliberately-run local test target (see
+    # fixtures/static-site). Whoever controls DNS for an exempted name can
+    # redirect it, so only name a host whose resolution you own.
+    url_analysis_allowed_internal_hosts: str = ""
+
+    @property
+    def url_analysis_allowed_internal_host_set(self) -> frozenset[str]:
+        return frozenset(
+            h.strip().lower()
+            for h in (self.url_analysis_allowed_internal_hosts or "").split(",")
+            if h.strip()
+        )
+
     # ── Automation Asset Autonomy (UI-020/021/023) ───────────────────────────
     # Master switch for automatic stage advancement and AI approval of
     # automation assets. OFF by default: with it off the policy still computes
@@ -340,6 +362,27 @@ class Settings(BaseSettings):
     # Master switch: every /application-models route 404s when off, same
     # isolation pattern as discovery_sessions_enabled.
     application_models_enabled: bool = False
+
+    # ── Approval separation of duty (deployment-wide) ────────────────────────
+    # Whether approving governed artifacts — Application Models, Automation
+    # Suites — requires someone other than the person who built or submitted
+    # them.
+    #
+    # One flag rather than one per gate: "this deployment has a single
+    # operator" is a fact about the deployment, not about each artifact type,
+    # and a flag per gate leaves an operator hunting for the next one after
+    # clearing the first.
+    #
+    # On by default, because an approval a builder can grant themselves records
+    # that a review happened without one having happened. Turning it off is a
+    # deliberate, auditable choice: `approved_by` is still recorded either way,
+    # so the trail shows who approved and the artifact's own history shows
+    # whether they also built it.
+    #
+    # Off is the right setting for a single-operator deployment — a local or
+    # demo environment where there is no second person to ask, and the control
+    # blocks all progress rather than adding assurance.
+    require_separate_approver: bool = True
 
     # ── UI-017 API and Network Explorer (P1-S4 extension) ────────────────────
     # Master switch: every /network-explorer route 404s when off, same

@@ -112,3 +112,90 @@ def test_the_engine_produces_exactly_the_deterministic_statuses():
     }
     assert produced <= set(SUITE_REACHABLE_STATUSES)
     assert produced & set(WORKFLOW_OWNED_STATUSES) == {"ARCHIVED"}
+
+
+# ── Validation states are derived from the gate verdict ─────────────────────
+#
+# A passed Static Quality Gate used to map to "pending" alongside a missing
+# one, so a fully validated member counted as still-in-validation and the suite
+# sat in VALIDATION_PENDING — a status this module's own SUITE_REACHABLE_STATUSES
+# excludes, because nothing exists to clear it. Observed on a real suite: every
+# script passing its gate, zero open findings, and submission permanently
+# refused with "Resolve its findings first" when there were none left.
+
+from types import SimpleNamespace
+
+from app.services.automation_suite.status import compute_rollup
+
+
+def _member(member_id: int):
+    return SimpleNamespace(
+        member_id=member_id, is_included=True, is_manual_only=False, drift_reasons=[],
+    )
+
+
+def _rollup_for(states: dict[int, str], count: int = 2):
+    members = [_member(i) for i in range(1, count + 1)]
+    return compute_rollup(
+        members=members,
+        member_statuses={m.member_id: "READY" for m in members},
+        blocking_gaps=[],
+        evaluated=True,
+        validation_states=states,
+    )
+
+
+def test_a_passed_gate_does_not_leave_a_member_in_validation():
+    """The deadlock: nothing records a state for a member whose gate passed."""
+    rollup = _rollup_for({})
+    assert rollup.members_in_validation == 0
+    assert compute_suite_status(rollup) == "READY_FOR_VALIDATION"
+
+
+def test_a_member_never_gated_is_still_pending():
+    rollup = _rollup_for({1: "pending"})
+    assert rollup.members_in_validation == 1
+    assert compute_suite_status(rollup) == "VALIDATION_PENDING"
+
+
+def test_a_failed_gate_outranks_a_pending_one():
+    """"Something is broken" is more actionable than "something is running"."""
+    rollup = _rollup_for({1: "pending", 2: "failed"})
+    assert compute_suite_status(rollup) == "VALIDATION_FAILED"
+
+
+def test_a_suite_whose_scripts_all_passed_is_submittable():
+    """End state of the bug — the status must be one submit_for_review accepts."""
+    from app.services.automation_suite.lifecycle import SUBMITTABLE_STATUSES
+
+    assert compute_suite_status(_rollup_for({})) in SUBMITTABLE_STATUSES
+
+
+# ── Separation of duty is one deployment-wide policy ────────────────────────
+#
+# Relaxing it for Application Models left the identical gate on suite approval
+# still enforcing, so a single-operator deployment cleared one blocker only to
+# meet the next. One flag covers both.
+
+
+def test_suite_and_model_approval_share_one_policy_flag():
+    """A flag per gate leaves an operator hunting for the next one."""
+    import inspect
+
+    from app.config import Settings
+    from app.services.application_model_service import approve as approve_model
+    from app.services.automation_suite.lifecycle import approve as approve_suite
+
+    assert Settings.model_fields["require_separate_approver"].default is True
+    for fn in (approve_model, approve_suite):
+        assert "require_separate_approver" in inspect.getsource(fn), (
+            f"{fn.__module__}.{fn.__name__} does not honour the shared policy"
+        )
+
+
+def test_the_suite_refusal_names_the_flag():
+    import inspect
+
+    from app.services.automation_suite.lifecycle import approve as approve_suite
+
+    assert "REQUIRE_SEPARATE_APPROVER=false" in inspect.getsource(approve_suite)

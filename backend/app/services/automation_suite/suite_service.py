@@ -564,9 +564,18 @@ async def evaluate_suite(db: AsyncSession, suite: AutomationSuite, *, actor_id: 
         member.resolved_framework = member_inh.primary_script.framework if member_inh.primary_script else None
         member.resolved_environment = member_inh.resolved_environment
 
-    # UI-023: a member with a compiled script is in validation; blocking Static
-    # Quality Gate findings on that script make it failed. Read from the
-    # persisted gate verdict — never recomputed here.
+    # UI-023: a member's validation state is read from the persisted Static
+    # Quality Gate verdict on its script — never recomputed here.
+    #
+    # A *passed* gate previously also mapped to "pending", which made a
+    # validated member indistinguishable from an unvalidated one and parked the
+    # whole suite in VALIDATION_PENDING — a status this codebase excludes from
+    # SUITE_REACHABLE_STATUSES precisely because nothing exists to clear it. A
+    # suite with every script passing its gate and zero open findings could not
+    # be submitted, and there was no action that would ever unblock it.
+    #
+    # Passing the gate is the validation completing, so no state is recorded:
+    # only "pending" and "failed" are states a member is *in*.
     validation_states: dict[int, str] = {}
     for member_inh in suite_inh.members:
         script = member_inh.primary_script
@@ -574,10 +583,9 @@ async def evaluate_suite(db: AsyncSession, suite: AutomationSuite, *, actor_id: 
             continue
         gate = script.static_gate_result or None
         if gate is None:
+            # Never gated — genuinely awaiting validation.
             validation_states[member_inh.member_id] = "pending"
-        elif gate.get("passed"):
-            validation_states[member_inh.member_id] = "pending"
-        else:
+        elif not gate.get("passed"):
             validation_states[member_inh.member_id] = "failed"
 
     rollup = status_engine.compute_rollup(

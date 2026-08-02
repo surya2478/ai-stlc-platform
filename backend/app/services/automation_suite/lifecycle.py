@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models.approval import ApprovalAction
 from app.models.automation_suite import (
     AutomationSuite,
@@ -157,12 +158,16 @@ async def approve(
 ) -> AutomationSuite:
     if suite.status != "READY_FOR_REVIEW":
         raise AutomationSuiteError(409, "INVALID_TRANSITION", "Only a suite awaiting review can be approved.")
-    # Same rule as UI-016: whoever assembled the scope cannot also clear it.
-    if suite.submitted_by == actor_id:
+    # Same rule and the same deployment-wide switch as UI-016's Application
+    # Model approval: whoever assembled the scope cannot also clear it, unless
+    # this deployment has a single operator. `approved_by` is recorded either
+    # way, so relaxing who may approve never means not recording who did.
+    if suite.submitted_by == actor_id and get_settings().require_separate_approver:
         raise AutomationSuiteError(
             409,
             "SEPARATION_OF_DUTY_VIOLATION",
-            "The user who submitted this suite for review cannot also approve it.",
+            "The user who submitted this suite for review cannot also approve it. "
+            "Set REQUIRE_SEPARATE_APPROVER=false for a single-operator deployment.",
         )
     await _require_no_blocking_criticals(db, suite, "approval")
 

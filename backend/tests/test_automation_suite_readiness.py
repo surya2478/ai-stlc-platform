@@ -184,9 +184,16 @@ def test_stale_model_is_a_warning_not_a_blocker():
     assert next(g for g in evaluation.gaps if g.gap_type == "MODEL_STALE").severity == "warning"
 
 
+def _model_gap(gap_id, gap_type, severity):
+    return SimpleNamespace(id=gap_id, gap_type=gap_type, severity=severity)
+
+
 def test_locator_gaps_split_critical_from_ambiguous():
     critical = _inheritance(
-        open_model_gaps=[SimpleNamespace(id=1, gap_type="MISSING_ELEMENT"), SimpleNamespace(id=2, gap_type="UNSTABLE_LOCATOR")]
+        open_model_gaps=[
+            _model_gap(1, "MISSING_ELEMENT", "critical"),
+            _model_gap(2, "UNSTABLE_LOCATOR", "warning"),
+        ]
     )
     evaluation = evaluate_member(critical, capability_status=_CONNECTED)
     missing = next(g for g in evaluation.gaps if g.gap_type == "LOCATOR_MISSING")
@@ -196,6 +203,73 @@ def test_locator_gaps_split_critical_from_ambiguous():
     # Fingerprint identity keys on the model, not the churning gap-id list.
     assert missing.subject == "model:9"
     assert missing.evidence["gap_ids"] == [1]
+
+
+# ── The suite honours the model's severity ──────────────────────────────────
+#
+# Observed on a real suite: the Application Model showed "2 gaps, 0 critical"
+# and sat approved, while the suite built from it reported "Critical Gaps 4"
+# over those same two gaps and refused submission — and its own findings table
+# listed every one of them as Warning. The suite was partitioning by gap_type
+# alone, so any MISSING_* gap counted as critical regardless of what the model
+# had recorded.
+
+
+def test_a_warning_severity_missing_gap_does_not_block_the_suite():
+    """The exact contradiction: a MISSING_COMPONENT the model recorded as a
+    warning must not become a suite-blocking critical."""
+    inh = _inheritance(open_model_gaps=[_model_gap(1, "MISSING_COMPONENT", "warning")])
+    evaluation = evaluate_member(inh, capability_status=_CONNECTED)
+
+    missing = next(g for g in evaluation.gaps if g.gap_type == "LOCATOR_MISSING")
+    assert missing.severity == "warning"
+    assert evaluation.member_status == "WARNING"
+
+
+def test_a_critical_missing_gap_still_blocks():
+    """The control has to keep working — this is not a general relaxation."""
+    inh = _inheritance(open_model_gaps=[_model_gap(1, "MISSING_SCREEN", "critical")])
+    evaluation = evaluate_member(inh, capability_status=_CONNECTED)
+
+    assert next(g for g in evaluation.gaps if g.gap_type == "LOCATOR_MISSING").severity == "critical"
+    assert evaluation.member_status == "BLOCKED"
+
+
+def test_one_critical_among_warnings_still_blocks():
+    """Severity is taken from the worst gap in the group, not the first."""
+    inh = _inheritance(open_model_gaps=[
+        _model_gap(1, "MISSING_COMPONENT", "warning"),
+        _model_gap(2, "MISSING_ELEMENT", "critical"),
+        _model_gap(3, "MISSING_COMPONENT", "warning"),
+    ])
+    evaluation = evaluate_member(inh, capability_status=_CONNECTED)
+
+    missing = next(g for g in evaluation.gaps if g.gap_type == "LOCATOR_MISSING")
+    assert missing.severity == "critical"
+    assert "3 missing" in missing.reason and "1 critical" in missing.reason
+    assert evaluation.member_status == "BLOCKED"
+
+
+def test_an_ambiguous_gap_escalated_by_the_model_is_honoured_too():
+    """Severity flows in both directions — the model may decide an unstable
+    locator is critical for a given application."""
+    inh = _inheritance(open_model_gaps=[_model_gap(1, "UNSTABLE_LOCATOR", "critical")])
+    evaluation = evaluate_member(inh, capability_status=_CONNECTED)
+
+    assert next(g for g in evaluation.gaps if g.gap_type == "LOCATOR_AMBIGUOUS").severity == "critical"
+    assert evaluation.member_status == "BLOCKED"
+
+
+def test_a_model_with_only_warning_gaps_matches_its_own_verdict():
+    """End state of the bug: model says approvable, suite agrees."""
+    inh = _inheritance(open_model_gaps=[
+        _model_gap(1, "MISSING_COMPONENT", "warning"),
+        _model_gap(2, "UNSTABLE_LOCATOR", "warning"),
+    ])
+    evaluation = evaluate_member(inh, capability_status=_CONNECTED)
+
+    assert not [g for g in evaluation.gaps if g.severity == "critical"]
+    assert evaluation.member_status == "WARNING"
 
 
 def test_unresolved_environment_is_reported_without_counting_a_check():

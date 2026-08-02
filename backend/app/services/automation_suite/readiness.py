@@ -213,29 +213,53 @@ def evaluate_member(
                     remediation="Rebuild the Application Model from the latest discovery session.",
                 )
 
-            critical_locator_gaps = [g for g in inh.open_model_gaps if g.gap_type in _LOCATOR_CRITICAL_GAPS]
-            warning_locator_gaps = [g for g in inh.open_model_gaps if g.gap_type in _LOCATOR_WARNING_GAPS]
-            check(len(critical_locator_gaps) == 0)
-            if critical_locator_gaps:
+            # Severity comes from the model, not from the gap's type.
+            #
+            # These were partitioned by gap_type alone, so every MISSING_* gap
+            # counted as critical here no matter what the Application Model had
+            # recorded. A model could sit "approved" with two warning-severity
+            # gaps and 0 criticals while the suite reported 4 criticals over the
+            # same two gaps and refused submission — and the findings table
+            # listed them all as Warning. Three views, three verdicts, one set
+            # of facts.
+            #
+            # The model is the authority: its reviewer decided what these are
+            # worth, and re-deciding it downstream overrides a governance
+            # judgement that has already been made and recorded.
+            missing_gaps = [g for g in inh.open_model_gaps if g.gap_type in _LOCATOR_CRITICAL_GAPS]
+            ambiguous_gaps = [g for g in inh.open_model_gaps if g.gap_type in _LOCATOR_WARNING_GAPS]
+            blocking_model_gaps = [
+                g for g in (missing_gaps + ambiguous_gaps) if g.severity == "critical"
+            ]
+            check(not blocking_model_gaps)
+
+            def _severity_of(gaps: list) -> str:
+                return "critical" if any(g.severity == "critical" for g in gaps) else "warning"
+
+            if missing_gaps:
+                critical_count = sum(1 for g in missing_gaps if g.severity == "critical")
                 add(
                     gap_type="LOCATOR_MISSING",
                     stage="grounding",
-                    severity="critical",
-                    reason=f"{len(critical_locator_gaps)} open critical grounding gap(s) in the Application Model.",
+                    severity=_severity_of(missing_gaps),
+                    reason=(
+                        f"{len(missing_gaps)} missing screen/component/element gap(s) in the "
+                        f"Application Model ({critical_count} critical)."
+                    ),
                     remediation="Resolve missing screen/component/element gaps in Application Model.",
-                    evidence={"gap_ids": [g.id for g in critical_locator_gaps]},
+                    evidence={"gap_ids": [g.id for g in missing_gaps]},
                     # Keyed on the model, not the gap ids — that list churns
                     # on every model rebuild.
                     subject=f"model:{model.id}",
                 )
-            if warning_locator_gaps:
+            if ambiguous_gaps:
                 add(
                     gap_type="LOCATOR_AMBIGUOUS",
                     stage="grounding",
-                    severity="warning",
-                    reason=f"{len(warning_locator_gaps)} ambiguous/unstable locator gap(s) in the Application Model.",
+                    severity=_severity_of(ambiguous_gaps),
+                    reason=f"{len(ambiguous_gaps)} ambiguous/unstable locator gap(s) in the Application Model.",
                     remediation="Confirm or add fallback locators in Application Model.",
-                    evidence={"gap_ids": [g.id for g in warning_locator_gaps]},
+                    evidence={"gap_ids": [g.id for g in ambiguous_gaps]},
                     subject=f"model:{model.id}",
                 )
 
