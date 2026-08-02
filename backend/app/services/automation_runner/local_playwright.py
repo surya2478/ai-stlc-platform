@@ -103,12 +103,16 @@ class LocalPlaywrightRunner(AutomationRunner):
                 )
 
                 async def drain_stdout() -> None:
+                    # Tee — see the note in docker_playwright.drain_stdout:
+                    # stdout carries the JSON report, and without this the log
+                    # holds stderr alone and is empty on a clean run.
                     assert proc.stdout is not None
                     while True:
                         chunk = await proc.stdout.read(64 * 1024)
                         if not chunk:
                             break
                         json_stdout.extend(chunk)
+                        log_fh.write(chunk)
 
                 drain_task = asyncio.create_task(drain_stdout())
                 outcome = await await_process(

@@ -88,3 +88,37 @@ def test_pytest_synthesized_row_is_flagged_as_synthesized(tmp_path):
     )
     assert rows[0].status == "pass"
     assert rows[0].raw["synthesized"] is True
+
+
+# ── The run log holds the run's output ──────────────────────────────────────
+#
+# Found on a governed execution: the "log" evidence row for a passing item had
+# size 0 and the SHA-256 of empty content. Both Playwright runners piped stdout
+# away for JSON parsing and pointed run.log at stderr alone — which a clean run
+# never writes to. The log was empty exactly when the test passed, so a reader
+# could not tell a quiet success from a broken capture.
+
+
+import inspect
+
+import app.services.automation_runner.docker_playwright as docker_pw
+import app.services.automation_runner.local_playwright as local_pw
+
+
+def test_playwright_runners_tee_stdout_into_the_log():
+    """stdout is both the report to parse and the only record of the run."""
+    for module in (docker_pw, local_pw):
+        source = inspect.getsource(module)
+        assert "json_stdout.extend(chunk)" in source, f"{module.__name__} lost its parse path"
+        assert "log_fh.write(chunk)" in source, (
+            f"{module.__name__} pipes stdout away without writing it to the log, "
+            "so run.log holds stderr alone and is empty on a clean run"
+        )
+
+
+def test_the_log_is_still_opened_before_the_process_starts():
+    """Guards the ordering the tee depends on — a log opened after the process
+    would miss the beginning of the output."""
+    for module in (docker_pw, local_pw):
+        source = inspect.getsource(module)
+        assert source.index('log_path.open("wb")') < source.index("create_subprocess_exec")

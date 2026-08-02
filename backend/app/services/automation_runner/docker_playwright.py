@@ -105,12 +105,19 @@ class DockerPlaywrightRunner(LocalPlaywrightRunner):
                 )
 
                 async def drain_stdout() -> None:
+                    # Tee: stdout is both the JSON report this parses and the
+                    # only record of what the run did. Piping it away for
+                    # parsing left run.log holding stderr alone, which is empty
+                    # on a clean run — so the log evidence attested to zero
+                    # bytes precisely when the test passed, and a reader could
+                    # not tell "ran cleanly" from "log capture is broken".
                     assert proc.stdout is not None
                     while True:
                         chunk = await proc.stdout.read(64 * 1024)
                         if not chunk:
                             break
                         json_stdout.extend(chunk)
+                        log_fh.write(chunk)
 
                 drain_task = asyncio.create_task(drain_stdout())
                 outcome = await await_process(
