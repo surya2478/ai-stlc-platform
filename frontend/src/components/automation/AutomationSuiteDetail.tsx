@@ -55,6 +55,7 @@ import {
   messageFromError,
 } from "@/components/automation/suite-shared";
 import { Layers3, ListChecks, AlertTriangle, FileCode2, GitBranch } from "lucide-react";
+import { ExecutionPathList } from "@/components/test-cases/ExecutionPathPanel";
 
 type LiveTab =
   | "overview"
@@ -491,6 +492,21 @@ export function AutomationSuiteDetail({
 
       {tab === "overview" && (
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_320px]">
+          {/* Suite gaps only cover what a suite owns. Blockers upstream of it —
+              an unapproved requirement, a missing discovery session, a model
+              awaiting review — are invisible here, and were previously found
+              only by hitting them in another module. */}
+          <Panel title="Path to Execution">
+            <ExecutionPathList
+              projectId={projectId}
+              testCases={members.map((m) => ({
+                id: m.test_case_id,
+                label: m.test_case_reference || `TC-${m.test_case_id}`,
+              }))}
+              emptyMessage="This suite has no members yet."
+            />
+          </Panel>
+
           <Panel title="Readiness Summary">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px] font-semibold">
               {[

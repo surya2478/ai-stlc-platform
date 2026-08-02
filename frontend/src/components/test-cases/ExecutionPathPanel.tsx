@@ -160,3 +160,96 @@ export function ExecutionPathPanel({
     </div>
   );
 }
+
+/**
+ * The same path, one line per test case.
+ *
+ * A suite has many members and an empty workspace has none selected, so the
+ * full nine-row panel does not fit either. This keeps what matters at a glance
+ * — how far along, and the single next thing — and links through for the rest.
+ *
+ * Each row fetches independently: one unreachable test case must not blank the
+ * list, and a row that cannot be read says so rather than showing zero.
+ */
+export function ExecutionPathList({
+  projectId,
+  testCases,
+  emptyMessage = "No test cases to show.",
+  className,
+}: {
+  projectId: number;
+  testCases: Array<{ id: number; label: string }>;
+  emptyMessage?: string;
+  className?: string;
+}) {
+  if (!testCases.length) {
+    return <p className={cn("text-[11px] font-semibold text-slate-400", className)}>{emptyMessage}</p>;
+  }
+  return (
+    <ul className={cn("space-y-1", className)}>
+      {testCases.map((tc) => (
+        <ExecutionPathRow key={tc.id} projectId={projectId} testCaseId={tc.id} label={tc.label} />
+      ))}
+    </ul>
+  );
+}
+
+function ExecutionPathRow({
+  projectId,
+  testCaseId,
+  label,
+}: {
+  projectId: number;
+  testCaseId: number;
+  label: string;
+}) {
+  const [path, setPath] = useState<ExecutionPath | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    testCasesApi
+      .executionPath(projectId, testCaseId)
+      .then((res) => live && setPath(res.data))
+      .catch(() => live && setFailed(true));
+    return () => { live = false; };
+  }, [projectId, testCaseId]);
+
+  const pct = path?.steps_total ? Math.round((path.steps_done / path.steps_total) * 100) : 0;
+
+  return (
+    <li className="flex items-center gap-3 rounded-lg border border-slate-100 px-2.5 py-1.5">
+      <span className="w-20 shrink-0 truncate font-mono text-[11px] font-bold text-slate-700">{label}</span>
+      <span className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-slate-100">
+        <span
+          className={cn("block h-full rounded-full", path?.ready_to_execute ? "bg-emerald-500" : "bg-[#1b59f8]")}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className="w-9 shrink-0 text-[11px] font-bold text-slate-600">
+        {path ? `${path.steps_done}/${path.steps_total}` : failed ? "—" : "…"}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
+        {failed ? (
+          <span className="text-slate-400">Path unavailable — check the modules directly.</span>
+        ) : !path ? (
+          <span className="text-slate-400">Checking…</span>
+        ) : path.ready_to_execute ? (
+          <span className="text-emerald-700">Ready to execute</span>
+        ) : (
+          <span className="text-slate-600">
+            Next: <span className="font-bold text-amber-800">{path.next_action}</span>
+          </span>
+        )}
+      </span>
+      {path?.next_action_href && (
+        <Link
+          href={path.next_action_href}
+          className="shrink-0 rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-50"
+        >
+          Go
+        </Link>
+      )}
+    </li>
+  );
+}

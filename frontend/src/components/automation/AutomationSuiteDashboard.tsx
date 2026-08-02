@@ -33,8 +33,10 @@ import {
   type AutomationSuiteDashboard as DashboardMetrics,
   type AutomationSuiteFooterStatus,
   type AutomationSuiteListItem,
+  testCasesApi,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { ExecutionPathList } from "@/components/test-cases/ExecutionPathPanel";
 import {
   Banner,
   DisabledAction,
@@ -90,6 +92,25 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
   const [executions, setExecutions] = useState<ActiveExecutionRow[]>([]);
   const [executionsUnavailable, setExecutionsUnavailable] = useState<Record<string, string>>({});
   const [footer, setFooter] = useState<AutomationSuiteFooterStatus | null>(null);
+  // Only for the empty state — the dashboard otherwise carries aggregate
+  // counts, and "2 test cases" cannot tell you which ones are nearly runnable.
+  const [automatable, setAutomatable] = useState<Array<{ id: number; label: string }>>([]);
+
+  useEffect(() => {
+    let live = true;
+    testCasesApi
+      .list(projectId, { status: "approved" })
+      .then((res) => {
+        if (!live) return;
+        setAutomatable(
+          res.data.slice(0, 10).map((tc) => ({ id: tc.id, label: tc.test_case_id })),
+        );
+      })
+      // Silent: this only enriches an empty state and must never break the
+      // dashboard that hosts it.
+      .catch(() => undefined);
+    return () => { live = false; };
+  }, [projectId]);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -474,10 +495,32 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                   </button>
                 ))}
                 {suites.length === 0 && (
-                  <div className="py-12 text-center text-xs font-semibold text-slate-400">
-                    {search || statusFilter
-                      ? "No suites match these filters."
-                      : "No Automation Test Suites yet. Create one from approved test cases to get started."}
+                  <div className="px-4 py-10">
+                    {search || statusFilter ? (
+                      <p className="text-center text-xs font-semibold text-slate-400">
+                        No suites match these filters.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="text-center text-xs font-semibold text-slate-500">
+                          No Automation Test Suites yet. Create one from approved test cases to get started.
+                        </p>
+                        {/* An empty state is exactly where "what do I do next"
+                            is hardest to answer, and the answer lives across
+                            six modules. Showing how close each approved test
+                            case already is turns a dead end into a queue. */}
+                        <div className="mx-auto mt-5 max-w-3xl">
+                          <p className="mb-2 text-[10px] font-extrabold uppercase tracking-wide text-slate-400">
+                            Approved test cases and how close each is to running
+                          </p>
+                          <ExecutionPathList
+                            projectId={projectId}
+                            testCases={automatable}
+                            emptyMessage="No approved test cases yet — approve one in Test Case Approval first."
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
