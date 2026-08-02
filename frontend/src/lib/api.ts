@@ -1308,11 +1308,41 @@ export const scenariosApi = {
 
 // ── Test Cases ────────────────────────────────────────────────────────────────
 
+/** UNKNOWN is deliberate: a step whose subsystem could not be read is never
+ *  reported as DONE, so a green path means something. */
+export type ExecutionPathState = "DONE" | "BLOCKED" | "WAITING" | "UNKNOWN";
+
+export interface ExecutionPathStep {
+  key: string;
+  label: string;
+  state: ExecutionPathState;
+  detail: string;
+  /** Present only on the one actionable step — consequences carry no link. */
+  fix_label: string | null;
+  fix_href: string | null;
+}
+
+export interface ExecutionPath {
+  test_case_id: number;
+  test_case_key: string | null;
+  steps: ExecutionPathStep[];
+  steps_total: number;
+  steps_done: number;
+  ready_to_execute: boolean;
+  next_action: string | null;
+  next_action_href: string | null;
+  errors: string[];
+}
+
 export const testCasesApi = {
   list: (projectId: number, params?: { scenario_id?: number; requirement_id?: number; status?: string; automation_only?: boolean }) =>
     api.get<TestCase[]>(`/test-cases/projects/${projectId}`, { params }),
   summary: (projectId: number) =>
     api.get<TestCaseSummary>(`/test-cases/projects/${projectId}/summary`),
+  /** Everything standing between this test case and a governed execution.
+   *  Read-only — derived from state other services already own. */
+  executionPath: (projectId: number, testCaseId: number) =>
+    api.get<ExecutionPath>(`/test-cases/projects/${projectId}/execution-path/${testCaseId}`),
   get: (id: number) => api.get<TestCase>(`/test-cases/${id}`),
   update: (id: number, data: Partial<TestCase> & { comment?: string }) =>
     api.patch<TestCase>(`/test-cases/${id}`, data),

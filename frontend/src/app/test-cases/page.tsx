@@ -54,13 +54,17 @@ import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
 import { TestCasesTabs } from "@/components/test-cases/TestCasesTabs";
+import { ExecutionPathPanel } from "@/components/test-cases/ExecutionPathPanel";
 import { JourneyGraphView } from "./JourneyGraphView";
 import { TestCaseApprovalView } from "./TestCaseApprovalView";
 import { useAIAction } from "@/hooks/useAIAction";
 import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 import { terminalAIStatus } from "@/lib/ai-processing-status";
 
-type DrawerTab = "overview" | "cases" | "coverage" | "ai" | "activity";
+// "path" leads: "why won't this run yet?" is the question a reader arrives
+// with. It is a tab rather than a banner so it does not push the rest of the
+// drawer down — the existing flow stays exactly where it was.
+type DrawerTab = "path" | "overview" | "cases" | "coverage" | "ai" | "activity";
 type Tone = "blue" | "emerald" | "red" | "purple" | "amber" | "slate";
 
 
@@ -1546,6 +1550,7 @@ function TestCasesContent() {
 
             <div className="flex border-b border-slate-100 px-4">
               {([
+                ["path", "Path to Execution"],
                 ["overview", "Overview"],
                 ["cases", `Sibling Cases (${linkedCases.length})`],
                 ["coverage", "Coverage & Gaps"],
@@ -1566,6 +1571,10 @@ function TestCasesContent() {
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              {drawerTab === "path" && selectedProject && (
+                <ExecutionPathPanel projectId={selectedProject} testCaseId={selectedTestCase.id} />
+              )}
+
               {drawerTab === "overview" && (
                 <>
                   <DrawerCard title="Test Case Details" icon={TestTube2}>
