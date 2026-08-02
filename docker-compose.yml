@@ -134,6 +134,29 @@ services:
     command: uvicorn app.executor.main:app --host 0.0.0.0 --port 8100
 
 
+  # ── Static Test Target ──────────────────────────────────────────────────────
+  # A deterministic multi-page site to run automation against, so a governed run
+  # is not at the mercy of a third party's uptime. An external outage blocks a
+  # run before it starts and, mid-run, is hard to distinguish from a real
+  # application defect; a target we control removes that ambiguity.
+  #
+  # The only service on both networks. `test_targets` is what spawned runner
+  # containers join, and it deliberately does NOT include db, redis, backend or
+  # runner-executor: untrusted generated test code should be able to reach the
+  # thing under test and nothing else in the deployment.
+  static-test:
+    image: nginx:alpine
+    container_name: stlc_static_test
+    restart: unless-stopped
+    volumes:
+      - ./fixtures/static-site:/usr/share/nginx/html:ro
+    ports:
+      # Loopback only — a fixture, not something to expose on the network.
+      - "127.0.0.1:8080:80"
+    networks:
+      - default
+      - test_targets
+
   # ── Next.js Frontend ────────────────────────────────────────────────────────
   frontend:
     build:
@@ -163,6 +186,12 @@ services:
     depends_on:
       - frontend
       - backend
+
+networks:
+  # Fixed name so AUTOMATION_DOCKER_NETWORK does not have to track the compose
+  # project prefix — the executor passes this straight to `docker run --network`.
+  test_targets:
+    name: stlc_test_targets
 
 volumes:
   pg_data:

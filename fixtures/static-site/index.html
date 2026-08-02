@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Fixture — Landing</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav aria-label="header navigation">
+    <a href="index.html">Home</a>
+    <a href="about.html">About</a>
+    <a href="services.html">Services</a>
+    <a href="contact.html">Contact</a>
+  </nav>
+
+  <main aria-label="main">
+    <h1>Welcome</h1>
+    <p>
+      A deterministic fixture for validating navigation behaviour. Every link in
+      the bar above resolves to a real page with a real URL, so an assertion on
+      the resulting address is meaningful rather than incidental.
+    </p>
+    <p>
+      The links at the bottom of this page are deliberately inert. They carry
+      <code>href="#"</code>, which is an observed fact about the markup — not a
+      gap in anyone's knowledge.
+    </p>
+  </main>
+
+  <footer>
+    <p>Follow us</p>
+    <a href="#">LinkedIn</a>
+    <a href="#">Twitter</a>
+    <a href="#">GitHub</a>
+    <a href="#">YouTube</a>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Fixture — Get In Touch</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav aria-label="header navigation">
+    <a href="index.html">Home</a>
+    <a href="about.html">About</a>
+    <a href="services.html">Services</a>
+    <a href="contact.html">Contact</a>
+  </nav>
+
+  <main aria-label="main">
+    <h1>Get In Touch</h1>
+    <!-- aria-label gives the form an accessible name, which is what promotes it
+         to role="form" and matches the contact_form node in the model. -->
+    <form aria-label="form" method="post" action="submitted.html">
+      <p>
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" required>
+      </p>
+      <p>
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required>
+      </p>
+      <p>
+        <label for="message">Message</label>
+        <textarea id="message" name="message" rows="4"></textarea>
+      </p>
+      <button type="submit">Submit</button>
+    </form>
+  </main>
+
+  <footer>
+    <p>Follow us</p>
+    <a href="#">LinkedIn</a>
+    <a href="#">Twitter</a>
+    <a href="#">GitHub</a>
+    <a href="#">YouTube</a>
+  </footer>
+</body>
+</html>
