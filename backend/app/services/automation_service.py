@@ -68,7 +68,18 @@ async def approve_script(
 ) -> AutomationScript:
     script.status = "approved" if action == "approve" else "rejected"
     if notes:
-        script.metadata_ = {**(script.metadata_ or {}), "review_notes": notes}
+        metadata = {**(script.metadata_ or {}), "review_notes": notes}
+        # Record WHAT was overridden, not just that a note was written. The
+        # execution gate matches on this text, so an override only covers the
+        # issue the approver actually saw — if the script changes and develops
+        # a different problem, the old note no longer waves it through.
+        if action == "approve" and (issue := _quality_issue_summary(script)):
+            metadata["execution_override"] = {
+                "issue": issue,
+                "reason": notes,
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+        script.metadata_ = metadata
     await db.flush()
     await db.refresh(script)
     return script
@@ -203,6 +214,9 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
         },
         "generation_attempts": sc_data.get("generation_attempts", []),
     }
+    # A regenerated script has not been reviewed, so an approver's override of
+    # the PREVIOUS version's issue must not carry over and wave it through.
+    script.metadata_.pop("execution_override", None)
     script.status = "draft"
 
     # NOTE: this mutates the existing row in place rather than creating a new
@@ -262,9 +276,32 @@ def execution_blocked_reason(script: AutomationScript) -> str | None:
         return "Script is not approved for execution yet."
 
     issue = _quality_issue_summary(script)
-    if issue:
-        return f"{issue[0].upper()}{issue[1:]} — regenerate before running."
-    return None
+    if not issue:
+        return None
+
+    # An approver who acknowledged this exact issue in writing has already
+    # taken responsibility for it — refusing anyway is a deadlock, not a
+    # safeguard.
+    #
+    # Approval collects an audited override note (approval_override_reason)
+    # and execution then ignored it, so the UI could truthfully say "an
+    # override note is required", accept one, and still refuse. Some issues
+    # cannot be regenerated away at all: an error banner that only exists
+    # after a failed submit can never appear in a catalog crawled from the
+    # form, so "regenerate before running" was advice that could not work.
+    # Observed live 2026-08-03 on a login negative-path suite.
+    #
+    # Matched against the issue text recorded at approval, so an override
+    # covers what was actually reviewed. Regeneration clears it (see
+    # regenerate_script) — a fresh script has not been reviewed.
+    override = (script.metadata_ or {}).get("execution_override") or {}
+    if override.get("issue") == issue and (override.get("reason") or "").strip():
+        return None
+
+    return (
+        f"{issue[0].upper()}{issue[1:]} — approve it with a note explaining why "
+        "it should run anyway, or regenerate it."
+    )
 
 
 def approval_override_reason(script: AutomationScript, notes: str | None) -> str | None:

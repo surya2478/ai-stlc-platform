@@ -57,7 +57,7 @@ from app.llm.provider import (
     set_llm_route_override,
 )
 from app.llm.roles import role_for_scope
-from app.services import agent_run_service
+from app.services import agent_progress, agent_run_service
 from app.services import artifact_review_service
 from app.services import automation_service
 from app.services import coverage_matrix_service
@@ -75,6 +75,17 @@ from app.services import traceability_service
 from app.worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+# The band an agent's own progress is scaled into. Below it sits the wrapper's
+# "Worker started" (10) and "Agent execution started" (30); above it,
+# "Persisting agent result" (90). Keeping the agent inside 30-90 means its
+# narration never contradicts those milestones.
+_AGENT_PROGRESS_FLOOR = 30
+_AGENT_PROGRESS_CEILING = 90
+
+# A run in one of these has already been decided; re-executing it can only
+# duplicate work or overwrite a result someone has already acted on.
+_TERMINAL_AGENT_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 AgentCallable = Callable[[dict[str, Any]], Awaitable[Any]]
 
@@ -2301,6 +2312,38 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
             # Cancelled while still queued — never overwrite a user's cancel.
             return {"agent_run_id": agent_run_id, "status": "cancelled"}
 
+        # ── duplicate-delivery guard ──────────────────────────────────────
+        # `task_acks_late=True` means a task is only acknowledged once it
+        # finishes, so work survives a crashed worker — and a task killed
+        # mid-flight is redelivered when a worker reconnects. That is the
+        # behaviour we want, but nothing stopped the redelivered copy from
+        # executing an agent run that had since been retried and completed.
+        #
+        # Observed live 2026-08-03: a task killed by a worker restart was
+        # redelivered ~1h later, re-ran an agent run that had already
+        # completed via the Studio retry button, produced a duplicate script
+        # for TC-0079, and — because both ran against one local model —
+        # roughly doubled the wall-clock time of an unrelated run happening
+        # at the same time.
+        if run.status in _TERMINAL_AGENT_STATUSES:
+            logger.warning(
+                "agent_tasks: refusing duplicate delivery of task %s for run %s — already %s",
+                task_id, agent_run_id, run.status,
+            )
+            return {"agent_run_id": agent_run_id, "status": run.status, "skipped": "already_terminal"}
+
+        # A newer dispatch owns this run. `enqueue_agent_run` writes its task
+        # id when it requeues, so a delivery carrying an older id is a stale
+        # copy of work that has been superseded — including the case where
+        # the newer attempt is still running, which the status check above
+        # cannot see.
+        if run.celery_task_id and run.celery_task_id != task_id:
+            logger.warning(
+                "agent_tasks: refusing superseded delivery of task %s for run %s — owned by task %s",
+                task_id, agent_run_id, run.celery_task_id,
+            )
+            return {"agent_run_id": agent_run_id, "status": run.status, "skipped": "superseded"}
+
         run.status = "running"
         run.celery_task_id = task_id
         await agent_run_service.update_progress(db, run, percent=10, message="Worker started", step="running")
@@ -2319,6 +2362,19 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
         try:
             await agent_run_service.update_progress(db, run, percent=30, message="Agent execution started")
             await db.commit()
+
+            # Let the agent narrate its own work between the two milestones
+            # this wrapper owns. Committed on each report, because the UI reads
+            # the row from a different session — a flush alone would leave the
+            # spinner showing the same 30% it always showed.
+            async def _report(percent: int, message: str) -> None:
+                scaled = _AGENT_PROGRESS_FLOOR + int(
+                    (_AGENT_PROGRESS_CEILING - _AGENT_PROGRESS_FLOOR) * percent / 100
+                )
+                await agent_run_service.update_progress(db, run, percent=scaled, message=message)
+                await db.commit()
+
+            progress_token = agent_progress.set_progress_reporter(_report)
             try:
                 agent_result = await asyncio.wait_for(
                     _run_agent_with_project_llm_routes(
@@ -2339,6 +2395,8 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
                 )
                 await db.commit()
                 return {"agent_run_id": agent_run_id, "status": "failed", "error": error}
+            finally:
+                agent_progress.reset_progress_reporter(progress_token)
 
             # Re-check from the DB (not the in-memory `run`) — a concurrent
             # cancel request commits from a different session, so only a

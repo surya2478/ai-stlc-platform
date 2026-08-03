@@ -247,13 +247,91 @@ def filter_catalog_by_page(catalog: list[dict] | None, base_url: str | None) -> 
     return scoped or catalog
 
 
+# How many catalog entries a single generation prompt may carry.
+#
+# Sized from a real failure rather than taste: a 157-element catalog rendered
+# 25,399 characters of prompt against a 1,100-character test case — 97% of the
+# prompt was locators, most of them for parts of the page the test never
+# touches. That made every call ~8k tokens, which is both slow on a local model
+# and what exhausted its context when several ran at once.
+CATALOG_PROMPT_LIMIT = 60
+
+_STOPWORDS = frozenset({
+    "the", "and", "for", "with", "that", "this", "from", "into", "then", "when",
+    "should", "verify", "check", "ensure", "click", "page", "user", "test",
+    "given", "have", "been", "will", "must", "does", "your", "you",
+})
+
+
+def _relevance_tokens(text: str) -> set[str]:
+    return {
+        token for token in re.split(r"[^a-z0-9]+", (text or "").lower())
+        if len(token) > 3 and token not in _STOPWORDS
+    }
+
+
+def select_relevant_catalog(
+    catalog: list[dict] | None,
+    test_case_text: str,
+    *,
+    limit: int = CATALOG_PROMPT_LIMIT,
+) -> list[dict] | None:
+    """The entries most likely to be needed by ONE test case, capped.
+
+    Ordering, not just filtering: entries whose own words appear in the test
+    case come first, then the highest-confidence remainder fills the cap. The
+    fill matters — a login test rarely names the submit button in its steps,
+    and dropping every unmentioned control would strand exactly the elements
+    the flow needs.
+
+    Never returns an empty list for a non-empty catalog: an unfiltered prompt
+    is slow, but a prompt with no locators at all is ungrounded, which is
+    worse.
+    """
+    if not catalog or len(catalog) <= limit:
+        return catalog
+
+    wanted = _relevance_tokens(test_case_text)
+
+    def score(entry: dict) -> int:
+        if not wanted:
+            return 0
+        entry_text = " ".join(
+            str(entry.get(key) or "")
+            for key in ("element_name", "business_meaning", "accessible_name")
+        )
+        return len(wanted & _relevance_tokens(entry_text))
+
+    # Sorted by relevance, then confidence, then original position — every key
+    # is deterministic, so the same catalog and test case always produce the
+    # same prompt (and therefore the same idempotency hash).
+    ranked = sorted(
+        enumerate(catalog),
+        key=lambda pair: (-score(pair[1]), -int(pair[1].get("confidence_score") or 0), pair[0]),
+    )
+    return [entry for _index, entry in ranked[:limit]]
+
+
 def _explored_paths(explored_page_paths: list[str] | None) -> list[str]:
+    """Path + query + FRAGMENT of every explored URL.
+
+    The fragment is not decoration for a hash-routed SPA — it *is* the route.
+    Dropping it made `https://site/client/#/auth/login` explore as `/client/`,
+    so a contract asserting on `/client/#/auth/login` (the correct, real URL)
+    was reported ungrounded and blocked from execution. Observed live
+    2026-08-03 on a hash-routed Angular app: the model produced exactly the
+    right assertion and the gate rejected it, with "regenerate before running"
+    advice that could never have helped because regeneration produces the same
+    correct URL again.
+    """
     paths = []
     for url in explored_page_paths or []:
         parsed = urlparse(url)
         path = parsed.path or "/"
         if parsed.query:
             path = f"{path}?{parsed.query}"
+        if parsed.fragment:
+            path = f"{path}#{parsed.fragment}"
         paths.append(path)
     return paths
 

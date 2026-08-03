@@ -351,3 +351,79 @@ def test_generation_concurrency_is_one_against_a_local_single_model_server(monke
         automation_generation_concurrency=3,
     )
     assert pinned.resolved_automation_generation_concurrency == 3
+
+
+# ── progress reporting ────────────────────────────────────────────────────────
+# Before this the only progress the UI ever saw came from the task wrapper:
+# 10, 30, 90, 100. A six-script wave sat at 30% "Agent execution started" for
+# five and a half minutes.
+
+def test_generation_reports_progress_as_each_script_completes(monkeypatch):
+    from app.services import agent_progress
+
+    reports: list[tuple[int, str]] = []
+
+    async def _record(percent, message):
+        reports.append((percent, message))
+
+    token = agent_progress.set_progress_reporter(_record)
+    try:
+        monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: _FakeLLM(VALID_CONTRACT_JSON))
+        monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 1)
+        test_cases = [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 4)]
+
+        async def run():
+            return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+
+        anyio.run(run)
+    finally:
+        agent_progress.reset_progress_reporter(token)
+
+    # One "preparing" report, then one per test case, counting up.
+    assert reports[0][0] == 0
+    assert "3 script(s)" in reports[0][1]
+    counted = [r for r in reports if "Generated" in r[1]]
+    assert [r[1] for r in counted] == [
+        "Generated 1 of 3 scripts — TC-0001",
+        "Generated 2 of 3 scripts — TC-0002",
+        "Generated 3 of 3 scripts — TC-0003",
+    ]
+    assert [r[0] for r in counted] == [33, 66, 100]
+
+
+def test_progress_marks_a_test_case_that_failed(monkeypatch):
+    from app.services import agent_progress
+
+    reports: list[tuple[int, str]] = []
+
+    async def _record(percent, message):
+        reports.append((percent, message))
+
+    token = agent_progress.set_progress_reporter(_record)
+    try:
+        monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: _FakeLLM("not json at all"))
+        monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 1)
+
+        async def run():
+            return await AutomationScriptAgent().run(
+                test_cases=[{"test_case_id": "TC-0001", "title": "Broken"}], framework="playwright",
+            )
+
+        anyio.run(run)
+    finally:
+        agent_progress.reset_progress_reporter(token)
+
+    assert any("(failed)" in message for _pct, message in reports)
+
+
+def test_an_agent_with_no_reporter_installed_still_runs(monkeypatch):
+    """Progress is commentary — an agent invoked outside the task wrapper (or
+    in a test) must not fail because nothing is listening."""
+    monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: _FakeLLM(VALID_CONTRACT_JSON))
+
+    async def run():
+        return await AutomationScriptAgent().run(
+            test_cases=[{"test_case_id": "TC-0001", "title": "Works"}], framework="playwright",
+        )
+
+    assert anyio.run(run).success is True

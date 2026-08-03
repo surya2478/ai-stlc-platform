@@ -19,6 +19,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   isActiveStudioRun,
   useCancelStudioRun,
+  useRetryStudioRun,
   useStartStudioRun,
   useStudioRun,
   useStudioRuns,
@@ -36,6 +37,23 @@ import {
   studioStatusVariant,
 } from "@/components/playwright-studio/studio-utils";
 
+function elapsedLabel(since: string | null | undefined): string | null {
+  if (!since) return null;
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s elapsed`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s elapsed`;
+}
+
+/**
+ * What the run is doing, in the run's own words.
+ *
+ * This used to render a spinner and whatever the task wrapper had last
+ * written, which was "Agent execution started · 30%" for the entire job — a
+ * six-script wave sat on that for five and a half minutes with no way to tell
+ * progress from a hang. The agent now narrates each script as it lands
+ * (see app/services/agent_progress.py), so the bar and the message below are
+ * real counts, not an animation.
+ */
 function AgentProgressCard({
   title,
   detail,
@@ -44,28 +62,78 @@ function AgentProgressCard({
 }: {
   title: string;
   detail: string;
-  agentRuns: Array<{ id: number; status: string; progress_percent: number; progress_message?: string | null }>;
+  agentRuns: Array<{
+    id: number;
+    status: string;
+    progress_percent: number;
+    progress_message?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+  }>;
   projectId: number | null;
 }) {
+  // Re-render once a second purely so "elapsed" stays honest between the
+  // query's own polling intervals.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <Card>
-      <CardContent className="space-y-3 p-6 text-center">
-        <Loader2 className="mx-auto h-8 w-8 animate-spin text-violet-600" />
-        <p className="text-sm font-semibold">{title}</p>
-        <p className="text-xs text-muted-foreground">{detail}</p>
-        {agentRuns.map((agentRun) => (
-          <div key={agentRun.id} className="mx-auto max-w-md text-xs text-muted-foreground">
-            Agent run #{agentRun.id} — {agentRun.status}
-            {agentRun.progress_percent > 0 && ` · ${agentRun.progress_percent}%`}
-            {agentRun.progress_message && ` · ${agentRun.progress_message}`}
-          </div>
-        ))}
-        <a
-          className="inline-flex items-center gap-1 text-xs text-violet-600 underline"
-          href={projectId ? `/agents?project=${projectId}` : "/agents"}
-        >
-          <Search className="h-3 w-3" /> Watch live agent logs
-        </a>
+      <CardContent className="space-y-4 p-6">
+        <div className="flex items-center justify-center gap-2">
+          <Loader2 className="h-5 w-5 animate-spin text-violet-600" />
+          <p className="text-sm font-semibold">{title}</p>
+        </div>
+        <p className="text-center text-xs text-muted-foreground">{detail}</p>
+
+        {agentRuns.map((agentRun) => {
+          const percent = Math.max(0, Math.min(100, agentRun.progress_percent || 0));
+          const elapsed = elapsedLabel(agentRun.created_at);
+          const stalledFor = agentRun.updated_at
+            ? Math.floor((Date.now() - new Date(agentRun.updated_at).getTime()) / 1000)
+            : 0;
+          return (
+            <div key={agentRun.id} className="mx-auto max-w-lg space-y-1.5">
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                  {agentRun.progress_message || `Agent run #${agentRun.id} — ${agentRun.status}`}
+                </span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">{percent}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-violet-600 transition-all duration-500"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+              <div className="flex flex-wrap justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>Agent run #{agentRun.id} · {agentRun.status}</span>
+                {elapsed && <span className="tabular-nums">{elapsed}</span>}
+              </div>
+              {/* Long gaps are normal here — one script is one LLM call, and
+                  generation runs one at a time against a local model. Saying so
+                  is the difference between "working" and "stuck". */}
+              {stalledFor > 45 && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                  No update for {Math.floor(stalledFor / 60)}m {String(stalledFor % 60).padStart(2, "0")}s —
+                  each script is a single model call, so a gap of a minute or two is expected.
+                </p>
+              )}
+            </div>
+          );
+        })}
+
+        <div className="text-center">
+          <a
+            className="inline-flex items-center gap-1 text-xs text-violet-600 underline"
+            href={projectId ? `/agents?project=${projectId}` : "/agents"}
+          >
+            <Search className="h-3 w-3" /> Watch live agent logs
+          </a>
+        </div>
       </CardContent>
     </Card>
   );
@@ -85,6 +153,8 @@ function PlaywrightStudioContent() {
   const { data: runDetail } = useStudioRun(selectedRunId);
   const startRun = useStartStudioRun(projectId);
   const cancelRun = useCancelStudioRun(projectId);
+  const retryRun = useRetryStudioRun(projectId);
+  const [retryRunnerMode, setRetryRunnerMode] = useState("");
 
   useEffect(() => {
     projectsApi
@@ -107,6 +177,53 @@ function PlaywrightStudioContent() {
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       toast({ title: "Could not cancel", description: detail ?? "Unknown error", variant: "error" });
+    }
+  }
+
+  // Mirrors studio_service's own inference so the label matches what the
+  // server will actually do: executions failed -> re-execute; otherwise a
+  // failed run with approved test cases -> regenerate; else re-explore.
+  const failedCount = runDetail?.failed_test_case_ids?.length ?? 0;
+  // An ExecutionRun reports "completed" when it finishes, whatever its results
+  // say — so failing TESTS, not just a failed run, mean the execution stage is
+  // what needs attention.
+  const executionsFailed =
+    (runDetail?.executions ?? []).some((e) => e.status === "failed" || e.failed > 0) || failedCount > 0;
+  const retryStage = executionsFailed
+    ? {
+        kind: "execution" as const,
+        title: failedCount
+          ? `${failedCount} test case(s) failed`
+          : "The tests ran but the execution failed",
+        detail: "Re-run the same approved scripts, or regenerate only the ones that failed. If the whole run failed on infrastructure rather than on the tests, change the runner first.",
+        action: "Re-run Execution",
+      }
+    : runDetail?.test_case_ids?.length
+      ? {
+          kind: "generation" as const,
+          title: "Script generation failed",
+          detail: `Retry generation for the ${runDetail.test_case_ids.length} approved test case(s). The reviewed plan is kept.`,
+          action: "Retry Generation",
+        }
+      : {
+          kind: "exploration" as const,
+          title: "Exploration failed",
+          detail: "Nothing approvable was produced, so this maps the application again.",
+          action: "Retry Exploration",
+        };
+
+  async function handleRetry(onlyFailed = false) {
+    if (!selectedRunId) return;
+    try {
+      const result = await retryRun.mutateAsync({
+        runId: selectedRunId,
+        runnerMode: !onlyFailed && retryStage.kind === "execution" ? retryRunnerMode || undefined : undefined,
+        onlyFailed,
+      });
+      toast({ title: "Retrying", description: result.message });
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast({ title: "Could not retry", description: detail ?? "Unknown error", variant: "error" });
     }
   }
 
@@ -183,6 +300,61 @@ function PlaywrightStudioContent() {
           {runDetail.error && (
             <div className="rounded-md border border-red-300 bg-red-50 p-3 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
               {runDetail.error}
+            </div>
+          )}
+
+          {/* Retry lives on its own rather than inside the error banner: a run
+              whose every test failed has NO error text — _reconcile_status
+              calls it "completed" once the executions reach a terminal state,
+              pass or fail — so a retry attached to the banner never appeared
+              for the one case that most needed it. `can_retry` is computed
+              server-side from the executions themselves. */}
+          {runDetail.can_retry && (
+            <div className="flex flex-wrap items-center gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950/30">
+              <RefreshCw className="h-4 w-4 shrink-0 text-amber-600" />
+              <div className="min-w-[18rem] flex-1">
+                <p className="font-semibold text-amber-900 dark:text-amber-200">{retryStage.title}</p>
+                <p className="mt-0.5 text-amber-800/80 dark:text-amber-300/80">{retryStage.detail}</p>
+              </div>
+              {retryStage.kind === "execution" && (
+                <label className="flex items-center gap-1.5 text-amber-900 dark:text-amber-200">
+                  Runner
+                  <select
+                    value={retryRunnerMode}
+                    onChange={(e) => setRetryRunnerMode(e.target.value)}
+                    className="h-8 rounded-md border border-amber-300 bg-white px-2 text-xs font-semibold text-slate-700 outline-none dark:bg-slate-900 dark:text-slate-200"
+                  >
+                    <option value="">Same as before{runDetail.config.runner_mode ? ` (${runDetail.config.runner_mode})` : ""}</option>
+                    <option value="executor">Executor (isolated service)</option>
+                    <option value="docker">Docker (needs the socket on the worker)</option>
+                    <option value="local">Local (runs inside the worker)</option>
+                  </select>
+                </label>
+              )}
+              {/* Two distinct intents, so two buttons rather than one that
+                  guesses: re-run what exists, or rebuild only what broke. The
+                  second is disabled with a reason when nothing has actually
+                  failed yet, so it never silently does nothing. */}
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={retryRun.isPending || failedCount === 0}
+                title={
+                  failedCount === 0
+                    ? "No script in this run has failed — there is nothing to regenerate."
+                    : `Regenerate only the ${failedCount} failed script(s). The ones that work are left untouched.`
+                }
+                onClick={() => handleRetry(true)}
+              >
+                <RefreshCw className="mr-1.5 h-3 w-3" />
+                Regenerate {failedCount || ""} Failed
+              </Button>
+              <Button size="sm" variant="outline" disabled={retryRun.isPending} onClick={() => handleRetry(false)}>
+                {retryRun.isPending
+                  ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                  : <RefreshCw className="mr-1.5 h-3 w-3" />}
+                {retryStage.action}
+              </Button>
             </div>
           )}
 

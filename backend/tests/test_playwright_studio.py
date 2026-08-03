@@ -1116,3 +1116,278 @@ def test_approve_plan_endpoint_conflicts_on_wrong_stage():
     finally:
         _clear()
     assert response.status_code == 409
+
+
+# ── retrying a failed run ─────────────────────────────────────────────────────
+# A failed run used to be a dead end: the only way on was a new run, which
+# re-crawls the application and re-proposes a plan a human already reviewed.
+# Observed live 2026-08-03: run 6 failed at generation because the worker was
+# restarted mid-flight, with three approved test cases sitting ready to use.
+
+def _retry_stubs(monkeypatch, *, enqueued: list, reuse_id: int | None = None):
+    async def _fake_payload(_db, *, project_id, test_case_ids):
+        return SimpleNamespace(
+            test_cases=[{"id": i, "test_case_id": f"TC-{i}"} for i in test_case_ids],
+            locator_map={"5": [{"element_name": "login"}]},
+            skipped_not_approved=[],
+        )
+
+    async def _fake_enqueue(_db, *, project_id, user_id, agent_name, input_data, metadata=None):
+        # Mirrors enqueue_agent_run's real behaviour when reuse_id is given: a
+        # failed run is requeued in place and comes back with its own id.
+        run = SimpleNamespace(id=reuse_id if reuse_id is not None else 900 + len(enqueued))
+        enqueued.append({"agent_name": agent_name, "input": input_data, "metadata": metadata})
+        return run, f"task-{run.id}"
+
+    monkeypatch.setattr(studio_mod, "build_generation_payload", _fake_payload)
+    monkeypatch.setattr(studio_mod, "enqueue_agent_run", _fake_enqueue)
+
+
+def test_retry_resumes_generation_and_keeps_the_approved_plan(monkeypatch):
+    enqueued: list = []
+    _retry_stubs(monkeypatch, enqueued=enqueued)
+    run = _studio_run(
+        status="failed", error="Script generation produced no scripts",
+        test_case_ids=[75, 76, 77],
+        agent_runs={"planner": 283, "generation": [284]},
+    )
+    db = _FakeDB()
+
+    outcome = anyio.run(lambda: studio_mod.retry_run(db, run, 7))
+
+    assert outcome["stage"] == "generation"
+    assert outcome["test_case_count"] == 3
+    assert run.status == "generating"
+    assert run.error is None
+    # The plan and its materialized test cases survive — no re-crawl, no
+    # duplicate test cases.
+    assert run.test_case_ids == [75, 76, 77]
+    assert enqueued[0]["agent_name"] == "automation_script"
+    assert [tc["id"] for tc in enqueued[0]["input"]["test_cases"]] == [75, 76, 77]
+
+
+def test_retry_sets_generation_ids_to_exactly_what_was_enqueued(monkeypatch):
+    """_reconcile_status waits for every id in agent_runs["generation"] to be
+    terminal, so the list must be REPLACED, never appended to — a leftover
+    failed id would re-fail the run on the next read and undo the retry.
+
+    Note the id can legitimately be the same one: enqueue_agent_run reuses a
+    failed run's row in place (status back to pending) rather than inserting a
+    new row, which is why this asserts "exactly what was enqueued" rather than
+    "a different id".
+    """
+    enqueued: list = []
+    _retry_stubs(monkeypatch, enqueued=enqueued, reuse_id=284)
+    run = _studio_run(status="failed", test_case_ids=[75],
+                      agent_runs={"planner": 283, "generation": [284, 999]})
+
+    anyio.run(lambda: studio_mod.retry_run(_FakeDB(), run, 7))
+
+    # 999 was from the failed attempt and is gone; the list is not appended to.
+    assert run.agent_runs["generation"] == [284]
+    assert run.agent_runs["planner"] == 283  # untouched
+
+
+def test_retry_without_approved_test_cases_restarts_exploration(monkeypatch):
+    """The planner failed before producing anything approvable, so there is no
+    plan worth keeping."""
+    enqueued: list = []
+    _retry_stubs(monkeypatch, enqueued=enqueued)
+    run = _studio_run(status="failed", error="Planner agent failed", test_case_ids=None,
+                      agent_runs={"planner": 283})
+
+    outcome = anyio.run(lambda: studio_mod.retry_run(_FakeDB(), run, 7))
+
+    assert outcome["stage"] == "exploration"
+    assert run.status == "exploring"
+    assert run.error is None
+    assert enqueued[0]["agent_name"] == "playwright_planner"
+
+
+def test_retry_is_refused_on_a_run_that_did_not_fail(monkeypatch):
+    """"completed" is deliberately absent: a completed run whose tests failed
+    IS retryable — that case has its own tests."""
+    enqueued: list = []
+    _retry_stubs(monkeypatch, enqueued=enqueued)
+
+    async def _no_failures(_db, _run):
+        return []
+
+    monkeypatch.setattr(studio_mod, "failed_test_case_ids", _no_failures)
+    for status in ("generating", "draft", "scripts_ready"):
+        run = _studio_run(status=status, test_case_ids=[75])
+        with pytest.raises(StudioStateError):
+            anyio.run(lambda r=run: studio_mod.retry_run(_FakeDB(), r, 7))
+    assert enqueued == []
+
+
+def test_retry_refuses_when_the_test_cases_are_no_longer_generatable(monkeypatch):
+    """build_generation_payload drops anything not approved; retrying into an
+    empty payload would silently move the run to "generating" forever."""
+    async def _empty_payload(_db, *, project_id, test_case_ids):
+        return SimpleNamespace(test_cases=[], locator_map={}, skipped_not_approved=list(test_case_ids))
+
+    monkeypatch.setattr(studio_mod, "build_generation_payload", _empty_payload)
+    run = _studio_run(status="failed", test_case_ids=[75, 76])
+
+    with pytest.raises(StudioValidationError):
+        anyio.run(lambda: studio_mod.retry_run(_FakeDB(), run, 7))
+    assert run.status == "failed"  # unchanged
+
+
+# ── retrying a failed EXECUTION ───────────────────────────────────────────────
+# The case with no way forward at all: _reconcile_status marks a run
+# "completed" once every ExecutionRun is terminal, pass or fail alike. So a run
+# whose five tests all failed on infrastructure reported "completed", carried no
+# error text, and offered nothing to click. Observed live 2026-08-03.
+
+def _exec_run(run_id: int, status: str):
+    return SimpleNamespace(id=run_id, status=status)
+
+
+def _exec_retry_stubs(monkeypatch, *, scripts, exec_runs, started: list):
+    async def _fake_latest(_db, _run):
+        return scripts
+
+    async def _fake_start(_db, *, project_id, user_id, script_ids, environment,
+                          timeout_seconds, run_name, extra_metadata):
+        started.append({"script_ids": list(script_ids), "metadata": extra_metadata})
+        return SimpleNamespace(id=900 + len(started)), f"task-{len(started)}"
+
+    monkeypatch.setattr(studio_mod, "_latest_scripts_for_run", _fake_latest)
+    monkeypatch.setattr(
+        studio_mod.automation_execution_service, "start_batch_execution", _fake_start
+    )
+    db = _FakeDB(execute_queue=[_ExecResult(many=exec_runs), _ExecResult(many=exec_runs)])
+    return db
+
+
+def test_a_completed_run_whose_execution_failed_can_be_retried(monkeypatch):
+    started: list = []
+    scripts = [SimpleNamespace(id=61, status="approved"), SimpleNamespace(id=62, status="approved")]
+    db = _exec_retry_stubs(monkeypatch, scripts=scripts, exec_runs=[_exec_run(63, "failed")], started=started)
+    run = _studio_run(status="completed", execution_run_ids=[63], test_case_ids=[84, 85])
+
+    outcome = anyio.run(lambda: studio_mod.retry_run(db, run, 7))
+
+    assert outcome["stage"] == "execution"
+    assert outcome["test_case_count"] == 2
+    assert run.status == "executing"
+    # The failed execution id is replaced, not appended — _reconcile_status
+    # would otherwise settle the run again on the next read.
+    assert run.execution_run_ids == [901]
+    assert started[0]["script_ids"] == [61, 62]
+
+
+def test_execution_retry_can_switch_the_runner_mode(monkeypatch):
+    """The commonest wholesale execution failure is a mode this deployment is
+    not wired for — repeating it would reproduce the same failure."""
+    started: list = []
+    db = _exec_retry_stubs(
+        monkeypatch, scripts=[SimpleNamespace(id=61, status="approved")],
+        exec_runs=[_exec_run(63, "failed")], started=started,
+    )
+    run = _studio_run(status="completed", execution_run_ids=[63], test_case_ids=[84])
+    run.config = {**run.config, "runner_mode": "docker"}
+
+    anyio.run(lambda: studio_mod.retry_run(db, run, 7, runner_mode="executor"))
+
+    assert started[0]["metadata"]["runner_mode"] == "executor"
+    # Persisted, so the audit shows what was actually run.
+    assert run.config["runner_mode"] == "executor"
+
+
+def test_a_completed_run_whose_execution_passed_offers_no_retry(monkeypatch):
+    """Nothing failed — neither the ExecutionRun nor any individual test — so
+    there is nothing to retry."""
+    started: list = []
+    db = _exec_retry_stubs(
+        monkeypatch, scripts=[], exec_runs=[_exec_run(63, "completed")], started=started,
+    )
+    # No failed results and no failed dry runs.
+    db.execute_queue = [_ExecResult(many=[_exec_run(63, "completed")]), _ExecResult(many=[])]
+    run = _studio_run(status="completed", execution_run_ids=[63], test_case_ids=[84])
+
+    assert anyio.run(lambda: studio_mod.can_retry(db, run)) is False
+
+
+def test_execution_retry_refuses_when_no_script_is_approved(monkeypatch):
+    """Re-executing nothing would move the run to "executing" and strand it."""
+    started: list = []
+    db = _exec_retry_stubs(
+        monkeypatch, scripts=[SimpleNamespace(id=61, status="draft")],
+        exec_runs=[_exec_run(63, "failed")], started=started,
+    )
+    run = _studio_run(status="completed", execution_run_ids=[63], test_case_ids=[84])
+
+    with pytest.raises(StudioValidationError):
+        anyio.run(lambda: studio_mod.retry_run(db, run, 7))
+    assert run.status == "completed"
+
+
+# ── regenerating only what failed ─────────────────────────────────────────────
+# The diagnostics name specific test cases. Re-running the whole wave to fix two
+# of them spends model time on scripts that already work and replaces them with
+# different ones for no reason.
+
+def test_failed_test_case_ids_combines_execution_and_dry_run_signals(monkeypatch):
+    """A script can fail before it ever reaches an execution, so the dry run
+    counts too."""
+    scripts = [
+        SimpleNamespace(id=61, test_case_id=85, metadata_={"last_dry_run": {"passed": False}}),
+        SimpleNamespace(id=60, test_case_id=84, metadata_={"last_dry_run": {"passed": True}}),
+        SimpleNamespace(id=64, test_case_id=88, metadata_={}),
+    ]
+
+    async def _fake_latest(_db, _run):
+        return scripts
+
+    monkeypatch.setattr(studio_mod, "_latest_scripts_for_run", _fake_latest)
+    run = _studio_run(status="completed", test_case_ids=[84, 85, 86, 87, 88], execution_run_ids=[63])
+    db = _FakeDB(execute_queue=[_ExecResult(many=[87])])  # execution failure for 87
+
+    ids = anyio.run(lambda: studio_mod.failed_test_case_ids(db, run))
+
+    # 85 from the dry run, 87 from the execution — and in the run's own order.
+    assert ids == [85, 87]
+
+
+def test_regenerating_only_failed_enqueues_just_those(monkeypatch):
+    enqueued: list = []
+    _retry_stubs(monkeypatch, enqueued=enqueued)
+
+    async def _fake_failed(_db, _run):
+        return [85, 87]
+
+    monkeypatch.setattr(studio_mod, "failed_test_case_ids", _fake_failed)
+    monkeypatch.setattr(studio_mod, "can_retry", lambda _db, _run: _true())
+    run = _studio_run(status="completed", test_case_ids=[84, 85, 86, 87, 88], execution_run_ids=[63])
+
+    outcome = anyio.run(lambda: studio_mod.retry_run(_FakeDB(), run, 7, only_failed=True))
+
+    assert outcome["stage"] == "generation"
+    assert outcome["partial"] is True
+    assert outcome["test_case_count"] == 2
+    assert [tc["id"] for tc in enqueued[0]["input"]["test_cases"]] == [85, 87]
+    assert enqueued[0]["metadata"]["partial_regeneration"] is True
+
+
+def test_regenerating_only_failed_refuses_when_nothing_failed(monkeypatch):
+    """Silently regenerating everything, or nothing, would both be wrong."""
+    enqueued: list = []
+    _retry_stubs(monkeypatch, enqueued=enqueued)
+
+    async def _none(_db, _run):
+        return []
+
+    monkeypatch.setattr(studio_mod, "failed_test_case_ids", _none)
+    monkeypatch.setattr(studio_mod, "can_retry", lambda _db, _run: _true())
+    run = _studio_run(status="completed", test_case_ids=[84], execution_run_ids=[63])
+
+    with pytest.raises(StudioValidationError):
+        anyio.run(lambda: studio_mod.retry_run(_FakeDB(), run, 7, only_failed=True))
+    assert enqueued == []
+
+
+async def _true():
+    return True

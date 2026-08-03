@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import anyio
+import pytest
 
 from app.models.agent import AgentRun
 from app.models.project_application import ProjectApplication
@@ -356,3 +357,125 @@ def test_generation_skips_test_cases_that_already_have_a_script(monkeypatch):
         )
 
     assert anyio.run(run_test) is None
+
+
+# ── duplicate delivery ────────────────────────────────────────────────────────
+# task_acks_late=True keeps work alive across a crashed worker, at the cost of
+# redelivering a task that was killed mid-flight. Observed live 2026-08-03: a
+# task killed by a worker restart came back an hour later, re-ran an agent run
+# that had since completed via the retry button, wrote a duplicate script, and
+# halved the throughput of an unrelated run sharing the same local model.
+
+class _GuardDB:
+    def __init__(self, run):
+        self.run = run
+        self.committed = 0
+
+    async def execute(self, _stmt):
+        class _R:
+            def __init__(self, value):
+                self._value = value
+
+            def scalar_one_or_none(self):
+                return self._value
+        return _R(self.run)
+
+    async def commit(self):
+        self.committed += 1
+
+    async def refresh(self, _obj):
+        return None
+
+    async def flush(self):
+        return None
+
+
+def _guard_run(**overrides):
+    defaults = dict(id=284, status="pending", celery_task_id=None, agent_name="automation_script")
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def _install_guard(monkeypatch, run):
+    db = _GuardDB(run)
+
+    class _Session:
+        async def __aenter__(self):
+            return db
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    monkeypatch.setattr(agent_tasks, "AsyncSessionLocal", lambda: _Session())
+    return db
+
+
+@pytest.mark.parametrize("status", ["completed", "failed"])
+def test_a_redelivered_task_for_a_finished_run_is_refused(monkeypatch, status):
+    run = _guard_run(status=status)
+    _install_guard(monkeypatch, run)
+
+    async def go():
+        return await agent_tasks._run_agent_task("stale-task", 284, "automation_script", {})
+
+    result = anyio.run(go)
+
+    assert result["skipped"] == "already_terminal"
+    assert result["status"] == status
+    assert run.status == status  # never flipped back to running
+
+
+def test_a_delivery_superseded_by_a_newer_dispatch_is_refused(monkeypatch):
+    """The newer attempt may still be RUNNING, which the status check alone
+    cannot detect — enqueue_agent_run's task id is what identifies the owner."""
+    run = _guard_run(status="running", celery_task_id="newer-task")
+    _install_guard(monkeypatch, run)
+
+    async def go():
+        return await agent_tasks._run_agent_task("stale-task", 284, "automation_script", {})
+
+    assert anyio.run(go)["skipped"] == "superseded"
+    assert run.celery_task_id == "newer-task"  # ownership not stolen
+
+
+def test_a_cancelled_run_is_still_refused_as_cancelled(monkeypatch):
+    """Pre-existing behaviour must survive the new guard: a user's cancel is
+    reported as cancelled, not as a duplicate."""
+    run = _guard_run(status="cancelled")
+    _install_guard(monkeypatch, run)
+
+    async def go():
+        return await agent_tasks._run_agent_task("any-task", 284, "automation_script", {})
+
+    result = anyio.run(go)
+    assert result["status"] == "cancelled"
+    assert "skipped" not in result
+
+
+def test_the_run_that_owns_its_task_id_is_not_blocked(monkeypatch):
+    """A retry re-delivering its OWN task (broker hiccup, worker restart while
+    it legitimately owns the run) must still be allowed to proceed."""
+    run = _guard_run(status="pending", celery_task_id="my-task")
+    _install_guard(monkeypatch, run)
+
+    async def _noop_progress(_db, _run, **_kwargs):
+        return _run
+
+    async def _fail(_db, _run, *, error_message, **_kwargs):
+        return _run
+
+    monkeypatch.setattr(agent_tasks.agent_run_service, "update_progress", _noop_progress)
+    monkeypatch.setattr(agent_tasks.agent_run_service, "fail_agent_run", _fail)
+    # Empty registry: execution stops immediately AFTER the guard, which is all
+    # this test needs to observe.
+    monkeypatch.setattr(agent_tasks, "AGENT_REGISTRY", {})
+
+    async def go():
+        return await agent_tasks._run_agent_task("my-task", 284, "automation_script", {})
+
+    result = anyio.run(go)
+
+    # Got past the guard and into execution — it reached the unsupported-agent
+    # branch rather than being skipped as a duplicate.
+    assert "skipped" not in result
+    assert run.status == "running"

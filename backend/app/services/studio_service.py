@@ -352,6 +352,264 @@ async def approve_plan(
     }
 
 
+async def _execution_failed(db: AsyncSession, run: StudioRun) -> bool:
+    """Whether this run's most recent execution ended in failure.
+
+    `_reconcile_status` marks a run "completed" once every ExecutionRun reaches
+    a terminal state — completed, failed or cancelled alike. So a run whose
+    tests all failed reports "completed", which is accurate about the pipeline
+    and useless as a signal of whether anything worked. Retry has to look at
+    the executions themselves.
+    """
+    exec_ids = run.execution_run_ids or []
+    if not exec_ids:
+        return False
+    result = await db.execute(select(ExecutionRun).where(ExecutionRun.id.in_(exec_ids)))
+    runs = list(result.scalars().all())
+    return bool(runs) and any(r.status == "failed" for r in runs)
+
+
+async def can_retry(db: AsyncSession, run: StudioRun) -> bool:
+    """Retry is offered for an outright failed run, for one whose ExecutionRun
+    failed, and for one that COMPLETED with failing tests.
+
+    That third case is the common one and was missed at first: an ExecutionRun
+    reports "completed" when it finishes, whatever its results say. Observed
+    live 2026-08-03 — execution 65 completed 3/5, two test cases failed, and
+    can_retry came back False because the run itself had not failed. The
+    failing tests are the whole reason to offer a retry.
+    """
+    if run.status == "failed":
+        return True
+    if run.status not in {"completed", "executing"}:
+        return False
+    return await _execution_failed(db, run) or bool(await failed_test_case_ids(db, run))
+
+
+async def failed_test_case_ids(db: AsyncSession, run: StudioRun) -> list[int]:
+    """The run's test cases whose latest script did not work.
+
+    Two independent signals, because a script can fail before it ever reaches
+    an execution:
+
+      * an ExecutionResult for this run recorded a failure, or
+      * the script's own dry run failed (metadata_.last_dry_run.passed false).
+
+    Returned in the run's own test-case order so a regeneration wave is stable
+    and its idempotency hash does not change between identical requests.
+    """
+    ordered = list(run.test_case_ids or [])
+    if not ordered:
+        return []
+
+    failed: set[int] = set()
+
+    exec_ids = run.execution_run_ids or []
+    if exec_ids:
+        result = await db.execute(
+            select(ExecutionResult.test_case_id).where(
+                ExecutionResult.execution_run_id.in_(exec_ids),
+                ExecutionResult.status.in_(["fail", "failed", "error"]),
+            )
+        )
+        failed.update(tc_id for tc_id in result.scalars().all() if tc_id is not None)
+
+    for script in await _latest_scripts_for_run(db, run):
+        last_dry_run = (script.metadata_ or {}).get("last_dry_run") or {}
+        if last_dry_run.get("passed") is False and script.test_case_id:
+            failed.add(script.test_case_id)
+
+    return [tc_id for tc_id in ordered if tc_id in failed]
+
+
+async def retry_run(
+    db: AsyncSession,
+    run: StudioRun,
+    user_id: int,
+    *,
+    runner_mode: str | None = None,
+    only_failed: bool = False,
+) -> dict:
+    """Resume a failed run from the stage that failed, keeping everything the
+    earlier stages already produced.
+
+    Before this, a failed run was a dead end: the only way forward was a brand
+    new run, which re-crawls the application and re-proposes a plan a human has
+    already reviewed. That is minutes of browser time and a second set of
+    duplicate test cases, thrown away because a transient failure — a provider
+    error, a worker restart — hit the last stage.
+
+    The stage is inferred from what the run actually has rather than from a
+    stored marker, because that is the same evidence `_reconcile_status` uses
+    to fail it in the first place:
+
+      * `test_case_ids` present -> the plan was approved and materialized, so
+        generation is what failed. Re-enqueue generation for those exact test
+        cases; the approved TestCase rows and their audit trail are reused,
+        never duplicated.
+      * otherwise -> the planner failed before producing anything approvable,
+        so exploration is what failed. `start_exploration` already accepts
+        "failed" for exactly this.
+    """
+    if not await can_retry(db, run):
+        raise StudioStateError(
+            f"Nothing to retry — this run is '{run.status}' and its executions did not fail."
+        )
+
+    # Regenerate only what failed: the diagnostics name specific test cases,
+    # and re-running the whole wave to fix two of them spends model time on
+    # scripts that already work and replaces them with different ones for no
+    # reason. Explicitly requested rather than inferred, because "retry" and
+    # "fix these two" are different intents.
+    if only_failed:
+        targets = await failed_test_case_ids(db, run)
+        if not targets:
+            raise StudioValidationError(
+                "No failed test cases to regenerate — every script in this run either "
+                "passed or has not been run yet."
+            )
+        return await _retry_generation(db, run, user_id, test_case_ids=targets, partial=True)
+
+    # A run whose scripts are already generated and approved failed at
+    # EXECUTION, so regenerating them would throw away good work to fix
+    # something that was never wrong with them. Re-run the same approved
+    # scripts instead.
+    if run.status != "failed" or await _execution_failed(db, run):
+        return await _retry_execution(db, run, user_id, runner_mode=runner_mode)
+
+    if not run.test_case_ids:
+        agent_run, _task_id = await start_exploration(db, run, user_id)
+        return {"stage": "exploration", "agent_run_ids": [agent_run.id], "test_case_count": 0}
+
+    return await _retry_generation(db, run, user_id, test_case_ids=list(run.test_case_ids))
+
+
+async def _retry_generation(
+    db: AsyncSession,
+    run: StudioRun,
+    user_id: int,
+    *,
+    test_case_ids: list[int],
+    partial: bool = False,
+) -> dict:
+    """Enqueue generation waves for `test_case_ids`.
+
+    `partial` is what a failed-only regeneration passes: the same machinery,
+    but the run keeps its other scripts. It exists as a flag rather than two
+    functions because the ONLY difference is the message and the fact that a
+    partial wave's agent-run list still governs when the run settles.
+    """
+    config = run.config or {}
+    generation_run_ids: list[int] = []
+    for wave in _chunks(test_case_ids, GENERATION_WAVE_SIZE):
+        # Rebuilt rather than replayed from the previous attempt's input: the
+        # locator map may have been re-discovered since, and a retry should
+        # use the best grounding available now, not the grounding that was
+        # available when it failed.
+        payload = await build_generation_payload(db, project_id=run.project_id, test_case_ids=wave)
+        if not payload.test_cases:
+            continue
+        agent_run, _task_id = await enqueue_agent_run(
+            db,
+            project_id=run.project_id,
+            user_id=user_id,
+            agent_name="automation_script",
+            input_data={
+                "test_cases": payload.test_cases,
+                "framework": config.get("framework") or "playwright",
+                "locator_map": payload.locator_map,
+                "studio_run_id": run.id,
+            },
+            metadata={
+                "studio_run_id": run.id,
+                "approved_test_case_ids": [tc["id"] for tc in payload.test_cases],
+                "retry_of_run_id": run.id,
+                "partial_regeneration": partial,
+            },
+        )
+        generation_run_ids.append(agent_run.id)
+
+    if not generation_run_ids:
+        raise StudioValidationError(
+            "None of the selected test cases can be generated from — they are no longer "
+            "approved, or they have been deleted."
+        )
+
+    # The failed attempt's agent runs are replaced, not appended to:
+    # _reconcile_status waits for every id here to be terminal, and a failed
+    # one left in the list would fail the run again the moment it is read.
+    run.agent_runs = {**(run.agent_runs or {}), "generation": generation_run_ids}
+    run.status = "generating"
+    run.error = None
+    await db.flush()
+    return {
+        "stage": "generation",
+        "agent_run_ids": generation_run_ids,
+        "test_case_count": len(test_case_ids),
+        "partial": partial,
+    }
+
+
+async def _retry_execution(
+    db: AsyncSession, run: StudioRun, user_id: int, *, runner_mode: str | None = None
+) -> dict:
+    """Re-execute this run's already-approved scripts.
+
+    `runner_mode` exists because the commonest reason an execution fails
+    wholesale is that it ran in a mode this deployment is not wired for —
+    observed live 2026-08-03: a run configured for "docker" failed all five
+    tests with "docker daemon not reachable", because only the runner-executor
+    service holds the Docker socket. Repeating the same mode would reproduce
+    the same failure, so the caller can change it, and the choice is persisted
+    to the run's config so the audit shows what was actually run.
+    """
+    scripts = await _latest_scripts_for_run(db, run)
+    scripts = [s for s in scripts if s.status in {"approved", "executed"}]
+    if not scripts:
+        raise StudioValidationError(
+            "This run has no approved scripts to execute. Approve the generated scripts first."
+        )
+
+    config = dict(run.config or {})
+    if runner_mode:
+        config["runner_mode"] = runner_mode
+        run.config = config
+
+    execution_run_ids: list[int] = []
+    chunks = _chunks([s.id for s in scripts], EXECUTION_CHUNK_SIZE)
+    for index, chunk in enumerate(chunks, start=1):
+        suffix = f" — retry batch {index}/{len(chunks)}" if len(chunks) > 1 else " — retry"
+        exec_run, _task_id = await automation_execution_service.start_batch_execution(
+            db,
+            project_id=run.project_id,
+            user_id=user_id,
+            script_ids=chunk,
+            environment=config.get("environment"),
+            timeout_seconds=int(config.get("timeout_seconds") or 600),
+            run_name=f"{run.name}{suffix}",
+            extra_metadata={
+                "studio_run_id": run.id,
+                "runner_mode": config.get("runner_mode"),
+                "parallelism": config.get("parallelism") or 1,
+                "retry_of_execution_run_ids": list(run.execution_run_ids or []),
+            },
+        )
+        execution_run_ids.append(exec_run.id)
+
+    # Replaced, not appended: _reconcile_status waits for every id here to be
+    # terminal, and the failed one would settle the run again immediately.
+    run.execution_run_ids = execution_run_ids
+    run.status = "executing"
+    run.error = None
+    await db.flush()
+    return {
+        "stage": "execution",
+        "agent_run_ids": [],
+        "execution_run_ids": execution_run_ids,
+        "test_case_count": len(scripts),
+    }
+
+
 async def _latest_scripts_for_run(db: AsyncSession, run: StudioRun) -> list[AutomationScript]:
     tc_ids = run.test_case_ids or []
     if not tc_ids:
@@ -672,6 +930,8 @@ async def get_run_detail(db: AsyncSession, run: StudioRun) -> dict:
                 "progress_percent": planner.progress_percent,
                 "progress_message": planner.progress_message,
                 "error_message": planner.error_message,
+                "created_at": planner.created_at,
+                "updated_at": planner.updated_at,
             }
     generation_ids = agent_runs.get("generation") or []
     if generation_ids:
@@ -683,6 +943,8 @@ async def get_run_detail(db: AsyncSession, run: StudioRun) -> dict:
                 "progress_percent": r.progress_percent,
                 "progress_message": r.progress_message,
                 "error_message": r.error_message,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
             }
             for r in result.scalars().all()
         ]
@@ -724,4 +986,10 @@ async def get_run_detail(db: AsyncSession, run: StudioRun) -> dict:
         "script_counts": script_counts,
         "executions": executions,
         "failure_insights": failure_insights,
+        # Computed here rather than inferred in the UI: "can this be retried"
+        # depends on the executions' own statuses, which the run's status
+        # deliberately does not reflect (a run whose every test failed still
+        # reports "completed").
+        "can_retry": await can_retry(db, run),
+        "failed_test_case_ids": await failed_test_case_ids(db, run),
     }

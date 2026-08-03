@@ -2293,6 +2293,8 @@ export interface StudioAgentRunSummary {
   progress_percent: number;
   progress_message?: string | null;
   error_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface StudioScriptSummary {
@@ -2344,6 +2346,12 @@ export interface StudioRunDetail extends StudioRun {
   script_counts: Record<string, number>;
   executions: StudioExecutionSummary[];
   failure_insights: StudioFailureInsight[];
+  /** Whether a retry is available — true for a failed run AND for one that
+   *  finished with failed executions, which still reports status "completed". */
+  can_retry?: boolean;
+  /** Test cases whose latest script failed — what "regenerate only the failed
+   *  ones" acts on. */
+  failed_test_case_ids?: number[];
 }
 
 export interface StudioRunCreatePayload {
@@ -2391,6 +2399,21 @@ export const playwrightStudioApi = {
     api.post<{ studio_run_id: number; status: string; message: string }>(
       `/playwright-studio/runs/${runId}/cancel`,
     ),
+  /** Resumes a failed run from the stage that failed, keeping the approved
+   *  plan and test cases — never re-crawls unless nothing approvable exists. */
+  retryRun: (runId: number, runnerMode?: string, onlyFailed?: boolean) =>
+    api.post<{
+      studio_run_id: number;
+      status: string;
+      stage: "generation" | "exploration" | "execution";
+      agent_run_ids: number[];
+      execution_run_ids: number[];
+      test_case_count: number;
+      message: string;
+    }>(`/playwright-studio/runs/${runId}/retry`, {
+      ...(runnerMode ? { runner_mode: runnerMode } : {}),
+      ...(onlyFailed ? { only_failed: true } : {}),
+    }),
 };
 
 // ── MCP Connections (Playwright AI Studio) ────────────────────────────────────

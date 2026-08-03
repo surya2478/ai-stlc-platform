@@ -15,6 +15,8 @@ from app.schemas.playwright_studio import (
     ApproveScriptsRequest,
     ApproveScriptsResponse,
     StudioCancelResponse,
+    StudioRetryRequest,
+    StudioRetryResponse,
     StudioRunCreate,
     StudioRunDetailOut,
     StudioRunOut,
@@ -164,4 +166,49 @@ async def cancel_studio_run(run_id: int, db: DBSession, current_user: CurrentUse
         studio_run_id=run.id,
         status=run.status,
         message="Studio run cancelled; in-flight agent and execution tasks were revoked best-effort.",
+    )
+
+
+@router.post("/runs/{run_id}/retry", response_model=StudioRetryResponse)
+async def retry_studio_run(
+    run_id: int, db: DBSession, current_user: CurrentUser, body: StudioRetryRequest | None = None,
+):
+    """Resume a run from the stage that failed, keeping everything the earlier
+    stages already produced."""
+    run = await _get_run_or_404(db, run_id)
+    await require_permission(GENERATE_AUTOMATION, run.project_id, current_user, db)
+    try:
+        outcome = await studio_service.retry_run(
+            db, run, current_user.id,
+            runner_mode=body.runner_mode if body else None,
+            only_failed=bool(body and body.only_failed),
+        )
+    except StudioStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except StudioValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await db.commit()
+    if outcome["stage"] == "execution":
+        message = (
+            f"Re-running {outcome['test_case_count']} approved script(s)"
+            + (f" in {run.config.get('runner_mode')} mode" if (run.config or {}).get("runner_mode") else "")
+            + " — nothing was regenerated."
+        )
+    elif outcome["stage"] == "generation":
+        scope = "failed test case(s)" if outcome.get("partial") else "approved test case(s)"
+        kept = " Scripts that already work are untouched." if outcome.get("partial") else " The plan was kept."
+        message = (
+            f"Regenerating {outcome['test_case_count']} {scope} "
+            f"in {len(outcome['agent_run_ids'])} wave(s).{kept}"
+        )
+    else:
+        message = "Retrying exploration — the planner is mapping the application again."
+    return StudioRetryResponse(
+        studio_run_id=run.id,
+        status=run.status,
+        stage=outcome["stage"],
+        agent_run_ids=outcome["agent_run_ids"],
+        execution_run_ids=outcome.get("execution_run_ids", []),
+        test_case_count=outcome["test_case_count"],
+        message=message,
     )

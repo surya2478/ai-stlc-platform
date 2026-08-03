@@ -120,6 +120,21 @@ export function useCancelStudioRun(projectId: number | null) {
   });
 }
 
+export function useRetryStudioRun(projectId: number | null) {
+  const invalidate = useInvalidateStudio(projectId);
+  return useMutation({
+    mutationFn: async (
+      vars: number | { runId: number; runnerMode?: string; onlyFailed?: boolean },
+    ) => {
+      const opts = typeof vars === "number" ? { runId: vars } : vars;
+      return (
+        await playwrightStudioApi.retryRun(opts.runId, opts.runnerMode, opts.onlyFailed)
+      ).data;
+    },
+    onSuccess: (data) => invalidate(data.studio_run_id),
+  });
+}
+
 // ── MCP connections ──────────────────────────────────────────────────────────
 
 export function useMcpConnections(projectId: number | null) {

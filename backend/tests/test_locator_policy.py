@@ -455,3 +455,115 @@ def test_round_trip_is_stable():
     once = locator_policy.render_locator_playwright("role", original, "button")
     twice = locator_policy.render_locator_playwright("role", once, "button")
     assert once == twice == original
+
+
+# ── catalog selection for the generation prompt ───────────────────────────────
+# Measured on project 8: 157 entries rendered 25,399 characters around a
+# 1,100-character test case — 97% of the prompt was locators. Every call was
+# ~8k tokens, which is slow on a local model and what exhausted its context
+# when several ran concurrently.
+
+def _entry(name, *, confidence=50, meaning=None):
+    return {
+        "element_name": name, "business_meaning": meaning,
+        "recommended_locator": f"page.getByRole('link', {{ name: '{name}' }})",
+        "confidence_score": confidence, "page": "https://app.example.com/",
+    }
+
+
+def test_a_catalog_within_the_limit_is_returned_untouched():
+    catalog = [_entry(f"button_{i}") for i in range(10)]
+    assert locator_policy.select_relevant_catalog(catalog, "anything", limit=60) is catalog
+
+
+def test_entries_named_in_the_test_case_are_kept_first():
+    catalog = [_entry(f"filler_{i}") for i in range(80)]
+    catalog.append(_entry("button_submit_application"))
+    catalog.append(_entry("input_candidate_email"))
+
+    selected = locator_policy.select_relevant_catalog(
+        catalog, "Submit the application after entering the candidate email", limit=5,
+    )
+
+    names = [e["element_name"] for e in selected]
+    assert "button_submit_application" in names
+    assert "input_candidate_email" in names
+
+
+def test_the_cap_is_honoured():
+    catalog = [_entry(f"filler_{i}") for i in range(200)]
+    assert len(locator_policy.select_relevant_catalog(catalog, "login", limit=60)) == 60
+
+
+def test_unmentioned_controls_still_fill_the_cap_by_confidence():
+    """A login test rarely names its submit button in the steps. Dropping every
+    unmentioned control would strand exactly the elements the flow needs."""
+    catalog = [_entry(f"filler_{i}", confidence=10) for i in range(100)]
+    catalog.append(_entry("button_continue", confidence=99))
+
+    selected = locator_policy.select_relevant_catalog(catalog, "unrelated words here", limit=3)
+
+    assert len(selected) == 3
+    assert "button_continue" in [e["element_name"] for e in selected]
+
+
+def test_selection_is_deterministic_for_the_same_inputs():
+    """The prompt feeds an idempotency hash — an unstable order would make the
+    same request look like a different one on every retry."""
+    catalog = [_entry(f"item_{i}", confidence=i % 7) for i in range(120)]
+    first = locator_policy.select_relevant_catalog(catalog, "item_9 and item_40", limit=20)
+    second = locator_policy.select_relevant_catalog(catalog, "item_9 and item_40", limit=20)
+    assert [e["element_name"] for e in first] == [e["element_name"] for e in second]
+
+
+def test_a_non_empty_catalog_never_selects_down_to_nothing():
+    """An unfiltered prompt is slow; a prompt with no locators is ungrounded,
+    which is worse."""
+    catalog = [_entry(f"item_{i}") for i in range(100)]
+    assert locator_policy.select_relevant_catalog(catalog, "", limit=5)
+
+
+# ── hash-routed SPAs ──────────────────────────────────────────────────────────
+# Observed live 2026-08-03: an Angular app served every route from
+# https://site/client/#/auth/login. Dropping the fragment explored it as
+# "/client/", so a contract asserting on the real URL was reported ungrounded
+# and blocked from execution — with "regenerate before running" advice that
+# could never work, because regeneration produces the same correct URL.
+
+def test_explored_paths_keep_the_fragment():
+    assert locator_policy._explored_paths(
+        ["https://rahulshettyacademy.com/client/#/auth/login"]
+    ) == ["/client/#/auth/login"]
+
+
+def test_explored_paths_keep_query_and_fragment_together():
+    assert locator_policy._explored_paths(
+        ["https://site/app?role=employer#/step/2"]
+    ) == ["/app?role=employer#/step/2"]
+
+
+def test_a_hash_route_assertion_is_grounded_against_its_own_page():
+    contract = AutomationGenerationContract.model_validate({
+        "contractVersion": "1.0", "testCaseId": "TC-0085",
+        "scriptType": "playwright-typescript", "businessFlow": "Invalid login",
+        "pageObjects": [],
+        "assertions": [{"type": "url", "target": "page", "expected": "/client/#/auth/login"}],
+    })
+
+    assert locator_policy.check_url_targets_grounded(
+        contract, ["https://rahulshettyacademy.com/client/#/auth/login"]
+    ) == []
+
+
+def test_an_invented_hash_route_is_still_reported():
+    """The fix must not turn the check off — a guessed route stays ungrounded."""
+    contract = AutomationGenerationContract.model_validate({
+        "contractVersion": "1.0", "testCaseId": "TC-0085",
+        "scriptType": "playwright-typescript", "businessFlow": "Invalid login",
+        "pageObjects": [],
+        "assertions": [{"type": "url", "target": "page", "expected": "/client/#/dashboard/home"}],
+    })
+
+    assert locator_policy.check_url_targets_grounded(
+        contract, ["https://rahulshettyacademy.com/client/#/auth/login"]
+    ) == ["url_assertion:/client/#/dashboard/home"]

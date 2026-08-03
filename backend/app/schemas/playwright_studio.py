@@ -62,6 +62,10 @@ class AgentRunSummary(BaseModel):
     progress_percent: int = 0
     progress_message: str | None = None
     error_message: str | None = None
+    # Carried so the UI can show elapsed time and distinguish "working slowly"
+    # from "stuck" without polling a second endpoint.
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class StudioAgentRunsOut(BaseModel):
@@ -115,6 +119,11 @@ class StudioRunDetailOut(StudioRunOut):
     script_counts: dict[str, int] = Field(default_factory=dict)
     executions: list[StudioExecutionSummary] = Field(default_factory=list)
     failure_insights: list[StudioFailureInsight] = Field(default_factory=list)
+    # Whether a retry is available, and from which stage — see studio_service.can_retry.
+    can_retry: bool = False
+    # Test cases in this run whose latest script failed — what "regenerate only
+    # the failed ones" would act on.
+    failed_test_case_ids: list[int] = Field(default_factory=list)
 
 
 class StudioStartResponse(BaseModel):
@@ -157,4 +166,25 @@ class ApproveScriptsResponse(BaseModel):
 class StudioCancelResponse(BaseModel):
     studio_run_id: int
     status: str
+    message: str
+
+
+class StudioRetryRequest(BaseModel):
+    # Optional because most retries want the same configuration. Present when
+    # the previous attempt failed *because* of the mode it ran in.
+    runner_mode: str | None = None
+    # Regenerate only the test cases whose scripts failed, leaving the ones
+    # that work untouched.
+    only_failed: bool = False
+
+
+class StudioRetryResponse(BaseModel):
+    studio_run_id: int
+    status: str
+    # Which stage was resumed — "generation" reuses the approved test cases,
+    # "exploration" starts the crawl again because nothing approvable existed.
+    stage: str
+    agent_run_ids: list[int]
+    execution_run_ids: list[int] = Field(default_factory=list)
+    test_case_count: int
     message: str

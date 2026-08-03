@@ -27,6 +27,7 @@ from app.llm.structured import clean_json_text
 from app.services.script_compiler import compile_contract, locator_policy
 from app.services.script_compiler.compiler import UnsupportedContractVersionError
 from app.config import get_settings
+from app.services import agent_progress
 
 logger = logging.getLogger(__name__)
 
@@ -517,6 +518,9 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
     finish, since aborting mid-call wastes work without protecting the
     provider any better than simply not starting more.
     """
+    await agent_progress.report_progress(
+        0, f"Preparing to generate {len(state['test_cases'])} script(s)"
+    )
     llm = get_llm(settings.default_llm_provider, settings.default_llm_model)
     framework = state["framework"]
     script_type = "pytest-python" if framework == "pytest" else "playwright-typescript"
@@ -565,6 +569,21 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
         catalog = locator_map.get(str(tc.get("application_id"))) if tc.get("application_id") is not None else None
         if catalog:
             catalog = locator_policy.filter_catalog_by_page(catalog, tc.get("application_url"))
+            # Then down to what THIS test case plausibly needs. Host-scoping
+            # alone changes nothing when a whole crawl lands on one host, which
+            # is the normal case: 157 entries rendered 25k characters of prompt
+            # around a 1.1k-character test case.
+            catalog = locator_policy.select_relevant_catalog(
+                catalog,
+                " ".join(filter(None, [
+                    str(tc_summary.get("title") or ""),
+                    " ".join(
+                        str(step.get("action") or step.get("description") or "") if isinstance(step, dict) else str(step)
+                        for step in (tc_summary.get("steps") or [])
+                    ),
+                    str(tc_summary.get("expected_result") or ""),
+                ])),
+            )
             system += GROUNDED_LOCATORS_INSTRUCTION.format(locator_catalog=_format_locator_catalog(catalog))
         explored_page_paths = tc.get("explored_page_paths") or []
         if explored_page_paths:
@@ -577,12 +596,30 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
         )
         return script, fatal_error, rate_limited
 
+    total = len(state["test_cases"])
+    finished = 0
+    finished_lock = asyncio.Lock()
+
     async def _run_and_signal(tc: dict) -> tuple[dict | None, str | None, bool]:
         script, fatal_error, rate_limited = await _generate_for_tc(tc)
         if rate_limited:
             # Stop admitting NEW work as early as possible; tasks already
             # past the semaphore (in-flight LLM calls) are left to finish.
             stop_event.set()
+        # Reported on completion rather than on start, so the count never
+        # claims work that has not happened. Serialized because with a
+        # concurrency above 1 several coroutines land here at once and an
+        # unguarded read-modify-write would skip or repeat a number.
+        nonlocal finished
+        async with finished_lock:
+            finished += 1
+            done = finished
+        label = tc.get("test_case_id") or f"#{tc.get('id')}"
+        await agent_progress.report_progress(
+            int(100 * done / total) if total else 100,
+            f"Generated {done} of {total} scripts — {label}"
+            + ("" if script is not None else " (failed)"),
+        )
         return script, fatal_error, rate_limited
 
     results = await asyncio.gather(
