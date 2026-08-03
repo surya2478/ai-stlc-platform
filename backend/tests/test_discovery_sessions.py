@@ -974,3 +974,67 @@ def test_perform_modified_step_click_shares_locator_ranking_path(tmp_path):
         assert action.locator_confidence == 90
 
     anyio.run(_run)
+
+
+# ── worker self-pause (step plan exhausted / idle) ───────────────────────
+
+def test_self_pause_records_its_transition_and_clears_pending_command(tmp_path, monkeypatch):
+    """A step-driven session that runs out of approved steps drops to PAUSED
+    without auto-completing (Section 15). It must still leave the audit trail
+    every other exit path leaves: an event naming why it stopped, and no
+    stale `pending_command` claiming a command is still waiting to be read."""
+    from app.worker.tasks import discovery_tasks
+
+    async def _run():
+        session = _agent_session(
+            id_=27, status="RESUMING", current_step_index=4,
+            pending_command={"command": "resume", "idempotency_key": "k-1"},
+        )
+        db = _FakeDB(gets={(DiscoverySession, 27): session})
+
+        monkeypatch.setattr(discovery_tasks, "AsyncSessionLocal", _fake_session_factory(db))
+        monkeypatch.setattr(
+            discovery_tasks.capture_service, "start_capture",
+            _async_return((_FakeMCPSession(), tmp_path, "https://sit.example.com")),
+        )
+        monkeypatch.setattr(discovery_tasks.capture_service, "close_capture", _async_return(None))
+        monkeypatch.setattr(discovery_tasks.capture_service, "create_checkpoint", _async_return(None))
+        # Every approved step already consumed.
+        monkeypatch.setattr(discovery_tasks.capture_service, "get_current_step", _async_return(None))
+
+        result = await discovery_tasks._run_capture_session(27)
+
+        assert result["status"] == "PAUSED"
+        assert session.status == "PAUSED"
+        assert session.pending_command is None
+        events = [o for o in db.added if isinstance(o, DiscoverySessionEvent)]
+        assert len(events) == 1
+        assert events[0].new_state == "PAUSED"
+        assert events[0].previous_state == "RECORDING"
+        assert events[0].command == "self_pause"
+        assert "stop the session" in events[0].reason.lower()
+
+    anyio.run(_run)
+
+
+def _async_return(value):
+    async def _call(*_args, **_kwargs):
+        return value
+
+    return _call
+
+
+def _fake_session_factory(db):
+    """`async with AsyncSessionLocal() as db` — hand the task the _FakeDB
+    instead of opening a real connection."""
+    class _Factory:
+        def __call__(self):
+            return self
+
+        async def __aenter__(self):
+            return db
+
+        async def __aexit__(self, *_exc):
+            return False
+
+    return _Factory()

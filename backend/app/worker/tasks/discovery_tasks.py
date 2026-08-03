@@ -91,9 +91,23 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
         is_agent_driven = session.mode == "SUPERVISED_AGENT_DRIVEN"
         idle_iterations = 0
 
-        async def _self_pause() -> None:
+        async def _self_pause(reason: str) -> None:
+            # Every other exit path from this loop records why it left and
+            # clears `pending_command`. This one did neither, so a self-pause
+            # showed up in the Activity tab as a session that entered
+            # RESUMING and never arrived anywhere, while leaving the consumed
+            # command in the row — a stale `resume` that reads like one still
+            # waiting to be acted on.
+            previous_state = session.status
             await capture_service.create_checkpoint(db, session, state_at_checkpoint="PAUSED")
             session.status = "PAUSED"
+            session.pending_command = None
+            db.add(DiscoverySessionEvent(
+                session_id=session.id, project_id=session.project_id, actor_type="system",
+                previous_state=previous_state, new_state="PAUSED",
+                command="self_pause", reason=reason,
+                occurred_at=datetime.now(timezone.utc),
+            ))
             await db.commit()
 
         try:
@@ -194,11 +208,11 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
                         # Every approved step already approved/modified/
                         # skipped — self-pause rather than auto-complete
                         # (Section 15 requires explicit user confirmation).
-                        await _self_pause()
+                        await _self_pause("Every approved step has been captured — stop the session to finish it.")
                         break
                     idle_iterations += 1
                     if idle_iterations >= _FREE_MODE_MAX_IDLE_ITERATIONS:
-                        await _self_pause()
+                        await _self_pause("No supervision command received for 3 minutes.")
                         break
                     await asyncio.sleep(_FREE_MODE_POLL_SECONDS)
                     continue
@@ -210,7 +224,7 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
                     # they've gone quiet.
                     idle_iterations += 1
                     if idle_iterations >= _FREE_MODE_MAX_IDLE_ITERATIONS:
-                        await _self_pause()
+                        await _self_pause("No action recorded for 3 minutes.")
                         break
                     await asyncio.sleep(_FREE_MODE_POLL_SECONDS)
                     continue
@@ -228,7 +242,7 @@ async def _run_capture_session(discovery_session_id: int) -> dict:
                     # listening for. Guided mode still never auto-completes
                     # (Section 15 requires explicit user confirmation) —
                     # PAUSED, not COMPLETED.
-                    await _self_pause()
+                    await _self_pause("Every approved step has been captured — stop the session to finish it.")
                     break
                 await db.commit()
         finally:
