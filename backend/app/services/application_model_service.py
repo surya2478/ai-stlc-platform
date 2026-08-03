@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import AgentRun
@@ -373,6 +373,43 @@ async def reject(db: AsyncSession, model: ApplicationModel, *, actor_id: int, re
     return model
 
 
+async def _require_non_empty(db: AsyncSession, model: ApplicationModel, *, verb: str) -> None:
+    """Refuse to advance a model that contains no screen.
+
+    The build walk already raises a critical MISSING_SCREEN gap for this, and
+    approve/publish already refuse on open critical gaps — so on the build
+    path this is belt-and-braces. It is load-bearing on every other path:
+
+      * `create_new_draft` writes a model row with no nodes and no gaps at
+        all, so an empty draft satisfied the gap check vacuously. Observed
+        live: v2 was created as an empty draft from a published v1 that had
+        two screens, then approved and published, superseding the only model
+        with any structure in it.
+      * a reviewer may resolve the MISSING_SCREEN gap by hand, which clears
+        the only thing standing between an empty model and publication.
+
+    Checked against the nodes themselves rather than through a gap, because
+    "does this model contain anything" is a fact about the model, not an
+    opinion recorded about it that someone can resolve away.
+    """
+    screens = (
+        await db.execute(
+            select(func.count()).select_from(ApplicationModelNode).where(
+                ApplicationModelNode.model_id == model.id,
+                ApplicationModelNode.node_type == "screen",
+            )
+        )
+    ).scalar_one()
+    if screens:
+        return
+    raise ApplicationModelError(
+        409, "MODEL_EMPTY",
+        f"This model contains no screens, so there is nothing to ground tests against — "
+        f"it cannot be {verb}. Rebuild it from a completed discovery session whose actions "
+        f"each name the screen they acted on.",
+    )
+
+
 async def approve(db: AsyncSession, model: ApplicationModel, *, actor_id: int, reason: str | None) -> ApplicationModel:
     if model.status != "pending_review":
         raise ApplicationModelError(409, "INVALID_TRANSITION", "Only a model pending review can be approved.")
@@ -390,6 +427,7 @@ async def approve(db: AsyncSession, model: ApplicationModel, *, actor_id: int, r
     )
     if gaps_result.scalars().first() is not None:
         raise ApplicationModelError(409, "CRITICAL_GAP_OPEN", "Unresolved critical gaps must be resolved before approval.")
+    await _require_non_empty(db, model, verb="approved")
     model.status = "approved"
     model.approved_by = actor_id
     model.approved_at = datetime.now(timezone.utc)
@@ -412,6 +450,7 @@ async def publish(db: AsyncSession, model: ApplicationModel, *, actor_id: int) -
     )
     if gaps_result.scalars().first() is not None:
         raise ApplicationModelError(409, "CRITICAL_GAP_OPEN", "Unresolved critical gaps must be resolved before publication.")
+    await _require_non_empty(db, model, verb="published")
 
     prior_result = await db.execute(
         select(ApplicationModel).where(
@@ -444,6 +483,25 @@ async def create_new_draft(db: AsyncSession, model: ApplicationModel, *, actor_i
     model.is_current = False
     db.add(new_model)
     await db.flush()
+
+    # The new draft has no nodes: this function copies nothing and runs no
+    # walk, so it is only a placeholder until someone rebuilds it from a
+    # session. Nothing said so, and because the emptiness carried no gap it
+    # satisfied every downstream "no open critical gap" check vacuously —
+    # which is how an empty v2 was approved and published over a v1 that had
+    # real structure. Raised as the same critical gap the build walk uses, so
+    # it flows through the controls that already exist and the reviewer sees
+    # one consistent message either way.
+    db.add(
+        ApplicationModelGap(
+            model_id=new_model.id, status="open", gap_type="MISSING_SCREEN", severity="critical",
+            evidence={"parent_model_id": model.id, "reason": "new draft has not been rebuilt from a session yet"},
+            remediation=(
+                "A new draft starts empty. Rebuild it from a completed discovery session before "
+                "submitting it for review."
+            ),
+        )
+    )
     await _log_activity(db, model=new_model, event_type="new_draft_created", actor_id=actor_id)
     await db.commit()
     await db.refresh(new_model)

@@ -10,6 +10,7 @@ a first build: the actions fetch, then get_current_model's (empty) lookup.
 from types import SimpleNamespace
 
 import anyio
+import pytest
 
 from app.models.application_model import ApplicationModel, ApplicationModelGap, ApplicationModelNode
 from app.services import application_model_service as svc
@@ -32,6 +33,10 @@ class _ExecuteResult:
 
     def scalars(self):
         return _ScalarsResult(self._values)
+
+    def scalar_one(self):
+        # Emptiness checks queue a bare count rather than a row list.
+        return self._values if isinstance(self._values, int) else len(self._values)
 
 
 class _FakeDB:
@@ -169,7 +174,7 @@ def test_approve_succeeds_with_no_open_critical_gaps():
         id=1, status="pending_review", built_by=10, project_id=1, application_id=1,
         approved_by=None, approved_at=None, decision_reason=None, correlation_id=None,
     )
-    db = _FakeDB(execute_queue=[[]])
+    db = _FakeDB(execute_queue=[[], 2])  # no critical gaps, 2 screens
 
     result = anyio.run(lambda: svc.approve(db, model, actor_id=20, reason="looks good"))
 
@@ -332,7 +337,7 @@ def test_separate_approver_is_required_by_default():
 def test_a_builder_can_approve_when_the_policy_is_relaxed(monkeypatch):
     _with_policy(monkeypatch, required=False)
     model = _pending(built_by=10)
-    db = _FakeDB(execute_queue=[[]])
+    db = _FakeDB(execute_queue=[[], 2])  # no critical gaps, 2 screens
 
     approved = anyio.run(lambda: svc.approve(db, model, actor_id=10, reason="single operator"))
 
@@ -376,3 +381,70 @@ def test_the_refusal_says_how_to_relax_it(monkeypatch):
         assert False, "expected separation-of-duty violation"
     except Exception as exc:
         assert "REQUIRE_SEPARATE_APPROVER" in exc.detail["message"]
+
+
+# ── an empty model is not an approvable model ─────────────────────────────────
+# Every governance check downstream is phrased as the absence of a gap, so a
+# model containing nothing satisfied all of them vacuously. Observed live: an
+# empty v2 was approved and published over a v1 that had two screens.
+
+def test_approve_refuses_a_model_with_no_screens():
+    model = SimpleNamespace(
+        id=1, status="pending_review", built_by=10, project_id=1, application_id=1,
+        approved_by=None, approved_at=None, decision_reason=None, correlation_id=None,
+    )
+    db = _FakeDB(execute_queue=[[], 0])  # no critical gaps, and no screens either
+
+    with pytest.raises(svc.ApplicationModelError) as exc:
+        anyio.run(lambda: svc.approve(db, model, actor_id=20, reason="looks good"))
+
+    assert exc.value.detail["code"] == "MODEL_EMPTY"
+    assert "nothing to ground tests against" in exc.value.detail["message"]
+    assert model.status == "pending_review"  # unchanged
+
+
+def test_publish_refuses_a_model_with_no_screens():
+    model = SimpleNamespace(
+        id=1, status="approved", project_id=1, application_id=1,
+        published_by=None, published_at=None, correlation_id=None,
+    )
+    db = _FakeDB(execute_queue=[[], 0])
+
+    with pytest.raises(svc.ApplicationModelError) as exc:
+        anyio.run(lambda: svc.publish(db, model, actor_id=20))
+
+    assert exc.value.detail["code"] == "MODEL_EMPTY"
+    assert model.status == "approved"  # never superseded the prior published model
+
+
+def test_publish_allows_a_model_that_has_screens():
+    model = SimpleNamespace(
+        id=1, status="approved", project_id=1, application_id=1,
+        published_by=None, published_at=None, correlation_id=None,
+    )
+    db = _FakeDB(execute_queue=[[], 3, []])  # no gaps, 3 screens, no prior published
+
+    result = anyio.run(lambda: svc.publish(db, model, actor_id=20))
+
+    assert result.status == "published"
+
+
+def test_a_new_draft_starts_blocked_because_it_copies_nothing():
+    """create_new_draft writes a model row with no nodes and runs no walk.
+    Without a gap saying so, that emptiness was invisible to every downstream
+    check — which is the exact path the empty published v2 took."""
+    model = SimpleNamespace(
+        id=7, status="published", project_id=1, application_id=1, source_session_id=3, version=2,
+        is_current=True,
+    )
+    db = _FakeDB()
+
+    new_model = anyio.run(lambda: svc.create_new_draft(db, model, actor_id=15))
+
+    gaps = [o for o in db.added if isinstance(o, ApplicationModelGap)]
+    assert len(gaps) == 1
+    assert gaps[0].gap_type == "MISSING_SCREEN"
+    assert gaps[0].severity == "critical"
+    assert gaps[0].status == "open"
+    assert gaps[0].model_id == new_model.id
+    assert "Rebuild it from a completed discovery session" in gaps[0].remediation
