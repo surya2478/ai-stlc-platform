@@ -12,6 +12,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.locator_map import LocatorMapEntry
+from app.services.script_compiler.naming import bounded_name
+
+# Mirror the column widths on LocatorMapEntry. Enforced here rather than left
+# to each caller because this is the only write path and its callers supply
+# names from very different places — the discovery agent slugifies an
+# accessible name, but recorder/ir_emitter passes `target_semantic`, which is
+# free text with no bound at all. A caller that forgets is a 500 at insert
+# time, which is what StringDataRightTruncationError on element_name was.
+ELEMENT_NAME_MAX = 200
+PAGE_MAX = 500
 
 
 async def upsert_locator(
@@ -27,6 +37,12 @@ async def upsert_locator(
     fallback_locator: str | None = None,
     confidence_score: int = 0,
 ) -> LocatorMapEntry:
+    # Bound before the lookup, not just before the insert: these two columns
+    # are the upsert key, so a re-discovery has to resolve to the same row it
+    # created last time.
+    element_name = bounded_name(element_name, ELEMENT_NAME_MAX)
+    page = bounded_name(page, PAGE_MAX)
+
     result = await db.execute(
         select(LocatorMapEntry).where(
             LocatorMapEntry.application_id == application_id,

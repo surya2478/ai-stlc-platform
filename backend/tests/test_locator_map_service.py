@@ -107,3 +107,64 @@ def test_record_failure_increments_counter():
 
     anyio.run(run)
     assert entry.failure_count == 3
+
+
+# ── unbounded page content must not overflow a bounded column ─────────────────
+# Observed live 2026-08-03 on Playwright AI Studio project 8: a marketing link
+# whose accessible name was a full paragraph produced a 217-character
+# element_name and an asyncpg StringDataRightTruncationError against
+# locator_map.element_name (varchar 200), failing the whole discovery run.
+
+def _long_name(prefix: str = "link_qa_career_accelerator") -> str:
+    return prefix + "_" + "x" * 400
+
+
+def test_an_over_long_element_name_is_bounded_before_insert():
+    db = _FakeDB()
+
+    async def run():
+        return await locator_map_service.upsert_locator(
+            db, project_id=8, application_id=14, page="https://example.com/",
+            element_name=_long_name(), recommended_locator="page.getByRole('link')",
+            recommended_strategy="role", confidence_score=90,
+        )
+
+    entry = anyio.run(run)
+
+    assert len(entry.element_name) == locator_map_service.ELEMENT_NAME_MAX
+    assert entry.element_name.startswith("link_qa_career_accelerator")
+
+
+def test_an_over_long_page_url_is_bounded_before_insert():
+    db = _FakeDB()
+
+    async def run():
+        return await locator_map_service.upsert_locator(
+            db, project_id=8, application_id=14, page="https://example.com/" + "p" * 800,
+            element_name="link_home", recommended_locator="page.getByRole('link')",
+            recommended_strategy="role",
+        )
+
+    entry = anyio.run(run)
+
+    assert len(entry.page) == locator_map_service.PAGE_MAX
+
+
+def test_two_long_names_sharing_a_prefix_stay_distinct_rows():
+    """Plain truncation would collapse these onto one upsert key, so each
+    re-discovery would overwrite the other element's locator."""
+    first = locator_map_service.bounded_name(_long_name() + "_alpha", locator_map_service.ELEMENT_NAME_MAX)
+    second = locator_map_service.bounded_name(_long_name() + "_beta", locator_map_service.ELEMENT_NAME_MAX)
+
+    assert first != second
+    assert len(first) == len(second) == locator_map_service.ELEMENT_NAME_MAX
+
+
+def test_bounding_is_stable_so_rediscovery_finds_the_same_row():
+    """The upsert key has to be deterministic: the same element discovered
+    twice must resolve to the row it created, not add a second one."""
+    name = _long_name()
+    once = locator_map_service.bounded_name(name, locator_map_service.ELEMENT_NAME_MAX)
+    twice = locator_map_service.bounded_name(once, locator_map_service.ELEMENT_NAME_MAX)
+
+    assert once == twice

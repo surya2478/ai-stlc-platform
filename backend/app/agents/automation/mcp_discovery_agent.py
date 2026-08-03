@@ -43,7 +43,8 @@ from app.llm.provider import get_llm
 from app.services.automation_runner.readiness import ReadinessInputs, check_readiness
 from app.services.automation_runner.workspace import workspace_root
 from app.services.script_compiler import locator_policy
-from app.services.script_compiler.naming import slugify
+from app.services.locator_map_service import ELEMENT_NAME_MAX
+from app.services.script_compiler.naming import bounded_name, slugify
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -52,7 +53,11 @@ MAX_RELEVANT_LINKS = 2
 
 
 def _element_key(role: str, name: str | None) -> str:
-    return slugify(role, name or "unnamed")
+    # Bounded at the source as well as at persistence, so the catalog this run
+    # hands the generator carries the same names that end up in locator_map —
+    # grounding matches those two by name, and a mismatch would silently
+    # un-ground every long-named element.
+    return bounded_name(slugify(role, name or "unnamed"), ELEMENT_NAME_MAX)
 
 
 def _rank_elements(parsed: ParsedSnapshot) -> list[dict]:
@@ -107,7 +112,7 @@ def _disambiguate_duplicate_names(ranked: list[dict]) -> None:
                 # element_name elsewhere is always slugify()'d (underscore
                 # separator only) — matching that convention here keeps the
                 # suffix indistinguishable from a "real" slugified name.
-                entry["element_name"] = f"{base_name}_{index + 1}"
+                entry["element_name"] = bounded_name(f"{base_name}_{index + 1}", ELEMENT_NAME_MAX)
             entry["recommended_locator"] = locator_policy.render_locator_playwright(
                 "role", entry["accessible_name"], entry["role"], nth=index
             )
