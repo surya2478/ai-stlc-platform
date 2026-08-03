@@ -1,9 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+/**
+ * UI-017 API & Network Explorer.
+ *
+ * Rebuilt on the Test Case module's list-and-drawer pattern. The previous
+ * layout put a 220px filter rail, a table and an inspector side by side at
+ * 9-10px type, so the URL column truncated at ~220px and every detail lived
+ * in a panel reached through a `<select>`. Reasons for governed actions were
+ * collected with `window.prompt()`.
+ *
+ * Now: pick an application and a session at the top, see what the session
+ * captured, filter the requests, then click one to open a full-height drawer
+ * with its evidence and correlation on labelled tabs.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, ChevronRight, Download, FileWarning, Loader2,
-  RefreshCw, Sparkles, XCircle,
+  AlertTriangle, Boxes, CheckCircle2, Download, ExternalLink, Globe, Link2,
+  Loader2, Network, Radar, RefreshCw, Search, ShieldCheck, Sparkles, X,
 } from "lucide-react";
 import {
   applicationsApi, discoveryApi, networkExplorerApi,
@@ -12,68 +26,39 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
+import { messageFromError } from "./shared";
+import {
+  Breadcrumb, ChecklistRow, DrawerCard, DrawerTabBar, EmptyState, FilterSelect, GuidanceCard,
+  InfoPair, ListRow, ListShell, Notices, QueueTabs, ReasonDrawer, StatCard, WorkspaceHeader,
+  type DrawerTabSpec, type ReasonRequest,
+} from "./workspace";
 
 type Props = { projectId: number; applicationId: number | null };
 
-type InspectorTab = "overview" | "correlation" | "evidence" | "headers" | "timing" | "validation";
+type DrawerTab = "overview" | "correlation" | "evidence" | "headers" | "timing" | "validation";
+type QueueKey = "all" | "unreviewed" | "reviewed" | "ignored" | "external" | "unmapped";
 
-const INSPECTOR_TABS: { key: InspectorTab; label: string; available: boolean; reason?: string }[] = [
-  { key: "overview", label: "Overview", available: true },
-  { key: "correlation", label: "Correlation", available: true },
-  { key: "evidence", label: "Evidence", available: true },
-  { key: "headers", label: "Headers", available: false, reason: "Not captured by this discovery pipeline (method/URL/status only)" },
+const DRAWER_TABS: DrawerTabSpec<DrawerTab>[] = [
+  { key: "overview", label: "Overview" },
+  { key: "correlation", label: "Correlation" },
+  { key: "evidence", label: "Evidence" },
+  { key: "headers", label: "Headers", available: false, reason: "Not captured by this discovery pipeline — method, URL and status only" },
   { key: "timing", label: "Timing", available: false, reason: "No timing data is captured by this pipeline" },
   { key: "validation", label: "Validation", available: false, reason: "No API/DB validator is configured for this project" },
 ];
 
-function messageFromError(error: unknown, fallback: string): string {
-  const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  if (typeof detail === "string") return detail;
-  if (detail && typeof detail === "object" && "message" in detail) return String((detail as { message: unknown }).message);
-  return fallback;
-}
+const QUEUE_TABS: { key: QueueKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "unreviewed", label: "Unreviewed" },
+  { key: "reviewed", label: "Reviewed" },
+  { key: "ignored", label: "Ignored" },
+  { key: "external", label: "External" },
+  { key: "unmapped", label: "Unmapped" },
+];
 
-function Kpi({ label, value, subtitle, tone }: { label: string; value: string | number; subtitle?: string; tone?: "amber" | "red" | "muted" }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <p className="text-[9px] font-extrabold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className={cn(
-        "mt-1 text-xl font-black",
-        tone === "red" ? "text-red-600" : tone === "amber" ? "text-amber-600" : tone === "muted" ? "text-slate-300" : "text-slate-900",
-      )}>{value}</p>
-      {subtitle && <p className="mt-0.5 text-[9px] font-semibold text-slate-400">{subtitle}</p>}
-    </div>
-  );
-}
-
-function Panel({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-[10px] font-extrabold text-slate-800">{title}</h3>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function ReadinessRow({ label, state, detail }: { label: string; state: "pass" | "warning" | "blocked" | "not_evaluated"; detail: string }) {
-  const icon = state === "pass" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-    : state === "warning" ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-    : state === "blocked" ? <XCircle className="h-3.5 w-3.5 text-red-500" />
-    : <FileWarning className="h-3.5 w-3.5 text-slate-300" />;
-  return (
-    <div className="flex items-start gap-2 py-1">
-      {icon}
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold text-slate-800">{label}</p>
-        <p className="truncate text-[9px] font-semibold text-slate-500">{detail}</p>
-      </div>
-    </div>
-  );
-}
+const GRID = "70px 90px minmax(240px,1fr) 90px 170px 120px 110px";
 
 function statusTone(status: number | null): "success" | "warning" | "destructive" | "secondary" {
   if (status == null) return "secondary";
@@ -81,6 +66,12 @@ function statusTone(status: number | null): "success" | "warning" | "destructive
   if (status >= 400) return "warning";
   if (status >= 200 && status < 400) return "success";
   return "secondary";
+}
+
+function reviewBadge(state: NetworkEvent["review_state"]) {
+  if (state === "reviewed") return <Badge variant="success">Reviewed</Badge>;
+  if (state === "ignored") return <Badge variant="secondary">Ignored</Badge>;
+  return <Badge variant="warning">Unreviewed</Badge>;
 }
 
 export function NetworkExplorerView({ projectId, applicationId }: Props) {
@@ -92,45 +83,51 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
   const [events, setEvents] = useState<NetworkEvent[]>([]);
   const [kpis, setKpis] = useState<NetworkEventKpis | null>(null);
   const [activity, setActivity] = useState<NetworkEventActivityEntry[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("overview");
-  const [evidenceText, setEvidenceText] = useState<string>("");
 
+  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>("overview");
+  const [evidenceText, setEvidenceText] = useState("");
+
+  const [queueTab, setQueueTab] = useState<QueueKey>("all");
   const [methodFilter, setMethodFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [externalOnly, setExternalOnly] = useState(false);
-  const [unmappedOnly, setUnmappedOnly] = useState(false);
   const [search, setSearch] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [reasonRequest, setReasonRequest] = useState<ReasonRequest | null>(null);
 
   useEffect(() => {
-    applicationsApi.getForProject(projectId).then((res) => setApplications(res.data.applications)).catch(() => setApplications([]));
+    applicationsApi.getForProject(projectId)
+      .then((res) => setApplications(res.data.applications))
+      .catch(() => setApplications([]));
   }, [projectId]);
 
   useEffect(() => {
     if (!selectedApplicationId) return;
     discoveryApi.listSessions(projectId, { application_id: selectedApplicationId })
-      .then((res) => setSessions(res.data))
+      .then((res) => {
+        setSessions(res.data);
+        // Land on the session most likely to have captures rather than making
+        // the user guess: the newest one that actually reached a terminal state.
+        setSelectedSessionId((current) => {
+          if (current && res.data.some((s) => s.id === current)) return current;
+          const finished = res.data.filter((s) => ["COMPLETED", "STOPPED"].includes(s.status));
+          return (finished[0] ?? res.data[0])?.id ?? null;
+        });
+      })
       .catch(() => setSessions([]));
   }, [projectId, selectedApplicationId]);
 
-  async function loadEvents(sessionId: number) {
+  const loadEvents = useCallback(async (sessionId: number) => {
     setLoading(true);
     setError("");
     try {
       const [kpisRes, eventsRes, activityRes, actionsRes] = await Promise.all([
         networkExplorerApi.kpis(sessionId),
-        networkExplorerApi.events(sessionId, {
-          method: methodFilter || undefined,
-          status_bucket: (statusFilter || undefined) as never,
-          external_only: externalOnly || undefined,
-          unmapped_only: unmappedOnly || undefined,
-          search: search || undefined,
-        }),
+        networkExplorerApi.events(sessionId, {}),
         networkExplorerApi.activity(sessionId),
         discoveryApi.listActions(sessionId),
       ]);
@@ -143,27 +140,103 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
+  // Filtering is done in the browser over the session's full event list, so
+  // changing a filter no longer costs four network round trips per keystroke.
   useEffect(() => {
     if (selectedSessionId) loadEvents(selectedSessionId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSessionId, methodFilter, statusFilter, externalOnly, unmappedOnly, search]);
+  }, [selectedSessionId, loadEvents]);
 
   const actionById = useMemo(() => new Map(actions.map((a) => [a.id, a])), [actions]);
-  const selectedEvent = useMemo(() => events.find((e) => e.id === selectedEventId) || null, [events, selectedEventId]);
+  const selectedEvent = useMemo(() => events.find((e) => e.id === selectedEventId) ?? null, [events, selectedEventId]);
   const selectedAction = selectedEvent?.action_id != null ? actionById.get(selectedEvent.action_id) : undefined;
+  const selectedApplication = applications.find((a) => a.id === selectedApplicationId) ?? null;
+  const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
 
   useEffect(() => {
     setEvidenceText("");
-    if (!selectedSessionId || !selectedEvent) return;
-    if (inspectorTab !== "evidence") return;
+    if (!selectedSessionId || !selectedEvent || drawerTab !== "evidence") return;
     discoveryApi.getCaptureContent(selectedSessionId, selectedEvent.capture_id)
       .then((res) => setEvidenceText(String(res.data)))
-      .catch(() => setEvidenceText("Capture content is no longer available."));
-  }, [selectedSessionId, selectedEvent, inspectorTab]);
+      .catch(() => setEvidenceText("Capture content is no longer available on disk."));
+  }, [selectedSessionId, selectedEvent, drawerTab]);
 
-  async function handleBuild() {
+  const queueCounts = useMemo(() => ({
+    all: events.length,
+    unreviewed: events.filter((e) => e.review_state === "unreviewed").length,
+    reviewed: events.filter((e) => e.review_state === "reviewed").length,
+    ignored: events.filter((e) => e.review_state === "ignored").length,
+    external: events.filter((e) => e.is_external === true).length,
+    unmapped: events.filter((e) => e.action_id == null).length,
+  }), [events]);
+
+  const filteredEvents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return events.filter((event) => {
+      if (queueTab === "unreviewed" && event.review_state !== "unreviewed") return false;
+      if (queueTab === "reviewed" && event.review_state !== "reviewed") return false;
+      if (queueTab === "ignored" && event.review_state !== "ignored") return false;
+      if (queueTab === "external" && event.is_external !== true) return false;
+      if (queueTab === "unmapped" && event.action_id != null) return false;
+      if (methodFilter && event.method !== methodFilter) return false;
+      if (statusFilter) {
+        const bucket = event.status_code == null ? "" : `${Math.floor(event.status_code / 100)}xx`;
+        if (bucket !== statusFilter) return false;
+      }
+      if (!q) return true;
+      return [event.url, event.host, event.path, event.raw_line, event.method]
+        .filter(Boolean).join(" ").toLowerCase().includes(q);
+    });
+  }, [events, queueTab, methodFilter, statusFilter, search]);
+
+  const methodOptions = useMemo(
+    () => Array.from(new Set(events.map((e) => e.method).filter((m): m is string => Boolean(m)))).sort(),
+    [events],
+  );
+
+  async function act(fn: () => Promise<unknown>, successMessage: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+      setNotice(successMessage);
+      if (selectedSessionId) await loadEvents(selectedSessionId);
+    } catch (actionError) {
+      setError(messageFromError(actionError, "Could not update this request."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function askReview(event: NetworkEvent) {
+    setReasonRequest({
+      title: `Mark ${event.method || "request"} as reviewed`,
+      description: `${event.url || event.raw_line}`.slice(0, 200),
+      label: "Review note",
+      placeholder: "e.g. Confirmed this is the catalogue lookup behind the Services screen.",
+      confirmLabel: "Mark Reviewed",
+      required: false,
+      onConfirm: async (reason) => {
+        await act(() => networkExplorerApi.review(event.id, reason || undefined), "Request marked reviewed.");
+      },
+    });
+  }
+
+  function askIgnore(event: NetworkEvent) {
+    setReasonRequest({
+      title: `Ignore ${event.method || "request"}`,
+      description: "Ignored requests stay in the evidence trail but are excluded from mapping readiness.",
+      label: "Reason for ignoring",
+      placeholder: "e.g. Analytics beacon — not part of the application under test.",
+      confirmLabel: "Ignore Request",
+      onConfirm: async (reason) => {
+        await act(() => networkExplorerApi.ignore(event.id, reason), "Request marked ignored.");
+      },
+    });
+  }
+
+  async function handleParse() {
     if (!selectedSessionId) return;
     setBusy(true);
     setError("");
@@ -171,301 +244,427 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
       await networkExplorerApi.build({ project_id: projectId, session_id: selectedSessionId });
       setNotice("Network events parsed from this session's captures.");
       await loadEvents(selectedSessionId);
-    } catch (buildError) {
-      setError(messageFromError(buildError, "Could not parse network events for this session."));
+    } catch (parseError) {
+      setError(messageFromError(parseError, "Could not parse network events for this session."));
     } finally {
       setBusy(false);
     }
   }
 
-  async function handleIgnore(event: NetworkEvent) {
-    const reason = window.prompt("Reason this request should be ignored:");
-    if (!reason) return;
-    setBusy(true);
-    try {
-      await networkExplorerApi.ignore(event.id, reason);
-      setNotice("Request marked ignored.");
-      if (selectedSessionId) await loadEvents(selectedSessionId);
-    } catch (ignoreError) {
-      setError(messageFromError(ignoreError, "Could not update this request."));
-    } finally {
-      setBusy(false);
+  const hasCaptures = events.length > 0 || (kpis?.requests_captured ?? 0) > 0;
+  const discoveryHref = `/applications?view=discovery&project=${projectId}${selectedApplicationId ? `&application=${selectedApplicationId}` : ""}`;
+
+  /* ── guidance: the single next action, stated in words ─────────────── */
+  const guidance = (() => {
+    if (!selectedApplicationId) {
+      return { tone: "blue" as const, title: "Start by choosing an application", detail: "Network activity is captured per application, per discovery session. Pick one above to continue." };
     }
-  }
-
-  async function handleReview(event: NetworkEvent) {
-    const note = window.prompt("Optional review note:") || undefined;
-    setBusy(true);
-    try {
-      await networkExplorerApi.review(event.id, note);
-      setNotice("Request marked reviewed.");
-      if (selectedSessionId) await loadEvents(selectedSessionId);
-    } catch (reviewError) {
-      setError(messageFromError(reviewError, "Could not update this request."));
-    } finally {
-      setBusy(false);
+    if (sessions.length === 0) {
+      return {
+        tone: "amber" as const,
+        title: "This application has no discovery sessions yet",
+        detail: "API and network evidence only exists inside a recorded discovery session. Record one first, then come back here.",
+        action: <Button size="sm" onClick={() => { window.location.href = discoveryHref; }}>Open Live Discovery Session</Button>,
+      };
     }
-  }
-
-  if (!selectedApplicationId) {
-    return (
-      <div className="rounded-lg border border-slate-200 bg-white p-8 text-center">
-        <p className="text-sm font-bold text-slate-700">Select an application</p>
-        <p className="mt-1 text-xs font-semibold text-slate-500">Choose an application below to explore its captured API and network activity.</p>
-        <select
-          className="mx-auto mt-4 block h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
-          value=""
-          onChange={(e) => setSelectedApplicationId(Number(e.target.value) || null)}
-        >
-          <option value="">Select application…</option>
-          {applications.map((a) => <option key={a.id ?? a.key} value={a.id ?? ""}>{a.name}</option>)}
-        </select>
-      </div>
-    );
-  }
-
-  const hasNetworkCaptures = events.length > 0 || (kpis?.requests_captured ?? 0) > 0;
+    if (!selectedSessionId) {
+      return { tone: "blue" as const, title: "Choose a discovery session", detail: "Pick the session whose traffic you want to inspect." };
+    }
+    if (!hasCaptures) {
+      return {
+        tone: "amber" as const,
+        title: "No requests parsed from this session yet",
+        detail: "Parsing reads the session's network-log captures and turns each line into a reviewable request. It is safe to run more than once.",
+        action: <Button size="sm" onClick={handleParse} disabled={busy}>{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Parse Captures</Button>,
+      };
+    }
+    if (queueCounts.unreviewed > 0) {
+      return {
+        tone: "blue" as const,
+        title: `${queueCounts.unreviewed} request${queueCounts.unreviewed === 1 ? "" : "s"} still need review`,
+        detail: "Open a request to see what it was doing and which step triggered it, then mark it reviewed or ignore it with a reason.",
+        action: <Button size="sm" variant="outline" onClick={() => setQueueTab("unreviewed")}>Show unreviewed</Button>,
+      };
+    }
+    return {
+      tone: "emerald" as const,
+      title: "Every captured request has been reviewed",
+      detail: `${kpis?.mapping_readiness_pct ?? 0}% of requests are linked to a discovery action. Export the evidence for the record.`,
+    };
+  })();
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-        <span>e&amp; STLC</span>
-        <ChevronRight className="h-3 w-3 text-slate-300" />
-        <span>Application Discovery</span>
-        <ChevronRight className="h-3 w-3 text-slate-300" />
-        <span className="text-slate-800">API &amp; Network Explorer</span>
-      </div>
+    <div className="space-y-4 pb-8">
+      <Breadcrumb trail={["e& STLC", "Applications", "API & Network Explorer"]} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900">API &amp; Network Explorer</h1>
-            <Badge variant="info">P1-S4 UI-017</Badge>
-          </div>
-          <p className="mt-1 text-xs text-slate-500">
-            Correlate captured API and network activity from governed discovery sessions to screens and test steps.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <WorkspaceHeader
+        icon={Network}
+        tone="blue"
+        title="API & Network Explorer"
+        badge="P1-S4 UI-017"
+        description="Correlate API and network activity captured during governed discovery sessions to screens and test steps."
+        actions={
+          <>
+            <Button variant="outline" size="sm" className="h-9" disabled={!selectedSessionId || loading || busy} onClick={() => selectedSessionId && loadEvents(selectedSessionId)}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} /> Refresh
+            </Button>
+            <Button variant="outline" size="sm" className="h-9" disabled={!selectedSessionId || busy} onClick={handleParse}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Parse Captures
+            </Button>
+            <Button
+              variant="outline" size="sm" className="h-9"
+              disabled={!selectedSessionId || !hasCaptures}
+              title={hasCaptures ? undefined : "Nothing to export until this session's captures are parsed."}
+              onClick={() => selectedSessionId && window.open(networkExplorerApi.exportUrl(selectedSessionId), "_blank")}
+            >
+              <Download className="h-4 w-4" /> Export Evidence
+            </Button>
+          </>
+        }
+      />
+
+      <Notices error={error} notice={notice} onDismiss={() => { setError(""); setNotice(""); }} />
+
+      {/* Context bar — the two choices everything below depends on. */}
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Application</span>
           <select
-            className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
-            value={selectedApplicationId}
-            onChange={(e) => { setSelectedApplicationId(Number(e.target.value) || null); setSelectedSessionId(null); setEvents([]); setKpis(null); }}
+            value={selectedApplicationId ?? ""}
+            onChange={(e) => {
+              setSelectedApplicationId(Number(e.target.value) || null);
+              setSelectedSessionId(null); setEvents([]); setKpis(null); setSelectedEventId(null);
+            }}
+            className="h-9 w-60 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
           >
+            <option value="">Select application…</option>
             {applications.map((a) => <option key={a.id ?? a.key} value={a.id ?? ""}>{a.name}</option>)}
           </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Discovery session</span>
           <select
-            className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold"
             value={selectedSessionId ?? ""}
-            onChange={(e) => setSelectedSessionId(Number(e.target.value) || null)}
+            disabled={!selectedApplicationId || sessions.length === 0}
+            onChange={(e) => { setSelectedSessionId(Number(e.target.value) || null); setSelectedEventId(null); }}
+            className="h-9 w-72 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
           >
-            <option value="">Select a discovery session…</option>
-            {sessions.map((s) => <option key={s.id} value={s.id}>Session #{s.id} — {s.environment} ({s.status})</option>)}
+            <option value="">{sessions.length === 0 ? "No sessions recorded" : "Select a session…"}</option>
+            {sessions.map((s) => (
+              <option key={s.id} value={s.id}>Session #{s.id} · {s.environment} · {s.status}</option>
+            ))}
           </select>
-          <Button variant="outline" size="sm" onClick={() => selectedSessionId && loadEvents(selectedSessionId)} disabled={!selectedSessionId || loading || busy}>
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Refresh
-          </Button>
-          <Button size="sm" onClick={handleBuild} disabled={!selectedSessionId || busy}>
-            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} Parse Captures
-          </Button>
-          {selectedSessionId && kpis && (
-            <Button variant="outline" size="sm" onClick={() => window.open(networkExplorerApi.exportUrl(selectedSessionId), "_blank")}>
-              <Download className="h-3.5 w-3.5" /> Export Evidence
-            </Button>
-          )}
-        </div>
+        </label>
+        {selectedApplication && (
+          <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+            <Boxes className="h-3.5 w-3.5 text-slate-400" />
+            <span className="font-mono font-bold text-[#1b59f8]">APP-{selectedApplication.id}</span>
+            <span>{selectedApplication.key}</span>
+            {selectedSession && (
+              <a href={discoveryHref} className="ml-2 inline-flex items-center gap-1 font-bold text-[#1b59f8]">
+                <Radar className="h-3.5 w-3.5" /> Open session <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">{error}</div>}
-      {notice && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-700">{notice}</div>}
+      <GuidanceCard {...guidance} />
 
-      {!selectedSessionId && (
-        <Panel title="Select a discovery session">
-          <p className="text-xs font-semibold text-slate-500">
-            Choose a discovery session above to review the API and network activity it captured, then click Parse Captures.
-          </p>
-          {sessions.length === 0 && (
-            <a href={`/automation?view=discovery&project=${projectId}&application=${selectedApplicationId}`} className="mt-2 inline-block text-[10px] font-bold text-[#1b59f8]">
-              No discovery sessions yet — open Live Discovery Session →
-            </a>
-          )}
-        </Panel>
-      )}
-
-      {loading && <div className="rounded-lg border border-slate-200 bg-white p-8 text-center text-xs font-semibold text-slate-400">Loading…</div>}
-
-      {selectedSessionId && !loading && kpis && (
+      {selectedSessionId && kpis && (
         <>
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-            <Kpi label="Requests Captured" value={kpis.requests_captured} subtitle={`${kpis.requests_unparsed} unparsed`} />
-            <Kpi label="APIs Identified" value={kpis.apis_identified} />
-            <Kpi label="Validation Passed" value="—" tone="muted" subtitle="No validator configured" />
-            <Kpi label="Failures &amp; Warnings" value="—" tone="muted" subtitle="No validator configured" />
-            <Kpi label="External Systems" value={kpis.external_systems} />
-            <Kpi label="Mapping Readiness" value={`${kpis.mapping_readiness_pct}%`} subtitle={`${kpis.ignored} ignored`} />
+            <StatCard title="Requests Captured" value={kpis.requests_captured} subtitle={`${kpis.requests_unparsed} could not be parsed`} icon={Network} tone="blue" />
+            <StatCard title="APIs Identified" value={kpis.apis_identified} subtitle="Distinct method + path" icon={Link2} tone="purple" />
+            <StatCard title="External Systems" value={kpis.external_systems} subtitle="Hosts outside the app under test" icon={Globe} tone="amber" />
+            <StatCard title="Mapping Readiness" value={`${kpis.mapping_readiness_pct}%`} subtitle="Linked to a discovery action" icon={ShieldCheck} tone="emerald" />
+            <StatCard title="Awaiting Review" value={queueCounts.unreviewed} subtitle={`${queueCounts.reviewed} reviewed, ${kpis.ignored} ignored`} icon={AlertTriangle} tone={queueCounts.unreviewed > 0 ? "amber" : "emerald"} />
+            <StatCard title="Validation" value="Not configured" subtitle="No API/DB validator for this project" icon={CheckCircle2} tone="slate" />
           </div>
 
-          <Panel title="Readiness &amp; Governance">
-            <div className="grid grid-cols-1 gap-x-6 gap-y-1 md:grid-cols-2">
-              <ReadinessRow label="Discovery session authorized" state="pass" detail={`Session #${selectedSessionId}`} />
-              <ReadinessRow
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Governance &amp; Evidence Integrity</p>
+            <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
+              <ChecklistRow label="Discovery session authorized" state="pass" detail={`Session #${selectedSessionId} in ${selectedSession?.environment ?? "—"}`} />
+              <ChecklistRow
                 label="Network capture available"
-                state={hasNetworkCaptures ? "pass" : "blocked"}
-                detail={hasNetworkCaptures ? `${kpis.requests_captured} request(s) parsed` : "No network-log captures found for this session"}
+                state={hasCaptures ? "pass" : "blocked"}
+                detail={hasCaptures ? `${kpis.requests_captured} request(s) parsed from this session` : "No network-log captures found — enable network capture on the session and re-record"}
               />
-              <ReadinessRow label="Sanitization completed" state="pass" detail="Captured text is masked before being written to disk" />
-              <ReadinessRow label="Secrets and prohibited headers removed" state="pass" detail="Headers, bodies and cookies are never captured by this pipeline" />
-              <ReadinessRow label="API validator configured" state="not_evaluated" detail="No API/DB validator connection is configured for this project" />
-              <ReadinessRow label="External MCPs available" state="not_evaluated" detail="No external-system MCP mapping exists yet" />
-              <ReadinessRow
-                label="Request-to-action correlation available"
-                state={kpis.mapping_readiness_pct > 0 ? "pass" : "warning"}
-                detail={`${kpis.mapping_readiness_pct}% of requests linked to a discovery action`}
+              <ChecklistRow label="Sanitization completed" state="pass" detail="Captured text is masked before it is written to disk" />
+              <ChecklistRow label="Secrets and prohibited headers removed" state="pass" detail="Headers, bodies and cookies are never captured by this pipeline" />
+              <ChecklistRow
+                label="Request-to-action correlation"
+                state={kpis.mapping_readiness_pct >= 80 ? "pass" : kpis.mapping_readiness_pct > 0 ? "warning" : "blocked"}
+                detail={`${kpis.mapping_readiness_pct}% of requests are linked to a discovery action`}
               />
-              <ReadinessRow label="Application Model mapping available" state="not_evaluated" detail="Publishing relationships to the Application Model is not yet built" />
-              <ReadinessRow label="Evidence storage accessible" state={hasNetworkCaptures ? "pass" : "not_evaluated"} detail="Reading from the managed discovery workspace" />
-              <ReadinessRow label="No unresolved sensitive-data violation" state="pass" detail="Masking is applied before persistence" />
+              <ChecklistRow label="API validator configured" state="not_evaluated" detail="No API/DB validator connection exists for this project" />
             </div>
-          </Panel>
-
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[220px_1fr_320px]">
-            <Panel title="Filters">
-              <div className="space-y-2 text-[10px]">
-                <div>
-                  <label className="mb-1 block font-extrabold text-slate-600">Method</label>
-                  <select className="h-8 w-full rounded-md border border-slate-200 px-2 font-semibold" value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)}>
-                    <option value="">All</option>
-                    {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block font-extrabold text-slate-600">Status</label>
-                  <select className="h-8 w-full rounded-md border border-slate-200 px-2 font-semibold" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                    <option value="">All</option>
-                    <option value="2xx">2xx</option>
-                    <option value="3xx">3xx</option>
-                    <option value="4xx">4xx</option>
-                    <option value="5xx">5xx</option>
-                  </select>
-                </div>
-                <input
-                  className="h-8 w-full rounded-md border border-slate-200 px-2 font-semibold"
-                  placeholder="Search URL…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                <label className="flex items-center gap-1.5 font-semibold text-slate-600">
-                  <input type="checkbox" checked={externalOnly} onChange={(e) => setExternalOnly(e.target.checked)} /> External systems only
-                </label>
-                <label className="flex items-center gap-1.5 font-semibold text-slate-600">
-                  <input type="checkbox" checked={unmappedOnly} onChange={(e) => setUnmappedOnly(e.target.checked)} /> Unmapped only
-                </label>
-                <div className="border-t border-slate-100 pt-2 opacity-40">
-                  <p className="text-[9px] font-bold" title="No timing data is captured by this pipeline">Timeline / Waterfall</p>
-                  <p className="text-[9px] font-bold" title="No validator infrastructure is configured yet">By Validation Result</p>
-                  <p className="text-[9px] font-bold" title="Publishing to the Application Model is not yet built">External System &amp; MCP Map</p>
-                </div>
-              </div>
-            </Panel>
-
-            <Panel title={`Requests (${events.length})`}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-[10px]">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
-                      <th className="py-1.5">Method</th><th>URL</th><th>Status</th><th>Screen / Step</th><th>Review</th><th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {events.map((event) => {
-                      const action = event.action_id != null ? actionById.get(event.action_id) : undefined;
-                      return (
-                        <tr
-                          key={event.id}
-                          onClick={() => { setSelectedEventId(event.id); setInspectorTab("overview"); }}
-                          className={cn("cursor-pointer border-b border-slate-50 hover:bg-slate-50", selectedEventId === event.id && "bg-blue-50/40")}
-                        >
-                          <td className="py-1.5 font-bold text-slate-800">{event.method || <span className="text-slate-300">unparsed</span>}</td>
-                          <td className="max-w-[220px] truncate font-semibold text-slate-600" title={event.url || event.raw_line}>{event.url || event.raw_line}</td>
-                          <td><Badge variant={statusTone(event.status_code)} className="text-[8px]">{event.status_code ?? "—"}</Badge></td>
-                          <td className="font-semibold text-slate-500">{action?.target_screen_ref || <span className="text-slate-300">Unmapped</span>}</td>
-                          <td className="font-semibold text-slate-500">{event.review_state}</td>
-                          <td onClick={(e) => e.stopPropagation()}>
-                            <div className="flex gap-1">
-                              <Button size="sm" variant="outline" className="h-6 px-1.5 text-[9px]" disabled={busy} onClick={() => handleReview(event)}>Review</Button>
-                              <Button size="sm" variant="outline" className="h-6 px-1.5 text-[9px]" disabled={busy || event.review_state === "ignored"} onClick={() => handleIgnore(event)}>Ignore</Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {events.length === 0 && (
-                      <tr><td colSpan={6} className="p-6 text-center text-[10px] font-semibold text-slate-400">
-                        No requests parsed yet. Click &quot;Parse Captures&quot; to build events from this session&apos;s network-log captures.
-                      </td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </Panel>
-
-            <Panel
-              title="Inspector"
-              action={
-                <select
-                  className="h-7 rounded-md border border-slate-200 px-1.5 text-[9px] font-bold"
-                  value={inspectorTab}
-                  onChange={(e) => setInspectorTab(e.target.value as InspectorTab)}
-                >
-                  {INSPECTOR_TABS.map((tab) => (
-                    <option key={tab.key} value={tab.key} disabled={!tab.available}>{tab.label}{!tab.available ? " (unavailable)" : ""}</option>
-                  ))}
-                </select>
-              }
-            >
-              {!selectedEvent && <p className="text-[10px] font-semibold text-slate-400">Select a request to inspect it.</p>}
-              {selectedEvent && inspectorTab === "overview" && (
-                <div className="space-y-1 text-[10px]">
-                  <p className="font-extrabold text-slate-900">{selectedEvent.method || "Unparsed"} {selectedEvent.path || ""}</p>
-                  <p className="font-semibold text-slate-500 break-all">{selectedEvent.url || selectedEvent.raw_line}</p>
-                  <p className="font-semibold text-slate-500">Host: {selectedEvent.host || "—"} {selectedEvent.is_external ? "(external)" : selectedEvent.is_external === false ? "(internal)" : ""}</p>
-                  <p className="font-semibold text-slate-500">Status: {selectedEvent.status_code ?? "—"} {selectedEvent.status_text || ""}</p>
-                  <p className="font-semibold text-slate-500">Parse state: {selectedEvent.parse_state}</p>
-                  <p className="font-semibold text-slate-500">Review: {selectedEvent.review_state}{selectedEvent.review_reason ? ` — ${selectedEvent.review_reason}` : ""}</p>
-                </div>
-              )}
-              {selectedEvent && inspectorTab === "correlation" && (
-                <div className="space-y-1 text-[10px]">
-                  {selectedAction ? (
-                    <>
-                      <p className="font-bold text-slate-700">Discovery Action #{selectedAction.id}</p>
-                      <p className="font-semibold text-slate-500">Screen: {selectedAction.target_screen_ref || "—"}</p>
-                      <p className="font-semibold text-slate-500">Test step: {selectedAction.test_step_ref || "—"}</p>
-                    </>
-                  ) : <p className="font-semibold text-slate-400">This request is not linked to a discovery action.</p>}
-                </div>
-              )}
-              {selectedEvent && inspectorTab === "evidence" && (
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-slate-50 p-2 text-[9px] text-slate-600">
-                  {evidenceText || "Loading…"}
-                </pre>
-              )}
-            </Panel>
           </div>
 
-          <Panel title="Activity">
-            <div className="space-y-1.5">
-              {activity.map((a) => (
-                <div key={a.id} className="text-[9px]">
-                  <p className="font-bold text-slate-700">{new Date(a.created_at).toLocaleString()} · {a.event_type}</p>
-                  {a.reason && <p className="font-semibold text-slate-500">{a.reason}</p>}
-                </div>
-              ))}
-              {activity.length === 0 && <p className="text-[10px] font-semibold text-slate-400">No activity yet.</p>}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <QueueTabs tabs={QUEUE_TABS} active={queueTab} counts={queueCounts} onChange={setQueueTab} />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-64 flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by URL, host or path…"
+                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              />
             </div>
-          </Panel>
+            <FilterSelect
+              label="Method" value={methodFilter} onChange={setMethodFilter}
+              options={[{ value: "", label: "Method: All" }, ...methodOptions.map((m) => ({ value: m, label: m }))]}
+            />
+            <FilterSelect
+              label="Status" value={statusFilter} onChange={setStatusFilter}
+              options={[
+                { value: "", label: "Status: All" }, { value: "2xx", label: "2xx Success" },
+                { value: "3xx", label: "3xx Redirect" }, { value: "4xx", label: "4xx Client error" },
+                { value: "5xx", label: "5xx Server error" },
+              ]}
+            />
+            {(search || methodFilter || statusFilter || queueTab !== "all") && (
+              <button
+                onClick={() => { setSearch(""); setMethodFilter(""); setStatusFilter(""); setQueueTab("all"); }}
+                className="text-xs font-bold text-[#1b59f8]"
+              >
+                Clear Filters
+              </button>
+            )}
+          </div>
+
+          <ListShell
+            gridTemplate={GRID}
+            minWidth={1000}
+            columns={["Seq", "Method", "URL", "Status", "Screen / Step", "Review", "Host"]}
+            loading={loading}
+            empty={filteredEvents.length === 0 ? (
+              <EmptyState
+                title={events.length === 0 ? "No requests parsed yet" : "No requests match these filters"}
+                detail={events.length === 0
+                  ? "Parse Captures reads this session's network logs and turns each recorded line into a request you can review."
+                  : "Try clearing the search box or switching back to the All queue."}
+                action={events.length === 0
+                  ? <Button size="sm" onClick={handleParse} disabled={busy}><Sparkles className="h-3.5 w-3.5" /> Parse Captures</Button>
+                  : <Button size="sm" variant="outline" onClick={() => { setSearch(""); setMethodFilter(""); setStatusFilter(""); setQueueTab("all"); }}>Clear Filters</Button>}
+              />
+            ) : undefined}
+            footer={<span className="text-xs font-semibold text-slate-500">Showing {filteredEvents.length} of {events.length} requests</span>}
+          >
+            {filteredEvents.map((event) => {
+              const action = event.action_id != null ? actionById.get(event.action_id) : undefined;
+              return (
+                <ListRow
+                  key={event.id}
+                  gridTemplate={GRID}
+                  selected={selectedEventId === event.id}
+                  onClick={() => { setSelectedEventId(event.id); setDrawerTab("overview"); }}
+                >
+                  <span className="font-mono font-bold text-slate-400">#{event.sequence}</span>
+                  <span className="font-mono font-extrabold text-slate-800">
+                    {event.method || <span className="font-sans font-semibold text-slate-300">unparsed</span>}
+                  </span>
+                  <span className="truncate font-semibold text-slate-600" title={event.url || event.raw_line}>
+                    {event.path || event.url || event.raw_line}
+                  </span>
+                  <span><Badge variant={statusTone(event.status_code)}>{event.status_code ?? "—"}</Badge></span>
+                  <span className="truncate font-semibold text-slate-600">
+                    {action?.target_screen_ref || <span className="font-normal text-slate-300">Unmapped</span>}
+                  </span>
+                  <span>{reviewBadge(event.review_state)}</span>
+                  <span className="truncate font-semibold text-slate-500">
+                    {event.host || "—"}{event.is_external ? " ↗" : ""}
+                  </span>
+                </ListRow>
+              );
+            })}
+          </ListShell>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Session Activity</p>
+            {activity.length === 0 ? (
+              <p className="text-xs font-semibold text-slate-400">No review activity recorded for this session yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {activity.map((entry) => (
+                  <div key={entry.id} className="flex flex-wrap items-baseline gap-2 text-xs">
+                    <span className="font-bold text-slate-700">{entry.event_type.replace(/_/g, " ")}</span>
+                    <span className="font-semibold text-slate-400">{new Date(entry.created_at).toLocaleString()}</span>
+                    {entry.reason && <span className="font-semibold text-slate-500">— {entry.reason}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
+
+      {/* ── request drawer ──────────────────────────────────────────── */}
+      <Drawer open={!!selectedEvent} onOpenChange={(open) => !open && setSelectedEventId(null)}>
+        <DrawerContent size="xl">
+          {selectedEvent && (
+            <div className="flex h-full flex-col">
+              <div className="border-b border-slate-100 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-lg font-extrabold text-slate-950">
+                      {selectedEvent.method || "UNPARSED"}
+                    </span>
+                    <Badge variant={statusTone(selectedEvent.status_code)}>
+                      {selectedEvent.status_code ?? "no status"} {selectedEvent.status_text || ""}
+                    </Badge>
+                    {reviewBadge(selectedEvent.review_state)}
+                    {selectedEvent.is_external && <Badge variant="warning">External host</Badge>}
+                  </div>
+                  <button onClick={() => setSelectedEventId(null)} aria-label="Close" className="rounded-md p-1 text-slate-500 hover:bg-slate-50">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="mt-4 break-all text-sm font-bold text-slate-900">
+                  {selectedEvent.url || selectedEvent.raw_line}
+                </p>
+                <p className="mt-2 text-xs font-semibold text-slate-500">
+                  Request #{selectedEvent.sequence} of session #{selectedEvent.session_id}
+                  {selectedAction
+                    ? <> · captured during <span className="text-[#1b59f8]">step {selectedAction.sequence} — {selectedAction.target_semantic || selectedAction.action_family}</span></>
+                    : <> · <span className="text-amber-700">not linked to any discovery action</span></>}
+                </p>
+              </div>
+
+              <DrawerTabBar tabs={DRAWER_TABS} active={drawerTab} onChange={setDrawerTab} />
+
+              <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 p-4">
+                {drawerTab === "overview" && (
+                  <>
+                    <DrawerCard title="Request" icon={Network}>
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                        <InfoPair label="Method" value={selectedEvent.method || "Not parsed"} mono />
+                        <InfoPair label="Status" value={selectedEvent.status_code != null ? `${selectedEvent.status_code} ${selectedEvent.status_text || ""}`.trim() : "Not parsed"} />
+                        <InfoPair label="Host" value={selectedEvent.host || "Not parsed"} mono />
+                        <InfoPair label="Path" value={selectedEvent.path || "Not parsed"} mono />
+                        <InfoPair label="Scope" value={selectedEvent.is_external === true ? "External system" : selectedEvent.is_external === false ? "Application under test" : "Unknown"} />
+                        <InfoPair label="Parse state" value={selectedEvent.parse_state === "parsed" ? "Parsed" : "Raw line only"} />
+                      </div>
+                      {selectedEvent.parse_state !== "parsed" && (
+                        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] font-semibold text-amber-800">
+                          This capture line did not match the expected log format, so only the raw text is available.
+                          It still counts toward the captured total but cannot be correlated or classified.
+                        </p>
+                      )}
+                    </DrawerCard>
+
+                    <DrawerCard title="Review" icon={ShieldCheck}>
+                      <div className="grid grid-cols-2 gap-4">
+                        <InfoPair label="State" value={selectedEvent.review_state} />
+                        <InfoPair label="Reviewed at" value={selectedEvent.reviewed_at ? new Date(selectedEvent.reviewed_at).toLocaleString() : "—"} />
+                      </div>
+                      {selectedEvent.review_reason && (
+                        <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] font-semibold text-slate-600">
+                          {selectedEvent.review_reason}
+                        </p>
+                      )}
+                      <p className="mt-3 text-[11px] font-semibold text-slate-400">
+                        Reviewing records that a human looked at this request. Ignoring removes it from mapping
+                        readiness without deleting it from the evidence trail. Both are audited.
+                      </p>
+                    </DrawerCard>
+
+                    <DrawerCard title="Raw capture line" icon={Search}>
+                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] leading-5 text-slate-600">
+                        {selectedEvent.raw_line}
+                      </pre>
+                    </DrawerCard>
+                  </>
+                )}
+
+                {drawerTab === "correlation" && (
+                  <DrawerCard title="Correlated discovery action" icon={Link2}>
+                    {selectedAction ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <InfoPair label="Step" value={`#${selectedAction.sequence}`} />
+                          <InfoPair label="Action" value={selectedAction.action_family} />
+                          <InfoPair label="Screen" value={selectedAction.target_screen_ref || "Not recorded"} mono />
+                          <InfoPair label="Test step" value={selectedAction.test_step_ref || "Not mapped"} mono />
+                        </div>
+                        {selectedAction.target_semantic && (
+                          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">{selectedAction.target_semantic}</p>
+                        )}
+                      </>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-amber-700">This request is not linked to any discovery action.</p>
+                        <p className="text-[11px] font-semibold leading-5 text-slate-500">
+                          Requests are correlated by the capture they came from. An uncorrelated request usually means
+                          the traffic happened between recorded steps — background polling, telemetry, or a redirect
+                          chain. It is normal to ignore these with a reason rather than to chase a mapping.
+                        </p>
+                      </div>
+                    )}
+                  </DrawerCard>
+                )}
+
+                {drawerTab === "evidence" && (
+                  <DrawerCard title="Capture content" icon={Download}>
+                    <p className="mb-2 text-[11px] font-semibold text-slate-500">
+                      The sanitized network-log capture this request was parsed from, as stored on disk.
+                    </p>
+                    <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] leading-5 text-slate-600">
+                      {evidenceText || "Loading…"}
+                    </pre>
+                  </DrawerCard>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 p-4">
+                <p className="text-[11px] font-semibold text-slate-500">
+                  {selectedEvent.review_state === "unreviewed"
+                    ? "Not yet reviewed — both actions below ask for a note first."
+                    : `Already ${selectedEvent.review_state}. Re-reviewing overwrites the previous note.`}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm" variant="outline" disabled={busy || selectedEvent.review_state === "ignored"}
+                    title={selectedEvent.review_state === "ignored" ? "This request is already ignored." : undefined}
+                    onClick={() => askIgnore(selectedEvent)}
+                  >
+                    Ignore
+                  </Button>
+                  <Button size="sm" disabled={busy} onClick={() => askReview(selectedEvent)}>
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Mark Reviewed
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DrawerContent>
+      </Drawer>
+
+      <ReasonDrawer
+        open={!!reasonRequest}
+        title={reasonRequest?.title ?? ""}
+        description={reasonRequest?.description ?? ""}
+        label={reasonRequest?.label ?? "Reason"}
+        placeholder={reasonRequest?.placeholder ?? ""}
+        confirmLabel={reasonRequest?.confirmLabel ?? "Confirm"}
+        required={reasonRequest?.required}
+        minLength={reasonRequest?.minLength}
+        destructive={reasonRequest?.destructive}
+        busy={busy}
+        onCancel={() => setReasonRequest(null)}
+        onConfirm={(reason) => {
+          // Close before running so the drawer never sits open over a
+          // half-applied action, and so `busy` drives the list, not this.
+          const request = reasonRequest;
+          setReasonRequest(null);
+          void request?.onConfirm(reason);
+        }}
+      />
     </div>
   );
 }

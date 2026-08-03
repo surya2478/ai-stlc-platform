@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle, Boxes, ChevronRight, CircleDot, Download, HeartPulse,
-  Layers3, Loader2, Plug, Plus, Radar, RefreshCw, Search, ShieldCheck, X,
+  Layers3, Loader2, Plug, Plus, RefreshCw, Search, ShieldCheck, X,
 } from "lucide-react";
 import {
   applicationsApi,
@@ -304,15 +304,6 @@ function ApplicationsContent() {
     return (
       <div className="min-h-full space-y-4 pb-8">
         <ApplicationsTabs active="discovery" projectId={selectedProject} />
-        <div className="flex items-center gap-3">
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-2.5">
-            <Radar className="h-6 w-6 text-[#1b59f8]" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Live Discovery Session</h1>
-            <p className="mt-1 text-xs text-slate-500">Observe, record and ground application behaviour with governed evidence.</p>
-          </div>
-        </div>
         <DiscoverySessionView projectId={selectedProject} />
       </div>
     );

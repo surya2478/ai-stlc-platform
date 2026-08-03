@@ -10,7 +10,11 @@ import {
 export const discoveryKeys = {
   eligibleTestCases: (projectId: number, applicationId: number, mode: string) =>
     ["discovery", "eligible-test-cases", projectId, applicationId, mode] as const,
-  sessions: (projectId: number) => ["discovery", "sessions", projectId] as const,
+  // Keyed by application too: the request is scoped by application_id, so a
+  // key that ignored it served another application's sessions from cache
+  // when the picker changed.
+  sessions: (projectId: number, applicationId?: number | null) =>
+    ["discovery", "sessions", projectId, applicationId ?? "all"] as const,
   session: (sessionId: number) => ["discovery", "session", sessionId] as const,
   readiness: (sessionId: number) => ["discovery", "readiness", sessionId] as const,
   actions: (sessionId: number) => ["discovery", "actions", sessionId] as const,
@@ -28,7 +32,7 @@ export function useEligibleTestCases(projectId: number | null, applicationId: nu
 
 export function useDiscoverySessions(projectId: number | null, applicationId?: number | null) {
   return useQuery({
-    queryKey: discoveryKeys.sessions(projectId ?? -1),
+    queryKey: discoveryKeys.sessions(projectId ?? -1, applicationId),
     queryFn: async () =>
       (await discoveryApi.listSessions(projectId as number, applicationId ? { application_id: applicationId } : undefined)).data,
     enabled: projectId !== null && projectId > 0,
@@ -108,7 +112,9 @@ export function useCaptureContent(sessionId: number | null, captureId: number | 
 function useInvalidateDiscovery(projectId: number | null) {
   const queryClient = useQueryClient();
   return (sessionId?: number) => {
-    if (projectId) queryClient.invalidateQueries({ queryKey: discoveryKeys.sessions(projectId) });
+    // Prefix match, so every application scope of this project's session list
+    // is refreshed regardless of which one is on screen.
+    if (projectId) queryClient.invalidateQueries({ queryKey: ["discovery", "sessions", projectId] });
     if (sessionId) {
       queryClient.invalidateQueries({ queryKey: discoveryKeys.session(sessionId) });
       queryClient.invalidateQueries({ queryKey: discoveryKeys.readiness(sessionId) });
