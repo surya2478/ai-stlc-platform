@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import anyio
 
 from app.models.agent import AgentRun
@@ -246,5 +248,111 @@ def test_build_mcp_discovery_input_returns_none_without_test_case_ids():
 
     async def run_test():
         return await agent_tasks._build_mcp_discovery_input(db, _run(), {}, {})
+
+    assert anyio.run(run_test) is None
+
+
+# ── Phase 6: auto-chained script generation ───────────────────────────────────
+# Generation was the only stage that never advanced on its own. It is chained
+# from two parents, and which test cases each parent contributes is the whole
+# correctness argument: discovery-eligible cases must wait for discovery so
+# their script is grounded, everything else generates straight away.
+
+def _tc(id_, *, eligible="yes", application_id=7, phase="SIT"):
+    return TestCase(
+        id=id_, project_id=1, created_by=1, test_case_id=f"TC-{id_}", title=f"Case {id_}",
+        status="approved", automation_eligible=eligible, application_id=application_id,
+        test_phase=phase,
+    )
+
+
+def test_generation_after_eligibility_defers_test_cases_discovery_will_ground(monkeypatch):
+    """The race this prevents: chaining both parents unconditionally lets
+    generation start before discovery finishes, producing an ungrounded
+    script for an application that has a perfectly good URL."""
+    tc = _tc(100)
+    application = ProjectApplication(
+        id=7, project_id=1, key="web", name="Web App", is_default=True, is_active=True,
+        environment_urls={"SIT": "https://app.example.com/"},
+    )
+    db = _FakeDiscoveryDB(
+        responses=[[tc]],  # the _build_mcp_discovery_input lookup
+        get_results={(ProjectApplication, 7): application},
+    )
+
+    async def run_test():
+        return await agent_tasks._build_automation_script_input(
+            db, _run(), {}, {"test_case_ids": [100]}
+        )
+
+    # Discovery will pick this one up, so generation must not.
+    assert anyio.run(run_test) is None
+
+
+def test_generation_after_eligibility_runs_for_test_cases_discovery_skips(monkeypatch):
+    """No resolvable URL means discovery never fires, so generation must not
+    wait for a chain link that will never arrive."""
+    tc = _tc(100, application_id=None)
+    captured = {}
+
+    async def fake_payload(_db, *, project_id, test_case_ids):
+        captured["ids"] = list(test_case_ids)
+        return SimpleNamespace(
+            test_cases=[{"id": 100, "test_case_id": "TC-100"}], locator_map={}, skipped_not_approved=[],
+        )
+
+    monkeypatch.setattr(
+        "app.services.automation_generation_service.build_generation_payload", fake_payload
+    )
+    db = _FakeDiscoveryDB(
+        responses=[
+            [tc],  # discovery lookup — no application, so nothing deferred
+            [],    # existing-script lookup — none
+        ],
+    )
+
+    async def run_test():
+        return await agent_tasks._build_automation_script_input(
+            db, _run(), {}, {"test_case_ids": [100]}
+        )
+
+    chain_input = anyio.run(run_test)
+
+    assert captured["ids"] == [100]
+    assert chain_input["framework"] == "playwright"
+    assert chain_input["test_cases"][0]["test_case_id"] == "TC-100"
+
+
+def test_generation_after_discovery_uses_the_cases_discovery_ran_against(monkeypatch):
+    async def fake_payload(_db, *, project_id, test_case_ids):
+        return SimpleNamespace(
+            test_cases=[{"id": 100}], locator_map={"7": ["#login"]}, skipped_not_approved=[],
+        )
+
+    monkeypatch.setattr(
+        "app.services.automation_generation_service.build_generation_payload", fake_payload
+    )
+    # Chained from discovery: no test_case_ids in output, ids come from the
+    # discovery run's own input.
+    db = _FakeDiscoveryDB(responses=[[]])  # existing-script lookup — none
+
+    async def run_test():
+        return await agent_tasks._build_automation_script_input(
+            db, _run(), {"test_cases": [{"id": 100, "application_url": "https://x/"}]}, {"applications": []},
+        )
+
+    chain_input = anyio.run(run_test)
+
+    assert chain_input["locator_map"] == {"7": ["#login"]}
+
+
+def test_generation_skips_test_cases_that_already_have_a_script(monkeypatch):
+    """Re-running either parent must not produce a duplicate script."""
+    db = _FakeDiscoveryDB(responses=[[100]])  # existing-script lookup returns tc 100
+
+    async def run_test():
+        return await agent_tasks._build_automation_script_input(
+            db, _run(), {"test_cases": [{"id": 100}]}, {},
+        )
 
     assert anyio.run(run_test) is None

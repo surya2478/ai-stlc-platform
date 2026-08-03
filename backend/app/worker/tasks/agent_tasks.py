@@ -375,9 +375,14 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     "test_case_review": AgentSpec(
         timeout_seconds=180.0, module_scope="test_case_review", chain_on_success=("automation_eligibility",)
     ),
+    # Fans out to both: discovery grounds the test cases whose application has
+    # a resolvable URL, and generation picks up only the ones discovery will
+    # not touch (see _build_automation_script_input). Disjoint sets, so an
+    # ungrounded script is never generated for an application that could have
+    # been discovered first.
     "automation_eligibility": AgentSpec(
         timeout_seconds=60.0, module_scope="automation_eligibility",
-        chain_on_success=("playwright_mcp_discovery",),
+        chain_on_success=("playwright_mcp_discovery", "automation_script"),
     ),
     # Auto-chained since Phase 5 — was deliberately manual-only in Phase 3
     # (discovery spawns a real browser session against a live environment).
@@ -386,7 +391,13 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     # (skips silently otherwise) — it never guesses or spawns against a
     # placeholder. The manual "Discover UI" trigger (POST /agent/discover-ui)
     # still exists for re-running discovery on demand (e.g. after a UI change).
-    "playwright_mcp_discovery": AgentSpec(timeout_seconds=450.0, module_scope="mcp_discovery"),
+    # Chains into generation so a discovered test case gets a *grounded*
+    # script without anyone clicking Generate: by the time this completes,
+    # the locator map build_generation_payload reads is populated.
+    "playwright_mcp_discovery": AgentSpec(
+        timeout_seconds=450.0, module_scope="mcp_discovery",
+        chain_on_success=("automation_script",),
+    ),
     # Playwright AI Studio's exploration+planning agent: a bounded BFS crawl
     # (max 25 pages) with one LLM proposal call per page. The generous cap
     # covers slow SIT environments; the agent's own max_minutes budget
@@ -577,6 +588,76 @@ async def _build_mcp_discovery_input(
     if not test_cases:
         return None
     return {"test_cases": test_cases}
+
+
+async def _build_automation_script_input(
+    db, run: AgentRun, input_data: dict[str, Any], output_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Auto-chain script generation, so a test case classified eligible does
+    not sit at `ready_for_automation` with no script until a human clicks
+    Generate on it one at a time.
+
+    Generation was the only stage in this pipeline that never advanced on its
+    own: nothing named `automation_script` in a `chain_on_success`, so the
+    chain ran to discovery and stopped. Two test cases with identical status
+    would differ only in whether somebody had visited the workspace for them.
+
+    Wired to BOTH parents deliberately, because ordering decides whether the
+    script is grounded:
+
+      * after `playwright_mcp_discovery` — the normal path. Discovery has
+        already written locator evidence, so `build_generation_payload`
+        returns a populated locator map and the script is grounded.
+      * after `automation_eligibility` — only for test cases discovery will
+        NOT pick up (no resolvable environment URL). Chaining both parents
+        unconditionally would race: generation could start before discovery
+        finished and silently produce ungrounded scripts for applications
+        that do have a URL.
+
+    Idempotent by construction: a test case that already has a script is
+    skipped, so a re-run of either parent never produces a duplicate.
+    """
+    from app.services.automation_generation_service import build_generation_payload
+
+    # `automation_eligibility` reports the ids it classified; discovery does
+    # not, but its own input carried the cases. Which key is present is what
+    # tells us which parent we were chained from.
+    eligibility_ids = list(output_data.get("test_case_ids") or [])
+    if eligibility_ids:
+        tc_ids = eligibility_ids
+        # Leave anything discovery will handle to the discovery-chained call.
+        discovery_input = await _build_mcp_discovery_input(db, run, input_data, output_data)
+        deferred = {tc["id"] for tc in (discovery_input or {}).get("test_cases", [])}
+        tc_ids = [tc_id for tc_id in tc_ids if tc_id not in deferred]
+    else:
+        tc_ids = [tc["id"] for tc in input_data.get("test_cases", []) if tc.get("id")]
+    if not tc_ids:
+        return None
+
+    existing = (
+        await db.execute(
+            select(AutomationScript.test_case_id).where(
+                AutomationScript.project_id == run.project_id,
+                AutomationScript.test_case_id.in_(tc_ids),
+            )
+        )
+    ).scalars().all()
+    tc_ids = [tc_id for tc_id in tc_ids if tc_id not in set(existing)]
+    if not tc_ids:
+        return None
+
+    # Same payload builder the manual endpoint uses, so the chained path and
+    # the button cannot drift apart — including its "approved only" filter.
+    payload = await build_generation_payload(
+        db, project_id=run.project_id, test_case_ids=tc_ids
+    )
+    if not payload.test_cases:
+        return None
+    return {
+        "test_cases": payload.test_cases,
+        "framework": "playwright",
+        "locator_map": payload.locator_map,
+    }
 
 
 async def _build_dry_run_input(
@@ -809,6 +890,7 @@ CHAIN_INPUT_BUILDERS["scenario_review"] = _build_scenario_review_input
 CHAIN_INPUT_BUILDERS["test_case_review"] = _build_test_case_review_input
 CHAIN_INPUT_BUILDERS["automation_eligibility"] = _build_automation_eligibility_input
 CHAIN_INPUT_BUILDERS["playwright_mcp_discovery"] = _build_mcp_discovery_input
+CHAIN_INPUT_BUILDERS["automation_script"] = _build_automation_script_input
 CHAIN_INPUT_BUILDERS["automation_dry_run"] = _build_dry_run_input
 CHAIN_INPUT_BUILDERS["failure_classification"] = _build_failure_classification_input
 CHAIN_INPUT_BUILDERS["automation_repair_loop"] = _build_repair_loop_input
