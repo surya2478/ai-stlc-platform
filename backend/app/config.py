@@ -4,6 +4,7 @@ All secrets are read from .env — never hardcoded here.
 """
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -307,6 +308,42 @@ class Settings(BaseSettings):
             for h in (self.url_analysis_allowed_internal_hosts or "").split(",")
             if h.strip()
         )
+
+    # ── Automation script generation throughput ──────────────────────────────
+    # How many test cases AutomationScriptAgent generates concurrently.
+    #
+    # 0 means "decide from the provider", which is the only safe default,
+    # because the right number depends on what is serving the model:
+    #
+    #   * A hosted API (Groq, OpenAI, Cerebras…) meters per request, so fanning
+    #     out is pure throughput — this is what the 5 was sized for.
+    #   * A local single-model server (Ollama, or LM Studio behind the AI
+    #     gateway) serves every concurrent request from ONE shared KV-cache
+    #     budget. Fanning out multiplies context use instead of throughput and
+    #     the whole wave fails together. Observed live 2026-08-03: three
+    #     concurrent generations against LM Studio each needing ~12k tokens
+    #     returned "Context size has been exceeded" within 20ms of each other,
+    #     while the identical request one at a time succeeded.
+    #
+    # Set a positive value to override the choice explicitly.
+    automation_generation_concurrency: int = 0
+
+    @property
+    def llm_provider_is_local_single_model(self) -> bool:
+        """Whether the configured provider is one process serving one loaded
+        model, rather than a metered multi-tenant API."""
+        if self.default_llm_provider == "ollama":
+            return True
+        if self.ai_gateway_enabled or self.default_llm_provider == "ai_gateway":
+            host = (urlparse(self.ai_gateway_base_url).hostname or "").lower()
+            return host in {"localhost", "127.0.0.1", "::1", "host.docker.internal"} or host.endswith(".local")
+        return False
+
+    @property
+    def resolved_automation_generation_concurrency(self) -> int:
+        if self.automation_generation_concurrency > 0:
+            return self.automation_generation_concurrency
+        return 1 if self.llm_provider_is_local_single_model else 5
 
     # ── Automation Asset Autonomy (UI-020/021/023) ───────────────────────────
     # Master switch for automatic stage advancement and AI approval of

@@ -137,9 +137,12 @@ def test_gives_up_after_max_attempts_with_the_final_validation_error(monkeypatch
 
     result = anyio.run(run)
 
-    assert result.success is True
+    # The only test case in the wave failed, so the run failed — and the final
+    # validation error is what the caller gets to show, not a generic fallback.
+    assert result.success is False
     assert llm.calls == MAX_GENERATION_ATTEMPTS
     assert result.data["scripts"] == []
+    assert "Contract validation failed" in result.error
     assert any("Contract validation failed" in log["message"] for log in result.logs)
 
 

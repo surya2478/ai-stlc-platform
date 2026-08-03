@@ -463,7 +463,46 @@ async def _generate_one_contract(
 # 9 TCs x ~27s average = agent killed mid-wave, losing every script in the
 # wave even the ones that had already compiled). Matches the same
 # semaphore-bounded pattern already used for parallel Docker execution.
+#
+# The width is no longer a constant, because 5 is only right against a metered
+# hosted API. A local single-model server shares one KV-cache budget across
+# concurrent requests, so the same fan-out makes the whole wave fail together
+# with "Context size has been exceeded" — see
+# Settings.resolved_automation_generation_concurrency, which picks 1 there and
+# 5 otherwise unless AUTOMATION_GENERATION_CONCURRENCY overrides it.
+#
+# Kept as the hosted-provider default and the single place that number is
+# written down; read it through _generation_concurrency() so the provider-aware
+# choice is never bypassed.
 GENERATION_CONCURRENCY = 5
+
+
+def _generation_concurrency() -> int:
+    """How wide to fan out, decided per provider at call time rather than
+    baked in at import — the same build runs against a hosted API in CI and a
+    local model on a developer's machine."""
+    return get_settings().resolved_automation_generation_concurrency
+
+
+# Error messages carry the provider's own text, which can be long. The whole
+# point is that the reader learns the cause, so the first message survives
+# intact and the rest are counted rather than truncated into noise.
+_ERROR_SUMMARY_LIMIT = 600
+
+
+def _summarize_errors(errors: list[str]) -> str:
+    """One line a caller can display, from every test case's failure.
+
+    Deliberately not deduplicated. Each message already names its own test
+    case ("Contract generation error for TC-0001: ..."), so no two are ever
+    byte-identical even when the underlying cause is the same one — a collapse
+    on equality would never fire. The first message carries the cause in full;
+    the count says how much else went wrong.
+    """
+    head = errors[0][:_ERROR_SUMMARY_LIMIT]
+    if len(errors) == 1:
+        return head
+    return f"{head} (and {len(errors) - 1} more test case(s) failed)"
 
 
 async def _generate_contracts(state: AutomationState) -> AutomationState:
@@ -482,7 +521,7 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
     framework = state["framework"]
     script_type = "pytest-python" if framework == "pytest" else "playwright-typescript"
     locator_map = state.get("locator_map") or {}
-    semaphore = asyncio.Semaphore(GENERATION_CONCURRENCY)
+    semaphore = asyncio.Semaphore(_generation_concurrency())
     stop_event = asyncio.Event()
 
     async def _generate_for_tc(tc: dict) -> tuple[dict | None, str | None, bool]:
@@ -599,6 +638,25 @@ class AutomationScriptAgent:
                 logs.append({"level": "warning", "message": err})
 
             logger.info("AutomationScriptAgent finished: %d scripts, %d errors", len(scripts), len(errors))
+
+            # A run where every test case failed is a failed run, and it has to
+            # say why. This returned success=True with the reasons buried in
+            # logs, so `error_message` stayed empty and the only thing the
+            # caller could report was its own fallback. Observed live
+            # 2026-08-03: three test cases each failed with a specific,
+            # actionable provider error ("Context size has been exceeded") and
+            # Playwright AI Studio showed "Script generation produced no
+            # scripts" — the cause existed and never reached the screen.
+            #
+            # Partial success stays success=True: scripts that did compile are
+            # real output and must not be discarded because a sibling failed.
+            if not scripts and errors:
+                return AgentRunResult(
+                    success=False,
+                    data={"scripts": []},
+                    logs=logs,
+                    error=_summarize_errors(errors),
+                )
             return AgentRunResult(
                 success=True,
                 data={"scripts": scripts},

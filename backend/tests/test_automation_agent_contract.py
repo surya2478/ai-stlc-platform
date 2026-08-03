@@ -67,8 +67,11 @@ def test_agent_reports_validation_error_without_crashing(monkeypatch):
 
     result = anyio.run(run)
 
-    assert result.success is True  # agent-level success; the individual TC failed
+    # Every test case in the wave failed, so the run failed — and it has to
+    # carry the reason, or the caller can only report its own fallback.
+    assert result.success is False
     assert result.data["scripts"] == []
+    assert "Contract validation failed" in result.error
     assert any("Contract validation failed" in log["message"] for log in result.logs)
 
 
@@ -161,6 +164,10 @@ class _SlowKeyedLLM:
 def test_wave_generation_runs_concurrently_not_serially(monkeypatch):
     llm = _SlowKeyedLLM(delay=0.1)
     monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: llm)
+    # Pinned rather than inherited: the real width is provider-aware now, and a
+    # machine configured against a local single-model server resolves it to 1,
+    # which would make this timing assertion fail for the right reason.
+    monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 5)
 
     test_cases = [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 6)]
 
@@ -185,7 +192,7 @@ def test_wave_generation_runs_concurrently_not_serially(monkeypatch):
 def test_wave_generation_respects_concurrency_cap(monkeypatch):
     llm = _SlowKeyedLLM(delay=0.05)
     monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: llm)
-    monkeypatch.setattr(automation_agent, "GENERATION_CONCURRENCY", 2)
+    monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 2)
 
     test_cases = [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 7)]
 
@@ -233,7 +240,7 @@ def test_wave_generation_stops_admitting_new_work_after_rate_limit(monkeypatch):
     """A 429 must stop tasks still queued behind the semaphore from ever
     calling the LLM — in-flight calls admitted before the limit hit are left
     to finish rather than aborted mid-call."""
-    monkeypatch.setattr(automation_agent, "GENERATION_CONCURRENCY", 1)
+    monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 1)
 
     class _RateLimitedAfterFirstLLM:
         def __init__(self):
@@ -261,3 +268,86 @@ def test_wave_generation_stops_admitting_new_work_after_rate_limit(monkeypatch):
     assert llm.calls == 1
     assert result.data["scripts"] == []
     assert any("rate limit" in log["message"].lower() for log in result.logs)
+
+
+# ── a wave that failed must say why ───────────────────────────────────────────
+# Observed live 2026-08-03: three test cases each failed with a specific,
+# actionable provider error and the Studio could only report its own fallback,
+# "Script generation produced no scripts", because the agent returned success.
+
+def test_a_wave_where_every_test_case_failed_reports_the_reason(monkeypatch):
+    class _ExplodingLLM:
+        async def achat(self, **_kwargs):
+            raise RuntimeError("Error code: 400 - Context size has been exceeded.")
+
+    monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: _ExplodingLLM())
+    test_cases = [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 4)]
+
+    async def run():
+        return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+
+    result = anyio.run(run)
+
+    assert result.success is False
+    assert result.data["scripts"] == []
+    # The cause is stated in full, and the count says how much else failed.
+    assert "Context size has been exceeded" in result.error
+    assert result.error.count("Context size has been exceeded") == 1
+    assert "and 2 more test case(s) failed" in result.error
+
+
+def test_a_partial_wave_still_succeeds_and_keeps_its_scripts(monkeypatch):
+    """Scripts that compiled are real output; a sibling's failure must not
+    discard them."""
+    class _OneBadOneGoodLLM:
+        def __init__(self):
+            self.calls = 0
+
+        async def achat(self, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("provider exploded")
+            return VALID_CONTRACT_JSON
+
+    monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: _OneBadOneGoodLLM())
+    monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 1)
+    test_cases = [
+        {"test_case_id": "TC-0001", "title": "Fails"},
+        {"test_case_id": "TC-0002", "title": "Works"},
+    ]
+
+    async def run():
+        return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+
+    result = anyio.run(run)
+
+    assert result.success is True
+    assert len(result.data["scripts"]) == 1
+
+
+def test_generation_concurrency_is_one_against_a_local_single_model_server(monkeypatch):
+    """The whole reason the width became provider-aware: a local server shares
+    one KV-cache budget across concurrent requests, so fanning out makes the
+    entire wave fail together instead of going faster."""
+    from app.config import Settings
+
+    local = Settings(
+        ai_gateway_enabled=True, ai_gateway_base_url="http://host.docker.internal:1234/v1",
+        automation_generation_concurrency=0,
+    )
+    assert local.llm_provider_is_local_single_model is True
+    assert local.resolved_automation_generation_concurrency == 1
+
+    hosted = Settings(
+        ai_gateway_enabled=False, default_llm_provider="groq",
+        automation_generation_concurrency=0,
+    )
+    assert hosted.llm_provider_is_local_single_model is False
+    assert hosted.resolved_automation_generation_concurrency == 5
+
+    # An explicit setting always wins, local or not.
+    pinned = Settings(
+        ai_gateway_enabled=True, ai_gateway_base_url="http://host.docker.internal:1234/v1",
+        automation_generation_concurrency=3,
+    )
+    assert pinned.resolved_automation_generation_concurrency == 3
