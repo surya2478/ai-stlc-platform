@@ -84,7 +84,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=4
+    # --beat embeds the scheduler in this worker. Without it `beat_schedule`
+    # in celery_app.py is dead config locally: production runs a dedicated
+    # `beat` service (docker-compose.prod.yml) but development had no beat
+    # process at all, so neither the nightly retention sweep nor the abandoned
+    # agent-run reaper ever fired here. Safe embedded because this compose
+    # runs exactly one worker; scaling it would need the separate service
+    # instead, or every replica would run the schedule.
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=4 --beat
 
   # ── Runner Executor ─────────────────────────────────────────────────────────
   # The only service that touches the Docker daemon (AUT-002). It exposes one

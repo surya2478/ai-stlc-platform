@@ -64,3 +64,9 @@ secrets/
 # running the discovery agent or its smoke tests outside a configured
 # --output-dir)
 .playwright-mcp/
+
+# Celery beat's schedule state, written into the worker's CWD by the embedded
+# scheduler (docker-compose worker runs with --beat). Runtime state, not source.
+celerybeat-schedule
+celerybeat-schedule.*
+celerybeat.pid

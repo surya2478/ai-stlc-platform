@@ -12,6 +12,7 @@ celery_app = Celery(
     broker=settings.redis_url,
     backend=settings.redis_url,
     include=[
+        "app.worker.tasks.agent_reaper_tasks",
         "app.worker.tasks.agent_tasks",
         "app.worker.tasks.automation_tasks",
         "app.worker.tasks.discovery_tasks",
@@ -40,6 +41,14 @@ celery_app.conf.update(
         "nightly-data-retention": {
             "task": "retention_tasks.run_all_retention",
             "schedule": crontab(hour=2, minute=0),
+        },
+        # An agent run whose worker died stays "running" forever and spins the
+        # UI on a task that no longer exists. Every 5 minutes bounds how long
+        # that can be believed; the reaper's own rule (the agent's declared
+        # timeout + grace) decides what is actually abandoned.
+        "reap-abandoned-agent-runs": {
+            "task": "agent_reaper_tasks.reap_abandoned_agent_runs",
+            "schedule": crontab(minute="*/5"),
         },
     },
 )
