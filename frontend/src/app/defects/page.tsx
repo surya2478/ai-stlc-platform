@@ -57,6 +57,14 @@ function StepList({ steps }: { steps: string[] }) {
   );
 }
 
+function messageFromError(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "response" in error) {
+    const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail;
+    if (typeof detail === "string") return detail;
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 function DefectRow({
   defect,
   onApprove,
@@ -64,17 +72,34 @@ function DefectRow({
   onPushToJira,
 }: {
   defect: DefectDraft;
-  onApprove: (id: number) => void;
-  onReject: (id: number) => void;
-  onPushToJira: (id: number) => void;
+  onApprove: (id: number) => Promise<void>;
+  onReject: (id: number) => Promise<void>;
+  onPushToJira: (id: number) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState<"approve" | "reject" | null>(null);
   const [pushing, setPushing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Every action here hits the backend and can fail for reasons the user must see
+  // (e.g. Jira rejecting the credentials). Without this the rejection escapes as an
+  // unhandled promise and the user only gets a dev-overlay stack trace.
+  const runAction = async (action: () => Promise<void>, fallback: string) => {
+    setActionError(null);
+    try {
+      await action();
+    } catch (e: unknown) {
+      setActionError(messageFromError(e, fallback));
+    }
+  };
 
   const handleJiraPush = async () => {
     setPushing(true);
-    try { await onPushToJira(defect.id); } finally { setPushing(false); }
+    try {
+      await runAction(() => onPushToJira(defect.id), "Push to Jira failed");
+    } finally {
+      setPushing(false);
+    }
   };
 
   return (
@@ -101,12 +126,12 @@ function DefectRow({
             <div className="flex items-center gap-1.5">
               {confirming === "approve" ? (
                 <div className="flex gap-1">
-                  <Button onClick={() => { onApprove(defect.id); setConfirming(null); }} size="sm" variant="default" className="h-7 text-[10px] bg-emerald-600 hover:bg-emerald-700">Confirm</Button>
+                  <Button onClick={() => { void runAction(() => onApprove(defect.id), "Approve failed"); setConfirming(null); }} size="sm" variant="default" className="h-7 text-[10px] bg-emerald-600 hover:bg-emerald-700">Confirm</Button>
                   <Button onClick={() => setConfirming(null)} size="sm" variant="outline" className="h-7 text-[10px] border-slate-200 text-slate-600">Cancel</Button>
                 </div>
               ) : confirming === "reject" ? (
                 <div className="flex gap-1">
-                  <Button onClick={() => { onReject(defect.id); setConfirming(null); }} size="sm" variant="default" className="h-7 text-[10px] bg-rose-600 hover:bg-rose-700">Confirm</Button>
+                  <Button onClick={() => { void runAction(() => onReject(defect.id), "Reject failed"); setConfirming(null); }} size="sm" variant="default" className="h-7 text-[10px] bg-rose-600 hover:bg-rose-700">Confirm</Button>
                   <Button onClick={() => setConfirming(null)} size="sm" variant="outline" className="h-7 text-[10px] border-slate-200 text-slate-600">Cancel</Button>
                 </div>
               ) : (
@@ -142,6 +167,13 @@ function DefectRow({
           </Button>
         </div>
       </div>
+
+      {actionError && (
+        <div className="mx-4 mb-4 -mt-1 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3">
+          <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0 mt-px" />
+          <p className="text-[11px] font-semibold text-rose-700 leading-relaxed">{actionError}</p>
+        </div>
+      )}
 
       {expanded && (
         <div className="border-t border-slate-100 bg-slate-50/30 p-5 space-y-4">
@@ -301,14 +333,6 @@ function DefectsContent() {
   const handleApprove = async (id: number) => { await defectsApi.approve(id, "approve"); await loadData(); };
   const handleReject = async (id: number) => { await defectsApi.approve(id, "reject"); await loadData(); };
   const handlePushToJira = async (id: number) => { await defectsApi.pushToJira(id); await loadData(); };
-
-  function messageFromError(error: unknown, fallback: string) {
-    if (error && typeof error === "object" && "response" in error) {
-      const detail = (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail;
-      if (typeof detail === "string") return detail;
-    }
-    return error instanceof Error && error.message ? error.message : fallback;
-  }
 
   // Filtered defects list
   const filtered = useMemo(() => {
