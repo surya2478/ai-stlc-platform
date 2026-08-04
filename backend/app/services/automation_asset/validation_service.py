@@ -158,6 +158,10 @@ async def build_validation(
             "status": (gate or {}).get("syntax_check", "skipped"),
             "detail": (gate or {}).get("syntax_check_detail"),
         },
+        "type_check": {
+            "status": (gate or {}).get("type_check", "skipped"),
+            "detail": (gate or {}).get("type_check_detail"),
+        },
         "readiness_items": unresolved,
         "dry_runs": [
             {

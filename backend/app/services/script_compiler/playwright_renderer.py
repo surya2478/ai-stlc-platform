@@ -19,7 +19,7 @@ from app.agents.automation.generation_contract import (
     ContractStep,
     PageObject,
 )
-from app.services.script_compiler import locator_policy
+from app.services.script_compiler import data_bindings, locator_policy
 from app.services.script_compiler.naming import env_var_name, js_string_literal
 
 # Mirrors the standard JS `escapeRegExp` idiom
@@ -91,20 +91,62 @@ def render_page_object(page_object: PageObject) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_fixture_interface(tree: data_bindings.BindingTree, depth: int) -> list[str]:
+    pad = "  " * depth
+    lines: list[str] = []
+    for name, child in tree.items():
+        key = data_bindings.key_literal(name)
+        if data_bindings.is_leaf(child):
+            lines.append(f"{pad}{key}: string;")
+        else:
+            lines.append(f"{pad}{key}: {{")
+            lines.extend(_render_fixture_interface(child, depth + 1))
+            lines.append(f"{pad}}};")
+    return lines
+
+
+def _render_fixture_value(
+    tree: data_bindings.BindingTree,
+    fallbacks: dict[str, str],
+    depth: int,
+    prefix: str = "",
+) -> list[str]:
+    pad = "  " * depth
+    lines: list[str] = []
+    for name, child in tree.items():
+        key = data_bindings.key_literal(name)
+        path = f"{prefix}.{name}" if prefix else name
+        if data_bindings.is_leaf(child):
+            fallback = fallbacks.get(path)
+            literal = js_string_literal(fallback) if fallback else "''"
+            lines.append(f"{pad}{key}: process.env.{env_var_name(path)} ?? {literal},")
+        else:
+            lines.append(f"{pad}{key}: {{")
+            lines.extend(_render_fixture_value(child, fallbacks, depth + 1, path))
+            lines.append(f"{pad}}},")
+    return lines
+
+
 def render_fixture(contract: AutomationGenerationContract) -> str:
+    """Declare the fixture in the shape the spec dereferences.
+
+    Bindings are dotted paths (`validOtherFields.firstName`), so a binding with
+    children has to render as a nested object — see data_bindings.py for what a
+    flat `string` per declared binding used to produce at runtime.
+    """
+    tree = data_bindings.binding_tree(contract)
+    fallbacks = {b.name: b.fallback for b in contract.test_data_bindings if b.fallback}
+
     lines = [
         "/** Test data bound from the platform's Test Data module — never a",
         " * hardcoded literal. See app/services/parameter_binding.py. */",
         "export interface TestDataFixture {",
     ]
-    for binding in contract.test_data_bindings:
-        lines.append(f"  {binding.name}: string;")
+    lines.extend(_render_fixture_interface(tree, 1))
     lines.append("}")
     lines.append("")
     lines.append("export const TEST_DATA: TestDataFixture = {")
-    for binding in contract.test_data_bindings:
-        fallback = js_string_literal(binding.fallback) if binding.fallback else "''"
-        lines.append(f"  {binding.name}: process.env.{env_var_name(binding.name)} ?? {fallback},")
+    lines.extend(_render_fixture_value(tree, fallbacks, 1))
     lines.append("};")
     return "\n".join(lines) + "\n"
 

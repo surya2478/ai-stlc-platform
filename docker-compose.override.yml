@@ -7,8 +7,14 @@ services:
       - ./backend:/app
       - stlc_storage:/app/storage
       - .:/repo
+    # --reload-dir scopes the watcher to the Python package. Without it the
+    # watcher covers all of /app, which includes storage/automation_workspace —
+    # where every dry run materializes a workspace and symlinks node_modules to
+    # the npm global root. Watching that reloads the backend mid-run on the
+    # thousands of files under node_modules (observed live: a dry run for
+    # script 102 restarted the API while it was executing).
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
 
   # ── Celery Worker ───────────────────────────────────────────────────────────
   worker:

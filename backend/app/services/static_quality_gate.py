@@ -11,6 +11,10 @@ Runs on every compiled script before a human ever reviews it. Combines:
      than aspirational.
   3. An optional syntax check (`npx playwright test --list`) when Node/
      Playwright are available on this host — skipped, not failed, otherwise.
+  4. An optional type check (`tsc --noEmit`) over the compiled bundle. The
+     syntax check alone cannot catch type errors: Playwright loads specs via
+     esbuild, which strips types without checking them, so a mistyped test-data
+     reference only surfaces as a runtime failure mid-run.
 
 A project may record accepted exceptions on a script
 (`metadata_["static_gate_exceptions"]`, a list of finding `kind` strings,
@@ -54,6 +58,8 @@ class GateResult:
     warnings: list[GateViolation] = field(default_factory=list)
     syntax_check: str = "skipped"  # "passed" | "failed" | "skipped"
     syntax_check_detail: str | None = None
+    type_check: str = "skipped"  # "passed" | "failed" | "skipped"
+    type_check_detail: str | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -62,6 +68,8 @@ class GateResult:
             "warnings": [w.as_dict() for w in self.warnings],
             "syntax_check": self.syntax_check,
             "syntax_check_detail": self.syntax_check_detail,
+            "type_check": self.type_check,
+            "type_check_detail": self.type_check_detail,
         }
 
 
@@ -142,6 +150,61 @@ def _syntax_check(entry_path: str, workspace: Path) -> tuple[str, str | None]:
     return "passed", None
 
 
+def _bundle_ts_files(workspace: Path) -> list[str]:
+    """The bundle's own .ts sources, relative to the workspace.
+
+    node_modules is a symlink to the npm global root, so an unfiltered glob
+    would walk every installed package.
+    """
+    files: list[str] = []
+    for sub in ("specs", "pages", "fixtures", "utils"):
+        directory = workspace / sub
+        if directory.is_dir():
+            files.extend(
+                str(p.relative_to(workspace)) for p in sorted(directory.rglob("*.ts"))
+            )
+    return files
+
+
+def type_check_bundle(workspace: Path) -> tuple[str, str | None]:
+    """`tsc --noEmit` over the compiled bundle.
+
+    The syntax check below runs `playwright test --list`, which loads specs
+    through esbuild — that strips types without checking them, so a plain type
+    error reaches the browser as a runtime failure. TC-0109 shipped
+    `TEST_DATA.validOtherFields.first` against a fixture declaring
+    `validOtherFields: string`; esbuild was happy, and the run died with
+    "locator.fill: value: expected string, got undefined".
+
+    Deliberately not `--strict`: the goal is real type errors like property
+    access on a string, not implicit-any noise across generated code.
+    """
+    files = _bundle_ts_files(workspace)
+    if not files:
+        return "skipped", "no TypeScript sources in the bundle"
+    tsc = shutil.which("tsc")
+    if tsc is None:
+        return "skipped", "tsc not available on this host"
+    try:
+        proc = subprocess.run(
+            [
+                tsc, "--noEmit", "--skipLibCheck",
+                "--target", "ES2020", "--module", "commonjs",
+                "--moduleResolution", "node", "--esModuleInterop",
+                *files,
+            ],
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        return "skipped", f"type check could not run: {exc}"
+    if proc.returncode != 0:
+        return "failed", (proc.stdout or proc.stderr)[:2000]
+    return "passed", None
+
+
 def run_static_quality_gate(
     script: AutomationScript,
     *,
@@ -166,12 +229,20 @@ def run_static_quality_gate(
     violations.extend(rule_violations)
 
     syntax_status, syntax_detail = "skipped", None
+    type_status, type_detail = "skipped", None
     if workspace is not None and script.file_path:
         syntax_status, syntax_detail = _syntax_check(script.file_path, workspace)
         if syntax_status == "failed":
             violations.append(GateViolation(
                 code="syntax_check_failed",
                 message=syntax_detail or "playwright test --list failed",
+                severity="block",
+            ))
+        type_status, type_detail = type_check_bundle(workspace)
+        if type_status == "failed":
+            violations.append(GateViolation(
+                code="type_check_failed",
+                message=type_detail or "tsc --noEmit failed",
                 severity="block",
             ))
 
@@ -181,4 +252,6 @@ def run_static_quality_gate(
         warnings=warnings,
         syntax_check=syntax_status,
         syntax_check_detail=syntax_detail,
+        type_check=type_status,
+        type_check_detail=type_detail,
     )

@@ -14,7 +14,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, TypedDict
+from typing import Any, Awaitable, Callable, TypedDict
 from urllib.parse import urlparse
 
 from langgraph.graph import StateGraph, END
@@ -24,7 +24,7 @@ from app.agents.automation.generation_contract import AutomationGenerationContra
 from app.agents.base.base_agent import AgentRunResult
 from app.llm.provider import get_llm
 from app.llm.structured import clean_json_text
-from app.services.script_compiler import compile_contract, locator_policy
+from app.services.script_compiler import compile_contract, data_bindings, locator_policy
 from app.services.script_compiler.compiler import UnsupportedContractVersionError
 from app.config import get_settings
 from app.services import agent_progress
@@ -73,6 +73,15 @@ Output a single JSON object with EXACTLY these keys:
 - testDataBindings: list of {{"name": str, "placeholder": str, "fallback": str|null}} — one entry
   per distinct piece of test data referenced by the steps (e.g. username, password). NEVER
   reference literal customer data directly in steps — always through a named binding here.
+  Every "name" MUST be a path that exists in the test case's "test_data" object, using its exact
+  keys. Nested values are addressed with dots, matching the data: if test_data is
+  {{"validOtherFields": {{"firstName": "John", "userMobile": "1234567890"}}}} then the valid
+  paths are "validOtherFields.firstName" and "validOtherFields.userMobile" — NOT
+  "validOtherFields.first" or "validOtherFields.phone". Do not invent shorter or friendlier key
+  names, and do not bind to a key that is absent from test_data: a path that does not resolve
+  produces an undefined value and the generated script fails on its first action. When the test
+  needs a value the data holds in a list (e.g. one of several invalid inputs), bind to the list
+  entry's path or use a non-sensitive literal in "value" — never a key that does not exist.
 - pageObjects: list of {{"name": PascalCaseName, "route": "/path"|null, "elements": [
     {{"name": camelCaseName, "locatorStrategy": one of role|label|placeholder|text|testid|css|xpath,
       "locatorValue": str, "roleHint": str|null (only for locatorStrategy="role", e.g. "button"),
@@ -178,6 +187,37 @@ plausible-looking destination pattern that isn't in this list.
 
 def _format_explored_pages(explored_page_paths: list[str]) -> str:
     return "\n".join(f"- {path}" for path in explored_page_paths)
+
+
+def _check_data_bindings(
+    contract: AutomationGenerationContract, test_data: object
+) -> list[str]:
+    """Binding paths that will be `undefined` at runtime.
+
+    The compiler renders one string field per binding leaf and the spec reads
+    it directly, so a path the authored test data does not contain compiles
+    cleanly and then fails on the first action that uses it — observed on
+    TC-0109, whose contract bound `validOtherFields.first`/`.phone` against
+    data holding `firstName`/`userMobile`, producing
+    "locator.fill: value: expected string, got undefined".
+
+    Only validated when the test case actually carries test data: bindings may
+    legitimately be satisfied from the Test Data module or the environment when
+    the test case itself declares none, and failing those would block
+    generation for a case that was never broken.
+    """
+    if not isinstance(test_data, dict) or not test_data:
+        return []
+
+    unresolved: list[str] = []
+    for path in data_bindings.leaf_paths(data_bindings.binding_tree(contract)):
+        found, value = data_bindings.resolve_path(test_data, path)
+        if not found:
+            unresolved.append(f"{path} (no such key in the test case's test data)")
+        elif isinstance(value, (dict, list)):
+            kind = "an object" if isinstance(value, dict) else "a list"
+            unresolved.append(f"{path} (resolves to {kind}, not a single value)")
+    return unresolved
 
 
 def _check_grounding(contract: AutomationGenerationContract, catalog: list[dict] | None) -> tuple[int, list[str]]:
@@ -289,6 +329,18 @@ def _relative_page_path(page_url: str | None, application_url: str | None) -> st
     path = parsed.path or "/"
     if parsed.query:
         path = f"{path}?{parsed.query}"
+    # On a hash-routed SPA the fragment IS the route, so dropping it navigated
+    # to the shell and left the test on whatever the default route renders —
+    # the same lesson `discovery.step_interpreter.screen_ref_for` records from
+    # the other direction. A bare anchor (`#summary`) is a position on the page
+    # you already requested, not an address, so only `#/…` is carried.
+    #
+    # Unlike `screen_ref_for`, a query inside the fragment is KEPT: that
+    # function is minting a screen identity, where per-visit params would split
+    # one screen into many nodes, while this one is producing an address to
+    # navigate to, where dropping them opens a different page.
+    if parsed.fragment.startswith("/"):
+        path = f"{path}#{parsed.fragment}"
     return path
 
 
@@ -306,16 +358,43 @@ def _ground_entry_route(
     path = _relative_page_path(page_url, application_url)
     if not path:
         return False
-    for step in contract.steps:
+    for index, step in enumerate(contract.steps):
         if step.action == "navigate":
-            if step.value == path and step.target is None:
-                return False
+            already_grounded = step.value == path and step.target is None
             step.value = path
             # target doubles as "a raw path" for navigate in the compiler
             # (value or target) — clear it so the grounded value wins.
             step.target = None
-            return True
+            waited = _ground_entry_wait(contract, index, path)
+            return waited or not already_grounded
     contract.steps.insert(0, ContractStep(phase="arrange", action="navigate", value=path))
+    return True
+
+
+def _ground_entry_wait(
+    contract: AutomationGenerationContract, navigate_index: int, path: str
+) -> bool:
+    """Point the entry page's wait_for_url at the route just grounded.
+
+    A wait_for_url renders as a *substring* regex, so an LLM-chosen fragment
+    can pass on a page the test never meant to open: TC-0105 waited on `#/`
+    and `https://rahulshettyacademy.com/#/` satisfied it just as well as the
+    `/seleniumPractise/#/` it wanted. The run then failed several steps later
+    on a locator that was perfectly correct, and three repair rounds rewrote
+    that assertion without ever questioning the address.
+
+    Scoped to the step directly after the entry navigate. Only that pair
+    describes the entry page — a wait_for_url reached after clicking through
+    is a genuine second hop, and CONTRACT_SYSTEM grounds those separately
+    against `explored_page_paths`.
+    """
+    following = navigate_index + 1
+    if following >= len(contract.steps):
+        return False
+    step = contract.steps[following]
+    if step.action != "wait_for_url" or step.value == path:
+        return False
+    step.value = path
     return True
 
 
@@ -327,6 +406,7 @@ async def _generate_one_contract(
     script_type: str,
     framework: str,
     catalog: list[dict] | None,
+    on_attempt: Callable[[int], Awaitable[None]] | None = None,
 ) -> tuple[dict | None, list[dict], str | None, bool]:
     """Produce one test case's contract, retrying up to
     MAX_GENERATION_ATTEMPTS times with the exact failure fed back into the
@@ -334,6 +414,11 @@ async def _generate_one_contract(
     result comes back with ungrounded elements the catalog could have
     resolved. Stops retrying the moment a fully-grounded, compiling
     contract is produced.
+
+    `on_attempt` is awaited as each attempt begins, so a caller can report
+    that a model call is starting. Retries are the reason a single test case
+    can occupy minutes: the caller needs the attempt number to say what is
+    happening, not just how many test cases have finished.
 
     Returns (script_dict_or_None, attempt_log, fatal_error_or_None,
     is_rate_limited). If every attempt produces *some* compiling contract
@@ -350,9 +435,11 @@ async def _generate_one_contract(
     ]
     attempts: list[dict] = []
     best: dict | None = None
-    best_ungrounded_count: int | None = None
+    best_defect_count: int | None = None
 
     for attempt_number in range(1, MAX_GENERATION_ATTEMPTS + 1):
+        if on_attempt is not None:
+            await on_attempt(attempt_number)
         try:
             response = await llm.achat(messages=messages)
         except Exception as exc:
@@ -405,6 +492,7 @@ async def _generate_one_contract(
         ungrounded_elements = ungrounded_elements + locator_policy.check_url_targets_grounded(
             contract, tc_summary.get("explored_page_paths")
         )
+        unresolved_bindings = _check_data_bindings(contract, tc_summary.get("test_data"))
 
         try:
             bundle = compile_contract(contract)
@@ -420,39 +508,77 @@ async def _generate_one_contract(
             "grounded": bool(catalog) and not ungrounded_elements,
             "grounded_element_count": grounded_count,
             "ungrounded_elements": ungrounded_elements,
+            "unresolved_data_bindings": unresolved_bindings,
             "entry_route_grounded": entry_route_grounded,
             "compiled_files": bundle.files,
             "contract": contract.model_dump(by_alias=True, mode="json"),
             "setup_required": bundle.setup_required,
             "execution_command": bundle.execution_command,
         }
-        attempts.append({"attempt": attempt_number, "outcome": "compiled", "ungrounded_count": len(ungrounded_elements)})
+        attempts.append({
+            "attempt": attempt_number,
+            "outcome": "compiled",
+            "ungrounded_count": len(ungrounded_elements),
+            "unresolved_binding_count": len(unresolved_bindings),
+        })
 
-        if best_ungrounded_count is None or len(ungrounded_elements) < best_ungrounded_count:
-            best, best_ungrounded_count = script, len(ungrounded_elements)
+        # Rank candidates on both defects, so the retained best is the least
+        # broken overall rather than the one that merely grounded well.
+        defect_count = len(ungrounded_elements) + len(unresolved_bindings)
+        if best_defect_count is None or defect_count < best_defect_count:
+            best, best_defect_count = script, defect_count
 
-        if not ungrounded_elements:
+        if not ungrounded_elements and not unresolved_bindings:
             script["generation_attempts"] = attempts
             return script, attempts, None, False
 
         if attempt_number == MAX_GENERATION_ATTEMPTS:
             break
 
+        corrections: list[str] = []
+        if ungrounded_elements:
+            corrections.append(
+                f"{len(ungrounded_elements)} item(s) are not grounded to real, discovered "
+                f"evidence: {', '.join(ungrounded_elements)}. For any 'PageObject.element' ref, "
+                "check the GROUNDED LOCATORS catalog above and reuse an existing entry's exact "
+                "element_name and locator strategy/value. For any 'wait_for_url:...' or "
+                "'url_assertion:...' ref, check explored_page_paths and change that value to a "
+                "substring that actually appears in one of those real paths (or switch the step "
+                "to 'custom' if nothing matches)."
+            )
+        if unresolved_bindings:
+            corrections.append(
+                f"{len(unresolved_bindings)} test data binding(s) do not exist in this test "
+                f"case's test_data: {', '.join(unresolved_bindings)}. Use the exact keys shown "
+                "in the test case's test_data object — do not shorten or rename them. A binding "
+                "that does not resolve becomes undefined and the script fails on its first "
+                "action."
+            )
+
         messages.append({"role": "assistant", "content": response})
         messages.append({"role": "user", "content": (
             "<user_content>\n"
-            f"That contract still has {len(ungrounded_elements)} item(s) not grounded to real, "
-            f"discovered evidence: {', '.join(ungrounded_elements)}. For any 'PageObject.element' ref, "
-            "check the GROUNDED LOCATORS catalog above and reuse an existing entry's exact element_name "
-            "and locator strategy/value. For any 'wait_for_url:...' or 'url_assertion:...' ref, check "
-            "explored_page_paths and change that value to a substring that actually appears in one of "
-            "those real paths (or switch the step to 'custom' if nothing matches). "
-            "Produce a corrected, complete contract JSON object.\n"
+            + "That contract still has problems.\n\n"
+            + "\n\n".join(corrections)
+            + "\n\nProduce a corrected, complete contract JSON object.\n"
             "</user_content>"
         )})
 
     if best is not None:
         best["generation_attempts"] = attempts
+
+    # Unresolved bindings are not a degraded script, they are a script that
+    # cannot run: every bound field fills `undefined`. Returning it would
+    # persist a guaranteed dry-run failure, so fail the test case instead.
+    # Ungrounded elements stay soft — that script still executes.
+    if best is not None and best.get("unresolved_data_bindings"):
+        return None, attempts, (
+            f"Test data bindings for {test_case_id} do not match its test data after "
+            f"{MAX_GENERATION_ATTEMPTS} attempts: "
+            f"{', '.join(best['unresolved_data_bindings'])}. Correct the test case's test data "
+            "or its steps so the two agree, then regenerate."
+        ), False
+
     return best, attempts, None, False
 
 
@@ -489,6 +615,14 @@ def _generation_concurrency() -> int:
 # point is that the reader learns the cause, so the first message survives
 # intact and the rest are counted rather than truncated into noise.
 _ERROR_SUMMARY_LIMIT = 600
+
+
+def _progress_label(tc: dict) -> str:
+    """How one test case is named in progress messages. Shared by the
+    attempt-level and completion-level reports so both address the same test
+    case by the same name — and so the in-flight bookkeeping keyed on it
+    cannot leak an entry that is never popped."""
+    return tc.get("test_case_id") or f"#{tc.get('id')}"
 
 
 def _summarize_errors(errors: list[str]) -> str:
@@ -528,6 +662,48 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
     semaphore = asyncio.Semaphore(_generation_concurrency())
     stop_event = asyncio.Event()
 
+    total = len(state["test_cases"])
+    finished = 0
+    # Model calls already completed for each test case still in flight, keyed
+    # by the label the UI shows. Counting only *finished test cases* left the
+    # bar with nothing to report between "started" and "done": a single-script
+    # wave has exactly one completion event, so it sat on the task wrapper's
+    # floor percentage (30) for the whole run, which is what a hang looks like
+    # too. Observed live 2026-08-03 on Studio agent run #306. A test case on
+    # attempt 2 has genuinely finished one model call — that is real, already
+    # completed work, and the number is allowed to say so.
+    in_flight_calls: dict[str, int] = {}
+    progress_lock = asyncio.Lock()
+
+    def _percent() -> int:
+        """Finished test cases plus part-credit for calls already made on the
+        ones still running.
+
+        Part-credit is capped at (MAX_GENERATION_ATTEMPTS - 1) /
+        MAX_GENERATION_ATTEMPTS of a test case, strictly below a whole one, so
+        the bar never claims a script that has not compiled and never steps
+        backwards when an in-flight test case converts into a finished one.
+        Callers must hold `progress_lock`.
+        """
+        if not total:
+            return 100
+        done = finished + sum(
+            min(calls, MAX_GENERATION_ATTEMPTS - 1) / MAX_GENERATION_ATTEMPTS
+            for calls in in_flight_calls.values()
+        )
+        return int(100 * done / total)
+
+    async def _report_attempt(label: str, attempt_number: int) -> None:
+        async with progress_lock:
+            in_flight_calls[label] = attempt_number - 1
+            percent = _percent()
+            done = finished
+        await agent_progress.report_progress(
+            percent,
+            f"Generating {label} — attempt {attempt_number} of {MAX_GENERATION_ATTEMPTS}"
+            f" ({done} of {total} scripts done)",
+        )
+
     async def _generate_for_tc(tc: dict) -> tuple[dict | None, str | None, bool]:
         async with semaphore:
             if stop_event.is_set():
@@ -547,6 +723,13 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
             "preconditions": tc.get("preconditions", []),
             "steps": tc.get("steps", []),
             "expected_result": tc.get("expected_result"),
+            # The authored test data, verbatim. Without it the model invents
+            # binding names from the step prose ("first", "phone") that do not
+            # exist in the data ("firstName", "userMobile"), and every one of
+            # them resolves to undefined at runtime. validate_binding_paths
+            # enforces the match after generation; this is what lets the model
+            # get it right in the first place.
+            "test_data": tc.get("test_data") or {},
             "bdd_scenario": tc.get("bdd_scenario"),
             "test_type": tc.get("test_type"),
             "application_url": tc.get("application_url"),
@@ -592,13 +775,12 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
             )
 
         script, _attempts, fatal_error, rate_limited = await _generate_one_contract(
-            llm, system, tc_summary, test_case_id, script_type, framework, catalog
+            llm, system, tc_summary, test_case_id, script_type, framework, catalog,
+            on_attempt=lambda attempt_number: _report_attempt(
+                _progress_label(tc), attempt_number
+            ),
         )
         return script, fatal_error, rate_limited
-
-    total = len(state["test_cases"])
-    finished = 0
-    finished_lock = asyncio.Lock()
 
     async def _run_and_signal(tc: dict) -> tuple[dict | None, str | None, bool]:
         script, fatal_error, rate_limited = await _generate_for_tc(tc)
@@ -606,17 +788,20 @@ async def _generate_contracts(state: AutomationState) -> AutomationState:
             # Stop admitting NEW work as early as possible; tasks already
             # past the semaphore (in-flight LLM calls) are left to finish.
             stop_event.set()
-        # Reported on completion rather than on start, so the count never
-        # claims work that has not happened. Serialized because with a
+        # The *count* is still reported on completion rather than on start, so
+        # it never claims a script that has not happened — only the fractional
+        # part-credit above moves before then. Serialized because with a
         # concurrency above 1 several coroutines land here at once and an
         # unguarded read-modify-write would skip or repeat a number.
         nonlocal finished
-        async with finished_lock:
+        label = _progress_label(tc)
+        async with progress_lock:
             finished += 1
+            in_flight_calls.pop(label, None)
             done = finished
-        label = tc.get("test_case_id") or f"#{tc.get('id')}"
+            percent = _percent()
         await agent_progress.report_progress(
-            int(100 * done / total) if total else 100,
+            percent,
             f"Generated {done} of {total} scripts — {label}"
             + ("" if script is not None else " (failed)"),
         )

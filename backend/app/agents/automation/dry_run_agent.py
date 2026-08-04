@@ -17,6 +17,7 @@ import logging
 import uuid
 
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
+from app.services import static_quality_gate
 from app.services.automation_runner import run_script_for_execution
 from app.services.automation_runner.workspace import (
     materialize_bundle,
@@ -105,6 +106,25 @@ class DryRunAgent(BaseAgent):
                 code=script_data.get("code", ""),
                 suggested_file_path=script_data.get("file_path"),
             )
+
+        # Typecheck before opening a browser. Playwright transpiles specs with
+        # esbuild, which ignores types, so a bundle whose fixture shape does not
+        # match what the spec reads used to reach the runner and fail there with
+        # a runtime message ("expected string, got undefined") that named a
+        # locator rather than the real defect. Skipped, never failed, when tsc
+        # is unavailable — see static_quality_gate.type_check_bundle.
+        if framework == "playwright":
+            type_status, type_detail = static_quality_gate.type_check_bundle(workspace)
+            if type_status == "failed":
+                self.log("warning", "type_check", f"Script {script_id} does not typecheck")
+                return {
+                    "script_id": script_id,
+                    "run_status": "failed",
+                    "passed": False,
+                    "results": [],
+                    "log_path": None,
+                    "error_message": f"Bundle failed TypeScript compilation:\n{type_detail}",
+                }
 
         runner_result = await run_script_for_execution(
             framework=framework,

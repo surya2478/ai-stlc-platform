@@ -74,10 +74,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # AI-generated TypeScript automation scripts. The Python Playwright install
 # above ships its own Chromium; the @playwright/test CLI reuses it.
 # See backend/AUTOMATION_RUNNER.md for the equivalent install on bare metal.
+#
+# typescript is here for the static quality gate's type check, not for running
+# scripts: Playwright loads specs through esbuild, which strips types without
+# checking them, so `tsc --noEmit` is the only thing that catches a generated
+# bundle whose fixture shape disagrees with what its spec reads
+# (static_quality_gate.type_check_bundle). Without it that check reports
+# "skipped" and the defect surfaces as a mid-run browser failure.
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g @playwright/test@1.44.0 \
+    # @types/node is not optional here: generated fixtures read process.env, and
+    # without the Node type declarations tsc fails EVERY bundle on
+    # "Cannot find name 'process'" — a false block worse than the bug the check
+    # exists to catch.
+    && npm install -g @playwright/test@1.44.0 typescript@5.4.5 @types/node@20.14.2 \
     && npx --yes playwright install chromium \
     # World-readable and traversable: the runner container executes as an
     # unprivileged uid and must still be able to launch Chromium.
