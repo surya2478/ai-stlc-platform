@@ -61,7 +61,7 @@ from app.services import agent_progress, agent_run_service
 from app.services import artifact_review_service
 from app.services import automation_service
 from app.services import coverage_matrix_service
-from app.services import locator_map_service
+from app.services import locator_catalog, locator_map_service
 from app.services import navigation_map
 from app.services import static_quality_gate
 from app.services.script_compiler import locator_policy
@@ -754,16 +754,16 @@ async def _build_repair_loop_input_from_classification(
                 application = await resolve_default_application(db, run.project_id)
             if application:
                 application_url = resolve_environment_url(application, environment)
-                entries = await locator_map_service.list_for_application(
+                built = await locator_catalog.build_for_application(
                     db, project_id=run.project_id, application_id=application.id
                 )
                 catalog = [
                     {
-                        "element_name": e.element_name,
-                        "recommended_locator": e.recommended_locator,
-                        "business_meaning": e.business_meaning,
+                        "element_name": entry["element_name"],
+                        "recommended_locator": entry["recommended_locator"],
+                        "business_meaning": entry["business_meaning"],
                     }
-                    for e in entries
+                    for entry in built.entries
                 ]
 
         scripts.append({

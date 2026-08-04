@@ -34,6 +34,12 @@ class _ExecuteResult:
     def scalars(self):
         return _ScalarsResult(self._values)
 
+    def scalar_one_or_none(self):
+        # Grounding consults the published Application Model before falling
+        # back to locator_map (locator_catalog.get_published_model), and that
+        # lookup reads a single row rather than a scalars() list.
+        return self._values[0] if self._values else None
+
 
 class _FakeDB:
     def __init__(self, *, responses=None, get_results=None):
@@ -153,7 +159,8 @@ def test_repairable_runs_repair_loop_and_persists_a_resolved_version(monkeypatch
         metadata_={"automation_script_id": 5},
     )
     db = _FakeDB(
-        responses=[[]],  # locator_map_service.list_for_application
+        # published-model lookup (none), then locator_map fallback
+        responses=[[], []],
         get_results={
             (AutomationScript, 5): script,
             (TestCase, 20): tc,
@@ -233,7 +240,8 @@ def test_repairable_threads_studio_explored_page_paths_to_repair_loop(monkeypatc
         metadata_={"automation_script_id": 5},
     )
     db = _FakeDB(
-        responses=[[]],
+        # published-model lookup (none), then locator_map fallback
+        responses=[[], []],
         get_results={
             (AutomationScript, 5): script,
             (TestCase, 20): tc,

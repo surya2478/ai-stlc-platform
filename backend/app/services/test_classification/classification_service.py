@@ -417,6 +417,60 @@ DECISION_TO_CANDIDATE_STATUS = {
 REASON_REQUIRED_DECISIONS = {"approve_conditional", "not_recommended", "defer", "request_changes"}
 
 
+async def _apply_approval_to_test_case(
+    db: AsyncSession,
+    *,
+    test_case: TestCase,
+    classification: TestCaseAutomationClassification,
+    user_id: int,
+) -> None:
+    """Carry an approved classification onto the test case itself.
+
+    Approving a classification is the decision that a test case is to be
+    automated, so it has to land on the three columns everything downstream
+    actually reads — `execution_mode`, `automation_eligible`,
+    `automation_status`. Until it did, approval wrote only to the
+    classification row and its audit trail: AI Automation Studio filters on
+    `execution_mode in (automation, automated, hybrid) AND
+    automation_eligible = 'yes'` (test_plan_service.list_test_cases), so a test
+    case could show "APPROVED · PLAYWRIGHT_MCP" on its own AI Info tab and be
+    invisible in the studio for the rest of its life.
+
+    Setting `execution_mode` matters as much as the eligibility flag, and not
+    only because the studio reads it: `_normalize_automation_update` treats
+    `execution_mode == "manual"` as authoritative and rewrites
+    `automation_eligible` to "no" whenever *any* field is updated. Observed on
+    TC-0102, whose eligibility verdict of "yes" was wiped in the same
+    transaction that merely mapped it to an application. Leaving the mode at
+    "manual" would mean the next unrelated edit silently undid this write.
+
+    Routed through `update_test_case` rather than assigning attributes so the
+    change is audited per field in `test_case_history` like every other
+    transition, and so the automation-mapping side effects run.
+    """
+    from app.schemas.test_plan import TestCaseUpdate
+    from app.services import test_plan_service
+
+    await test_plan_service.update_test_case(
+        db,
+        test_case,
+        TestCaseUpdate(
+            execution_mode="automation",
+            automation_eligible="yes",
+            # The eligibility agent's own vocabulary for "approved to automate,
+            # nothing built yet" (see agent_tasks' status_by_verdict), so both
+            # writers of this column agree on what the value means.
+            automation_status="ready_for_automation",
+            comment=(
+                f"Automation classification approved "
+                f"(adapter {classification.primary_adapter or 'unresolved'})."
+            ),
+        ),
+        user_id=user_id,
+        source="automation_classification",
+    )
+
+
 async def decide_classification(
     db: AsyncSession,
     *,
@@ -471,6 +525,11 @@ async def decide_classification(
 
     classification.decision_reason = reason
     await db.flush()
+
+    if decision in {"approve", "approve_conditional"}:
+        await _apply_approval_to_test_case(
+            db, test_case=test_case, classification=classification, user_id=user_id
+        )
 
     db.add(
         ClassificationAuditEvent(

@@ -158,6 +158,11 @@ def test_trigger_grounds_scripts_when_application_and_locator_map_exist(monkeypa
                 id=7, project_id=1, key="web", name="Web App", is_default=True, is_active=True,
                 environment_urls={"QA": "http://app.example.com"},
             ),
+            # Grounding now consults the published Application Model first
+            # (locator_catalog.get_published_model). This application has none,
+            # which is the case that must keep grounding on locator_map exactly
+            # as it did before.
+            None,
             [LocatorMapEntry(
                 id=1, project_id=1, application_id=7, page="/login", element_name="usernameInput",
                 recommended_locator="page.getByLabel('Username')", recommended_strategy="label",

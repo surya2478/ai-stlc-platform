@@ -416,6 +416,82 @@ def test_progress_marks_a_test_case_that_failed(monkeypatch):
     assert any("(failed)" in message for _pct, message in reports)
 
 
+class _SequenceLLM:
+    """Answers with each response in turn, repeating the last one forever."""
+
+    def __init__(self, responses: list[str]):
+        self.responses = responses
+        self.calls = 0
+
+    async def achat(self, **_kwargs):
+        response = self.responses[min(self.calls, len(self.responses) - 1)]
+        self.calls += 1
+        return response
+
+
+def _collect_reports(test_cases) -> list[tuple[int, str]]:
+    from app.services import agent_progress
+
+    reports: list[tuple[int, str]] = []
+
+    async def _record(percent, message):
+        reports.append((percent, message))
+
+    token = agent_progress.set_progress_reporter(_record)
+    try:
+        async def run():
+            return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+
+        anyio.run(run)
+    finally:
+        agent_progress.reset_progress_reporter(token)
+    return reports
+
+
+def test_progress_moves_between_completions_on_a_single_script_wave(monkeypatch):
+    """A one-script wave has exactly one completion event, so counting only
+    finished test cases left the bar pinned to the task wrapper's floor (30%
+    on screen) for the entire run — which is also what a hang looks like.
+    Each retry is a model call that really did complete, so it earns
+    part-credit and the number moves."""
+    monkeypatch.setattr(
+        automation_agent, "get_llm",
+        lambda *_a, **_k: _SequenceLLM(["not json", "still not json", VALID_CONTRACT_JSON]),
+    )
+    monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 1)
+
+    reports = _collect_reports([{"test_case_id": "TC-0001", "title": "Retried twice"}])
+
+    attempts = [r for r in reports if "attempt" in r[1]]
+    assert [r[1] for r in attempts] == [
+        "Generating TC-0001 — attempt 1 of 3 (0 of 1 scripts done)",
+        "Generating TC-0001 — attempt 2 of 3 (0 of 1 scripts done)",
+        "Generating TC-0001 — attempt 3 of 3 (0 of 1 scripts done)",
+    ]
+    # 0 calls done, then 1 of 3, then 2 of 3 — never a whole test case.
+    assert [r[0] for r in attempts] == [0, 33, 66]
+    assert reports[-1] == (100, "Generated 1 of 1 scripts — TC-0001")
+
+
+def test_progress_never_steps_backwards_across_a_concurrent_wave(monkeypatch):
+    """Part-credit for an in-flight test case must stay strictly below a whole
+    one, or a completion landing while siblings are mid-retry would hand the
+    UI a smaller number than it already showed."""
+    monkeypatch.setattr(
+        automation_agent, "get_llm",
+        lambda *_a, **_k: _SequenceLLM(["not json", VALID_CONTRACT_JSON]),
+    )
+    monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 3)
+
+    reports = _collect_reports(
+        [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 4)],
+    )
+
+    percents = [percent for percent, _message in reports]
+    assert percents == sorted(percents)
+    assert percents[-1] == 100
+
+
 def test_an_agent_with_no_reporter_installed_still_runs(monkeypatch):
     """Progress is commentary — an agent invoked outside the task wrapper (or
     in a test) must not fail because nothing is listening."""

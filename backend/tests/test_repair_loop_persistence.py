@@ -29,6 +29,12 @@ class _ExecuteResult:
     def scalars(self):
         return _ScalarsResult(self._values)
 
+    def scalar_one_or_none(self):
+        # Grounding consults the published Application Model before falling
+        # back to locator_map (locator_catalog.get_published_model), and that
+        # lookup reads a single row rather than a scalars() list.
+        return self._values[0] if self._values else None
+
 
 class _FakeDB:
     def __init__(self, *, responses=None, get_results=None):
@@ -174,7 +180,9 @@ def test_build_repair_loop_input_only_includes_repairable_failures_with_context(
     )
 
     db = _FakeDB(
-        responses=[[exec_result], []],  # execute() calls: main select, then locator_map list_for_application
+        # execute() calls: main select, then the published-model lookup
+        # (none), then the locator_map fallback
+        responses=[[exec_result], [], []],
         get_results={
             (AutomationScript, 5): script,
             (TestCase, 20): tc,

@@ -107,8 +107,11 @@ def test_regenerate_passes_locator_map_for_default_application(monkeypatch):
     # 2. build_test_case_application_context -> resolve_default_application
     # 3. build_test_case_application_context -> ProjectExternalDependency list
     # 4. (grounding lookup) resolve_default_application again
-    # 5. (grounding lookup) locator_map_service.list_for_application
-    db = _FakeDB(responses=[tc, application, [], application, [entry]])
+    # 5. (grounding lookup) locator_catalog.get_published_model -> none, so the
+    #    catalog falls back to locator_map exactly as it did before models
+    #    existed
+    # 6. (grounding lookup) locator_map_service.list_for_application
+    db = _FakeDB(responses=[tc, application, [], application, None, [entry]])
 
     captured = {}
 

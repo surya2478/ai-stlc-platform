@@ -436,6 +436,65 @@ def test_decide_approve_succeeds_and_sets_immutable_fields():
     anyio.run(_run)
 
 
+def test_approving_a_classification_makes_the_test_case_automatable():
+    """The decision has to land where the rest of the platform reads it.
+
+    AI Automation Studio selects on execution_mode + automation_eligible
+    (test_plan_service.list_test_cases). Approval used to write only the
+    classification row, so a test case could read "APPROVED · PLAYWRIGHT_MCP"
+    on its AI Info tab and never once appear in the studio.
+    """
+    async def _run():
+        test_case = _test_case(version=1, execution_mode="manual", automation_eligible="no",
+                               automation_status="not_required")
+        db = _FakeDB(
+            responses=[[_policy(id_=1, version=1)]],
+            gets={(TestCase, 1): test_case},
+        )
+        await classification_service.decide_classification(
+            db, classification=_classification(), decision="approve", user_id=9,
+            reason=None, actor_role="QA Manager", allow_self_review_override=True,
+        )
+
+        assert test_case.execution_mode == "automation"
+        assert test_case.automation_eligible == "yes"
+        assert test_case.automation_status == "ready_for_automation"
+
+    anyio.run(_run)
+
+
+def test_execution_mode_moves_off_manual_so_the_next_edit_cannot_undo_it():
+    """Not cosmetic: `_normalize_automation_update` rewrites
+    automation_eligible to "no" whenever execution_mode is "manual" and *any*
+    field is updated. Observed on TC-0102, whose "yes" verdict was wiped in the
+    same transaction that merely mapped it to an application. Leaving the mode
+    alone would make this write-back last exactly until the next edit."""
+    async def _run():
+        from app.schemas.test_plan import TestCaseUpdate
+        from app.services import test_plan_service
+
+        test_case = _test_case(version=1, execution_mode="manual", automation_eligible="no",
+                               automation_status="not_required")
+        db = _FakeDB(
+            responses=[[_policy(id_=1, version=1)]],
+            gets={(TestCase, 1): test_case},
+        )
+        await classification_service.decide_classification(
+            db, classification=_classification(), decision="approve", user_id=9,
+            reason=None, actor_role="QA Manager", allow_self_review_override=True,
+        )
+
+        # Any unrelated later edit runs the same normalisation that wiped
+        # TC-0102 when its only change was an application mapping.
+        await test_plan_service.update_test_case(
+            db, test_case, TestCaseUpdate(priority="Medium"), user_id=9,
+        )
+        assert test_case.automation_eligible == "yes"
+        assert test_case.execution_mode == "automation"
+
+    anyio.run(_run)
+
+
 def test_apply_review_corrections_rejects_already_approved():
     async def _run():
         row = _classification(review_status="APPROVED")

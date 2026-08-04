@@ -114,7 +114,7 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
     """
     from app.agents.automation.automation_agent import AutomationScriptAgent
     from app.models.project_application import ProjectApplication
-    from app.services import locator_map_service
+    from app.services import locator_catalog
     from app.services.project_application_service import (
         build_test_case_application_context,
         resolve_default_application,
@@ -143,20 +143,10 @@ async def regenerate_script(db: AsyncSession, script: AutomationScript, user_id:
         application = await resolve_default_application(db, tc.project_id)
     locator_map: dict[str, list[dict]] = {}
     if application is not None:
-        entries = await locator_map_service.list_for_application(
+        catalog = await locator_catalog.build_for_application(
             db, project_id=tc.project_id, application_id=application.id
         )
-        locator_map[str(application.id)] = [
-            {
-                "element_name": e.element_name,
-                "page": e.page,
-                "role": e.recommended_strategy,
-                "business_meaning": e.business_meaning,
-                "recommended_locator": e.recommended_locator,
-                "confidence_score": e.confidence_score,
-            }
-            for e in entries
-        ]
+        locator_map[str(application.id)] = catalog.entries
 
     # Never wired through before, despite CONTRACT_SYSTEM's own grounding
     # rules referencing "application_url" — page objects got relative routes
@@ -586,7 +576,7 @@ async def classify_and_repair(
         classify_with_llm,
     )
     from app.models.project_application import ProjectApplication
-    from app.services import locator_map_service
+    from app.services import locator_catalog
     from app.services.project_application_service import resolve_default_application, resolve_environment_url
 
     classification_info = (execution_result.metadata_ or {}).get("failure_classification")
@@ -654,16 +644,16 @@ async def classify_and_repair(
             application = await resolve_default_application(db, script.project_id)
         if application:
             application_url = resolve_environment_url(application, environment)
-            entries = await locator_map_service.list_for_application(
+            built = await locator_catalog.build_for_application(
                 db, project_id=script.project_id, application_id=application.id
             )
             catalog = [
                 {
-                    "element_name": e.element_name,
-                    "recommended_locator": e.recommended_locator,
-                    "business_meaning": e.business_meaning,
+                    "element_name": entry["element_name"],
+                    "recommended_locator": entry["recommended_locator"],
+                    "business_meaning": entry["business_meaning"],
                 }
-                for e in entries
+                for entry in built.entries
             ]
 
     agent_result = await RepairLoopAgent().run(scripts=[{
