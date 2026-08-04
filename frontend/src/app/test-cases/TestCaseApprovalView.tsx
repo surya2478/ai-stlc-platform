@@ -52,6 +52,7 @@ import {
   type TestScenario,
   type UserAccount,
 } from "@/lib/api";
+import { AutomationHandoffPanel } from "@/components/automation/AutomationHandoffPanel";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
@@ -526,6 +527,25 @@ export function TestCaseApprovalView({ projectId, initialTestCaseId = null }: { 
     finally { setBusy(""); }
   }
 
+  // The queue could already filter on "Application mapping: Missing" but had no
+  // way to fix what it found. Live Discovery Session rejects an unmapped test
+  // case outright, so this is the control that turns an approved row into an
+  // automatable one.
+  async function saveApplicationMapping(testCaseId: number, applicationId: number | null) {
+    setBusy("application"); setError(""); setNotice("");
+    try {
+      await testCasesApi.update(testCaseId, { application_id: applicationId });
+      setNotice(
+        applicationId === null
+          ? "Application mapping cleared."
+          : "Application mapped. This test case can now be taken through Live Discovery Session.",
+      );
+      await loadData();
+    } catch (saveError) {
+      setError(errorMessage(saveError, "Could not save the application mapping."));
+    } finally { setBusy(""); }
+  }
+
   async function exportQueue() {
     if (!projectId) return;
     try {
@@ -615,7 +635,21 @@ export function TestCaseApprovalView({ projectId, initialTestCaseId = null }: { 
           {inspectorTab === "traceability" && <TraceabilityInspector row={selected} projectId={projectId} router={router} />}
           {inspectorTab === "test-case" && <TestCaseInspector row={selected} onEdit={() => router.push(`/test-cases?project=${projectId}&view=editor&case=${selected.testCase.id}`)} />}
           {inspectorTab === "evidence" && <EvidenceInspector row={selected} />}
-          {inspectorTab === "automation" && <ClassificationInspector row={selected} enabled={classificationsEnabled} canEvaluate={canEvaluateClassification} canReview={canReviewClassification} canApprove={canApproveClassification} onChanged={() => void loadData()} />}
+          {inspectorTab === "automation" && (
+            <>
+              <Panel title="Automation Handoff">
+                <AutomationHandoffPanel
+                  testCase={selected.testCase}
+                  applications={applications}
+                  busy={busy === "application"}
+                  classification={classificationsEnabled ? selected.classification : null}
+                  onSaveApplication={(applicationId) => void saveApplicationMapping(selected.testCase.id, applicationId)}
+                  onStartDiscovery={(applicationId) => router.push(`/applications?view=discovery&project=${projectId}&application=${applicationId}`)}
+                />
+              </Panel>
+              <ClassificationInspector row={selected} enabled={classificationsEnabled} canEvaluate={canEvaluateClassification} canReview={canReviewClassification} canApprove={canApproveClassification} onChanged={() => void loadData()} />
+            </>
+          )}
           {inspectorTab === "history" && <HistoryInspector history={history} approvals={approvals.filter((item) => item.entity_id === selected.testCase.id)} users={userById} />}
           {inspectorTab === "activity" && <ActivityInspector row={selected} history={history} reviews={reviewHistory} approvals={approvals.filter((item) => item.entity_id === selected.testCase.id)} users={userById} />}
 

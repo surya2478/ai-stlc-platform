@@ -15,6 +15,7 @@ import {
   Layers,
   Loader2,
   MoreHorizontal,
+  Radar,
   RefreshCw,
   Search,
   ShieldCheck,
@@ -26,6 +27,7 @@ import {
 } from "lucide-react";
 import {
   agentRunsApi,
+  applicationsApi,
   automationClassificationApi,
   exportApi,
   isClassificationDisabled,
@@ -41,6 +43,7 @@ import {
   type AutomationClassificationPolicy,
   type ClassificationPolicySimulateResponse,
   type CoverageMatrixEntry,
+  type ProjectApplication,
   type Requirement,
   type TaxonomyEntry,
   type TestCase,
@@ -50,6 +53,7 @@ import {
   type TestScenario,
   type TestCaseSummary,
 } from "@/lib/api";
+import { AutomationHandoffPanel } from "@/components/automation/AutomationHandoffPanel";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerBody, DrawerFooter } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
@@ -141,6 +145,38 @@ type EditorDraft = {
   ppmId: string;
 };
 
+/**
+ * One step shape for the whole page, whatever the row actually stores.
+ *
+ * Steps reach us in two shapes. The canonical one — {step_number, action,
+ * expected_result} — is what the test-case agent, the importer and this
+ * editor write. Playwright Studio writes {action, expected} with no step
+ * number (studio_service._approve_plan), and older agent rows omit fields
+ * entirely. The declared TestCase type promises `action: string;
+ * expected_result: string`, so TypeScript never flagged the difference and a
+ * bare `step.expected_result.trim()` threw "Cannot read properties of
+ * undefined" — taking the whole /test-cases page down for any project holding
+ * a Studio-approved test case (observed live on project 12).
+ *
+ * Normalizing on read rather than repairing the rows: both shapes are already
+ * persisted and the backend reads both too (export_service does the same
+ * fallback), so the page has to cope with either regardless.
+ */
+function normalizedSteps(
+  steps: TestCase["steps"] | null | undefined,
+): Array<{ step_number: number; action: string; expected_result: string }> {
+  return (steps ?? []).map((s, i) => {
+    const raw = (s ?? {}) as {
+      step_number?: number; action?: string; expected_result?: string; expected?: string;
+    };
+    return {
+      step_number: raw.step_number ?? i + 1,
+      action: raw.action ?? "",
+      expected_result: raw.expected_result ?? raw.expected ?? "",
+    };
+  });
+}
+
 function draftFromCase(t: TestCase | null): EditorDraft {
   return {
     title: t?.title ?? "",
@@ -148,18 +184,7 @@ function draftFromCase(t: TestCase | null): EditorDraft {
     testType: t?.test_type ?? "",
     automationCandidate: !!t?.automation_candidate,
     preconditionsText: (t?.preconditions ?? []).join("\n"),
-    // Some agent-generated / legacy rows store steps with an "expected" key
-    // instead of "expected_result" (or omit it) — normalize here so every
-    // downstream consumer (validation, step editor, save payload) can rely
-    // on expected_result always being a string.
-    steps: (t?.steps ?? []).map((s, i) => {
-      const raw = s as { step_number?: number; action?: string; expected_result?: string; expected?: string };
-      return {
-        step_number: raw.step_number ?? i + 1,
-        action: raw.action ?? "",
-        expected_result: raw.expected_result ?? raw.expected ?? "",
-      };
-    }),
+    steps: normalizedSteps(t?.steps),
     expectedResult: t?.expected_result ?? "",
     domainId: t?.domain_id ?? null,
     channelId: t?.channel_id ?? null,
@@ -288,11 +313,12 @@ function traceabilityHealth(tc: TestCase) {
 
 function approvalReadinessBlockers(tc: TestCase): string[] {
   const blockers: string[] = [];
-  if (!tc.title.trim()) blockers.push("Add a clear test-case title.");
-  if (!(tc.preconditions ?? []).some((item) => item.trim())) blockers.push("Add at least one precondition.");
-  if (!(tc.steps ?? []).length) {
+  const steps = normalizedSteps(tc.steps);
+  if (!(tc.title ?? "").trim()) blockers.push("Add a clear test-case title.");
+  if (!(tc.preconditions ?? []).some((item) => (item ?? "").trim())) blockers.push("Add at least one precondition.");
+  if (!steps.length) {
     blockers.push("Add at least one test step with an action and expected result.");
-  } else if ((tc.steps ?? []).some((step) => !step.action.trim() || !step.expected_result.trim())) {
+  } else if (steps.some((step) => !step.action.trim() || !step.expected_result.trim())) {
     blockers.push("Complete the action and expected result for every test step.");
   }
   if (!tc.expected_result?.trim()) blockers.push("Add the overall expected result.");
@@ -659,6 +685,7 @@ function findRequirementForCase(tc: TestCase, byKey: Map<string, Requirement>, b
   return undefined;
 }
 
+
 function TestCasesContent() {
   const { runAIAction, updateAIProcessing } = useAIAction();
   const searchParams = useSearchParams();
@@ -698,6 +725,17 @@ function TestCasesContent() {
   const [classifyBusyId, setClassifyBusyId] = useState<number | null>(null);
   const [policyDrawerTestCase, setPolicyDrawerTestCase] = useState<TestCase | null>(null);
 
+  // Registered applications, for the Automation Handoff card below.
+  //
+  // `TestCase.application_id` has existed and been audited since the registry
+  // shipped, and Live Discovery Session refuses any test case that lacks it
+  // ("no Application Registry mapping — map it in Test Case Approval first"),
+  // but no screen ever wrote the field. That message pointed at a control that
+  // did not exist, which made the whole Approved TC → Discovery → Model →
+  // Studio path unreachable. This is that control.
+  const [applications, setApplications] = useState<ProjectApplication[]>([]);
+  const [applicationSaveBusy, setApplicationSaveBusy] = useState(false);
+
   useEffect(() => {
     projectsApi.list().then((res) => {
       if (res.data.length > 0 && !searchParams.get("project")) {
@@ -722,6 +760,10 @@ function TestCasesContent() {
         reviewsApi.listForProject(selectedProject, "scenario_test_case_coverage").catch(() => ({ data: [] as ArtifactReview[] })),
         usersApi.list().catch(() => ({ data: [] as Array<{ id: number; full_name: string }> })),
       ]);
+      applicationsApi
+        .getForProject(selectedProject)
+        .then((res) => setApplications(res.data.applications.filter((a) => a.is_active)))
+        .catch(() => setApplications([]));
       const approvedScenarios = scRes.data.filter((scenario) => scenario.status === "approved");
       setTestCases(tcRes.data);
       setSummary(summaryRes.data);
@@ -997,6 +1039,24 @@ function TestCasesContent() {
       await loadData();
     } catch (updateError) {
       setError(messageFromError(updateError, "Could not send test case to approval."));
+    }
+  }
+
+  async function saveApplicationMapping(id: number, applicationId: number | null) {
+    setApplicationSaveBusy(true);
+    setError("");
+    try {
+      await testCasesApi.update(id, { application_id: applicationId });
+      setNotice(
+        applicationId === null
+          ? "Application mapping cleared."
+          : "Application mapped. This test case can now be taken through Live Discovery Session.",
+      );
+      await loadData();
+    } catch (updateError) {
+      setError(messageFromError(updateError, "Could not save the application mapping."));
+    } finally {
+      setApplicationSaveBusy(false);
     }
   }
 
@@ -1606,14 +1666,14 @@ function TestCasesContent() {
 
                       <div>
                         <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Test Steps</p>
-                        {(selectedTestCase.steps ?? []).length ? (
+                        {normalizedSteps(selectedTestCase.steps).length ? (
                           <div className="mt-2 overflow-hidden rounded-lg border border-slate-200">
                             <div className="grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] bg-slate-50 text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
                               <span className="px-3 py-2">#</span>
                               <span className="border-l border-slate-200 px-3 py-2">Action</span>
                               <span className="border-l border-slate-200 px-3 py-2">Expected Result</span>
                             </div>
-                            {(selectedTestCase.steps ?? []).map((step, index) => (
+                            {normalizedSteps(selectedTestCase.steps).map((step, index) => (
                               <div key={`${step.step_number}-${index}`} className="grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] border-t border-slate-200 text-xs font-semibold leading-5 text-slate-700">
                                 <span className="px-3 py-2">{step.step_number || index + 1}</span>
                                 <span className="border-l border-slate-200 px-3 py-2">{step.action || "Missing action"}</span>
@@ -1666,6 +1726,21 @@ function TestCasesContent() {
                         <p className="mt-1 text-[11px] font-semibold leading-5 text-emerald-700">The required test content is complete. Automation classification and execution evidence are later-stage activities.</p>
                       </div>
                     )}
+                  </DrawerCard>
+
+                  <DrawerCard title="Automation Handoff" icon={Radar}>
+                    <AutomationHandoffPanel
+                      testCase={selectedTestCase}
+                      applications={applications}
+                      busy={applicationSaveBusy}
+                      classification={classificationsEnabled ? selectedClassification : null}
+                      onSaveApplication={(applicationId) => saveApplicationMapping(selectedTestCase.id, applicationId)}
+                      onStartDiscovery={(applicationId) => {
+                        router.push(
+                          `/applications?view=discovery&project=${selectedTestCase.project_id}&application=${applicationId}`,
+                        );
+                      }}
+                    />
                   </DrawerCard>
 
                   <DrawerCard title="Requirement Summary" icon={ShieldCheck}>
