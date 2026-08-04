@@ -64,6 +64,41 @@ const TABS: { key: Tab; label: string; icon: typeof Code2 }[] = [
   { key: "history", label: "History", icon: History },
 ];
 
+/**
+ * Statuses whose code body may be edited in place.
+ *
+ * The first three are the pre-Phase-2 authoring statuses. The rest are what the
+ * Script Compiler actually produces today — without them the Edit button was
+ * disabled for every compiler-generated script in the platform, since nothing
+ * lands in `ai_draft`/`draft` any more. The backend never enforced this: PATCH
+ * /automation/{id} checks the GENERATE_AUTOMATION permission and nothing else,
+ * so this list is a UI guard, not the authority.
+ *
+ * Keep in sync with backend/app/models/automation_script.py's status docs.
+ */
+const EDITABLE_SCRIPT_STATUSES = new Set([
+  "ai_draft",
+  "draft",
+  "rejected",
+  "generated",
+  "static_passed",
+  "dry_run_passed",
+]);
+
+/** Why this script cannot be edited, naming the status that actually blocks it. */
+function editLockReason(status: string): string {
+  if (status === "approved") {
+    return "Approved scripts are locked. Reject it to return it to draft before editing.";
+  }
+  if (status === "in_review" || status === "pending_approval") {
+    return "This script is under review. Use Request Changes to return it to draft before editing.";
+  }
+  if (!status) {
+    return "This script has no status, so it cannot be edited.";
+  }
+  return `Scripts in status "${status.replaceAll("_", " ")}" cannot be edited.`;
+}
+
 type TransitionAction = "submit_for_review" | "request_changes" | "restore_draft";
 
 type Props = {
@@ -772,7 +807,8 @@ function ScriptTab({
   const lineCount = (editing ? draftCode : script.code).split("\n").length;
   const dirty = editing && draftCode !== script.code;
   const stage = (script.status ?? "").toLowerCase();
-  const editable = stage === "ai_draft" || stage === "draft" || stage === "rejected";
+  const editable = EDITABLE_SCRIPT_STATUSES.has(stage);
+  const lockReason = editable ? "" : editLockReason(stage);
 
   return (
     <div className="space-y-2">
@@ -798,7 +834,7 @@ function ScriptTab({
               disabled={!editable}
               onClick={onStartEdit}
               className="gap-1.5"
-              title={editable ? "" : "Approved scripts are locked — request changes first."}
+              title={lockReason}
             >
               <Edit3 className="h-3.5 w-3.5" />
               Edit code
