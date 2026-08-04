@@ -11,6 +11,7 @@ import {
   Hand, Cpu, Sparkles, Gauge, Target,
   Radar,
   Boxes,
+  FlaskConical,
   MoreHorizontal,
   Home,
   Workflow,
@@ -51,7 +52,7 @@ const NAV_ITEMS: NavGroup[] = [
     ],
   },
   {
-    group: "STLC Pipeline",
+    group: "AI Planning & Test Lab",
     icon: Workflow,
     items: [
       { label: "Requirements", href: "/requirements", icon: FileText },
@@ -60,32 +61,7 @@ const NAV_ITEMS: NavGroup[] = [
       // are tabs on this same page (see TestCasesTabs) — same treatment as
       // Requirements and Applications.
       { label: "Test Cases", href: "/test-cases", icon: TestTube2 },
-      {
-        label: "Execution",
-        href: "/execution",
-        icon: Play,
-        children: [
-          { label: "Manual Execution", href: "/execution/manual", icon: Hand },
-          { label: "Automation Execution", href: "/execution/automation", icon: Cpu },
-          { label: "Execution Dashboard", href: "/execution/dashboard", icon: Gauge },
-        ],
-      },
-      { label: "Defects", href: "/defects", icon: Bug },
-      { label: "Reports", href: "/reports", icon: BarChart3 },
     ],
-  },
-  {
-    // Renamed from "Application Discovery": the registry is not discovery, and
-    // the section's route has always been /applications.
-    //
-    // One entry, not four. Discovery, Model and API & Network are tabs on this
-    // page (see ApplicationsTabs), the same way Analysis and Traceability are
-    // tabs under a single "Requirements" entry rather than sidebar items of
-    // their own. Listing every tab twice is what made this section feel large.
-    group: "Applications",
-    icon: Compass,
-    href: "/applications",
-    items: [],
   },
   // "Automation Studio Core" (Automation Workspace, Live Recorder, Automation
   // Assets) is deliberately not in the tree. It was a second, parallel
@@ -93,21 +69,44 @@ const NAV_ITEMS: NavGroup[] = [
   // approved test case could be worked either through a suite/member/asset
   // hierarchy or through AI Automation Studio, and nothing reconciled the two.
   //
-  // The single automation destination is now "AI Automation Studio"
-  // (/automation), fed by Applications → Live Discovery Session → Application
-  // Model. The `?view=workspace|recorder|ir|script|validation` routes still
-  // resolve, so existing deep links and in-page navigation keep working — they
-  // are just no longer advertised as places to start.
+  // The single automation destination is "AI Automation Studio" (/automation),
+  // fed by Applications → Live Discovery Session → Application Model. The
+  // `?view=workspace|recorder|ir|script|validation` routes still resolve, so
+  // existing deep links and in-page navigation keep working — they are just no
+  // longer advertised as places to start.
   {
-    // Sits directly after Applications and directly before Execution because
-    // that is the actual order of work: an approved test case is grounded in
-    // Applications (discovery → published model), scripted here, then run in
-    // Execution. It used to be filed under "Others", below Test Data, which
-    // buried the one screen the whole automation flow converges on.
-    group: "AI Automation Studio",
-    icon: Sparkles,
-    href: "/automation",
-    items: [],
+    // The three screens an automation flow actually moves through, in order:
+    // ground the app (Applications), script it (AI Automation Studio), or drive
+    // it directly through the MCP runner (Playwright AI Studio).
+    //
+    // A section rather than a parent item: it heads a body of work the same way
+    // "AI Planning & Test Lab" does, and only the section header carries that
+    // weight. As a nested item it rendered a rank below what it names.
+    group: "AI Automation Lab",
+    icon: FlaskConical,
+    items: [
+      // Discovery, Model and API & Network are tabs on this page (see
+      // ApplicationsTabs), the same way Analysis and Traceability are tabs
+      // under a single "Requirements" entry — one entry, not four.
+      { label: "Applications", href: "/applications", icon: Compass },
+      { label: "AI Automation Studio", href: "/automation", icon: Sparkles },
+      { label: "Playwright AI Studio", href: "/playwright-studio", icon: Bot },
+    ],
+  },
+  {
+    // Everything that happens to a test case after it is scripted: running it,
+    // then the two artifacts a run produces. Defects and Reports used to sit as
+    // siblings of Execution, which read as if they were separate phases rather
+    // than its outputs.
+    group: "AI Execution Lab",
+    icon: Play,
+    items: [
+      { label: "Manual Execution", href: "/execution/manual", icon: Hand },
+      { label: "Automation Execution", href: "/execution/automation", icon: Cpu },
+      { label: "Execution Dashboard", href: "/execution/dashboard", icon: Gauge },
+      { label: "Defects", href: "/defects", icon: Bug },
+      { label: "Reports", href: "/reports", icon: BarChart3 },
+    ],
   },
   {
     group: "Operations",
@@ -127,13 +126,12 @@ const NAV_ITEMS: NavGroup[] = [
     ],
   },
   {
-    // Last in the tree by design: a catch-all for capabilities that are not
-    // part of the ordered STLC pipeline.
+    // Last in the tree by design: a catch-all for capabilities outside the
+    // ordered Planning → Automation → Execution flow above.
     group: "Others",
     icon: MoreHorizontal,
     items: [
       { label: "Test Data", href: "/test-data", icon: Database },
-      { label: "Playwright AI Studio", href: "/playwright-studio", icon: Bot },
       { label: "Grounded Automation (PoC)", href: "/grounded-automation", icon: Target },
     ],
   },
