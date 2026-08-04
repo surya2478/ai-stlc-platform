@@ -9,6 +9,7 @@ from app.models.user import User
 from app.repositories.project_repository import ProjectRepository
 from app.schemas.project import ProjectCreate, ProjectStats, ProjectUpdate
 from app.schemas.project_membership import ProjectMembershipCreate, ProjectMembershipUpdate
+from app.services.project_purge import project_purge_plan
 from app.services.rbac_service import (
     MANAGE_PROJECT,
     ROLE_PERMISSIONS,
@@ -67,71 +68,13 @@ class ProjectService:
     async def delete_project(self, project_id: int, user: User) -> None:
         project = await self.require_manage_project(project_id, user)
 
-        # Delete child records in dependency order using parameterised ORM deletes.
-        # This avoids the SQL-injection risk of text(f"DELETE FROM {table}").
-        from sqlalchemy import delete as sa_delete
-        from app.models.artifact import Artifact
-        from app.models.approval import ApprovalAction
-        from app.models.agent import AgentRun, AgentLog
-        from app.models.report import Report
-        from app.models.execution import ExecutionRun, ExecutionResult
-        from app.models.automation_script import AutomationScript
-        from app.models.automation_mapping import AutomationTestMapping
-        from app.models.test_case import TestCase, TestCaseHistory
-        from app.models.test_data import TestData, TestDataImportPreview, TestDataRecord, TestDataTemplate
-        from app.models.test_plan import TestPlan
-        from app.models.test_scenario import TestScenario
-        from app.models.requirement import Requirement, RequirementChunk
-        from app.models.requirement_review import RequirementQualityReview
-        from app.models.defect import DefectDraft, JiraDefect
-        from app.models.document import UploadedDocument
-        from app.models.project_membership import ProjectMembership
-        from app.models.jira_connection import JiraConnection
-        from app.models.jira_sync import ConflictRecord, JiraSyncHistory, WebhookEvent
-        from app.models.artifact_lineage import ArtifactLineage
-        from app.models.rag import KnowledgeChunk, ArtifactCitation, RagRetrievalEvent
+        for statement in await project_purge_plan(self.db):
+            await self.db.execute(statement, {"project_id": project_id})
 
-        # Leaf tables first (no outward FKs to other project-scoped tables)
-        for model in (
-            AgentLog,           # FK → agent_runs
-            ArtifactLineage,
-            ArtifactCitation,    # FK → knowledge_chunks, must precede it
-            RagRetrievalEvent,
-            KnowledgeChunk,
-            ApprovalAction,
-            ConflictRecord,
-            JiraSyncHistory,
-            JiraDefect,
-            RequirementChunk,
-            RequirementQualityReview,
-            DefectDraft,
-            AutomationTestMapping,
-            ExecutionResult,
-            TestCaseHistory,
-            TestDataRecord,
-            TestDataTemplate,
-            TestDataImportPreview,
-            TestData,
-            Artifact,
-            Report,
-            ExecutionRun,
-            AutomationScript,
-            TestCase,
-            TestScenario,
-            TestPlan,
-            Requirement,
-            UploadedDocument,
-            AgentRun,
-            JiraConnection,
-            WebhookEvent,
-            ProjectMembership,
-        ):
-            # Only delete if the model has a project_id column (all listed models do)
-            await self.db.execute(
-                sa_delete(model).where(model.project_id == project_id)
-            )
-
-        await self.repo.delete(project)
+        # The project row itself is removed by the plan's final statement. Detach
+        # the loaded instance so a later autoflush does not try to cascade the
+        # ORM relationships of a row that no longer exists.
+        self.db.expunge(project)
 
     async def get_stats(self, project_id: int, user: User) -> ProjectStats:
         await self.get_project(project_id, user)
