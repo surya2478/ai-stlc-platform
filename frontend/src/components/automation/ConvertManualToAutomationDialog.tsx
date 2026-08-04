@@ -24,6 +24,7 @@ import { automationApi, testCasesApi, type TestCase } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAIAction } from "@/hooks/useAIAction";
 import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
+import { agentRunIdFrom, waitForAgentRun } from "@/lib/agentRunProgress";
 
 type Framework = "playwright" | "pytest";
 
@@ -136,13 +137,20 @@ export function ConvertManualToAutomationDialog({
         artifactType: "Automation Scripts",
         projectId,
         stages: AI_PROCESSING_STAGES.scriptGeneration,
-        successMessage: "Manual-to-automation conversion started successfully.",
+        successMessage: "Manual flow converted to automation scripts.",
         execute: () => automationApi.generateScripts(
           projectId,
           Array.from(selected),
           framework,
           "manual_conversion",
         ),
+        // Same queued-agent shape as GenerateWithAIDialog: the 202 means
+        // enqueued, not generated.
+        awaitCompletion: async (result, update) => {
+          const agentRunId = agentRunIdFrom(result);
+          if (agentRunId === null) return;
+          return waitForAgentRun(agentRunId, update);
+        },
       });
       onConverted?.(selected.size);
       onClose();

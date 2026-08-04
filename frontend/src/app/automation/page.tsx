@@ -6,13 +6,17 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   AlertTriangle,
   Bot,
+  Boxes,
   Clock,
+  Crosshair,
   ExternalLink,
   FileText,
   History,
+  Layers3,
   Link2,
   Loader2,
   PlayCircle,
+  Radar,
   RefreshCw,
   ShieldCheck,
   Sparkles,
@@ -30,6 +34,8 @@ import {
   Tooltip as RechartsTooltip,
 } from "recharts";
 import {
+  applicationModelsApi,
+  applicationsApi,
   automationApi,
   getScriptQualitySignals,
   projectsApi,
@@ -38,7 +44,9 @@ import {
   type AutomationTestMapping,
   type ExecutionResult,
   type ExecutionRun,
+  type GroundingSource,
   type LifecycleApprovalAction,
+  type ProjectApplication,
   type TestCase,
 } from "@/lib/api";
 import { useAutomationMappings, usePlanning, useScripts } from "@/lib/queries/automation";
@@ -190,6 +198,20 @@ function AutomationContent() {
   // AI Automation Studio — Phase 2D additions
   const [saveBusyId, setSaveBusyId] = useState<number | null>(null);
 
+  // Grounding provenance — which registered application each test case targets,
+  // and what a script for it would actually be built from.
+  //
+  // Deliberately the *resolved* source from the backend, not "does a published
+  // model exist". Those are different answers: a model can be published and
+  // still ground nothing, because no element carries a usable locator or a
+  // reviewer marked them all unstable, and generation then falls back to the
+  // raw locator_map. Inferring from the model's existence would report that
+  // case as grounded, which is the one case worth catching.
+  //
+  // Advisory only; nothing here disables generation.
+  const [applications, setApplications] = useState<ProjectApplication[]>([]);
+  const [groundingByApp, setGroundingByApp] = useState<Map<number, GroundingSource>>(new Map());
+
   // Sandbox runs — local runner trigger + per-script run history strip.
   const [sandboxTarget, setSandboxTarget] = useState<RunTarget | null>(null);
   const [openRun, setOpenRun] = useState<ExecutionRun | null>(null);
@@ -243,11 +265,55 @@ function AutomationContent() {
     loadTestCases();
   }, [loadTestCases]);
 
+  // Registered applications and the catalog each one's scripts would be built
+  // from. Grounding is per-application, so this is one request per application
+  // in the project — small and bounded (a project registers a handful, not
+  // hundreds). Failures are swallowed on purpose: this is provenance shown
+  // beside the work, and losing it must not take the studio down with it.
+  const loadGrounding = useCallback(async () => {
+    if (!selectedProject) {
+      setApplications([]);
+      setGroundingByApp(new Map());
+      return;
+    }
+    try {
+      const appsRes = await applicationsApi.getForProject(selectedProject);
+      const apps = appsRes.data.applications;
+      setApplications(apps);
+      const pairs = await Promise.all(
+        apps
+          .filter((app): app is ProjectApplication & { id: number } => typeof app.id === "number")
+          .map(async (app) => {
+            try {
+              const res = await applicationModelsApi.grounding(selectedProject, app.id);
+              return [app.id, res.data] as const;
+            } catch {
+              // Application Model can be disabled entirely (the endpoint 404s
+              // when APPLICATION_MODELS_ENABLED is off), which is not an error
+              // worth showing — it just means there is nothing to report.
+              return [app.id, null] as const;
+            }
+          }),
+      );
+      setGroundingByApp(
+        new Map(pairs.filter((p): p is readonly [number, GroundingSource] => p[1] !== null)),
+      );
+    } catch {
+      setApplications([]);
+      setGroundingByApp(new Map());
+    }
+  }, [selectedProject]);
+
+  useEffect(() => {
+    loadGrounding();
+  }, [loadGrounding]);
+
   const loadData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["automation"] });
     queryClient.invalidateQueries({ queryKey: ["execution"] });
     loadTestCases();
-  }, [queryClient, loadTestCases]);
+    loadGrounding();
+  }, [queryClient, loadTestCases, loadGrounding]);
 
   // Reset states on project change
   useEffect(() => {
@@ -278,9 +344,18 @@ function AutomationContent() {
     return result;
   }, [mappings]);
 
+  // An "application" query param scopes the studio to one registered
+  // application — this is what "Continue to AI Automation Studio" on a
+  // published Application Model links to, so the user lands on exactly the
+  // test cases that model grounds rather than the project's whole inventory.
+  const applicationFilter = Number(searchParams.get("application")) || null;
+
   const rows = useMemo(
-    () => testCases.filter(isAutomationVisible),
-    [testCases]
+    () =>
+      testCases
+        .filter(isAutomationVisible)
+        .filter((tc) => applicationFilter === null || tc.application_id === applicationFilter),
+    [testCases, applicationFilter]
   );
 
   const planningCandidates = useMemo(() => planning?.candidates ?? [], [planning]);
@@ -558,6 +633,16 @@ function AutomationContent() {
 
   const total = rows.length;
 
+  const appNameById = useMemo(
+    () =>
+      new Map(
+        applications
+          .filter((a): a is ProjectApplication & { id: number } => typeof a.id === "number")
+          .map((a) => [a.id, a.name] as const),
+      ),
+    [applications],
+  );
+
   // Phase 2B: build inventory items from TCs + planning + mappings + scripts.
   const inventoryItems = useMemo<InventoryItem[]>(() => {
     return rows.map((tc) => {
@@ -584,9 +669,15 @@ function AutomationContent() {
         lastUpdated: script?.updated_at ?? null,
         quality: script ? getScriptQualitySignals(script) : null,
         staticGateFailed: script?.static_gate_result?.passed === false,
+        applicationName: tc.application_id ? appNameById.get(tc.application_id) ?? null : null,
+        modelState: !tc.application_id
+          ? ("unmapped" as const)
+          : groundingByApp.get(tc.application_id)?.source === "application_model"
+            ? ("published" as const)
+            : ("none" as const),
       };
     });
-  }, [rows, planningCandidates, mappingByTestCase, scriptsById]);
+  }, [rows, planningCandidates, mappingByTestCase, scriptsById, appNameById, groundingByApp]);
 
   // Deep-link support: a "tc" query param (test case id) — set by e.g. the
   // execution page's "Regenerate script" action — pre-selects that item
@@ -723,6 +814,19 @@ function AutomationContent() {
     () => inventoryItems.find((i) => i.id === selectedInventoryId) ?? null,
     [inventoryItems, selectedInventoryId],
   );
+
+  // The test case behind the selected inventory row, and the published model
+  // (if any) for the application it targets — what the grounding strip needs to
+  // say where this row's locators come from.
+  const selectedRowTestCase = useMemo(
+    () => (selectedInventoryId != null ? rows.find((tc) => tc.id === selectedInventoryId) ?? null : null),
+    [rows, selectedInventoryId],
+  );
+
+  const selectedGrounding = useMemo(() => {
+    const appId = selectedRowTestCase?.application_id;
+    return appId ? groundingByApp.get(appId) ?? null : null;
+  }, [selectedRowTestCase, groundingByApp]);
 
   const selectedScript = useMemo(() => {
     if (selectedInventoryId == null) return null;
@@ -1034,6 +1138,19 @@ function AutomationContent() {
           <button onClick={() => setError("")}><X className="h-4 w-4 text-red-400 hover:text-red-700" /></button>
         </div>
       )}
+      <GroundingStrip
+        projectId={selectedProject}
+        item={selectedItem}
+        testCase={selectedRowTestCase}
+        grounding={selectedGrounding}
+        scopedApplicationName={applicationFilter ? appNameById.get(applicationFilter) ?? null : null}
+        onClearScope={() => {
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete("application");
+          router.push(`${pathname}?${params.toString()}`);
+        }}
+      />
+
       {/* ── AI Automation Studio workspace (Phase 2B) ─────────────────────────── */}
       <section className="grid gap-4 lg:grid-cols-[300px_1fr]">
         <div className="min-h-[480px]">
@@ -1597,6 +1714,155 @@ function StudioInsightsRow({
 }
 
 /** Recent local-runner runs for the selected script, newest first. */
+/**
+ * Where the selected test case's grounding comes from — and where to go when it
+ * has none.
+ *
+ * The studio generates against `locator_map`, which Live Discovery Session
+ * populates per application (see discovery/capture_service). That link was real
+ * but invisible: a script could be generated from nothing but the LLM's guess
+ * about the page and look identical to one grounded in captured evidence. This
+ * strip names the application, names the published Application Model version
+ * behind it, and when either is missing sends the user to the step that
+ * produces it.
+ *
+ * Deliberately advisory. Nothing here disables Generate — a project that is
+ * scripting successfully today without a published model keeps working, and
+ * gets told what it is missing rather than being stopped.
+ */
+function GroundingStrip({
+  projectId,
+  item,
+  testCase,
+  grounding,
+  scopedApplicationName,
+  onClearScope,
+}: {
+  projectId: number | null;
+  item: InventoryItem | null;
+  testCase: TestCase | null;
+  grounding: GroundingSource | null;
+  scopedApplicationName: string | null;
+  onClearScope: () => void;
+}) {
+  if (!projectId) return null;
+
+  const applicationId = testCase?.application_id ?? null;
+  const applicationName = item?.applicationName ?? "this application";
+  const discoveryHref = `/applications?view=discovery&project=${projectId}${applicationId ? `&application=${applicationId}` : ""}`;
+  const modelHref = grounding?.model_id
+    ? `/applications?view=model&project=${projectId}&application=${applicationId}&model=${grounding.model_id}`
+    : null;
+
+  const viewModelAction = modelHref ? (
+    <Button size="sm" variant="outline" onClick={() => { window.location.href = modelHref; }}>
+      <Layers3 className="h-3.5 w-3.5" /> View Application Model
+    </Button>
+  ) : undefined;
+  const discoveryAction = (
+    <Button size="sm" variant="outline" onClick={() => { window.location.href = discoveryHref; }}>
+      <Radar className="h-3.5 w-3.5" /> Open Live Discovery Session
+    </Button>
+  );
+
+  const elementCount = grounding?.element_count ?? 0;
+  const elements = `${elementCount} element${elementCount === 1 ? "" : "s"}`;
+
+  const state: {
+    tone: "emerald" | "amber" | "slate";
+    title: string;
+    detail: string;
+    action?: React.ReactNode;
+  } | null = !item
+    ? null
+    : !applicationId
+      ? {
+          tone: "amber",
+          title: "No application mapped",
+          detail:
+            `${item.testCaseKey} is not mapped to a registered application, so it cannot be taken through Live Discovery Session and has no model to ground against. ` +
+            "Generation falls back to the project's default application. Map it in Test Case Approval to fix this.",
+        }
+      : grounding?.source === "application_model+locator_map"
+        ? {
+            tone: "emerald",
+            title: `Grounded in ${applicationName} — Application Model v${grounding.model_version} + discovery captures`,
+            detail: `Scripts are built from the ${elements} available for this application. The published model's reviewed locators take precedence; elements it does not cover come from what discovery captured. Elements a reviewer marked unstable are excluded from both.`,
+            action: viewModelAction,
+          }
+      : grounding?.source === "application_model"
+        ? {
+            tone: "emerald",
+            title: `Grounded in ${applicationName} — Application Model v${grounding.model_version}`,
+            detail: `Scripts are built from the ${elements} this published model carries a reviewed locator for. Elements a reviewer marked unstable are excluded.`,
+            action: viewModelAction,
+          }
+        : grounding?.source === "locator_map"
+          ? {
+              // The case worth catching: publishing happened, grounding did
+              // not. Says which of the two it is rather than "no model".
+              tone: "amber",
+              title: grounding.model_id
+                ? `Published model v${grounding.model_version} is not grounding ${applicationName}`
+                : `Not grounded in a published model — ${applicationName}`,
+              detail: grounding.model_id
+                ? `The published model has no element carrying a usable locator, so generation falls back to the ${elements} captured directly by discovery. Confirm locators on the model, or re-run discovery and rebuild it.`
+                : `Generation uses the ${elements} captured directly by discovery. Publish an Application Model to generate against reviewed locators instead.`,
+              action: grounding.model_id ? viewModelAction : discoveryAction,
+            }
+          : {
+              tone: "amber",
+              title: `Nothing to ground ${applicationName} on`,
+              detail:
+                "Neither a published Application Model nor any captured locators exist for this application, so generated scripts will be the model's own guess at the page. Run a Live Discovery Session first.",
+              action: discoveryAction,
+            };
+
+  if (!state && !scopedApplicationName) return null;
+
+  const toneClass =
+    state?.tone === "emerald"
+      ? "border-emerald-200 bg-emerald-50/60"
+      : state?.tone === "amber"
+        ? "border-amber-200 bg-amber-50/60"
+        : "border-slate-200 bg-slate-50";
+
+  return (
+    <div className="space-y-2">
+      {scopedApplicationName && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs">
+          <Boxes className="h-3.5 w-3.5 shrink-0 text-[#1b59f8]" />
+          <span className="font-semibold text-slate-700">
+            Showing only test cases mapped to <span className="font-bold">{scopedApplicationName}</span>.
+          </span>
+          <button
+            type="button"
+            onClick={onClearScope}
+            className="ml-auto font-bold text-[#1b59f8] hover:underline"
+          >
+            Show all applications
+          </button>
+        </div>
+      )}
+      {state && (
+        <div className={cn("flex flex-wrap items-center gap-3 rounded-lg border px-3 py-2.5", toneClass)}>
+          <Crosshair
+            className={cn(
+              "h-4 w-4 shrink-0",
+              state.tone === "emerald" ? "text-emerald-600" : state.tone === "amber" ? "text-amber-600" : "text-slate-400",
+            )}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-slate-800">{state.title}</p>
+            <p className="mt-0.5 text-[11px] text-slate-600">{state.detail}</p>
+          </div>
+          {state.action}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ScriptRunsStrip({
   script,
   runs,

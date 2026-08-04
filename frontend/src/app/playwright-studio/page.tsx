@@ -113,13 +113,14 @@ function AgentProgressCard({
                 <span>Agent run #{agentRun.id} · {agentRun.status}</span>
                 {elapsed && <span className="tabular-nums">{elapsed}</span>}
               </div>
-              {/* Long gaps are normal here — one script is one LLM call, and
-                  generation runs one at a time against a local model. Saying so
-                  is the difference between "working" and "stuck". */}
+              {/* Long gaps are normal here — a script takes up to three model
+                  calls (each retry feeds the exact failure back to the model),
+                  and generation runs one at a time against a local model.
+                  Saying so is the difference between "working" and "stuck". */}
               {stalledFor > 45 && (
                 <p className="text-[11px] text-amber-600 dark:text-amber-400">
                   No update for {Math.floor(stalledFor / 60)}m {String(stalledFor % 60).padStart(2, "0")}s —
-                  each script is a single model call, so a gap of a minute or two is expected.
+                  a script takes up to three model calls, so a gap of a minute or two is expected.
                 </p>
               )}
             </div>

@@ -3654,6 +3654,26 @@ export type ApplicationModelStatus =
   | "draft" | "pending_review" | "changes_requested" | "approved" | "published"
   | "superseded" | "rejected" | "stale" | "archived";
 
+/**
+ * What script generation would ground one application on right now.
+ *
+ * Distinct from "does a published model exist": a model can be published and
+ * still contribute nothing — no element carrying a usable locator, or every
+ * element marked unstable by a reviewer — in which case generation grounds on
+ * the raw locator_map alone. The common case is BOTH: the model supplies the
+ * elements it has reviewed locators for and locator_map fills the rest, which
+ * is what "application_model+locator_map" reports. `source` is the resolved
+ * answer, so the studio can report what a script will actually be built from
+ * rather than inferring it.
+ */
+export interface GroundingSource {
+  application_id: number;
+  source: "application_model" | "application_model+locator_map" | "locator_map" | "none";
+  element_count: number;
+  model_id: number | null;
+  model_version: number | null;
+}
+
 export interface ApplicationModel {
   id: number;
   project_id: number;
@@ -3764,6 +3784,10 @@ export interface ApplicationModelActivityEntry {
 export const applicationModelsApi = {
   list: (projectId: number, applicationId: number) =>
     api.get<ApplicationModel[]>(`/lab/application-models/projects/${projectId}/applications/${applicationId}/models`),
+  grounding: (projectId: number, applicationId: number) =>
+    api.get<GroundingSource>(
+      `/lab/application-models/projects/${projectId}/applications/${applicationId}/grounding`,
+    ),
   get: (modelId: number) => api.get<ApplicationModelDetail>(`/lab/application-models/${modelId}`),
   build: (payload: { project_id: number; application_id: number; session_id: number }) =>
     api.post<ApplicationModelDetail>(`/lab/application-models/build`, payload),

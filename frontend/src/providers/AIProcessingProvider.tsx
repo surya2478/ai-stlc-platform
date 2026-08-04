@@ -20,6 +20,19 @@ type AIProcessingApi = {
 const AIProcessingReactContext = createContext<AIProcessingApi | null>(null);
 const ACTIVE_STATUSES = new Set(["queued", "processing", "waiting"]);
 
+/** A job that reported its own failure, with the reason already shaped for the
+ *  modal. Distinguished from a thrown transport error so `safeError` does not
+ *  re-derive a vaguer category from an Error message we wrote ourselves. */
+class AIActionFailure extends Error {
+  metadata: AIActionMetadata;
+
+  constructor(metadata: AIActionMetadata) {
+    super(metadata.errorMessage || metadata.errorCategory || "The AI operation did not complete.");
+    this.name = "AIActionFailure";
+    this.metadata = metadata;
+  }
+}
+
 function safeError(error: unknown): AIActionMetadata {
   const candidate = error as {
     code?: string;
@@ -111,7 +124,12 @@ export function AIProcessingProvider({ children }: { children: React.ReactNode }
   useEffect(() => () => clearTimers(), [clearTimers]);
 
   const closeAIProcessing = useCallback(() => {
-    if (ACTIVE_STATUSES.has(context.status)) return;
+    // "waiting" means the request already succeeded and a queued job is being
+    // watched. That job runs on the server whether or not anyone is looking,
+    // so dismissing is safe — and refusing to close would trap the user for
+    // the whole length of a generation. "processing" still holds the modal:
+    // there the in-flight request is the operation.
+    if (ACTIVE_STATUSES.has(context.status) && context.status !== "waiting") return;
     clearTimers();
     setContext(INITIAL_AI_PROCESSING_CONTEXT);
   }, [clearTimers, context.status]);
@@ -152,6 +170,19 @@ export function AIProcessingProvider({ children }: { children: React.ReactNode }
           ...resultMetadata(result),
           ...(options.getResultMetadata?.(result) || {}),
         };
+        if (options.awaitCompletion) {
+          // The request is done; the work is not. "waiting" is already an
+          // ACTIVE status, so the modal stays open, the elapsed timer keeps
+          // running, and a second submission is still blocked.
+          setContext((current) => ({ ...current, ...metadata, status: "waiting" }));
+          const completion = await options.awaitCompletion(result, (update) =>
+            setContext((current) => ({ ...current, ...update })),
+          );
+          if (completion && completion.status && completion.status !== "success") {
+            throw new AIActionFailure(completion);
+          }
+          if (completion) Object.assign(metadata, completion);
+        }
         const successMessage =
           typeof options.successMessage === "function"
             ? options.successMessage(result)
@@ -167,7 +198,8 @@ export function AIProcessingProvider({ children }: { children: React.ReactNode }
         }, 1800);
         return result;
       } catch (error) {
-        setContext((current) => ({ ...current, ...safeError(error), canRetry: options.canRetry !== false }));
+        const failure = error instanceof AIActionFailure ? error.metadata : safeError(error);
+        setContext((current) => ({ ...current, ...failure, canRetry: options.canRetry !== false }));
         throw error;
       } finally {
         activePromiseRef.current = null;

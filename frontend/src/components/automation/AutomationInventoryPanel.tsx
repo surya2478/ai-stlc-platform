@@ -28,6 +28,21 @@ export type InventoryItem = {
    * agent_tasks._build_dry_run_input, which only picks up "static_passed"
    * scripts) and needs a human to regenerate it. */
   staticGateFailed?: boolean;
+  /** The registered application this test case targets, if it has been mapped
+   * in Test Case Approval. Null means unmapped — generation still works and
+   * falls back to the project's default application, but the test case cannot
+   * be taken through Live Discovery Session at all. */
+  applicationName?: string | null;
+  /** Whether a published Application Model is what this test case's scripts
+   * would actually be generated from:
+   *   "published" — the published model is the locator source; intended path
+   *   "none"      — it is not. Either no model is published, or one is but
+   *                 grounds nothing, so generation falls back to the raw
+   *                 locator_map. The strip above says which; the row only
+   *                 needs to say it is not model-grounded.
+   *   "unmapped"  — no application mapped, so there is nothing to ground against
+   * Advisory only: nothing here blocks generation. */
+  modelState?: "published" | "none" | "unmapped";
 };
 
 /** A short, specific reason this script's quality is in question despite its
@@ -234,6 +249,12 @@ export function AutomationInventoryPanel({
             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
               <AlertTriangle className="h-2.5 w-2.5" />
               {flag}
+            </div>
+          )}
+          {(item.modelState === "none" || item.modelState === "unmapped") && (
+            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+              <Crosshair className="h-2.5 w-2.5" />
+              {item.modelState === "unmapped" ? "No application mapped" : "Not model-grounded"}
             </div>
           )}
           {item.quality?.grounded && item.quality.ungroundedElements.length === 0 && (badge.label === "Approved") && (

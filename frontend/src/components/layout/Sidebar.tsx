@@ -11,14 +11,10 @@ import {
   Hand, Cpu, Sparkles, Gauge, Target,
   Radar,
   Boxes,
-  Layers3,
-  Video,
-  FileCode2,
   MoreHorizontal,
   Home,
   Workflow,
   Compass,
-  Wand2,
   Activity,
   SlidersHorizontal,
   type LucideIcon,
@@ -91,16 +87,27 @@ const NAV_ITEMS: NavGroup[] = [
     href: "/applications",
     items: [],
   },
+  // "Automation Studio Core" (Automation Workspace, Live Recorder, Automation
+  // Assets) is deliberately not in the tree. It was a second, parallel
+  // automation product sitting beside the one people actually use: the same
+  // approved test case could be worked either through a suite/member/asset
+  // hierarchy or through AI Automation Studio, and nothing reconciled the two.
+  //
+  // The single automation destination is now "AI Automation Studio"
+  // (/automation), fed by Applications → Live Discovery Session → Application
+  // Model. The `?view=workspace|recorder|ir|script|validation` routes still
+  // resolve, so existing deep links and in-page navigation keep working — they
+  // are just no longer advertised as places to start.
   {
-    group: "Automation Studio Core",
-    icon: Wand2,
-    items: [
-      { label: "Automation Workspace", href: "/automation?view=workspace", icon: Layers3 },
-      { label: "Live Recorder", href: "/automation?view=recorder", icon: Video },
-      // UI-020/021/023. Lands on the asset picker; the three tabs are
-      // per-member routes reached from there.
-      { label: "Automation Assets", href: "/automation?view=ir", icon: FileCode2 },
-    ],
+    // Sits directly after Applications and directly before Execution because
+    // that is the actual order of work: an approved test case is grounded in
+    // Applications (discovery → published model), scripted here, then run in
+    // Execution. It used to be filed under "Others", below Test Data, which
+    // buried the one screen the whole automation flow converges on.
+    group: "AI Automation Studio",
+    icon: Sparkles,
+    href: "/automation",
+    items: [],
   },
   {
     group: "Operations",
@@ -126,7 +133,6 @@ const NAV_ITEMS: NavGroup[] = [
     icon: MoreHorizontal,
     items: [
       { label: "Test Data", href: "/test-data", icon: Database },
-      { label: "AI Automation Studio", href: "/automation", icon: Sparkles },
       { label: "Playwright AI Studio", href: "/playwright-studio", icon: Bot },
       { label: "Grounded Automation (PoC)", href: "/grounded-automation", icon: Target },
     ],
@@ -160,16 +166,13 @@ function isActiveHref(pathname: string, currentQuery: string, href: string): boo
     const currentView = currentParams.get("view");
     return currentView === expectedView;
   }
-  // "/automation" has sibling view-scoped nav items (Automation Workspace,
-  // Live Recorder, Automation Assets) — the base studio entry must not also
-  // light up while one of those views is active.
-  //
-  // "/applications" deliberately does NOT get this treatment: its views are
-  // tabs on one page with a single nav entry, so that entry should stay lit
-  // across all four, exactly as "Requirements" stays lit on its own tabs.
-  if (path === "/automation") {
-    return !currentParams.get("view");
-  }
+  // "/automation" and "/applications" are each a single nav entry over several
+  // `?view=` screens, so the entry stays lit across all of them — exactly as
+  // "Requirements" stays lit on its own tabs. "/automation" used to be excluded
+  // here because Automation Workspace, Live Recorder and Automation Assets were
+  // sibling nav items that had to win the highlight; those entries are gone, so
+  // the exclusion now only served to make the sidebar go dark on a view of the
+  // very screen you are looking at.
   return true;
 }
 

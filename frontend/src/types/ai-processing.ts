@@ -76,6 +76,18 @@ export type RunAIActionOptions<T> = {
   environmentId?: number | string;
   successMessage?: string | ((result: T) => string);
   execute: () => Promise<T>;
+  /** Keep the modal open past `execute` until the real work finishes.
+   *
+   *  `execute` resolving means the REQUEST returned, which for a queued agent
+   *  is a 202 roughly 200ms in — the modal then flashed success and closed
+   *  while generation ran for minutes. Supply this to watch the job itself;
+   *  the modal sits in "waiting" until it resolves. Call `update` to report
+   *  progress as it arrives. Resolve with an error metadata object to fail the
+   *  action, or with nothing to succeed. */
+  awaitCompletion?: (
+    result: T,
+    update: (metadata: AIActionMetadata) => void,
+  ) => Promise<AIActionMetadata | void>;
   getResultMetadata?: (result: T) => AIActionMetadata;
   canRetry?: boolean;
   timeoutMs?: number;

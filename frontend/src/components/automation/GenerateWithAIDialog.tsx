@@ -25,6 +25,7 @@ import { automationApi, type TestCase } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAIAction } from "@/hooks/useAIAction";
 import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
+import { agentRunIdFrom, waitForAgentRun } from "@/lib/agentRunProgress";
 
 type Framework = "playwright" | "pytest";
 type AutomationKind = "ui" | "api" | "hybrid";
@@ -129,12 +130,22 @@ export function GenerateWithAIDialog({
         artifactType: "Automation Scripts",
         projectId,
         stages: AI_PROCESSING_STAGES.scriptGeneration,
-        successMessage: "Automation script generation started successfully.",
+        successMessage: "Automation scripts generated.",
         execute: () => automationApi.generateScripts(
           projectId,
           Array.from(selected),
           framework,
         ),
+        // The endpoint queues the work and returns 202 immediately, so the
+        // request finishing says nothing about the scripts existing. Watch the
+        // run itself, otherwise the modal closes seconds into a job that takes
+        // minutes and the user is told it "started successfully" and left with
+        // no way to see it land.
+        awaitCompletion: async (result, update) => {
+          const agentRunId = agentRunIdFrom(result);
+          if (agentRunId === null) return;
+          return waitForAgentRun(agentRunId, update);
+        },
       });
       onGenerated?.(selected.size);
       onClose();

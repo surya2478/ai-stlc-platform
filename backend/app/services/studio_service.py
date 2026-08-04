@@ -260,9 +260,20 @@ async def approve_plan(
     })
     tc_ids: list[int] = []
     for proposal in selected:
+        # Canonical step shape — {step_number, action, expected_result} — the
+        # same one the test case agent, the importer and the test-case editor
+        # write. This used to emit {action, expected}, a shape nothing else
+        # reads: the planner has no per-step expectation (only a whole-case
+        # expected_result, see planner_agent.PlannedStep), so the key was
+        # invented here and every consumer looking for expected_result found
+        # nothing. The /test-cases page crashed outright on it.
         steps = [
-            {"action": s.get("description") or s.get("action") or "", "expected": ""}
-            for s in (proposal.get("steps") or [])
+            {
+                "step_number": i + 1,
+                "action": s.get("description") or s.get("action") or "",
+                "expected_result": "",
+            }
+            for i, s in enumerate(proposal.get("steps") or [])
         ]
         # Make the REAL entry route part of the test case text itself: the
         # planner captured this proposal's elements on a specific live page,
@@ -272,7 +283,9 @@ async def approve_plan(
         # navigate step to this page (automation_agent._ground_entry_route).
         entry_path = _page_entry_path(proposal.get("page_url"))
         if entry_path and entry_path != "/":
-            steps = [{"action": f"Navigate to {entry_path}", "expected": ""}] + steps
+            steps = [{"step_number": 1, "action": f"Navigate to {entry_path}", "expected_result": ""}] + [
+                {**step, "step_number": step["step_number"] + 1} for step in steps
+            ]
         blocked = proposal.get("blocked_reasons") or []
         tc = TestCase(
             project_id=run.project_id,
@@ -847,6 +860,13 @@ _INSIGHT_DEFINITIONS: list[dict] = [
 ]
 
 
+# The insight kinds that describe an environment/infrastructure fault, in the
+# order _INSIGHT_DEFINITIONS declares them. Used to narrow a coarse
+# "environment_issue" classification down to the specific fault the error text
+# actually evidences.
+_ENVIRONMENTAL_INSIGHT_KINDS = ("environment_unreachable", "runner_infrastructure")
+
+
 def _derive_failure_insights(failed_rows: list) -> list[dict]:
     """Aggregate failed ExecutionResults into ranked, deduplicated,
     actionable diagnostics. Data-classification failures take priority over
@@ -876,10 +896,29 @@ def _derive_failure_insights(failed_rows: list) -> list[dict]:
             )
             continue
         if classification == "environment_issue":
-            _bucket(
-                "environment_unreachable", "error",
-                _INSIGHT_DEFINITIONS[0]["message"], _INSIGHT_DEFINITIONS[0]["action"], row.test_name,
-            )
+            # "environment_issue" is a coarse bucket: it covers both "the
+            # application URL cannot be reached" and "the runner itself is
+            # broken". Mapping it straight to the first meant a missing Docker
+            # socket was reported as "the target application was unreachable",
+            # with advice to check DNS, proxy and VPN. Observed live
+            # 2026-08-03: five tests failed with "docker daemon not reachable —
+            # is /var/run/docker.sock mounted into this container?" and the
+            # screen sent the user to Settings → Applications.
+            #
+            # The agent's verdict is kept — this IS environmental — but the
+            # error text decides WHICH environmental problem, since it is
+            # direct evidence and the classification is an inference. Only the
+            # environment/infrastructure rules are consulted, so a classifier
+            # that says "environment" can never be talked into reporting a
+            # missing element.
+            matched = next(
+                (
+                    d for d in _INSIGHT_DEFINITIONS
+                    if d["kind"] in _ENVIRONMENTAL_INSIGHT_KINDS and d["pattern"].search(text)
+                ),
+                None,
+            ) or _INSIGHT_DEFINITIONS[0]
+            _bucket(matched["kind"], matched["severity"], matched["message"], matched["action"], row.test_name)
             continue
         for definition in _INSIGHT_DEFINITIONS:
             if definition["pattern"].search(text):

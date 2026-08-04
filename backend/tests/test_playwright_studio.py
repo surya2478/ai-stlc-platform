@@ -871,6 +871,139 @@ def test_ground_entry_route_skips_cross_host_and_missing_page():
     assert contract.steps[0].value == "/keep-me"
 
 
+# ── Hash routes and the entry wait ──────────────────────────────────────────
+#
+# TC-0105 (project 14) failed four dry runs on a locator that was exactly
+# right. The spec opened `/#/`, which resolves against the application's base
+# URL `https://rahulshettyacademy.com/seleniumPractise/#/` to the site ROOT —
+# a leading slash discards the base path — so the search box it waited for was
+# never going to be there. Three repair rounds rewrote the assertion and never
+# questioned the address.
+
+
+def test_a_hash_route_survives_grounding():
+    """The fragment is the route on a hash-routed SPA, not decoration."""
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([{"phase": "arrange", "action": "navigate", "value": "/#/"}])
+    changed = _ground_entry_route(
+        contract,
+        "https://rahulshettyacademy.com/seleniumPractise/#/",
+        "https://rahulshettyacademy.com/seleniumPractise/#/",
+    )
+
+    assert changed is True
+    # Keeps the base path, so `new URL(value, baseURL)` lands on the app
+    # rather than on the origin root.
+    assert contract.steps[0].value == "/seleniumPractise/#/"
+
+
+def test_a_deep_hash_route_keeps_its_whole_path():
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([{"phase": "arrange", "action": "navigate", "value": "/"}])
+    _ground_entry_route(
+        contract, "https://site.com/client/#/auth/register", "https://site.com"
+    )
+
+    assert contract.steps[0].value == "/client/#/auth/register"
+
+
+def test_a_bare_anchor_is_not_a_route():
+    """`#summary` is a position on the page you already asked for."""
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([{"phase": "arrange", "action": "navigate", "value": "/x"}])
+    _ground_entry_route(contract, "https://docs.site.com/guide#summary", "https://docs.site.com")
+
+    assert contract.steps[0].value == "/guide"
+
+
+def test_the_entry_wait_follows_the_grounded_route():
+    """wait_for_url renders as a substring regex, so `#/` passed on the wrong
+    page just as happily as on the right one — hiding the real failure."""
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([
+        {"phase": "arrange", "action": "navigate", "value": "/#/"},
+        {"phase": "arrange", "action": "wait_for_url", "value": "#/"},
+    ])
+    changed = _ground_entry_route(
+        contract,
+        "https://rahulshettyacademy.com/seleniumPractise/#/",
+        "https://rahulshettyacademy.com/seleniumPractise/#/",
+    )
+
+    assert changed is True
+    assert contract.steps[1].value == "/seleniumPractise/#/"
+
+
+def test_a_second_hop_wait_is_left_alone():
+    """Only the step directly after the entry navigate describes the entry
+    page. A wait reached after clicking through is a real second hop, grounded
+    separately against explored_page_paths."""
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([
+        {"phase": "arrange", "action": "navigate", "value": "/#/"},
+        {"phase": "act", "action": "custom", "description": "click through to checkout"},
+        {"phase": "assert", "action": "wait_for_url", "value": "#/checkout"},
+    ])
+    _ground_entry_route(
+        contract,
+        "https://rahulshettyacademy.com/seleniumPractise/#/",
+        "https://rahulshettyacademy.com/seleniumPractise/#/",
+    )
+
+    assert contract.steps[0].value == "/seleniumPractise/#/"
+    assert contract.steps[2].value == "#/checkout"
+
+
+def test_grounding_an_already_correct_route_reports_no_change():
+    from app.agents.automation.automation_agent import _ground_entry_route
+
+    contract = _contract([{"phase": "arrange", "action": "navigate", "value": "/profile"}])
+
+    assert _ground_entry_route(contract, "https://rankix.ai/profile", "https://rankix.ai") is False
+
+
+# ── The catalog as a fallback entry page ────────────────────────────────────
+
+
+def test_a_single_page_catalog_supplies_the_entry_page():
+    """`page_url` is written by the Studio planner. TC-0105 never went through
+    Studio, so it carried none and the LLM's guess survived — while the
+    catalog it grounded every element against named the page all along."""
+    from app.services.automation_generation_service import _catalog_entry_page
+
+    entries = [
+        {"element_name": "searchbox", "page": "https://rahulshettyacademy.com/seleniumPractise/#/"},
+        {"element_name": "cart", "page": "https://rahulshettyacademy.com/seleniumPractise/#/"},
+    ]
+
+    assert _catalog_entry_page(entries) == "https://rahulshettyacademy.com/seleniumPractise/#/"
+
+
+def test_a_multi_page_catalog_names_no_entry_page():
+    """Which of them the test *enters* on is exactly the guess route grounding
+    exists to prevent."""
+    from app.services.automation_generation_service import _catalog_entry_page
+
+    entries = [
+        {"element_name": "a", "page": "https://site.com/#/login"},
+        {"element_name": "b", "page": "https://site.com/#/dashboard"},
+    ]
+
+    assert _catalog_entry_page(entries) is None
+
+
+def test_an_empty_or_pageless_catalog_names_no_entry_page():
+    from app.services.automation_generation_service import _catalog_entry_page
+
+    assert _catalog_entry_page([]) is None
+    assert _catalog_entry_page([{"element_name": "a"}, {"element_name": "b", "page": ""}]) is None
+
+
 def test_approve_plan_prepends_grounded_navigation_step(monkeypatch):
     plan = _planner_output()
     plan["proposed_test_cases"][0]["page_url"] = "https://sit.example.com/sign-up?role=employer"
@@ -893,6 +1026,39 @@ def test_approve_plan_prepends_grounded_navigation_step(monkeypatch):
     tc = [o for o in db.added if isinstance(o, TestCase)][0]
     assert tc.steps[0]["action"] == "Navigate to /sign-up?role=employer"
     assert tc.metadata_["page_url"] == "https://sit.example.com/sign-up?role=employer"
+    # Prepending must renumber, not leave two step 1s.
+    assert [s["step_number"] for s in tc.steps] == list(range(1, len(tc.steps) + 1))
+
+
+def test_approved_test_cases_use_the_canonical_step_shape(monkeypatch):
+    """Studio used to write {action, expected} — a shape no other producer or
+    consumer uses. The planner has no per-step expectation, so that key was
+    invented here, and everything downstream looking for `expected_result`
+    found nothing: the /test-cases page threw "Cannot read properties of
+    undefined (reading 'trim')" on any project holding one (live, project 12).
+    """
+    run_row = _studio_run(status="plan_ready", plan=_planner_output())
+    db = _FakeDB()
+
+    async def fake_payload(db_, *, project_id, test_case_ids):
+        return GenerationPayload(test_cases=[{"id": i} for i in test_case_ids])
+
+    async def fake_enqueue(db_, **kwargs):
+        return SimpleNamespace(id=301), "task"
+
+    monkeypatch.setattr(studio_mod, "build_generation_payload", fake_payload)
+    monkeypatch.setattr(studio_mod, "enqueue_agent_run", fake_enqueue)
+
+    async def run():
+        return await studio_mod.approve_plan(db, run_row, user_id=1, included_keys=None, notes=None)
+
+    anyio.run(run)
+    for tc in [o for o in db.added if isinstance(o, TestCase)]:
+        assert tc.steps, "a materialized test case must carry its planned steps"
+        for step in tc.steps:
+            assert set(step) == {"step_number", "action", "expected_result"}
+            assert isinstance(step["action"], str)
+            assert isinstance(step["expected_result"], str)
 
 
 # ── Failure insights ─────────────────────────────────────────────────────────
@@ -1391,3 +1557,69 @@ def test_regenerating_only_failed_refuses_when_nothing_failed(monkeypatch):
 
 async def _true():
     return True
+
+
+# ── failure insights must name the right fault ────────────────────────────────
+# "environment_issue" from the failure-classification agent is a coarse bucket:
+# it covers both "the application URL cannot be reached" and "the runner itself
+# is broken". Mapping it straight to the first told a user their app was
+# unreachable — and sent them to check DNS, proxy and VPN — when the real error
+# said "docker daemon not reachable — is /var/run/docker.sock mounted into this
+# container?". Observed live 2026-08-03 across five tests.
+
+_SOCKET_ERROR = (
+    "docker daemon not reachable — is /var/run/docker.sock mounted into this container? "
+    "(dial unix /var/run/docker.sock: connect: no such file or directory)"
+)
+_DNS_ERROR = "page.goto: net::ERR_NAME_NOT_RESOLVED at https://app.internal/"
+
+
+def _insight_row(error: str, classification: str | None = None, test_name: str = "t"):
+    return SimpleNamespace(
+        error_message=error,
+        stack_trace=None,
+        test_name=test_name,
+        metadata_={"failure_classification": {"classification": classification}} if classification else {},
+    )
+
+
+def test_a_runner_socket_failure_is_not_reported_as_an_unreachable_application():
+    insights = studio_mod._derive_failure_insights([_insight_row(_SOCKET_ERROR, "environment_issue")])
+
+    assert [i["kind"] for i in insights] == ["runner_infrastructure"]
+    assert "docker" in insights[0]["action"].lower() or "worker" in insights[0]["action"].lower()
+
+
+def test_a_genuine_dns_failure_is_still_reported_as_unreachable():
+    """Narrowing must not break the case the rule was written for."""
+    insights = studio_mod._derive_failure_insights([_insight_row(_DNS_ERROR, "environment_issue")])
+
+    assert [i["kind"] for i in insights] == ["environment_unreachable"]
+
+
+def test_an_environment_verdict_with_no_matching_text_keeps_the_generic_message():
+    """The agent's verdict is still honoured when the text evidences nothing
+    more specific."""
+    insights = studio_mod._derive_failure_insights(
+        [_insight_row("the run did not produce output", "environment_issue")]
+    )
+
+    assert [i["kind"] for i in insights] == ["environment_unreachable"]
+
+
+def test_an_environment_verdict_cannot_be_talked_into_a_non_environment_insight():
+    """Only the environment/infrastructure rules are consulted, so a
+    classifier that says 'environment' never reports a missing element."""
+    insights = studio_mod._derive_failure_insights(
+        [_insight_row("locator resolved to 0 elements for getByRole('button')", "environment_issue")]
+    )
+
+    assert insights[0]["kind"] in studio_mod._ENVIRONMENTAL_INSIGHT_KINDS
+
+
+def test_an_unclassified_socket_failure_still_matches_by_text():
+    """No classifier verdict at all — the text patterns alone must get it
+    right, which they always did."""
+    insights = studio_mod._derive_failure_insights([_insight_row(_SOCKET_ERROR)])
+
+    assert [i["kind"] for i in insights] == ["runner_infrastructure"]
