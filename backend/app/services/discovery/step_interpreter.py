@@ -50,6 +50,11 @@ _URL_RE = re.compile(r"https?://[^\s'\"<>)]+")
 # left "Tap the" as the label, which strips to nothing. Scanning each noun and
 # preferring the rightmost gets "Menu" from that step.
 _UI_NOUN_RE = re.compile(r"\b(?:link|button|tab|menu|option|field|box|icon)\b", re.IGNORECASE)
+# The nouns that name an ARIA role outright, and so can tell two controls
+# sharing an accessible name apart. Only unambiguous ones are mapped: "field",
+# "box" and "icon" describe no single role, and "menu" is both a role and a
+# common word for the thing that opens one, so they contribute no hint.
+_NOUN_ROLES = {"link": "link", "button": "button", "tab": "tab", "option": "option"}
 _WORD_RE = re.compile(r"[\w&/'-]+")
 # A label longer than this is prose, not the name of a control.
 _MAX_LABEL_WORDS = 4
@@ -63,8 +68,19 @@ _LEADING_NOISE = frozenset(
     + tuple(v.split()[0] for v in _CLICK_VERBS + _INPUT_VERBS + _READ_VERBS + _NAVIGATE_VERBS)
 )
 # "Enter 'x' in the Name field" / "Type foo into Email"
+#
+# `@` and `.` are label characters because a placeholder is an accessible name.
+# An unlabelled input takes its name from its placeholder, and placeholders are
+# routinely example values — the register page's email field is named
+# `email@example.com`, so a step could not name the one field TC-0102 is about.
+#
+# The label must still *end* on a word character. Without that, allowing `.`
+# made "Enter 'x' in the Name field." (a trailing full stop) capture
+# "Name field." and turn a step that used to read as an observation into a
+# failed input, which is gap noise on every existing step that ends in
+# punctuation.
 _INPUT_TARGET_RE = re.compile(
-    r"\b(?:in|into|for)\s+(?:the\s+)?['\"]?([\w &/-]{1,40}?)['\"]?\s*(?:field|box|input|textbox)?\s*$",
+    r"\b(?:in|into|for)\s+(?:the\s+)?['\"]?([\w &@./-]{0,39}?\w)['\"]?\s*(?:field|box|input|textbox)?\s*$",
     re.IGNORECASE,
 )
 
@@ -85,6 +101,11 @@ class InterpretedStep:
     # The visible label the step named, used to find the element in a snapshot
     # and to describe the action in evidence.
     target_label: str | None = None
+    # The ARIA role the step's own wording named ("...the Register *button*"),
+    # when it named one. Only ever used to break a tie between elements that
+    # share a label — never to narrow an already-unambiguous match, so a step
+    # calling a `role=link` control a "button" keeps resolving as it did.
+    target_role: str | None = None
     input_text: str | None = None
 
     @property
@@ -120,6 +141,24 @@ def _labelled(text: str) -> str | None:
     return best
 
 
+def _role_hint(text: str) -> str | None:
+    """The role the step named, if it named one.
+
+    Read independently of the label rather than returned alongside it, because
+    a quoted label wins over `_labelled` in `interpret_step` — and "Click the
+    'Register' button" names its role just as plainly as the unquoted form.
+
+    Rightmost wins, matching `_labelled`'s choice, so the hint always describes
+    the same noun phrase the label was taken from.
+    """
+    hint = None
+    for noun in _UI_NOUN_RE.finditer(text):
+        role = _NOUN_ROLES.get(noun.group(0).lower())
+        if role:
+            hint = role
+    return hint
+
+
 def interpret_step(step_text: str) -> InterpretedStep:
     """Classify one step. Unreadable steps become `read`, never a guess."""
     text = (step_text or "").strip()
@@ -146,6 +185,7 @@ def interpret_step(step_text: str) -> InterpretedStep:
         return InterpretedStep(
             action_family="input" if (value is not None and target) else "read",
             target_label=target or _labelled(text),
+            target_role=_role_hint(text),
             input_text=value,
         )
 
@@ -155,6 +195,7 @@ def interpret_step(step_text: str) -> InterpretedStep:
         return InterpretedStep(
             action_family="click" if label else "read",
             target_label=label,
+            target_role=_role_hint(text),
         )
 
     if _first_verb_match(lowered, _READ_VERBS):
@@ -167,11 +208,48 @@ def _normalize(label: str) -> str:
     return re.sub(r"\s+", " ", (label or "")).strip().casefold()
 
 
+# The words a step uses to say what KIND of control it means, which are almost
+# never part of the control's accessible name. An accessible name comes from a
+# label, placeholder or aria-label — "Search for Vegetables and Fruits" — while
+# a written step says "the Search input field". Both name the same control.
+_TRAILING_CONTROL_NOUN_RE = re.compile(
+    r"(?:\s+(?:link|button|tab|menu|option|field|box|input|textbox|dropdown|checkbox|radio|icon))+$",
+    re.IGNORECASE,
+)
+
+
+def _label_variants(label: str) -> list[str]:
+    """The label as the step wrote it, then the same label with trailing
+    control nouns removed.
+
+    This is the difference between a step that works and one that does not,
+    for reasons no author could see. Sessions #34 and #35 walked the same
+    control on the same page:
+
+        "Type 'ApPLe' into the Search input"        -> "Search"        resolved
+        "Type 'cucu' into the Search input field"   -> "Search input"  refused
+
+    The accessible name is "Search for Vegetables and Fruits". "Search"
+    substring-matches it; "Search input" does not. One extra word — which
+    changes nothing about what a human being would do — silently produced an
+    element-less Application Model and, downstream, an ungrounded script.
+
+    The written label is always tried first, so a control genuinely named
+    "Search box" still wins on its real name. Stripping only ever adds an
+    attempt after the literal one has already failed, and every attempt still
+    has to resolve to exactly one element, so this widens what can be found
+    without weakening the refusal to guess.
+    """
+    stripped = _TRAILING_CONTROL_NOUN_RE.sub("", label).strip()
+    return [label] if not stripped or stripped == label else [label, stripped]
+
+
 def resolve_target_ref(parsed_snapshot, interpreted: InterpretedStep) -> str | None:
     """Find the element a step named, in the page as it currently stands.
 
-    Returns None whenever the match is not unambiguous. That is the important
-    case, not a failure mode: the caller records the action without an element
+    Returns None whenever the match is not unambiguous — after reading the role
+    the step named, if it named one (see `_single`). That is the important case,
+    not a failure mode: the caller records the action without an element
     reference, the model build raises MISSING_ELEMENT, and a human is asked.
     Picking the "closest" candidate would bury that question under a plausible
     answer.
@@ -186,30 +264,75 @@ def resolve_target_ref(parsed_snapshot, interpreted: InterpretedStep) -> str | N
         if el.ref and el.role in roles and el.name
     ]
 
-    exact = [el for el in candidates if _normalize(el.name) == label]
-    if len(exact) == 1:
-        return exact[0].ref
-    if exact:
-        # Several elements carry the same accessible name — the page itself is
-        # ambiguous here and only a person can say which was meant.
-        return None
+    for variant in _label_variants(label):
+        exact = [el for el in candidates if _normalize(el.name) == variant]
+        resolved = _single(exact, interpreted)
+        if resolved is not None:
+            return resolved
+        if exact:
+            # Several elements carry the same accessible name and the step gave
+            # nothing to tell them apart — the page is ambiguous here and only a
+            # person can say which was meant. A genuine ambiguity is not made
+            # less ambiguous by rewording the needle, so stop rather than widen.
+            return None
+        resolved = _single([el for el in candidates if variant in _normalize(el.name)], interpreted)
+        if resolved is not None:
+            return resolved
+    return None
 
-    contains = [el for el in candidates if label in _normalize(el.name)]
-    return contains[0].ref if len(contains) == 1 else None
+
+def _single(matches: list, interpreted: InterpretedStep) -> str | None:
+    """The one element these matches point at, or nothing.
+
+    A step that names a role is read for that role before giving up. The
+    register page carries a `link "Register"` in its hero and a
+    `button "Register"` submitting the form; "Click the Register button" says
+    which, and discarding that was reading the step less carefully than it was
+    written. This is not the guess the module refuses to make — the
+    disambiguator comes from the step's own words, not from proximity, document
+    order or a confidence score.
+
+    Applied only after an unqualified match has already failed, so narrowing can
+    never turn a resolving step into a refusing one.
+    """
+    if len(matches) == 1:
+        return matches[0].ref
+    if len(matches) > 1 and interpreted.target_role:
+        by_role = [el for el in matches if el.role == interpreted.target_role]
+        if len(by_role) == 1:
+            return by_role[0].ref
+    return None
 
 
 def screen_ref_for(parsed_snapshot) -> str | None:
     """A stable screen identifier for the page currently loaded.
 
-    Derived from the observed URL path, so it is a fact about where the browser
+    Derived from the observed URL, so it is a fact about where the browser
     actually was, not a name someone chose. This is what the Application Model
     builds screen nodes from — without it a session produces no model at all.
+
+    A routing fragment counts as part of the address. On a hash-routed SPA the
+    fragment *is* the route, so dropping it collapsed every screen in the app
+    onto one node: discovery session 33 walked
+    `https://rahulshettyacademy.com/client/#/auth/register` and recorded the
+    same `screen-rahulshettyacademy-com-client` for all four of its actions,
+    leaving a model that could never tell one screen from another. Same lesson
+    `locator_policy._explored_paths` already learned from the other direction.
+
+    A bare anchor (`#summary`) is not a route — it is a position on the screen
+    you are already on — so only `#/…` is treated as address. The query string
+    stays excluded either way: it usually carries data (ids, search terms) that
+    would split one screen into a new node per visit.
     """
     url = getattr(parsed_snapshot, "page_url", None)
     if not url:
         return None
     without_scheme = re.sub(r"^https?://", "", url.strip())
-    path = without_scheme.split("?", 1)[0].split("#", 1)[0]
+    path, _, fragment = without_scheme.partition("#")
+    path = path.split("?", 1)[0]
+    if fragment.startswith("/"):
+        # The fragment can carry its own query for the same reason the path can.
+        path = f"{path}{fragment.split('?', 1)[0]}"
     # Host included: two apps in one session are two sets of screens.
     slug = re.sub(r"[^A-Za-z0-9]+", "-", path).strip("-").lower()
     return f"screen-{slug or 'root'}"[:200]

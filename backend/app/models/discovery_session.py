@@ -214,6 +214,15 @@ class DiscoveryAction(TimestampMixin, Base):
     actor: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
     test_step_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
     action_family: Mapped[str] = mapped_column(String(30), nullable=False)
+    # What the step asked for, when that differs from what was actually done.
+    #
+    # `capture_service` degrades an action to `read` when it cannot resolve the
+    # element a step named, or when performing it fails. Without this column
+    # that degradation erased the intent, and the Application Model — which
+    # raises MISSING_ELEMENT only for click/input/select — had no way to know a
+    # click had been asked for and refused. NULL means "never degraded";
+    # `issue_note` carries the human-readable reason.
+    intended_action_family: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
     target_semantic: Mapped[str | None] = mapped_column(String(300), nullable=True)
     target_screen_ref: Mapped[str | None] = mapped_column(String(200), nullable=True)

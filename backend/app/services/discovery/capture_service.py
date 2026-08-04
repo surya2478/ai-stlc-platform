@@ -154,6 +154,7 @@ async def _capture_evidence_and_persist_action(
     actor: str, action_family: str, target_semantic: str, sequence: int, label: str,
     test_step_ref: str | None = None, input_binding: dict | None = None,
     provenance_call: str = "browser_snapshot", target_ref: str | None = None,
+    intended_action_family: str | None = None,
 ) -> DiscoveryAction:
     """Shared evidence-capture body for one real action: a snapshot +
     screenshot around whatever the caller already did (or is about to
@@ -187,6 +188,9 @@ async def _capture_evidence_and_persist_action(
         actor=actor,
         test_step_ref=test_step_ref,
         action_family=action_family,
+        # Only set when the step asked for something this action could not
+        # carry out — see capture_one_step's two degradation paths.
+        intended_action_family=intended_action_family,
         target_semantic=target_semantic[:300],
         input_binding=input_binding,
         occurred_at=now,
@@ -290,6 +294,12 @@ async def capture_one_step(
     interpreted = interpret_step(step_text)
     target_ref: str | None = None
     failure: str | None = None
+    # What the step asked for, kept across the degradations below. Without it
+    # a refused click is persisted as a plain `read` and the Application Model
+    # cannot tell it apart from a step that was only ever an observation — so
+    # the MISSING_ELEMENT gap this refusal is supposed to raise never appears
+    # and an element-less model publishes clean.
+    requested_family = interpreted.action_family
 
     if interpreted.needs_target:
         # Resolve against the page as it stands right now, not against the page
@@ -341,6 +351,9 @@ async def capture_one_step(
         sequence=session.current_step_index, label=f"step_{session.current_step_index}",
         test_step_ref=_step_ref(step), target_ref=target_ref,
         provenance_call=f"browser_{interpreted.action_family}",
+        intended_action_family=(
+            requested_family if requested_family != interpreted.action_family else None
+        ),
     )
 
     # The screen the browser actually ended up on. Without this the Application
