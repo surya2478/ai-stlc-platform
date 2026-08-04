@@ -13,11 +13,27 @@ Failing closed is the point — a refusal is visible, a silent downgrade is not.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from app.config import Settings, get_settings
 
 VALID_MODES = ("local", "docker", "executor")
+
+# Where the Docker API lives when "docker" mode drives it directly. Only
+# containers that mount it can run in that mode; in this deployment that is
+# the runner-executor service and deliberately NOT the worker.
+DOCKER_SOCKET_PATH = "/var/run/docker.sock"
+
+
+def _docker_socket_available(path: str = DOCKER_SOCKET_PATH) -> bool:
+    """Whether this process can actually reach the Docker daemon.
+
+    Existence, not connectivity: a socket that exists but refuses a
+    connection is a different failure, and one worth surfacing from the run
+    itself rather than guessing about here.
+    """
+    return os.path.exists(path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +107,27 @@ def resolve_runner_mode(
             reason=(
                 "Runner mode 'executor' requires both AUTOMATION_EXECUTOR_URL and "
                 "AUTOMATION_EXECUTOR_TOKEN to be configured."
+            ),
+        )
+
+    if effective == "docker" and not _docker_socket_available():
+        # The one gap in an otherwise closed gate: "local" was refused without
+        # permission and "executor" without a URL and token, but "docker" was
+        # permitted without ever checking the thing it drives. A Studio run
+        # whose Step 1 dropdown said "docker" therefore reached the worker,
+        # which does not mount the socket, and failed every test with "docker
+        # daemon not reachable". Observed live 2026-08-03: five tests, no
+        # browser ever started, and the failure surfaced as an application
+        # problem rather than a configuration one.
+        return RunnerPolicyDecision(
+            mode=effective,
+            requested=requested,
+            permitted=False,
+            reason=(
+                f"Runner mode 'docker' drives the Docker daemon directly, but {DOCKER_SOCKET_PATH} "
+                "is not mounted into this service — so no container can be started. Use "
+                "'executor', which runs the tests in the isolated runner-executor service that "
+                "does hold the socket, or mount the socket into this one."
             ),
         )
 

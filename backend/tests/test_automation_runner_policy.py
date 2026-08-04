@@ -20,6 +20,7 @@ import pytest
 from app.config import Settings
 from app.services.automation_runner import dispatcher
 from app.services.automation_runner.env_policy import build_runner_env
+from app.services.automation_runner import policy
 from app.services.automation_runner.policy import resolve_runner_mode
 
 
@@ -65,11 +66,64 @@ def test_requested_local_is_refused_even_when_the_server_default_is_docker():
     assert not decision.permitted
 
 
-def test_docker_mode_is_permitted_regardless_of_app_env():
+def test_docker_mode_is_permitted_regardless_of_app_env(monkeypatch):
+    """app_env never gated docker — but the socket does, so the check has to be
+    satisfied for this test to be about app_env at all."""
+    monkeypatch.setattr(policy, "_docker_socket_available", lambda *_a: True)
     decision = resolve_runner_mode(
         "docker", settings=_settings(app_env="production")
     )
     assert decision.permitted and decision.mode == "docker"
+
+
+# ── docker mode needs the socket it drives ────────────────────────────────────
+# The one gap in an otherwise closed gate: "local" was refused without
+# permission and "executor" without a URL and token, but "docker" was permitted
+# without ever checking the thing it drives. Observed live 2026-08-03: a Studio
+# run whose Step 1 dropdown said "docker" reached the worker, which does not
+# mount the socket, and failed all five tests with "docker daemon not
+# reachable" — reported to the user as an application problem.
+
+def test_docker_mode_is_refused_when_the_socket_is_not_mounted(monkeypatch):
+    monkeypatch.setattr(policy, "_docker_socket_available", lambda *_a: False)
+
+    decision = resolve_runner_mode("docker", settings=_settings())
+
+    assert not decision.permitted
+    assert "/var/run/docker.sock" in decision.reason
+    # Names the mode that actually works here rather than only stating a fault.
+    assert "executor" in decision.reason
+
+
+def test_the_server_default_of_docker_is_refused_too_when_unusable(monkeypatch):
+    """A refusal must not depend on the caller having asked explicitly."""
+    monkeypatch.setattr(policy, "_docker_socket_available", lambda *_a: False)
+
+    decision = resolve_runner_mode(None, settings=_settings(automation_runner_mode="docker"))
+
+    assert not decision.permitted
+    assert decision.mode == "docker"
+
+
+def test_executor_mode_does_not_need_the_socket(monkeypatch):
+    """Executor asks a separate service to run the tests; that service holds
+    the socket, this one deliberately does not."""
+    monkeypatch.setattr(policy, "_docker_socket_available", lambda *_a: False)
+
+    decision = resolve_runner_mode(
+        "executor",
+        settings=_settings(
+            automation_executor_url="http://runner-executor:9000",
+            automation_executor_token="t",
+        ),
+    )
+
+    assert decision.permitted
+
+
+def test_the_socket_check_looks_at_the_real_path():
+    assert policy.DOCKER_SOCKET_PATH == "/var/run/docker.sock"
+    assert policy._docker_socket_available("/definitely/not/a/socket") is False
 
 
 def test_unknown_mode_is_refused_rather_than_defaulted():
