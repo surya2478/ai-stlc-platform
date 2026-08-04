@@ -4,15 +4,42 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, field_validator
 
 
-# Domain constants — keep in sync with models/project.py:DOMAIN_CHOICES
-DOMAIN_QA = "qa_domain"
-DOMAIN_TELECOM = "telecom_domain"
-ProjectDomain = Literal["qa_domain", "telecom_domain"]
+# Domain constants — keep in sync with the DOMAIN_OPTIONS list the projects
+# screens render. Migration 058 replaced the previous qa_domain/telecom_domain
+# pair with this delivery-track taxonomy.
+DOMAIN_DIGITAL_CONSUMER = "digital_consumer"
+DOMAIN_DIGITAL_BUSINESS = "digital_business"
+DOMAIN_NON_DIGITAL = "non_digital"
+DOMAIN_BILLING = "billing"
+DOMAIN_SALES = "sales"
+DOMAIN_MARKETING = "marketing"
+DOMAIN_CCC = "ccc"
+DOMAIN_SPECIAL_TRACK = "special_track"
+DOMAIN_PRODUCTION_TESTING = "production_testing"
+
+ProjectDomain = Literal[
+    "digital_consumer",
+    "digital_business",
+    "non_digital",
+    "billing",
+    "sales",
+    "marketing",
+    "ccc",
+    "special_track",
+    "production_testing",
+]
 
 # Human-readable labels shown in the UI
 DOMAIN_LABELS: dict[str, str] = {
-    DOMAIN_QA: "QA Domain",
-    DOMAIN_TELECOM: "Telecom Domain",
+    DOMAIN_DIGITAL_CONSUMER: "Digital-Consumer",
+    DOMAIN_DIGITAL_BUSINESS: "Digital-Business",
+    DOMAIN_NON_DIGITAL: "Non-Digital",
+    DOMAIN_BILLING: "Billing",
+    DOMAIN_SALES: "Sales",
+    DOMAIN_MARKETING: "Marketing",
+    DOMAIN_CCC: "CCC",
+    DOMAIN_SPECIAL_TRACK: "Special Track",
+    DOMAIN_PRODUCTION_TESTING: "Production Testing",
 }
 
 

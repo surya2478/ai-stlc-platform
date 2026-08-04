@@ -27,21 +27,31 @@ import { useUserDirectory } from "@/hooks/useUserDirectory";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const DOMAIN_OPTIONS = [
-  { value: "", label: "— Select Project Domain —" },
-  { value: "qa_domain", label: "QA Domain" },
-  { value: "telecom_domain", label: "Telecom Domain" },
+// Keep in sync with backend\app\schemas\project.py:ProjectDomain.
+const PROJECT_DOMAINS = [
+  { value: "digital_consumer", label: "Digital-Consumer", color: "bg-blue-50 text-blue-700 border-blue-200" },
+  { value: "digital_business", label: "Digital-Business", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  { value: "non_digital", label: "Non-Digital", color: "bg-slate-50 text-slate-700 border-slate-200" },
+  { value: "billing", label: "Billing", color: "bg-amber-50 text-amber-700 border-amber-200" },
+  { value: "sales", label: "Sales", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { value: "marketing", label: "Marketing", color: "bg-pink-50 text-pink-700 border-pink-200" },
+  { value: "ccc", label: "CCC", color: "bg-violet-50 text-violet-700 border-violet-200" },
+  { value: "special_track", label: "Special Track", color: "bg-orange-50 text-orange-700 border-orange-200" },
+  { value: "production_testing", label: "Production Testing", color: "bg-rose-50 text-rose-700 border-rose-200" },
 ];
 
-const DOMAIN_LABEL: Record<string, string> = {
-  qa_domain: "QA Domain",
-  telecom_domain: "Telecom Domain",
-};
+const DOMAIN_OPTIONS = [
+  { value: "", label: "— Select Project Domain —" },
+  ...PROJECT_DOMAINS.map(({ value, label }) => ({ value, label })),
+];
 
-const DOMAIN_COLOR: Record<string, string> = {
-  qa_domain: "bg-blue-50 text-blue-700 border-blue-200",
-  telecom_domain: "bg-violet-50 text-violet-700 border-violet-200",
-};
+const DOMAIN_LABEL: Record<string, string> = Object.fromEntries(
+  PROJECT_DOMAINS.map((d) => [d.value, d.label]),
+);
+
+const DOMAIN_COLOR: Record<string, string> = Object.fromEntries(
+  PROJECT_DOMAINS.map((d) => [d.value, d.color]),
+);
 
 // ── Input style helpers ──────────────────────────────────────────────────────
 

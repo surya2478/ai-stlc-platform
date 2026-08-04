@@ -19,8 +19,15 @@ import { api } from "@/lib/api";
 
 const DOMAIN_OPTIONS = [
   { value: "", label: "— Select Project Domain —" },
-  { value: "qa_domain", label: "QA Domain" },
-  { value: "telecom_domain", label: "Telecom Domain" },
+  { value: "digital_consumer", label: "Digital-Consumer" },
+  { value: "digital_business", label: "Digital-Business" },
+  { value: "non_digital", label: "Non-Digital" },
+  { value: "billing", label: "Billing" },
+  { value: "sales", label: "Sales" },
+  { value: "marketing", label: "Marketing" },
+  { value: "ccc", label: "CCC" },
+  { value: "special_track", label: "Special Track" },
+  { value: "production_testing", label: "Production Testing" },
 ];
 
 type FormState = {
