@@ -508,7 +508,7 @@ const defaultJiraFilters = {
 
 const jiraStoryTypePreset = "Story, User Story, Requirement, Epic";
 
-type IntakeTab = "requirements" | "documents" | "url" | "github" | "jira" | "paste" | "api";
+type IntakeTab = "requirements" | "documents" | "url" | "github" | "jira" | "paste";
 type RequirementsWorkspaceView = "intake" | "analysis" | "traceability" | "review";
 type RequirementTransitionAction = "send_to_analysis" | "send_to_traceability" | "send_to_review" | "send_back_to_analysis" | "send_back_to_traceability" | "request_clarification" | "resolve_clarification";
 type AnalysisDialog = "content" | "acceptance" | "issues" | "classification" | "systems" | "clarification";
@@ -691,8 +691,6 @@ function RequirementsContent() {
   const [selectedSource, setSelectedSource] = useState<IntakeSourceRow | null>(null);
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteText, setPasteText] = useState("");
-  const [apiSpecTitle, setApiSpecTitle] = useState("");
-  const [apiSpecText, setApiSpecText] = useState("");
   const [manualIntakeBusy, setManualIntakeBusy] = useState(false);
   // GAP-3: GitHub / local repo analysis state
   const [githubUrl, setGithubUrl] = useState("");
@@ -988,22 +986,13 @@ function RequirementsContent() {
     }
   };
 
-  const handleManualIntake = async (kind: "paste" | "api") => {
+  const handleManualIntake = async () => {
     if (!selectedProject) return;
-    const title = kind === "paste" ? pasteTitle.trim() : apiSpecTitle.trim();
-    const content = kind === "paste" ? pasteText.trim() : apiSpecText.trim();
+    const title = pasteTitle.trim();
+    const content = pasteText.trim();
     if (!title || !content) {
       setAgentError("A source title and source content are required before intake.");
       return;
-    }
-
-    if (kind === "api" && (content.startsWith("{") || content.startsWith("["))) {
-      try {
-        JSON.parse(content);
-      } catch {
-        setAgentError("The API specification is not valid JSON. Correct it or provide a valid OpenAPI YAML document.");
-        return;
-      }
     }
 
     setManualIntakeBusy(true);
@@ -1013,17 +1002,12 @@ function RequirementsContent() {
         project_id: selectedProject,
         title,
         summary: content,
-        source: kind === "paste" ? "pasted_text" : "api_specification",
+        source: "pasted_text",
       });
       await loadData();
-      if (kind === "paste") {
-        setPasteTitle("");
-        setPasteText("");
-      } else {
-        setApiSpecTitle("");
-        setApiSpecText("");
-      }
-      setAgentStatus(`${kind === "paste" ? "Pasted text" : "API specification"} accepted into the governed intake queue.`);
+      setPasteTitle("");
+      setPasteText("");
+      setAgentStatus("Pasted text accepted into the governed intake queue.");
       setTab("requirements");
     } catch (e: any) {
       setAgentError(e?.response?.data?.detail || "The source could not be added to requirement intake.");
@@ -2915,9 +2899,6 @@ function RequirementsContent() {
                 </div>
                 <p className="mt-1 text-[10px] font-semibold text-slate-400">Validation, processing ownership, provenance and the next governed action for every source</p>
               </div>
-              <Button size="sm" onClick={() => setTab("documents")} className="h-8 bg-[#1b59f8] text-xs font-semibold text-white hover:bg-blue-700">
-                <Plus className="mr-1 h-3.5 w-3.5" /> Add Source
-              </Button>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse text-left text-xs">
@@ -2953,7 +2934,7 @@ function RequirementsContent() {
           </Card>
 
           <div className={cn("flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit", workspaceView !== "intake" && "hidden")}>
-            {(["requirements", "documents", "url", "github", "jira", "paste", "api"] as const).map((t) => (
+            {(["requirements", "documents", "url", "github", "jira", "paste"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -2971,8 +2952,7 @@ function RequirementsContent() {
                 {t === "documents" ? "Documents / UI Input"
                   : t === "url" ? "URL Input"
                   : t === "github" ? "GitHub / Local Repository"
-                  : t === "paste" ? "Add Paste Text"
-                  : t === "api" ? "Add API Specification"
+                  : t === "paste" ? "Add Missing Requirement"
                   : t === "requirements" ? "Extracted Requirements"
                   : "Jira"}
                 {t === "requirements" && requirements.length > 0 && (
@@ -3475,29 +3455,13 @@ function RequirementsContent() {
               <CardContent className="space-y-5 p-5">
                 <div className="flex items-start gap-3">
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-2.5"><ClipboardPaste className="h-5 w-5 text-[#1b59f8]" /></div>
-                  <div><h3 className="text-sm font-bold text-slate-900">Add Paste Text</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">Capture meeting notes, emails or specification text as a governed intake source.</p></div>
+                  <div><h3 className="text-sm font-bold text-slate-900">Add Missing Requirement</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">Capture meeting notes, emails or specification text as a governed intake source.</p></div>
                 </div>
                 <div className="grid gap-4">
                   <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source title</label><input value={pasteTitle} onChange={(event) => setPasteTitle(event.target.value)} placeholder="e.g. Billing change workshop notes" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" /></div>
                   <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source content</label><textarea value={pasteText} onChange={(event) => setPasteText(event.target.value)} placeholder="Paste the original source text here. Provenance is retained as Pasted Text." rows={10} className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" /></div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2"><span className="text-[10px] font-semibold text-amber-700">Validation gate: both title and source content are mandatory.</span><Button size="sm" disabled={manualIntakeBusy || !pasteTitle.trim() || !pasteText.trim()} onClick={() => handleManualIntake("paste")} className="h-8 bg-[#1b59f8] text-xs text-white hover:bg-blue-700">{manualIntakeBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1 h-3.5 w-3.5" />}Add to Intake</Button></div>
-              </CardContent>
-            </Card>
-          )}
-
-          {workspaceView === "intake" && tab === "api" && (
-            <Card className="border-slate-200 shadow-sm">
-              <CardContent className="space-y-5 p-5">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-xl border border-purple-100 bg-purple-50 p-2.5"><Braces className="h-5 w-5 text-purple-600" /></div>
-                  <div><h3 className="text-sm font-bold text-slate-900">Add API Specification</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">Register OpenAPI or Swagger JSON/YAML as a traceable requirements source.</p></div>
-                </div>
-                <div className="grid gap-4">
-                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Specification title</label><input value={apiSpecTitle} onChange={(event) => setApiSpecTitle(event.target.value)} placeholder="e.g. Customer Profile API v2" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-200" /></div>
-                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">OpenAPI / Swagger content</label><textarea value={apiSpecText} onChange={(event) => setApiSpecText(event.target.value)} placeholder={'openapi: 3.0.0\ninfo:\n  title: Customer Profile API\n  version: 2.0.0'} rows={12} spellCheck={false} className="w-full resize-y rounded-lg border border-slate-200 bg-slate-950 px-3 py-2 font-mono text-xs leading-relaxed text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-200" /></div>
-                </div>
-                <div className="flex items-center justify-between rounded-lg border border-purple-100 bg-purple-50/50 px-3 py-2"><span className="text-[10px] font-semibold text-purple-700">JSON inputs are syntax-validated before intake; YAML is retained for governed processing.</span><Button size="sm" disabled={manualIntakeBusy || !apiSpecTitle.trim() || !apiSpecText.trim()} onClick={() => handleManualIntake("api")} className="h-8 bg-purple-600 text-xs text-white hover:bg-purple-700">{manualIntakeBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Braces className="mr-1 h-3.5 w-3.5" />}Add Specification</Button></div>
+                <div className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2"><span className="text-[10px] font-semibold text-amber-700">Validation gate: both title and source content are mandatory.</span><Button size="sm" disabled={manualIntakeBusy || !pasteTitle.trim() || !pasteText.trim()} onClick={() => handleManualIntake()} className="h-8 bg-[#1b59f8] text-xs text-white hover:bg-blue-700">{manualIntakeBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1 h-3.5 w-3.5" />}Add to Intake</Button></div>
               </CardContent>
             </Card>
           )}
