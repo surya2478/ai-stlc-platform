@@ -32,6 +32,7 @@ from app.schemas.application_model import (
     ApplicationModelOut,
     BuildModelRequest,
     DecisionRequest,
+    GroundingSourceOut,
     LocatorConfirmRequest,
     LocatorEvidenceOut,
     LocatorFallbackRequest,
@@ -40,6 +41,7 @@ from app.schemas.application_model import (
     ResolveGapRequest,
 )
 from app.services import application_model_service as svc
+from app.services import locator_catalog
 from app.services.rbac_service import (
     APPLICATION_MODEL_APPROVE,
     APPLICATION_MODEL_BUILD,
@@ -77,6 +79,33 @@ async def list_models(project_id: int, application_id: int, db: DBSession, curre
     _require_enabled()
     await require_permission(APPLICATION_MODEL_VIEW, project_id, current_user, db)
     return await svc.list_models(db, project_id=project_id, application_id=application_id)
+
+
+@router.get(
+    "/projects/{project_id}/applications/{application_id}/grounding",
+    response_model=GroundingSourceOut,
+)
+async def get_grounding_source(
+    project_id: int, application_id: int, db: DBSession, current_user: CurrentUser
+):
+    """The catalog script generation would use for this application.
+
+    Read-only and resolved the same way generation resolves it, so the studio
+    reports the real source rather than inferring one from whether a published
+    model happens to exist.
+    """
+    _require_enabled()
+    await require_permission(APPLICATION_MODEL_VIEW, project_id, current_user, db)
+    catalog = await locator_catalog.build_for_application(
+        db, project_id=project_id, application_id=application_id
+    )
+    return GroundingSourceOut(
+        application_id=application_id,
+        source=catalog.source,
+        element_count=len(catalog.entries),
+        model_id=catalog.model_id,
+        model_version=catalog.model_version,
+    )
 
 
 @router.post("/build", response_model=ApplicationModelDetailOut)

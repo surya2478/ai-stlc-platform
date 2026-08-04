@@ -94,19 +94,99 @@ async def _log_activity(
 async def _upsert_node(
     db: AsyncSession, *, model_id: int, node_type: str, external_ref: str, display_name: str,
     parent_node_id: int | None, existing: dict[tuple[str, str], ApplicationModelNode],
+    attributes: dict | None = None,
 ) -> ApplicationModelNode:
     key = (node_type, external_ref)
     node = existing.get(key)
     if node is not None:
+        # A node captured again later in the walk can carry attributes the
+        # first sighting lacked (the same control clicked twice, ranked only
+        # the second time). Fill the gaps; never overwrite what is already
+        # known, so the earliest good value wins and a rebuild is stable.
+        if attributes:
+            merged = dict(node.attributes or {})
+            for attr_key, attr_value in attributes.items():
+                if attr_value is not None and merged.get(attr_key) is None:
+                    merged[attr_key] = attr_value
+            node.attributes = merged
         return node
     node = ApplicationModelNode(
         model_id=model_id, node_type=node_type, external_ref=external_ref, display_name=display_name,
         parent_node_id=parent_node_id, state="DISCOVERED",
+        attributes={k: v for k, v in (attributes or {}).items() if v is not None},
     )
     db.add(node)
     await db.flush()
     existing[key] = node
     return node
+
+
+def _top_locator_candidate(locator_evidence: dict | None) -> dict | None:
+    """The best-ranked locator in a DiscoveryAction's ranking result.
+
+    `DiscoveryAction.locator_evidence` holds the whole `locator_ranking`
+    payload — `{element_name, role, page_url, candidates:[…]}` — where each
+    candidate carries `strategy`, `value` and a rendered `locator`. The
+    top-level dict has no `value`/`type` keys of its own, so reading them
+    directly (as this builder used to) recorded `locator_value=None` and
+    `locator_type=None` on *every* element the model ever built: the model
+    knew an element existed and how confident discovery was about it, but not
+    what to actually click. Nothing downstream could ground on that.
+    """
+    if not locator_evidence:
+        return None
+    candidates = locator_evidence.get("candidates") or []
+    return candidates[0] if candidates else None
+
+
+async def contributing_sessions(
+    db: AsyncSession, *, project_id: int, application_id: int, selected_session_id: int | None = None,
+) -> list[DiscoverySession]:
+    """Every completed session whose evidence belongs in this application's model.
+
+    The model describes an APPLICATION, but it used to be walked from a single
+    discovery session — and a rebuild deletes the previous walk's nodes before
+    writing the new one. So each test case's model run silently destroyed the
+    last one's coverage: build from TC-105's session and the model knows the
+    search box; rebuild from TC-106's and TC-105's evidence is gone. With one
+    control shared between them that looked harmless, which is exactly why it
+    survived — the first test case to touch a *different* control would have
+    lost its grounding with nothing to show why.
+
+    One session per test case, its most recent completed run, so re-recording
+    a test case supersedes its own earlier attempt instead of accumulating
+    stale evidence beside it. A session naming no test case is ad-hoc
+    exploration and contributes on its own.
+
+    The explicitly selected session always wins for its test case, so the
+    Rebuild-from picker still means what it says even when a newer run exists.
+    """
+    result = await db.execute(
+        select(DiscoverySession)
+        .where(
+            DiscoverySession.project_id == project_id,
+            DiscoverySession.application_id == application_id,
+            DiscoverySession.status == "COMPLETED",
+        )
+        .order_by(DiscoverySession.id)
+    )
+    latest_by_test_case: dict[int, DiscoverySession] = {}
+    ad_hoc: list[DiscoverySession] = []
+    selected: DiscoverySession | None = None
+    for session in result.scalars().all():
+        if session.id == selected_session_id:
+            selected = session
+        if session.test_case_id is None:
+            ad_hoc.append(session)
+        else:
+            # Ascending id, so the last write is the newest run.
+            latest_by_test_case[session.test_case_id] = session
+    if selected is not None and selected.test_case_id is not None:
+        latest_by_test_case[selected.test_case_id] = selected
+    contributing = [*latest_by_test_case.values(), *ad_hoc]
+    if selected is not None and selected not in contributing:
+        contributing.append(selected)
+    return sorted(contributing, key=lambda s: s.id)
 
 
 async def build_or_rebuild_draft(
@@ -124,8 +204,17 @@ async def build_or_rebuild_draft(
             409, "SESSION_NOT_COMPLETED", "Only a completed discovery session can be built into a model."
         )
 
+    sessions = await contributing_sessions(
+        db, project_id=project_id, application_id=application_id, selected_session_id=session_id,
+    )
+    # Session order then step order: two sessions that visited the same screen
+    # upsert onto the same node (see `_upsert_node`), so walking them in a
+    # stable order makes a rebuild reproducible rather than dependent on which
+    # test case happened to be recorded first.
     result = await db.execute(
-        select(DiscoveryAction).where(DiscoveryAction.session_id == session_id).order_by(DiscoveryAction.sequence)
+        select(DiscoveryAction)
+        .where(DiscoveryAction.session_id.in_([s.id for s in sessions]))
+        .order_by(DiscoveryAction.session_id, DiscoveryAction.sequence)
     )
     actions = list(result.scalars().all())
 
@@ -212,10 +301,24 @@ async def build_or_rebuild_draft(
 
         if action.target_element_ref:
             parent_node = component_node or screen_node
+            ranking = action.locator_evidence or {}
             element_node = await _upsert_node(
                 db, model_id=model.id, node_type="element", external_ref=action.target_element_ref,
                 display_name=action.target_semantic or action.target_element_ref,
                 parent_node_id=parent_node.id if parent_node else None, existing=nodes_by_key,
+                # Carried through so the published model can be used as a
+                # locator catalog on its own. `catalog_name` is the same
+                # slug locator_map is keyed by, which is the name generated
+                # contracts refer elements by; `page_url` is the real URL the
+                # element was found on, which is what scopes a catalog to the
+                # host a test actually visits (locator_policy
+                # .filter_catalog_by_page). Neither is recoverable from
+                # `external_ref`, which is a slug of the step's own wording.
+                attributes={
+                    "catalog_name": ranking.get("element_name"),
+                    "page_url": ranking.get("page_url"),
+                    "role": ranking.get("role"),
+                },
             )
             if parent_node is not None:
                 key = f"{action.target_element_ref}"
@@ -230,11 +333,12 @@ async def build_or_rebuild_draft(
 
             if action.locator_evidence or action.locator_confidence is not None:
                 confidence = action.locator_confidence
+                top_candidate = _top_locator_candidate(action.locator_evidence)
                 db.add(
                     ApplicationModelLocatorEvidence(
                         node_id=element_node.id,
-                        locator_value=(action.locator_evidence or {}).get("value") if action.locator_evidence else None,
-                        locator_type=(action.locator_evidence or {}).get("type") if action.locator_evidence else None,
+                        locator_value=top_candidate["locator"] if top_candidate else None,
+                        locator_type=top_candidate["strategy"] if top_candidate else None,
                         confidence=confidence, status="candidate", source_action_id=action.id,
                     )
                 )
@@ -250,11 +354,33 @@ async def build_or_rebuild_draft(
                     "evidence": {"action_id": action.id, "reason": "no locator evidence captured"},
                     "remediation": "Re-record this action or add a fallback locator before publishing.",
                 })
-        elif action.action_family in ("click", "input", "select"):
+        # `intended_action_family` is what makes a *refused* interaction
+        # visible here. capture_service degrades an action to `read` when it
+        # cannot resolve the element a step named — two controls sharing an
+        # accessible name, say — and without reading the intent this branch saw
+        # a plain observation and raised nothing. The model then published with
+        # no elements and no gaps, grounding nothing, which is precisely the
+        # question `resolve_target_ref` refuses to bury.
+        elif (action.intended_action_family or action.action_family) in ("click", "input", "select"):
+            refused = bool(action.intended_action_family)
             gaps.append({
                 "gap_type": "MISSING_ELEMENT", "severity": "critical",
-                "evidence": {"action_id": action.id, "sequence": action.sequence},
-                "remediation": "Correct this action's element reference in Live Discovery Session and rebuild.",
+                "evidence": {
+                    "action_id": action.id,
+                    "sequence": action.sequence,
+                    "requested_action": action.intended_action_family or action.action_family,
+                    # The capture already recorded why in the step's own words;
+                    # carrying it onto the gap means the reviewer reads the
+                    # reason where the decision is made.
+                    "reason": action.issue_note,
+                },
+                "remediation": (
+                    "Discovery could not act on the element this step names — see the reason above. "
+                    "Name the element unambiguously in the test step (or resolve the ambiguity on the "
+                    "page), re-run Live Discovery Session and rebuild."
+                ) if refused else (
+                    "Correct this action's element reference in Live Discovery Session and rebuild."
+                ),
             })
 
         if screen_node is not None:
@@ -323,10 +449,22 @@ async def compute_kpis(db: AsyncSession, model: ApplicationModel) -> dict[str, A
 
 
 async def is_stale(db: AsyncSession, model: ApplicationModel) -> bool:
+    """Whether discovery has recorded more than this model was built from.
+
+    Counted over the same session set the build walks, not the single source
+    session — otherwise a model built from three test cases' sessions compares
+    its total against one session's actions and reports stale immediately.
+    A newly discovered test case now correctly marks the model stale, which is
+    the honest signal: there is evidence the published model does not contain.
+    """
     if model.source_session_id is None:
         return False
+    sessions = await contributing_sessions(
+        db, project_id=model.project_id, application_id=model.application_id,
+        selected_session_id=model.source_session_id,
+    )
     result = await db.execute(
-        select(DiscoveryAction).where(DiscoveryAction.session_id == model.source_session_id)
+        select(DiscoveryAction).where(DiscoveryAction.session_id.in_([s.id for s in sessions]))
     )
     current_action_count = len(list(result.scalars().all()))
     return current_action_count > model.built_from_action_count
@@ -392,22 +530,39 @@ async def _require_non_empty(db: AsyncSession, model: ApplicationModel, *, verb:
     "does this model contain anything" is a fact about the model, not an
     opinion recorded about it that someone can resolve away.
     """
-    screens = (
-        await db.execute(
-            select(func.count()).select_from(ApplicationModelNode).where(
-                ApplicationModelNode.model_id == model.id,
-                ApplicationModelNode.node_type == "screen",
+    counts = dict(
+        (
+            await db.execute(
+                select(ApplicationModelNode.node_type, func.count())
+                .where(
+                    ApplicationModelNode.model_id == model.id,
+                    ApplicationModelNode.node_type.in_(("screen", "element")),
+                )
+                .group_by(ApplicationModelNode.node_type)
             )
-        )
-    ).scalar_one()
-    if screens:
-        return
-    raise ApplicationModelError(
-        409, "MODEL_EMPTY",
-        f"This model contains no screens, so there is nothing to ground tests against — "
-        f"it cannot be {verb}. Rebuild it from a completed discovery session whose actions "
-        f"each name the screen they acted on.",
+        ).all()
     )
+    if not counts.get("screen"):
+        raise ApplicationModelError(
+            409, "MODEL_EMPTY",
+            f"This model contains no screens, so there is nothing to ground tests against — "
+            f"it cannot be {verb}. Rebuild it from a completed discovery session whose actions "
+            f"each name the screen they acted on.",
+        )
+    # Screens alone ground nothing. A session can walk several pages and
+    # interact with none of them — every step an observation, or every
+    # interaction refused as ambiguous — and produce a model that looks
+    # populated in the node list while carrying not one locator. Observed live
+    # (session 33): one screen, zero elements, approved and published, after
+    # which script generation fell back to locator_map without saying so.
+    if not counts.get("element"):
+        raise ApplicationModelError(
+            409, "MODEL_HAS_NO_ELEMENTS",
+            f"This model contains {counts['screen']} screen(s) but no elements, so no test can be "
+            f"grounded on it — it cannot be {verb}. Every action in the source discovery session was "
+            f"either an observation or an interaction discovery could not resolve; the open gaps say "
+            f"which. Resolve those, re-run Live Discovery Session and rebuild.",
+        )
 
 
 async def approve(db: AsyncSession, model: ApplicationModel, *, actor_id: int, reason: str | None) -> ApplicationModel:

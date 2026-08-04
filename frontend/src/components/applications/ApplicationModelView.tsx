@@ -270,6 +270,24 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
     }
   }
 
+  /** Unlock a locked version for structural edits. Offered both here (beside
+   *  the disabled picker, where the need for it is discovered) and in the
+   *  governance action row (where the rest of the lifecycle lives). */
+  async function handleCreateDraft() {
+    if (!model) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await applicationModelsApi.newDraft(model.id);
+      setNotice("New draft created.");
+      await loadModel(res.data.id, selectedApplicationId);
+    } catch (draftError) {
+      setError(messageFromError(draftError, "Could not create a new draft."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const discoveryHref = `/applications?view=discovery&project=${projectId}${selectedApplicationId ? `&application=${selectedApplicationId}` : ""}`;
 
   /* ── governance: which transition is available, and what blocks it ── */
@@ -334,7 +352,25 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
       };
     }
     if (model.status === "published") {
-      return { tone: "emerald" as const, title: "Published", detail: `Version ${model.version} is the current model for this application. Create a new draft to change it.` };
+      // Publishing is the end of the Applications track and the start of the
+      // automation one. Until this link existed, publishing a model told you
+      // nothing about where the work continues, and the studio was three
+      // sections away in the sidebar.
+      return {
+        tone: "emerald" as const,
+        title: "Published",
+        detail: `Version ${model.version} is the current model for this application. Approved test cases mapped to it can now be scripted against this structure.`,
+        action: (
+          <Button
+            size="sm"
+            onClick={() => {
+              window.location.href = `/automation?project=${projectId}&application=${model.application_id}`;
+            }}
+          >
+            <Sparkles className="h-3.5 w-3.5" /> Continue to AI Automation Studio
+          </Button>
+        ),
+      };
     }
     return { tone: "amber" as const, title: `This version is ${STATUS_TONE[model.status].label.toLowerCase()}`, detail: model.decision_reason || "Create a new draft to continue work on this application." };
   })();
@@ -424,6 +460,29 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
               </option>
             ))}
           </select>
+          {/* A disabled picker pinned to one session, with the reason living
+              further down the card and in a hover title, reads as a hardcoded
+              value rather than a locked control — reported as exactly that.
+              Say it where the control is. */}
+          {model && !isMutable && (
+            <span className="flex max-w-64 flex-wrap items-center gap-1.5 text-[11px] font-semibold leading-snug text-slate-500">
+              {STATUS_TONE[model.status].label} —
+              {["approved", "published", "rejected"].includes(model.status) ? (
+                // The unlock lives here as well as in the governance row. Being
+                // told to "create a draft" beside a greyed-out control, while
+                // the only button that does it sits a screen further down, is
+                // how a locked picker reads as a hardcoded value.
+                <button
+                  type="button" disabled={busy} onClick={handleCreateDraft}
+                  className="font-bold text-[#1b59f8] underline underline-offset-2 disabled:text-slate-400"
+                >
+                  create a draft to rebuild
+                </button>
+              ) : (
+                <span>this version cannot be rebuilt</span>
+              )}
+            </span>
+          )}
         </label>
         {selectedApplication && (
           <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-slate-500">
@@ -585,22 +644,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                 </Button>
               )}
               {["approved", "published", "rejected"].includes(model.status) && (
-                <Button
-                  size="sm" variant="outline" disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    setError("");
-                    try {
-                      const res = await applicationModelsApi.newDraft(model.id);
-                      setNotice("New draft created.");
-                      await loadModel(res.data.id, selectedApplicationId);
-                    } catch (draftError) {
-                      setError(messageFromError(draftError, "Could not create a new draft."));
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
+                <Button size="sm" variant="outline" disabled={busy} onClick={handleCreateDraft}>
                   Create New Draft
                 </Button>
               )}

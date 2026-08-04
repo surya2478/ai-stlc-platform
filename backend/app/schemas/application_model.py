@@ -135,3 +135,28 @@ class ApplicationModelActivityOut(BaseModel):
     reason: str | None
     old_value: dict | None
     new_value: dict | None
+
+
+class GroundingSourceOut(BaseModel):
+    """What script generation would ground this application on right now.
+
+    Answers the question the Automation Studio could previously only guess at
+    from the presence of a published model: a model can be published and still
+    contribute nothing (no element carries a usable locator, or a reviewer
+    marked them all unstable), in which case generation silently falls back to
+    `locator_map`. Reporting the resolved source rather than the model's
+    existence is the difference between "a model exists" and "this is what your
+    script will be built from".
+    """
+
+    # `model_*` collides with pydantic's protected namespace; these names come
+    # from the Application Model domain, not from pydantic, so opt out rather
+    # than rename them into something the rest of the codebase doesn't use.
+    model_config = {"protected_namespaces": ()}
+
+    application_id: int
+    # "application_model" | "application_model+locator_map" | "locator_map" | "none"
+    source: str
+    element_count: int
+    model_id: int | None = None
+    model_version: int | None = None
