@@ -415,7 +415,7 @@ function ExecutiveOverviewContent() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white px-1 pb-4">
         <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span>e&amp; STLC</span><ChevronRight className="h-3 w-3" /><span className="font-medium text-[#1b59f8]">Command Centre</span>
+          <span>QAI Command Center</span><ChevronRight className="h-3 w-3" /><span className="font-medium text-[#1b59f8]">Command Centre</span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-400">
