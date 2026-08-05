@@ -1,12 +1,15 @@
 import { redirect } from "next/navigation";
 
-export default function ExecutionRedirect({
+// Next 15 makes searchParams a promise in server components, so this awaits
+// what it used to read directly. The redirect is otherwise unchanged.
+export default async function ExecutionRedirect({
   searchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const params = await searchParams;
   const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(searchParams)) {
+  for (const [key, value] of Object.entries(params)) {
     if (typeof value === "string") {
       query.set(key, value);
     } else if (Array.isArray(value)) {
