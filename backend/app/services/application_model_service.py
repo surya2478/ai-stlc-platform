@@ -420,6 +420,48 @@ async def build_or_rebuild_draft(
             ),
         })
 
+    # Screens without elements is the same failure one level down, and it needs
+    # its own gap for the same reason.
+    #
+    # The per-action branch above only speaks when an action *wanted* to
+    # interact — family or intended family in (click, input, select). A session
+    # whose every step observes ("Navigate to ...", "Locate all anchor elements
+    # ...", "For each link, verify its href ...") never reaches it, so the walk
+    # finished with a screen, no elements and no gaps. approve() then refused
+    # with "the open gaps say which" against an empty queue: a correct refusal
+    # the reviewer had no way to act on, because nothing recorded why. Observed
+    # live (session 40, an assertion-only test case).
+    #
+    # Named at the model rather than at an action because no single action is
+    # at fault — the session as a whole never acted on a control.
+    elif (
+        not any(node.node_type == "element" for node in nodes_by_key.values())
+        # A refused interaction already named itself above, with the step's own
+        # reason attached. Saying it again at model level adds a second row to
+        # the queue that resolves to the same fix.
+        and not any(gap["gap_type"] == "MISSING_ELEMENT" for gap in gaps)
+    ):
+        families = sorted({(a.intended_action_family or a.action_family or "unknown") for a in actions})
+        gaps.append({
+            "gap_type": "MISSING_ELEMENT",
+            "severity": "critical",
+            "evidence": {
+                "session_id": session_id,
+                "actions_walked": len(actions),
+                "action_families": families,
+                "reason": (
+                    "no action in the source session acted on a control, so the walk captured "
+                    "no element and no locator evidence"
+                ),
+            },
+            "remediation": (
+                "Every step in this session observes the page rather than acting on it, and an "
+                "observation carries no locator to ground a test on. Ground this model on a "
+                "discovery session whose steps click, fill or select a control — then rebuild. "
+                "An assertion-only test case cannot produce an approvable model."
+            ),
+        })
+
     for gap in gaps:
         db.add(ApplicationModelGap(model_id=model.id, status="open", **gap))
 
@@ -559,9 +601,9 @@ async def _require_non_empty(db: AsyncSession, model: ApplicationModel, *, verb:
         raise ApplicationModelError(
             409, "MODEL_HAS_NO_ELEMENTS",
             f"This model contains {counts['screen']} screen(s) but no elements, so no test can be "
-            f"grounded on it — it cannot be {verb}. Every action in the source discovery session was "
-            f"either an observation or an interaction discovery could not resolve; the open gaps say "
-            f"which. Resolve those, re-run Live Discovery Session and rebuild.",
+            f"grounded on it — it cannot be {verb}. Either every step in the source session only "
+            f"observed the page, or an interaction discovery could not resolve. Open the Gaps queue: "
+            f"the MISSING_ELEMENT gap names which, and what grounds this model.",
         )
 
 

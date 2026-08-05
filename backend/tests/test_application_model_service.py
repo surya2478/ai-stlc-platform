@@ -591,8 +591,14 @@ def test_a_refused_click_raises_the_missing_element_gap_it_promises():
     assert "unambiguously" in missing[0].remediation
 
 
-def test_a_genuine_observation_still_raises_nothing():
-    """A step that was only ever meant to be read must stay silent."""
+def test_a_genuine_observation_is_never_blamed_for_the_empty_model():
+    """A step that was only ever meant to be read must stay silent.
+
+    The session as a whole must not, though. An all-observation walk produces a
+    screen, no elements and — before the model-level gap — no gaps at all,
+    while approve() refused it. That left the reviewer reading "the open gaps
+    say which" against an empty queue, with nothing recording why (session 40).
+    """
     actions = [
         _action(id=1, sequence=1, action_family="navigate", target_screen_ref="SCR-REGISTER"),
         _action(id=2, sequence=2, action_family="read", target_screen_ref="SCR-REGISTER"),
@@ -603,7 +609,29 @@ def test_a_genuine_observation_still_raises_nothing():
     )
 
     gaps = [g for g in db.added if isinstance(g, ApplicationModelGap)]
-    assert [g.gap_type for g in gaps if g.gap_type == "MISSING_ELEMENT"] == []
+    missing = [g for g in gaps if g.gap_type == "MISSING_ELEMENT"]
+    assert len(missing) == 1
+    # Named at the session, not at either step — neither one is at fault.
+    assert "action_id" not in missing[0].evidence
+    assert missing[0].evidence["actions_walked"] == 2
+    assert missing[0].evidence["action_families"] == ["navigate", "read"]
+    assert missing[0].severity == "critical"
+
+
+def test_an_all_observation_walk_leaves_the_gap_queue_non_empty():
+    """The refusal message points at the queue, so the queue must have the answer."""
+    actions = [_action(id=1, sequence=1, action_family="read", target_screen_ref="SCR-REGISTER")]
+    db = _FakeDB(get_queue=[_application(), _session()], execute_queue=[[_session()], actions, []])
+    anyio.run(
+        lambda: svc.build_or_rebuild_draft(db, project_id=1, application_id=1, session_id=1, actor_id=10)
+    )
+
+    open_critical = [
+        g for g in db.added
+        if isinstance(g, ApplicationModelGap) and g.severity == "critical"
+    ]
+    assert open_critical, "approve() refuses this model, so something must record why"
+    assert "click, fill or select" in open_critical[0].remediation
 
 
 def test_a_model_with_screens_but_no_elements_cannot_be_approved():
@@ -621,7 +649,9 @@ def test_a_model_with_screens_but_no_elements_cannot_be_approved():
         assert exc.detail["code"] == "MODEL_HAS_NO_ELEMENTS"
         # Says what is wrong and where to look, not just that it failed.
         assert "no elements" in exc.detail["message"]
-        assert "gaps" in exc.detail["message"]
+        # Points at the queue, and names the gap that is waiting there.
+        assert "Gaps queue" in exc.detail["message"]
+        assert "MISSING_ELEMENT" in exc.detail["message"]
 
 
 # ── The model describes an application, not one test case ────────────────────
