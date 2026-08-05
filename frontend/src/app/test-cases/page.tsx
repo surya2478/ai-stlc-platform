@@ -142,7 +142,6 @@ type EditorDraft = {
   testCaseObjective: string;
   atcTestCase: string;
   isCritical: boolean;
-  ppmId: string;
 };
 
 /**
@@ -196,7 +195,6 @@ function draftFromCase(t: TestCase | null): EditorDraft {
     testCaseObjective: t?.test_case_objective ?? "",
     atcTestCase: t?.atc_test_case ?? "",
     isCritical: !!t?.is_critical,
-    ppmId: t?.ppm_id ?? "",
   };
 }
 
@@ -2165,6 +2163,20 @@ function TestCaseEditorView({
     return () => { cancelled = true; };
   }, [selectedProject]);
 
+  // PPM ID is portfolio governance owned by the project — it is captured
+  // (and required, numeric) on the project creation screen. A test case
+  // inherits it rather than restating it, so the editor reads the project
+  // record instead of offering a box to retype it into.
+  const [projectPpmId, setProjectPpmId] = useState<string>("");
+  useEffect(() => {
+    if (!selectedProject) { setProjectPpmId(""); return; }
+    let cancelled = false;
+    projectsApi.get(selectedProject)
+      .then((res) => { if (!cancelled) setProjectPpmId(res.data.ppm_id ?? ""); })
+      .catch(() => { if (!cancelled) setProjectPpmId(""); });
+    return () => { cancelled = true; };
+  }, [selectedProject]);
+
   // Query each governed master table directly. The previous nested,
   // active-only tree could hide table rows when a parent was inactive and
   // did not express the required "all values in the table" fallback.
@@ -2180,8 +2192,8 @@ function TestCaseEditorView({
     Promise.all([
       taxonomyApi.qaDomains(false),
       taxonomyApi.systems(false),
-      taxonomyApi.productGroups(false),
-      taxonomyApi.products(false),
+      taxonomyApi.productGroups({ active_only: false }),
+      taxonomyApi.products({ active_only: false }),
       taxonomyApi.subRequestTypes(false),
       taxonomyApi.testCaseTypes(false),
       taxonomyApi.testCaseComplexities(false),
@@ -2381,7 +2393,8 @@ function TestCaseEditorView({
       if (draft.testCaseObjective !== savedDraft.testCaseObjective) payload.test_case_objective = draft.testCaseObjective;
       if (draft.atcTestCase !== savedDraft.atcTestCase) payload.atc_test_case = draft.atcTestCase;
       if (draft.isCritical !== savedDraft.isCritical) payload.is_critical = draft.isCritical;
-      if (draft.ppmId !== savedDraft.ppmId) payload.ppm_id = draft.ppmId;
+      // ppm_id is deliberately absent: it belongs to the project, and an
+      // imported per-case value must survive an unrelated edit here.
 
       const res = await testCasesApi.update(tc.id, payload);
       setDraft(draftFromCase(res.data));
@@ -2778,7 +2791,15 @@ function TestCaseEditorView({
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-3">
                     <EditorField label="ATC Test Case" value={draft.atcTestCase} onChange={(v) => updateDraft("atcTestCase", v)} />
-                    <EditorField label="PPM ID" value={draft.ppmId} onChange={(v) => updateDraft("ppmId", v)} />
+                    {/* Inherited from the project, not typed per case. A row
+                        imported from CSV can carry its own value, so that wins
+                        when present rather than being overwritten by the
+                        project's. */}
+                    <EditorField
+                      label={tc.ppm_id ? "PPM ID (this test case)" : "PPM ID (from project)"}
+                      value={tc.ppm_id || projectPpmId || "—"}
+                      muted
+                    />
                     <EditorField label="JIRA Issue Key" value={tc.jira_issue_key || ""} muted />
                   </div>
                 </EditorSection>
