@@ -239,7 +239,9 @@ class RequirementQualityLLMOutput(LLMBaseModel):
     acceptance_criteria_score: float = Field(default=3.0, ge=1, le=5)
 
     # ── Telecom-specific dimensions (1–5) ─────────────────────────────────────
-    interface_readiness_score: float = Field(default=3.0, ge=1, le=5)
+    # null = no system-to-system interface is in scope, so the dimension does not
+    # apply; the server redistributes its weight rather than scoring it a 1.
+    interface_readiness_score: float | None = Field(default=3.0, ge=1, le=5)
     telecom_domain_completeness: float = Field(default=3.0, ge=1, le=5)
 
     # ── Downstream generation gate ─────────────────────────────────────────────

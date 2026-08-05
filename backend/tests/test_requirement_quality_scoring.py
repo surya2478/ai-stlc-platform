@@ -38,6 +38,16 @@ def test_quality_outcome_uses_governed_weights_and_pass_gate():
     assert verdict == "pass"
 
 
+def test_inapplicable_dimension_is_excluded_rather_than_scored_zero():
+    """A UI-only requirement has no interface, so the dimension must not drag it down."""
+    scored, _ = calculate_quality_outcome(review(interface_readiness_score=1))
+    not_applicable, verdict = calculate_quality_outcome(review(interface_readiness_score=None))
+
+    assert scored == 3.7
+    assert not_applicable == 4  # the remaining dimensions, reweighted to sum to 1
+    assert verdict == "pass"
+
+
 def test_scenario_readiness_gate_prevents_a_high_overall_pass():
     overall, verdict = calculate_quality_outcome(review(scenario_generation_readiness=2))
     assert overall >= QUALITY_PASS_SCORE

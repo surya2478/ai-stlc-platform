@@ -35,11 +35,29 @@ QUALITY_PASS_SCORE = 3.5
 QUALITY_REVISION_SCORE = 2.5
 QUALITY_PASS_SCENARIO_READINESS = 3.0
 
+# Dimensions that a requirement can legitimately have no answer for. A UI-only
+# requirement has no system-to-system call, so there is no interface to
+# document — scoring it 1 penalises an absence that was never a gap.
+OPTIONAL_QUALITY_DIMENSIONS = {"interface_readiness_score"}
+
 
 def calculate_quality_outcome(review: dict[str, Any]) -> tuple[float, str]:
-    """Calculate the governed quality score and verdict deterministically."""
+    """Calculate the governed quality score and verdict deterministically.
+
+    A dimension scored ``None`` is not applicable to this requirement; its
+    weight is redistributed across the dimensions that do apply rather than
+    counted as a zero.
+    """
+    applicable = {
+        field: weight
+        for field, weight in QUALITY_SCORE_WEIGHTS.items()
+        if review.get(field) is not None
+    }
+    total_weight = sum(applicable.values())
+    if not total_weight:
+        return 0.0, "fail"
     overall = round(
-        sum(float(review[field]) * weight for field, weight in QUALITY_SCORE_WEIGHTS.items()),
+        sum(float(review[field]) * weight for field, weight in applicable.items()) / total_weight,
         2,
     )
     scenario_readiness = float(review["scenario_generation_readiness"])
@@ -77,7 +95,12 @@ Evaluate EACH requirement against ALL of these quality dimensions (score 1-5):
 3. TESTABILITY (1-5) — Test cases can be directly written; acceptance criteria are specific and measurable
 4. AMBIGUITY (1-5) — 5 = no ambiguity at all, 1 = extremely ambiguous
 5. ACCEPTANCE_CRITERIA (1-5) — AC are present, testable, cover positive AND negative conditions
-6. INTERFACE_READINESS (1-5) — APIs/interfaces/protocols documented (Diameter, SOAP, REST, etc.)
+6. INTERFACE_READINESS (1-5, or null) — APIs/interfaces/protocols documented (Diameter, SOAP, REST, etc.)
+   Score this dimension ONLY when the requirement's scope crosses a system boundary.
+   When the behaviour is confined to a single layer and no system-to-system call is in
+   scope — a UI navigation, layout, on-screen validation or presentation requirement —
+   there is no interface to document: return null and raise no issue about it. An
+   absent interface is not a gap when the requirement never had one.
 7. TELECOM_DOMAIN_COMPLETENESS (1-5) — Telecom domain classified, impacted systems listed, test phase (SIT/UAT/Regression) identified
 8. SCENARIO_GENERATION_READINESS (1-5) — How ready is this for automated scenario generation:
    5 = fully ready, all fields complete, AC testable, interfaces known
@@ -85,6 +108,17 @@ Evaluate EACH requirement against ALL of these quality dimensions (score 1-5):
    3 = partially ready, significant gaps that will limit scenario quality
    2 = major gaps, scenarios will be generic/incomplete
    1 = not ready, do not generate scenarios
+
+ISSUES and SUGGESTIONS rules (both lists):
+- Every entry must be a gap in one of the eight dimensions above.
+- Do not raise non-functional gaps — performance, load, latency, network conditions,
+  capacity, availability or security posture — unless the requirement is itself a
+  non-functional requirement. A functional requirement is not defective for leaving
+  them unstated, and a stated threshold is an answer, not a gap to elaborate on.
+- Do not raise anything about a dimension you scored null.
+- Do not restate a score. "Low X score" is not a finding; name the specific missing
+  or ambiguous content, or raise nothing.
+- Both lists may be empty. A requirement that scores well needs no invented advice.
 
 VERDICT rules:
 - pass: overall_score >= 3.5 AND scenario_generation_readiness >= 3
@@ -95,6 +129,8 @@ The governed overall score is calculated by the server using these weights:
 - completeness 15%, clarity 10%, testability 20%, ambiguity 10%
 - acceptance criteria 20%, interface readiness 10%
 - telecom domain completeness 5%, scenario generation readiness 10%
+A dimension you score null is excluded and its weight is redistributed across the
+dimensions that do apply, so marking one not applicable never lowers the score.
 Your overall_score and verdict are advisory and will be recalculated from the
 dimension scores before they are saved.
 
@@ -106,7 +142,7 @@ For EACH requirement, output a JSON object with:
 - testability_score: float 1-5
 - ambiguity_score: float 1-5
 - acceptance_criteria_score: float 1-5
-- interface_readiness_score: float 1-5
+- interface_readiness_score: float 1-5, or null when no interface is in scope
 - telecom_domain_completeness: float 1-5
 - scenario_generation_readiness: float 1-5
 - overall_score: weighted average (float 1-5)
