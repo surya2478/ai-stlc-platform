@@ -287,6 +287,11 @@ async def logout(request: Request, response: Response, db: DBSession):
 
 
 @router.post("/refresh", response_model=Token)
+# The other unauthenticated credential endpoint: it takes a bearer secret from
+# a cookie and mints a new access token, so it is worth the same brake as
+# /token. Generous enough not to trouble a real session, whose access token
+# lasts 15 minutes.
+@limiter.limit("20/minute")
 async def refresh_session(request: Request, response: Response, db: DBSession):
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:

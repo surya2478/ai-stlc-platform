@@ -162,11 +162,14 @@ def test_delete_test_plan_endpoint_returns_404_for_missing_plan():
 
 
 def test_delete_test_plan_route_is_registered():
-    methods = {
-        method
-        for route in app.routes
-        if getattr(route, "path", None) == "/api/v1/test-plans/{plan_id}"
-        for method in getattr(route, "methods", set())
-    }
+    """Asserted against the OpenAPI schema rather than app.routes.
 
-    assert "DELETE" in methods
+    FastAPI 0.141 wraps an included router in a private `_IncludedRouter` with
+    no path and no traversable children, so scanning `app.routes` for an entry
+    whose `.path` is the full route reads an empty set — this failed while the
+    endpoint was registered and serving. The schema is the contract the client
+    is written against, and it does not move with the framework's internals.
+    """
+    methods = app.openapi()["paths"].get("/api/v1/test-plans/{plan_id}", {})
+
+    assert "delete" in methods

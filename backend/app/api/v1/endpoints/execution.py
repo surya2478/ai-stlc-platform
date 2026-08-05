@@ -706,8 +706,20 @@ async def download_manual_evidence(
     file_path = descriptor.get("file_path")
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(status_code=410, detail="Evidence file is no longer available")
+
+    # Defence in depth: only serve files under the configured storage path.
+    # The path is server-generated today (manual_execution_service writes
+    # storage_dir / stored_name), so this is not exploitable as it stands —
+    # but the automation artifact endpoint already guards the same way, and an
+    # unguarded FileResponse over a database-supplied path is one bad write
+    # away from being an arbitrary-file-read primitive.
+    storage_root = os.path.realpath(settings.file_storage_path)
+    real_path = os.path.realpath(file_path)
+    if not real_path.startswith(storage_root + os.sep) and real_path != storage_root:
+        raise HTTPException(status_code=403, detail="Evidence path is outside the storage root")
+
     return FileResponse(
-        file_path,
+        real_path,
         media_type=descriptor.get("content_type") or "application/octet-stream",
         filename=descriptor.get("filename") or "evidence",
     )

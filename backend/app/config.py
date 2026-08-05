@@ -489,6 +489,18 @@ class Settings(BaseSettings):
                 raise ValueError(f"APP_SECRET_KEY uses a forbidden placeholder value in production: {self.app_secret_key}")
             if self.dev_seed_user_enabled:
                 raise ValueError("DEV_SEED_USER_ENABLED is set to True. Seeding dev users must be disabled in production.")
+            # main.py mounts CORS with allow_credentials=True. A wildcard origin
+            # alongside credentials is the combination browsers refuse outright,
+            # so it fails at request time rather than at boot — and a
+            # "*"-adjacent value like "*.example.com" is matched literally by
+            # Starlette, silently allowing nothing. Refuse both at startup.
+            for origin in self.allowed_origins_list:
+                if "*" in origin:
+                    raise ValueError(
+                        f"ALLOWED_ORIGINS contains a wildcard ('{origin}') in production. "
+                        "CORS is mounted with credentials, which forbids wildcard origins; "
+                        "list each origin explicitly."
+                    )
         return self
 
 

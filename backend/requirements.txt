@@ -1,8 +1,8 @@
 # ── Web Framework ─────────────────────────────────────────────────────────────
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-python-multipart==0.0.9
-httpx==0.27.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+python-multipart==0.0.32
+httpx==0.28.1
 aiofiles==23.2.1
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -17,15 +17,15 @@ celery==5.4.0
 
 # ── Auth / Security ───────────────────────────────────────────────────────────
 PyJWT[cryptography]>=2.9.0
-cryptography==42.0.7
+cryptography==50.0.0
 passlib==1.7.4          # kept for CryptContext if needed elsewhere
 bcrypt==4.1.3           # 4.x is installed; security.py calls bcrypt directly (passlib 1.7.4 is incompatible with bcrypt 4.x)
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 slowapi>=0.1.9
 
 # ── Validation ────────────────────────────────────────────────────────────────
-pydantic==2.8.2
-pydantic-settings==2.5.2
+pydantic==2.13.4
+pydantic-settings==2.14.2
 email-validator==2.1.1
 
 # ── Document Processing ───────────────────────────────────────────────────────
@@ -35,12 +35,12 @@ pandas==2.2.2
 openpyxl==3.1.2
 
 # ── AI / LLM / Agents ────────────────────────────────────────────────────────
-openai==1.30.3
-langchain==0.2.1
-langchain-community==0.2.1
-langgraph==0.1.4
-langchain-openai==0.1.8
-gTTS==2.5.1
+openai==2.53.0
+langchain==1.3.14
+langchain-community==0.4.2
+langgraph==1.2.10
+langchain-openai==1.4.1
+gTTS==2.5.4
 
 # ── Browser Automation (GAP-2: portal URL analysis) ──────────────────────────
 playwright==1.44.0
@@ -48,14 +48,14 @@ playwright==1.44.0
 # ── Playwright MCP Discovery Agent (Phase 3) ─────────────────────────────────
 # Pinned per ADR-001 — never use @latest. The Node-side @playwright/mcp server
 # itself is pinned in app/agents/automation/mcp_session.py (invoked via npx).
-mcp==1.9.4
+mcp==1.28.1
 
 # ── Reporting ─────────────────────────────────────────────────────────────────
-jinja2==3.1.4
+jinja2==3.1.6
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
-pytest==8.2.2
-pytest-asyncio==0.23.7
+pytest==9.0.3
+pytest-asyncio==1.4.0
 anyio[trio]==4.6.2
 # JSON reporter used by the LocalPytestRunner to capture per-test outcomes
 pytest-json-report==1.5.0
@@ -78,11 +78,22 @@ faker==25.0.0
 # service does not have. The CPU build is a tenth of that and embeds a
 # bge-small corpus perfectly well.
 --extra-index-url https://download.pytorch.org/whl/cpu
-sentence-transformers==3.0.1
+sentence-transformers==5.6.1
+# Pinned explicitly: as a transitive of sentence-transformers pip was
+# content to leave 4.57.x in place, which carries four advisories.
+transformers==5.14.1
 # The SQLAlchemy type for the vector(384) column migration 018 creates.
 # Without it models/rag.py falls back to Text, and Postgres rejects every
 # insert into knowledge_chunks — indexing could never write a row.
 pgvector==0.3.6
+
+# ── Transitive pins (flagged by pip-audit; no direct import) ─────────────────
+# click is deliberately NOT pinned to its fixed 8.3.3+: gTTS requires
+# click<8.2 even at its latest release, so the two cannot both be satisfied.
+# The advisory concerns CLI argument parsing, which this service reaches only
+# through the celery and uvicorn command lines — not through request handling.
+# Revisit if gTTS relaxes the bound or the voiceover endpoint is dropped.
+setuptools==83.0.0
 
 # ── Security scanning (CI / local audit) ──────────────────────────────────────
 bandit[sarif]==1.7.9
