@@ -10,10 +10,28 @@ from types import SimpleNamespace
 import anyio
 import pytest
 
+from app.config import get_settings
 from app.models.automation_suite import AutomationSuite, AutomationSuiteSnapshot, AutomationSuiteTestCase
 from app.services.automation_suite import lifecycle
 from app.services.automation_suite.errors import AutomationSuiteError
 from app.services.automation_suite.inheritance import MemberInheritance, SuiteInheritance
+
+
+@pytest.fixture
+def require_separate_approver(monkeypatch):
+    """Turn the separation-of-duty control on for the test that asserts it.
+
+    `approve` gates the rule on settings.require_separate_approver, which
+    defaults to True but is read from the environment — and a single-operator
+    deployment sets REQUIRE_SEPARATE_APPROVER=false, which is exactly the
+    switch the rule documents. Run inside such a deployment the test asserted
+    a refusal the code had been told not to make.
+
+    Patched on the cached instance rather than through the environment: other
+    modules capture get_settings() at import and patch that object, so
+    clearing the cache would break the identity they depend on.
+    """
+    monkeypatch.setattr(get_settings(), "require_separate_approver", True)
 
 
 class _Result:
@@ -231,7 +249,7 @@ def test_only_a_suite_awaiting_review_can_be_approved():
     anyio.run(scenario)
 
 
-def test_the_submitter_cannot_approve_their_own_suite():
+def test_the_submitter_cannot_approve_their_own_suite(require_separate_approver):
     async def scenario():
         suite = _suite(status="READY_FOR_REVIEW", submitted_by=3)
         with pytest.raises(AutomationSuiteError) as exc:

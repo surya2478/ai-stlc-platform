@@ -17,17 +17,52 @@ from pathlib import Path
 
 import pytest
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.services.automation_runner import dispatcher
 from app.services.automation_runner.env_policy import build_runner_env
 from app.services.automation_runner import policy
 from app.services.automation_runner.policy import resolve_runner_mode
 
 
+@pytest.fixture(autouse=True)
+def _isolate_runner_configuration(monkeypatch):
+    """Pin the settings the dispatcher reads from the cached global.
+
+    The two dispatcher tests below call the real `resolve_runner_mode()`,
+    which falls back to `get_settings()`. Inside a configured worker that
+    returns APP_ENV=production with AUTOMATION_RUNNER_MODE=executor, so they
+    asserted against the deployment rather than the code — and
+    `test_dispatcher_refuses_instead_of_running_when_policy_blocks` did worse
+    than fail: it resolved to a *permitted* executor route and dispatched a
+    real job over HTTP to the running runner-executor service.
+
+    Attributes are patched on the cached instance rather than the cache being
+    cleared. get_settings is lru_cached and several modules capture the result
+    at import (`provider.settings`), so tests elsewhere patch that object and
+    rely on it being the same one get_settings() returns. Clearing the cache
+    breaks that identity for every test that runs afterwards.
+    """
+    cfg = get_settings()
+    monkeypatch.setattr(cfg, "app_env", "local")
+    monkeypatch.setattr(cfg, "automation_runner_mode", "local")
+    monkeypatch.setattr(cfg, "automation_allow_local_runner", None)
+    monkeypatch.setattr(cfg, "automation_executor_url", "")
+    monkeypatch.setattr(cfg, "automation_executor_token", "")
+
+
 def _settings(**overrides) -> Settings:
     # Production requires a non-default secret key of at least 32 chars, so
     # supply one unconditionally rather than per-test.
     overrides.setdefault("app_secret_key", "test-secret-key-with-sufficient-length-1234")
+    # Settings reads every field it is not handed from the process
+    # environment, so a configured deployment rewrote the very defaults these
+    # tests exist to describe. Pin them; a test that means to vary one still
+    # passes it explicitly.
+    overrides.setdefault("app_env", "local")
+    overrides.setdefault("automation_runner_mode", "local")
+    overrides.setdefault("automation_allow_local_runner", None)
+    overrides.setdefault("automation_executor_url", "")
+    overrides.setdefault("automation_executor_token", "")
     return Settings(**overrides)
 
 

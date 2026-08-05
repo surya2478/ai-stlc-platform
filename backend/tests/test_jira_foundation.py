@@ -283,10 +283,19 @@ def test_import_requirements_is_idempotent_when_run_twice():
     assert second.updated == 1
     assert len(db.requirements) == 1
     requirement = next(iter(db.requirements.values()))
-    assert requirement.status == "pending_review"
+    # An import enters the governed workflow at intake, not part-way through
+    # its review. This asserted "pending_review" from before that workflow
+    # existed, and kept asserting it after ae06528 introduced intake — so it
+    # described a promotion the service had deliberately stopped doing.
+    assert requirement.status == "draft"
+    assert requirement.readiness_status == "intake_ready"
+    assert (requirement.metadata_ or {}).get("workflow_stage") == "intake"
 
 
-def test_import_requirements_promotes_existing_jira_draft_to_pending_review():
+def test_import_requirements_leaves_an_existing_draft_at_intake():
+    """Re-importing refreshes the issue's fields; it does not advance the
+    requirement's stage. Promotion is the reviewer's action, and the governed
+    transitions are covered in test_requirement_workflow.py."""
     async def run():
         db = _JiraImportDB()
         existing = Requirement(
@@ -311,7 +320,8 @@ def test_import_requirements_promotes_existing_jira_draft_to_pending_review():
     result, existing = anyio.run(run)
 
     assert result.updated == 1
-    assert existing.status == "pending_review"
+    assert existing.status == "draft"
+    assert existing.readiness_status == "intake_ready"
 
 
 def test_import_requirements_uses_search_jql_next_page_token():
