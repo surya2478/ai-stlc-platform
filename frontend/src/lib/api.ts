@@ -406,6 +406,9 @@ export interface JiraIssueFilters {
   statuses?: string[];
   priorities?: string[];
   labels?: string[];
+  /** Import only these issues. Narrows the other filters rather than replacing
+   *  them; omit to take everything they match. */
+  issue_keys?: string[];
   assignee?: string;
   text?: string;
   updated_since?: string;

@@ -15,6 +15,8 @@ import {
   agentRunsApi,
   traceabilityApi,
   exportApi,
+  taxonomyApi,
+  type TaxonomyEntry,
   type Requirement,
   applicationsApi,
   type ProjectApplication,
@@ -259,6 +261,40 @@ const QUALITY_DIMENSIONS: Array<{ key: string; label: string; weight: number; ga
   { key: "scenario_generation_readiness", label: "Scenario readiness", weight: 0.1, gating: true },
   { key: "qa_domain_completeness", label: "Domain completeness", weight: 0.05 },
 ];
+
+/* Test Type / Phase and Risk Level have no taxonomy master table — the backend
+ * governs them as fixed lists. Keep these in step with TEST_PHASES / RISK_LEVELS
+ * in backend/app/schemas/requirement.py. */
+const TEST_PHASE_OPTIONS = ["SIT", "QA", "UAT", "Regression", "Production Smoke Test"];
+const RISK_LEVEL_OPTIONS = ["Critical", "High", "Medium", "Low"];
+
+/* A requirement stores its classification as text, not a taxonomy FK, so the
+ * select submits the entry's name. Any value the requirement already carries
+ * that is no longer in the master table stays selectable and labelled — opening
+ * this dialog must never silently drop what an agent or an import recorded. */
+function ClassificationSelect({ label, value, options, onChange }: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  const offTaxonomy = Boolean(value) && !options.includes(value);
+  return (
+    <label className="space-y-1.5">
+      <span className="text-[10px] font-bold uppercase text-slate-500">{label}</span>
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200"
+      >
+        <option value="">—</option>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        {offTaxonomy && <option value={value}>{value} (not in taxonomy)</option>}
+      </select>
+    </label>
+  );
+}
 
 /** Grouping order for the blockers panel: what a person can act on first. */
 const BLOCKER_ROUTE_ORDER: BlockerResolution[] = ["human_input", "clarification", "rerun_analysis"];
@@ -712,6 +748,10 @@ function RequirementsContent() {
   const [editingJiraConnectionId, setEditingJiraConnectionId] = useState<number | null>(null);
   const [jiraFilters, setJiraFilters] = useState(defaultJiraFilters);
   const [jiraIssuesPage, setJiraIssuesPage] = useState<JiraIssuePage | null>(null);
+  // Which fetched issues the user actually wants. Empty means "no explicit
+  // pick" and import falls back to the filter query, which is what the button
+  // has always done.
+  const [selectedJiraKeys, setSelectedJiraKeys] = useState<Set<string>>(new Set());
   const [jiraBusy, setJiraBusy] = useState(false);
   const [jiraMessage, setJiraMessage] = useState<string | null>(null);
   const [jiraError, setJiraError] = useState<string | null>(null);
@@ -757,7 +797,38 @@ function RequirementsContent() {
   const [systemsDraft, setSystemsDraft] = useState("");
   const [interfacesDraft, setInterfacesDraft] = useState("");
   const [apisDraft, setApisDraft] = useState("");
-  const [classificationDraft, setClassificationDraft] = useState({ domain: "", journey: "", application: "", requestType: "", testType: "", riskLevel: "" });
+  const [classificationDraft, setClassificationDraft] = useState({ domain: "", journey: "", application: "", subRequestType: "", testType: "", riskLevel: "" });
+  // Classification values come from the same governed master tables the Test
+  // Case editor reads, queried directly with active_only=false so an inactive
+  // parent cannot hide a row the requirement may already be carrying.
+  const [domainOptions, setDomainOptions] = useState<TaxonomyEntry[]>([]);
+  const [productOptions, setProductOptions] = useState<TaxonomyEntry[]>([]);
+  const [subRequestTypeOptions, setSubRequestTypeOptions] = useState<TaxonomyEntry[]>([]);
+  const [businessProcessOptions, setBusinessProcessOptions] = useState<TaxonomyEntry[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      taxonomyApi.qaDomains(false),
+      taxonomyApi.products({ active_only: false }),
+      taxonomyApi.subRequestTypes(false),
+      taxonomyApi.businessProcesses(false),
+    ])
+      .then(([domains, products, subRequestTypes, businessProcesses]) => {
+        if (cancelled) return;
+        setDomainOptions(domains.data);
+        setProductOptions(products.data);
+        setSubRequestTypeOptions(subRequestTypes.data);
+        setBusinessProcessOptions(businessProcesses.data);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDomainOptions([]);
+        setProductOptions([]);
+        setSubRequestTypeOptions([]);
+        setBusinessProcessOptions([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
   // Test Environment + Generation Notes — tester-set context for AI test-case
   // generation, editable per requirement in the Details tab.
   const [genEnvDraft, setGenEnvDraft] = useState("");
@@ -1334,7 +1405,7 @@ function RequirementsContent() {
       domain: selectedReq.telecom_domain || selectedReq.qa_domain || "",
       journey: selectedReq.business_process || "",
       application: selectedReq.product || selectedReq.product_group || "",
-      requestType: selectedReq.sub_request_type || "",
+      subRequestType: selectedReq.sub_request_type || "",
       testType: selectedReq.test_phase || "",
       riskLevel: selectedReq.risk_level || "",
     });
@@ -1404,15 +1475,15 @@ function RequirementsContent() {
           setAnalysisDialogError("Complete either Domain or Journey / Business Process.");
           return;
         }
-        if (!classificationDraft.application.trim() && !classificationDraft.requestType.trim()) {
-          setAnalysisDialogError("Complete either Application / Product or Request Type.");
+        if (!classificationDraft.application.trim() && !classificationDraft.subRequestType.trim()) {
+          setAnalysisDialogError("Complete either Application / Product or Sub Request Type.");
           return;
         }
         updates = {
           telecom_domain: classificationDraft.domain.trim() || undefined,
           business_process: classificationDraft.journey.trim() || undefined,
           product: classificationDraft.application.trim() || undefined,
-          sub_request_type: classificationDraft.requestType.trim() || undefined,
+          sub_request_type: classificationDraft.subRequestType.trim() || undefined,
           test_phase: classificationDraft.testType.trim() || undefined,
           risk_level: classificationDraft.riskLevel.trim() || undefined,
         };
@@ -1619,7 +1690,10 @@ function RequirementsContent() {
         page_size: pageSize,
       });
       setJiraIssuesPage(res.data);
-      setJiraMessage(`Fetched ${res.data.items.length} of ${res.data.total} Jira issues.`);
+      // A new result set invalidates any prior pick — keeping keys that are no
+      // longer on screen would import issues the user can no longer see.
+      setSelectedJiraKeys(new Set());
+      setJiraMessage(`Fetched ${res.data.items.length} of ${res.data.total} Jira issues. Tick the ones to import, or import all matches.`);
     } catch (e: any) {
       setJiraError("Failed to fetch Jira issues.");
     } finally {
@@ -1631,6 +1705,9 @@ function RequirementsContent() {
     if (!selectedJiraConnection) return;
     const pageSize = clampNumber(jiraFilters.page_size, 1, 100);
     const maxIssues = clampNumber(jiraFilters.max_issues, 1, 5000);
+    // An explicit pick wins; with nothing ticked this is undefined and the
+    // import behaves exactly as it did before selection existed.
+    const chosenKeys = selectedJiraKeys.size > 0 ? Array.from(selectedJiraKeys) : undefined;
     setJiraBusy(true);
     setJiraError(null);
     setJiraMessage(null);
@@ -1640,6 +1717,7 @@ function RequirementsContent() {
         statuses: splitCsv(jiraFilters.statuses),
         priorities: splitCsv(jiraFilters.priorities),
         labels: splitCsv(jiraFilters.labels),
+        issue_keys: chosenKeys,
         assignee: jiraFilters.assignee.trim() || undefined,
         text: jiraFilters.text.trim() || undefined,
         updated_since: jiraFilters.updated_since.trim() || undefined,
@@ -1648,12 +1726,22 @@ function RequirementsContent() {
         max_issues: maxIssues,
       });
       await loadData();
-      setJiraMessage(`Imported ${res.data.imported} Jira requirements: ${res.data.created} created, ${res.data.updated} updated.`);
+      const scope = chosenKeys ? `${chosenKeys.length} selected issue(s)` : "all matching issues";
+      setJiraMessage(`Imported ${res.data.imported} Jira requirements from ${scope}: ${res.data.created} created, ${res.data.updated} updated.`);
     } catch (e: any) {
       setJiraError("Failed to import Jira requirements.");
     } finally {
       setJiraBusy(false);
     }
+  };
+
+  const toggleJiraKey = (key: string) => {
+    setSelectedJiraKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
   function handleOpenReqDetail(req: Requirement) {
@@ -3606,27 +3694,77 @@ function RequirementsContent() {
                         Fetch Backlog
                       </Button>
                       <Button onClick={handleImportJiraRequirements} disabled={jiraBusy} size="sm" variant="outline" className="text-xs font-semibold h-8.5 border-slate-200 text-slate-655 bg-white font-bold">
-                        Import as Requirements
+                        {selectedJiraKeys.size > 0
+                          ? `Import ${selectedJiraKeys.size} Selected`
+                          : "Import as Requirements"}
                       </Button>
                     </div>
+                    {jiraIssuesPage && jiraIssuesPage.items.length > 0 && selectedJiraKeys.size === 0 && (
+                      <p className="text-[10px] font-semibold text-slate-400 -mt-2">
+                        Nothing ticked — importing will bring in every issue matching the filters above
+                        {jiraIssuesPage.total > jiraIssuesPage.items.length ? ` (${jiraIssuesPage.total} in total, not just the ${jiraIssuesPage.items.length} shown)` : ""}.
+                      </p>
+                    )}
 
-                    {/* Jira issues list summary */}
+                    {/* Jira issues list — tick the ones to import */}
                     {jiraIssuesPage && jiraIssuesPage.items.length > 0 && (
                       <div className="border-t pt-4 space-y-3">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Jira Backlog Matches ({jiraIssuesPage.total})</label>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                            Jira Backlog Matches ({jiraIssuesPage.total})
+                            {selectedJiraKeys.size > 0 && (
+                              <span className="ml-1.5 normal-case text-[#1b59f8]">· {selectedJiraKeys.size} selected</span>
+                            )}
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedJiraKeys(new Set(jiraIssuesPage.items.map((i) => i.key)))}
+                              className="text-[10px] font-bold text-[#1b59f8] hover:underline"
+                            >
+                              Select all {jiraIssuesPage.items.length} shown
+                            </button>
+                            {selectedJiraKeys.size > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedJiraKeys(new Set())}
+                                className="text-[10px] font-bold text-slate-500 hover:underline"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        </div>
                         <div className="rounded-lg border border-slate-150 divide-y divide-slate-100 overflow-hidden bg-slate-50/20 max-h-60 overflow-y-auto pr-1">
-                          {jiraIssuesPage.items.map((issue) => (
-                            <div key={issue.key} className="p-3 text-xs flex items-center justify-between gap-4 bg-white">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-mono font-bold text-[#1b59f8]">{issue.key}</span>
-                                  <Badge variant="outline" className="py-0 px-2 text-[9px] capitalize">{issue.issue_type}</Badge>
-                                  <Badge variant={getStatusVariant(issue.status)} className="py-0 px-2 text-[9px] capitalize">{issue.status}</Badge>
+                          {jiraIssuesPage.items.map((issue) => {
+                            const picked = selectedJiraKeys.has(issue.key);
+                            return (
+                              <div
+                                key={issue.key}
+                                onClick={() => toggleJiraKey(issue.key)}
+                                className={cn(
+                                  "p-3 text-xs flex items-start gap-3 cursor-pointer transition-colors",
+                                  picked ? "bg-blue-50/60" : "bg-white hover:bg-slate-50/70",
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={picked}
+                                  readOnly
+                                  aria-label={`Select ${issue.key}`}
+                                  className="mt-0.5 shrink-0 accent-[#1b59f8]"
+                                />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono font-bold text-[#1b59f8]">{issue.key}</span>
+                                    <Badge variant="outline" className="py-0 px-2 text-[9px] capitalize">{issue.issue_type}</Badge>
+                                    <Badge variant={getStatusVariant(issue.status)} className="py-0 px-2 text-[9px] capitalize">{issue.status}</Badge>
+                                  </div>
+                                  <p className="font-bold text-slate-800 mt-1 truncate">{issue.summary}</p>
                                 </div>
-                                <p className="font-bold text-slate-800 mt-1 truncate">{issue.summary}</p>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -4146,8 +4284,10 @@ function RequirementsContent() {
                   const improvementActions: Array<{ label: string; detail: string; dialog: AnalysisDialog }> = [];
                   if (!latestQualityReview || Number(latestQualityReview.completeness_score) < 3.5 || Number(latestQualityReview.clarity_score) < 3.5) improvementActions.push({ label: "Edit core details", detail: "State the actor, business outcome, trigger, rules, constraints, and risks.", dialog: "content" });
                   if (!latestQualityReview || Number(latestQualityReview.testability_score) < 3.5 || Number(latestQualityReview.acceptance_criteria_score) < 3.5) improvementActions.push({ label: "Edit acceptance criteria", detail: "Add measurable positive and negative outcomes with expected results.", dialog: "acceptance" });
-                  if (!latestQualityReview || Number(latestQualityReview.interface_readiness_score) < 3.5) improvementActions.push({ label: "Map systems & APIs", detail: "Name impacted systems, interfaces, endpoints, protocols, and dependencies.", dialog: "systems" });
-                  if (!latestQualityReview || Number(latestQualityReview.telecom_domain_completeness) < 3.5) improvementActions.push({ label: "Edit classification", detail: "Complete domain, application, request type, test phase, and risk level.", dialog: "classification" });
+                  // A null interface readiness score means the requirement crosses no
+                  // system boundary, so there is nothing to map.
+                  if (!latestQualityReview || (latestQualityReview.interface_readiness_score != null && Number(latestQualityReview.interface_readiness_score) < 3.5)) improvementActions.push({ label: "Map systems & APIs", detail: "Name impacted systems, interfaces, endpoints, protocols, and dependencies.", dialog: "systems" });
+                  if (!latestQualityReview || Number(latestQualityReview.telecom_domain_completeness) < 3.5) improvementActions.push({ label: "Edit classification", detail: "Complete domain, application, sub request type, test phase, and risk level.", dialog: "classification" });
                   const editableValidationIssues = getEditableAnalysisValidationIssues(
                     selectedReq,
                     duplicateRequirementIds.has(selectedReq.id),
@@ -4325,7 +4465,7 @@ function RequirementsContent() {
                             ["Domain", selectedReq.telecom_domain || selectedReq.qa_domain || "Unclassified"],
                             ["Journey", selectedReq.business_process || "Not classified"],
                             ["Application", selectedReq.product || selectedReq.product_group || "Not mapped"],
-                            ["Request Type", selectedReq.sub_request_type || selectedReq.jira_issue_type || "Not classified"],
+                            ["Sub Request Type", selectedReq.sub_request_type || selectedReq.jira_issue_type || "Not classified"],
                             ["Test Type", selectedReq.test_phase || "Not specified"],
                             ["Risk Level", selectedReq.risk_level || "Not assessed"],
                           ] as const).map(([label, value]) => (
@@ -4365,16 +4505,17 @@ function RequirementsContent() {
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-2">
                               {([
-                                ["Completeness", latestQualityReview.completeness_score],
-                                ["Clarity", latestQualityReview.clarity_score],
-                                ["Testability", latestQualityReview.testability_score],
-                                ["Acceptance criteria", latestQualityReview.acceptance_criteria_score],
-                                ["Interface readiness", latestQualityReview.interface_readiness_score],
-                                ["Domain completeness", latestQualityReview.telecom_domain_completeness],
-                              ] as const).map(([label, value]) => (
+                                ["Completeness", latestQualityReview.completeness_score, "Not recorded"],
+                                ["Clarity", latestQualityReview.clarity_score, "Not recorded"],
+                                ["Testability", latestQualityReview.testability_score, "Not recorded"],
+                                ["Acceptance criteria", latestQualityReview.acceptance_criteria_score, "Not recorded"],
+                                // Scored null when the requirement crosses no system boundary.
+                                ["Interface readiness", latestQualityReview.interface_readiness_score, "Not applicable"],
+                                ["Domain completeness", latestQualityReview.telecom_domain_completeness, "Not recorded"],
+                              ] as const).map(([label, value, emptyLabel]) => (
                                 <div key={label} className="rounded-lg border border-slate-100 bg-slate-50 p-2">
                                   <div className="text-[9px] font-bold text-slate-400">{label}</div>
-                                  <div className="mt-0.5 font-bold text-slate-700">{value === null || value === undefined ? "Not recorded" : Number(value).toFixed(1)}</div>
+                                  <div className="mt-0.5 font-bold text-slate-700">{value === null || value === undefined ? emptyLabel : Number(value).toFixed(1)}</div>
                                 </div>
                               ))}
                             </div>
@@ -5016,8 +5157,12 @@ function RequirementsContent() {
                   {selectedReq.readiness_status === "needs_clarification" ? <div className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-[10px] font-semibold text-amber-800">Submitting this answer resolves the clarification gate and returns the requirement to Analysis Pending. Select Re-run Analysis afterward to validate it.</div> : <label className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 font-semibold text-emerald-800"><input aria-label="Mark missing information resolved" type="checkbox" checked={markMissingResolved} onChange={(event) => setMarkMissingResolved(event.target.checked)} className="mt-0.5" /><span>Mark all listed missing-information findings as resolved. Resolution details are required and retained in reviewer notes.</span></label>}
                 </>}
                 {analysisDialog === "classification" && <div className="grid grid-cols-2 gap-3">
-                  {([[
-                    "Domain", "domain"], ["Journey / Business Process", "journey"], ["Application / Product", "application"], ["Request Type", "requestType"], ["Test Type / Phase", "testType"], ["Risk Level", "riskLevel"]] as Array<[string, keyof typeof classificationDraft]>).map(([label, key]) => <label key={key} className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">{label}</span><input aria-label={label} value={classificationDraft[key]} onChange={(event) => setClassificationDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-9 w-full rounded-lg border border-slate-200 px-3 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" /></label>)}
+                  <ClassificationSelect label="Domain" value={classificationDraft.domain} options={domainOptions.map((entry) => entry.name)} onChange={(value) => setClassificationDraft((current) => ({ ...current, domain: value }))} />
+                  <ClassificationSelect label="Journey / Business Process" value={classificationDraft.journey} options={businessProcessOptions.map((entry) => entry.name)} onChange={(value) => setClassificationDraft((current) => ({ ...current, journey: value }))} />
+                  <ClassificationSelect label="Application / Product" value={classificationDraft.application} options={productOptions.map((entry) => entry.name)} onChange={(value) => setClassificationDraft((current) => ({ ...current, application: value }))} />
+                  <ClassificationSelect label="Sub Request Type" value={classificationDraft.subRequestType} options={subRequestTypeOptions.map((entry) => entry.name)} onChange={(value) => setClassificationDraft((current) => ({ ...current, subRequestType: value }))} />
+                  <ClassificationSelect label="Test Type / Phase" value={classificationDraft.testType} options={TEST_PHASE_OPTIONS} onChange={(value) => setClassificationDraft((current) => ({ ...current, testType: value }))} />
+                  <ClassificationSelect label="Risk Level" value={classificationDraft.riskLevel} options={RISK_LEVEL_OPTIONS} onChange={(value) => setClassificationDraft((current) => ({ ...current, riskLevel: value }))} />
                 </div>}
                 {analysisDialog === "systems" && <>
                   <p className="font-semibold text-slate-600">Record systems, interfaces, and APIs separately so the reviewer can assess integration readiness.</p>

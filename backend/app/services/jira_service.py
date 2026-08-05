@@ -148,6 +148,10 @@ def build_jql(project_key: str, filters: JiraFetchIssuesRequest | JiraImportRequ
     if filters.labels:
         values = ", ".join(_quote_jql_value(v) for v in filters.labels)
         clauses.append(f"labels in ({values})")
+    if filters.issue_keys:
+        # Quoted like every other value, so a key can never open the clause up.
+        values = ", ".join(_quote_jql_value(v) for v in filters.issue_keys)
+        clauses.append(f"key in ({values})")
     if filters.assignee:
         clauses.append(f"assignee = {_quote_jql_value(filters.assignee)}")
     if filters.text:

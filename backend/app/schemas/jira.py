@@ -100,12 +100,18 @@ class JiraIssueFilters(BaseModel):
     statuses: list[str] | None = None
     priorities: list[str] | None = None
     labels: list[str] | None = None
+    # An explicit pick, for when the caller has already seen the matches and
+    # wants only some of them. Narrows the same query the other filters build
+    # rather than replacing it, so it composes with them and stays project
+    # scoped. Omitted (the default) means "everything the filters match" —
+    # exactly the behaviour every existing caller relies on.
+    issue_keys: list[str] | None = None
     assignee: str | None = None
     text: str | None = None
     updated_since: str | None = None
     jql: str | None = None
 
-    @field_validator("issue_types", "statuses", "priorities", "labels")
+    @field_validator("issue_types", "statuses", "priorities", "labels", "issue_keys")
     @classmethod
     def clean_filter_list(cls, value: list[str] | None) -> list[str] | None:
         if value is None:
