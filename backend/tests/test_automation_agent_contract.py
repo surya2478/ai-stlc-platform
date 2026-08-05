@@ -1,6 +1,5 @@
 import asyncio
 import json
-import time
 
 import anyio
 
@@ -161,32 +160,75 @@ class _SlowKeyedLLM:
             self.in_flight -= 1
 
 
+class _BarrierKeyedLLM:
+    """Keyed like _SlowKeyedLLM, but every call blocks until `expected` of them
+    are in flight together.
+
+    This makes overlap a fact the test can prove rather than infer from a
+    duration. A sleep-and-measure version asserts "finished faster than serial
+    would have", which is a statement about the machine as much as the code —
+    it failed once in a loaded full-suite run and passed alone three times in
+    a row. Here the barrier can only release if the calls genuinely overlap,
+    and a serial implementation waits at it forever, so the outcome no longer
+    moves with load.
+    """
+
+    def __init__(self, expected: int):
+        self.expected = expected
+        self.in_flight = 0
+        self.max_in_flight = 0
+        self.calls = 0
+        self._all_arrived: asyncio.Event | None = None
+
+    async def achat(self, *, messages):
+        # Created on first use: an asyncio.Event binds to the running loop, and
+        # the fixture is built before anyio.run starts one. Safe without a lock
+        # because everything up to the first await runs without interleaving.
+        if self._all_arrived is None:
+            self._all_arrived = asyncio.Event()
+        self.calls += 1
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            if self.in_flight >= self.expected:
+                self._all_arrived.set()
+            await self._all_arrived.wait()
+            prompt = messages[-1]["content"]
+            for tc_id in ("TC-0001", "TC-0002", "TC-0003", "TC-0004", "TC-0005", "TC-0006"):
+                if tc_id in prompt:
+                    return _contract_json(tc_id)
+            return _contract_json("TC-UNKNOWN")
+        finally:
+            self.in_flight -= 1
+
+
 def test_wave_generation_runs_concurrently_not_serially(monkeypatch):
-    llm = _SlowKeyedLLM(delay=0.1)
+    llm = _BarrierKeyedLLM(expected=5)
     monkeypatch.setattr(automation_agent, "get_llm", lambda *_a, **_k: llm)
     # Pinned rather than inherited: the real width is provider-aware now, and a
     # machine configured against a local single-model server resolves it to 1,
-    # which would make this timing assertion fail for the right reason.
+    # which would fail this for the right reason.
     monkeypatch.setattr(automation_agent, "_generation_concurrency", lambda: 5)
 
     test_cases = [{"test_case_id": f"TC-000{i}", "title": f"Case {i}"} for i in range(1, 6)]
 
     async def run():
-        return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
+        # Only reached if the calls never meet at the barrier. Deliberately far
+        # longer than the work needs, so load cannot turn a passing run into a
+        # failing one — it bounds a deadlock, it does not measure speed.
+        with anyio.fail_after(30):
+            return await AutomationScriptAgent().run(test_cases=test_cases, framework="playwright")
 
-    start = time.monotonic()
     result = anyio.run(run)
-    elapsed = time.monotonic() - start
 
     assert result.success is True
     assert len(result.data["scripts"]) == 5
     assert {s["contract"]["testCaseId"] for s in result.data["scripts"]} == {
         "TC-0001", "TC-0002", "TC-0003", "TC-0004", "TC-0005",
     }
-    # 5 sequential 0.1s calls would take >=0.5s; concurrent (cap=5) should
-    # finish in roughly one delay's worth of wall-clock time.
-    assert elapsed < 0.3
-    assert llm.max_in_flight > 1
+    # All five were inside the call at the same moment; the barrier cannot
+    # release on any lesser degree of overlap.
+    assert llm.max_in_flight == 5
 
 
 def test_wave_generation_respects_concurrency_cap(monkeypatch):
