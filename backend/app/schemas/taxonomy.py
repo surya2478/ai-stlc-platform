@@ -17,6 +17,7 @@ TaxonomyEntity = Literal[
     "product",
     "system",
     "sub_request_type",
+    "business_process",
 ]
 
 RelationType = Literal[
@@ -141,7 +142,9 @@ class QADomainRead(_TaxonomyBase):
 
 
 class ProductGroupCreate(_TaxonomyCreateBase):
-    parent_id: int = Field(..., description="QA Domain id")
+    # Optional since migration 059 — a Product Group is a root in its own
+    # right, and a QA Domain is a label it may or may not carry.
+    parent_id: int | None = Field(default=None, description="QA Domain id (optional)")
 
 
 class ProductGroupUpdate(_TaxonomyUpdateBase):
@@ -149,7 +152,7 @@ class ProductGroupUpdate(_TaxonomyUpdateBase):
 
 
 class ProductGroupRead(_TaxonomyBase):
-    parent_id: int
+    parent_id: int | None = None
 
 
 # ── Product ──────────────────────────────────────────────────────────────────
@@ -194,6 +197,21 @@ class SubRequestTypeUpdate(_TaxonomyUpdateBase):
 
 
 class SubRequestTypeRead(_TaxonomyBase):
+    pass
+
+
+# ── Business Process ─────────────────────────────────────────────────────────
+
+
+class BusinessProcessCreate(_TaxonomyCreateBase):
+    pass
+
+
+class BusinessProcessUpdate(_TaxonomyUpdateBase):
+    pass
+
+
+class BusinessProcessRead(_TaxonomyBase):
     pass
 
 
@@ -306,6 +324,7 @@ class TaxonomyTree(BaseModel):
     qa_domains: list[QADomainTreeNode] = Field(default_factory=list)
     systems: list[SystemRead] = Field(default_factory=list)
     sub_request_types: list[SubRequestTypeRead] = Field(default_factory=list)
+    business_processes: list[BusinessProcessRead] = Field(default_factory=list)
     test_case_types: list[TestCaseTypeRead] = Field(default_factory=list)
     test_case_complexities: list[TestCaseComplexityRead] = Field(default_factory=list)
     environments: list[EnvironmentRead] = Field(default_factory=list)
@@ -331,6 +350,9 @@ __all__ = [
     "SubRequestTypeCreate",
     "SubRequestTypeUpdate",
     "SubRequestTypeRead",
+    "BusinessProcessCreate",
+    "BusinessProcessUpdate",
+    "BusinessProcessRead",
     "TestCaseTypeCreate",
     "TestCaseTypeUpdate",
     "TestCaseTypeRead",

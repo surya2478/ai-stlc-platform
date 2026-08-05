@@ -12,6 +12,9 @@ from fastapi import APIRouter
 from app.api.deps import CurrentUser, DBSession
 from app.schemas.common import MessageResponse
 from app.schemas.taxonomy import (
+    BusinessProcessCreate,
+    BusinessProcessRead,
+    BusinessProcessUpdate,
     EnvironmentCreate,
     EnvironmentRead,
     EnvironmentUpdate,
@@ -41,6 +44,7 @@ from app.schemas.taxonomy import (
     TestCaseTypeUpdate,
 )
 from app.services.taxonomy_service import (
+    BusinessProcessService,
     EnvironmentService,
     ProductGroupService,
     ProductService,
@@ -54,6 +58,21 @@ from app.services.taxonomy_service import (
 )
 
 router = APIRouter()
+
+
+async def _commit_updated(db, obj):
+    """Commit an edited row and reload it before it is serialised.
+
+    `updated_at` carries `onupdate=func.now()` (models/base.py), so after an
+    UPDATE SQLAlchemy marks the attribute expired and needs a SELECT to read
+    the server-generated value back. Letting the response model trigger that
+    lazily raises MissingGreenlet on the async engine, which surfaced as a 500
+    on every taxonomy edit. Refreshing here does that read inside the async
+    context, where it belongs.
+    """
+    await db.commit()
+    await db.refresh(obj)
+    return obj
 
 
 @router.get("/tree", response_model=TaxonomyTree)
@@ -78,8 +97,7 @@ async def create_qa_domain(data: QADomainCreate, db: DBSession, current_user: Cu
 @router.patch("/qa-domains/{entity_id}", response_model=QADomainRead)
 async def update_qa_domain(entity_id: int, data: QADomainUpdate, db: DBSession, current_user: CurrentUser):
     obj = await QADomainService(db).update(entity_id, data, current_user)
-    await db.commit()
-    return obj
+    return await _commit_updated(db, obj)
 
 
 @router.delete("/qa-domains/{entity_id}", response_model=MessageResponse)
@@ -108,8 +126,7 @@ async def create_product_group(data: ProductGroupCreate, db: DBSession, current_
 @router.patch("/product-groups/{entity_id}", response_model=ProductGroupRead)
 async def update_product_group(entity_id: int, data: ProductGroupUpdate, db: DBSession, current_user: CurrentUser):
     obj = await ProductGroupService(db).update(entity_id, data, current_user)
-    await db.commit()
-    return obj
+    return await _commit_updated(db, obj)
 
 
 @router.delete("/product-groups/{entity_id}", response_model=MessageResponse)
@@ -138,8 +155,7 @@ async def create_product(data: ProductCreate, db: DBSession, current_user: Curre
 @router.patch("/products/{entity_id}", response_model=ProductRead)
 async def update_product(entity_id: int, data: ProductUpdate, db: DBSession, current_user: CurrentUser):
     obj = await ProductService(db).update(entity_id, data, current_user)
-    await db.commit()
-    return obj
+    return await _commit_updated(db, obj)
 
 
 @router.delete("/products/{entity_id}", response_model=MessageResponse)
@@ -166,8 +182,7 @@ async def create_system(data: SystemCreate, db: DBSession, current_user: Current
 @router.patch("/systems/{entity_id}", response_model=SystemRead)
 async def update_system(entity_id: int, data: SystemUpdate, db: DBSession, current_user: CurrentUser):
     obj = await SystemService(db).update(entity_id, data, current_user)
-    await db.commit()
-    return obj
+    return await _commit_updated(db, obj)
 
 
 @router.delete("/systems/{entity_id}", response_model=MessageResponse)
@@ -194,8 +209,7 @@ async def create_sub_request_type(data: SubRequestTypeCreate, db: DBSession, cur
 @router.patch("/sub-request-types/{entity_id}", response_model=SubRequestTypeRead)
 async def update_sub_request_type(entity_id: int, data: SubRequestTypeUpdate, db: DBSession, current_user: CurrentUser):
     obj = await SubRequestTypeService(db).update(entity_id, data, current_user)
-    await db.commit()
-    return obj
+    return await _commit_updated(db, obj)
 
 
 @router.delete("/sub-request-types/{entity_id}", response_model=MessageResponse)
@@ -222,8 +236,7 @@ async def create_test_case_type(data: TestCaseTypeCreate, db: DBSession, current
 @router.patch("/test-case-types/{entity_id}", response_model=TestCaseTypeRead)
 async def update_test_case_type(entity_id: int, data: TestCaseTypeUpdate, db: DBSession, current_user: CurrentUser):
     obj = await TestCaseTypeService(db).update(entity_id, data, current_user)
-    await db.commit()
-    return obj
+    return await _commit_updated(db, obj)
 
 
 @router.delete("/test-case-types/{entity_id}", response_model=MessageResponse)
@@ -231,6 +244,35 @@ async def deactivate_test_case_type(entity_id: int, db: DBSession, current_user:
     await TestCaseTypeService(db).deactivate(entity_id, current_user)
     await db.commit()
     return {"message": "Test Case Type deactivated"}
+
+
+# ── Business Processes ───────────────────────────────────────────────────────
+
+@router.get("/business-processes", response_model=list[BusinessProcessRead])
+async def list_business_processes(db: DBSession, current_user: CurrentUser, active_only: bool = False):
+    return await BusinessProcessService(db).list(active_only=active_only)
+
+
+@router.post("/business-processes", response_model=BusinessProcessRead, status_code=201)
+async def create_business_process(data: BusinessProcessCreate, db: DBSession, current_user: CurrentUser):
+    obj = await BusinessProcessService(db).create(data, current_user)
+    await db.commit()
+    return obj
+
+
+@router.patch("/business-processes/{entity_id}", response_model=BusinessProcessRead)
+async def update_business_process(
+    entity_id: int, data: BusinessProcessUpdate, db: DBSession, current_user: CurrentUser
+):
+    obj = await BusinessProcessService(db).update(entity_id, data, current_user)
+    return await _commit_updated(db, obj)
+
+
+@router.delete("/business-processes/{entity_id}", response_model=MessageResponse)
+async def deactivate_business_process(entity_id: int, db: DBSession, current_user: CurrentUser):
+    await BusinessProcessService(db).deactivate(entity_id, current_user)
+    await db.commit()
+    return {"message": "Business Process deactivated"}
 
 
 # ── Test Case Complexities ───────────────────────────────────────────────────
@@ -252,8 +294,7 @@ async def update_test_case_complexity(
     entity_id: int, data: TestCaseComplexityUpdate, db: DBSession, current_user: CurrentUser
 ):
     obj = await TestCaseComplexityService(db).update(entity_id, data, current_user)
-    await db.commit()
-    return obj
+    return await _commit_updated(db, obj)
 
 
 @router.delete("/test-case-complexities/{entity_id}", response_model=MessageResponse)
@@ -280,8 +321,7 @@ async def create_environment(data: EnvironmentCreate, db: DBSession, current_use
 @router.patch("/environments/{entity_id}", response_model=EnvironmentRead)
 async def update_environment(entity_id: int, data: EnvironmentUpdate, db: DBSession, current_user: CurrentUser):
     obj = await EnvironmentService(db).update(entity_id, data, current_user)
-    await db.commit()
-    return obj
+    return await _commit_updated(db, obj)
 
 
 @router.delete("/environments/{entity_id}", response_model=MessageResponse)

@@ -1405,21 +1405,115 @@ export interface TaxonomyTree {
   qa_domains: Array<{ id: number; name: string; code: string; is_active: boolean; product_groups: Array<{ id: number; name: string; code: string; is_active: boolean; products: Array<{ id: number; name: string; code: string; is_active: boolean }> }> }>;
   systems: TaxonomyEntry[];
   sub_request_types: TaxonomyEntry[];
+  business_processes: TaxonomyEntry[];
   test_case_types: TaxonomyEntry[];
   test_case_complexities: TaxonomyEntry[];
   environments: TaxonomyEntry[];
 }
 
+/** A Product Group. `parent_id` (a QA Domain) is optional since migration 059
+ *  — Domain is a label, not a precondition. */
+export interface TaxonomyGroupEntry extends TaxonomyEntry {
+  parent_id: number | null;
+}
+
+/** A Product. `parent_id` (a Product Group) is NOT NULL — this is the
+ *  dependency the classification chain actually enforces. */
+export interface TaxonomyChildEntry extends TaxonomyEntry {
+  parent_id: number;
+}
+
+/** Write shape shared by every master table. `code` is uppercased and
+ *  restricted to [A-Z0-9_-] by the backend validator. */
+export interface TaxonomyEntryInput {
+  name: string;
+  code: string;
+  description?: string | null;
+  status?: "active" | "draft" | "retired";
+  owner?: string | null;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+/** Sub Request Type reaches Product through this edge table rather than a
+ *  parent column, so one type can serve several products. */
+export type TaxonomyRelationType =
+  | "system_supports_product"
+  | "subrequest_for_product"
+  | "subrequest_for_system";
+
+export interface TaxonomyRelationship {
+  id: number;
+  organization_id?: number | null;
+  relation_type: TaxonomyRelationType;
+  from_entity: string;
+  from_id: number;
+  to_entity: string;
+  to_id: number;
+  is_active: boolean;
+}
+
+/** DELETE deactivates (is_active=false) rather than removing the row — the
+ *  ids are referenced by test cases and must stay resolvable. */
 export const taxonomyApi = {
   tree: (activeOnly = true) => api.get<TaxonomyTree>("/taxonomy/tree", { params: { active_only: activeOnly } }),
+
   qaDomains: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/qa-domains", { params: { active_only: activeOnly } }),
-  productGroups: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/product-groups", { params: { active_only: activeOnly } }),
-  products: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/products", { params: { active_only: activeOnly } }),
+  createQaDomain: (data: TaxonomyEntryInput) => api.post<TaxonomyEntry>("/taxonomy/qa-domains", data),
+  updateQaDomain: (id: number, data: Partial<TaxonomyEntryInput>) => api.patch<TaxonomyEntry>(`/taxonomy/qa-domains/${id}`, data),
+  deactivateQaDomain: (id: number) => api.delete(`/taxonomy/qa-domains/${id}`),
+
+  productGroups: (params?: { parent_id?: number; active_only?: boolean }) =>
+    api.get<TaxonomyGroupEntry[]>("/taxonomy/product-groups", { params }),
+  createProductGroup: (data: TaxonomyEntryInput & { parent_id?: number | null }) =>
+    api.post<TaxonomyGroupEntry>("/taxonomy/product-groups", data),
+  updateProductGroup: (id: number, data: Partial<TaxonomyEntryInput & { parent_id: number | null }>) =>
+    api.patch<TaxonomyGroupEntry>(`/taxonomy/product-groups/${id}`, data),
+  deactivateProductGroup: (id: number) => api.delete(`/taxonomy/product-groups/${id}`),
+
+  products: (params?: { parent_id?: number; active_only?: boolean }) =>
+    api.get<TaxonomyChildEntry[]>("/taxonomy/products", { params }),
+  createProduct: (data: TaxonomyEntryInput & { parent_id: number }) =>
+    api.post<TaxonomyChildEntry>("/taxonomy/products", data),
+  updateProduct: (id: number, data: Partial<TaxonomyEntryInput & { parent_id: number }>) =>
+    api.patch<TaxonomyChildEntry>(`/taxonomy/products/${id}`, data),
+  deactivateProduct: (id: number) => api.delete(`/taxonomy/products/${id}`),
+
   systems: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/systems", { params: { active_only: activeOnly } }),
+  createSystem: (data: TaxonomyEntryInput) => api.post<TaxonomyEntry>("/taxonomy/systems", data),
+  updateSystem: (id: number, data: Partial<TaxonomyEntryInput>) => api.patch<TaxonomyEntry>(`/taxonomy/systems/${id}`, data),
+  deactivateSystem: (id: number) => api.delete(`/taxonomy/systems/${id}`),
+
   subRequestTypes: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/sub-request-types", { params: { active_only: activeOnly } }),
+  createSubRequestType: (data: TaxonomyEntryInput) => api.post<TaxonomyEntry>("/taxonomy/sub-request-types", data),
+  updateSubRequestType: (id: number, data: Partial<TaxonomyEntryInput>) => api.patch<TaxonomyEntry>(`/taxonomy/sub-request-types/${id}`, data),
+  deactivateSubRequestType: (id: number) => api.delete(`/taxonomy/sub-request-types/${id}`),
+
+  businessProcesses: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/business-processes", { params: { active_only: activeOnly } }),
+  createBusinessProcess: (data: TaxonomyEntryInput) => api.post<TaxonomyEntry>("/taxonomy/business-processes", data),
+  updateBusinessProcess: (id: number, data: Partial<TaxonomyEntryInput>) => api.patch<TaxonomyEntry>(`/taxonomy/business-processes/${id}`, data),
+  deactivateBusinessProcess: (id: number) => api.delete(`/taxonomy/business-processes/${id}`),
+
   testCaseTypes: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/test-case-types", { params: { active_only: activeOnly } }),
+  createTestCaseType: (data: TaxonomyEntryInput) => api.post<TaxonomyEntry>("/taxonomy/test-case-types", data),
+  updateTestCaseType: (id: number, data: Partial<TaxonomyEntryInput>) => api.patch<TaxonomyEntry>(`/taxonomy/test-case-types/${id}`, data),
+  deactivateTestCaseType: (id: number) => api.delete(`/taxonomy/test-case-types/${id}`),
+
   testCaseComplexities: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/test-case-complexities", { params: { active_only: activeOnly } }),
+  createTestCaseComplexity: (data: TaxonomyEntryInput) => api.post<TaxonomyEntry>("/taxonomy/test-case-complexities", data),
+  updateTestCaseComplexity: (id: number, data: Partial<TaxonomyEntryInput>) => api.patch<TaxonomyEntry>(`/taxonomy/test-case-complexities/${id}`, data),
+  deactivateTestCaseComplexity: (id: number) => api.delete(`/taxonomy/test-case-complexities/${id}`),
+
   environments: (activeOnly = false) => api.get<TaxonomyEntry[]>("/taxonomy/environments", { params: { active_only: activeOnly } }),
+  createEnvironment: (data: TaxonomyEntryInput) => api.post<TaxonomyEntry>("/taxonomy/environments", data),
+  updateEnvironment: (id: number, data: Partial<TaxonomyEntryInput>) => api.patch<TaxonomyEntry>(`/taxonomy/environments/${id}`, data),
+  deactivateEnvironment: (id: number) => api.delete(`/taxonomy/environments/${id}`),
+
+  relationships: (params?: { relation_type?: TaxonomyRelationType; from_id?: number; to_id?: number }) =>
+    api.get<TaxonomyRelationship[]>("/taxonomy/relationships", { params }),
+  createRelationship: (data: { relation_type: TaxonomyRelationType; from_id: number; to_id: number }) =>
+    api.post<TaxonomyRelationship>("/taxonomy/relationships", data),
+  deleteRelationship: (id: number) => api.delete(`/taxonomy/relationships/${id}`),
 };
 
 // ── Plan Test Case Enrollment (UAT template: Environment / Tester / ────────

@@ -2,9 +2,12 @@
 Centrally governed master-data taxonomy for telecom QA classification.
 
 Hierarchy:
-    QA Domain → Product Group → Product
-                                 ↘   ↘
-                             System (M:N), Sub Request Type (M:N to Product and System)
+    Product Group → Product
+                       ↘
+                   Sub Request Type (M:N), System (M:N)
+
+    QA Domain is an optional label above Product Group, not a required root
+    (see migration 059).
 
 Phase 1 (this file) only models the master tables and their parent/child links.
 Inheritance into Requirements/Plans/Cases lands in later phases.
@@ -17,10 +20,12 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -75,16 +80,21 @@ class QADomain(_TaxonomyCommonMixin, Base):
 
 
 class ProductGroup(_TaxonomyCommonMixin, Base):
-    """A product family under a QA Domain."""
+    """A product family, optionally filed under a QA Domain.
+
+    `parent_id` is nullable (migration 059): Domain is an independent label,
+    not a precondition. The dependency that must hold is Product Group →
+    Product, which `Product.parent_id` still enforces.
+    """
 
     __tablename__ = "product_groups"
     __table_args__ = (
         UniqueConstraint("organization_id", "code", name="uq_product_groups_org_code"),
     )
 
-    parent_id: Mapped[int] = mapped_column(
+    parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("qa_domains.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -131,6 +141,28 @@ class SubRequestType(_TaxonomyCommonMixin, Base):
     )
 
 
+class BusinessProcess(_TaxonomyCommonMixin, Base):
+    """The business journey a requirement belongs to (Order to Cash, Billing Dispute, ...).
+
+    Flat and independent of the Product Group → Product chain: the same journey
+    runs across products, so filing it under one would misrepresent it.
+    """
+
+    __tablename__ = "business_processes"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "code", name="uq_business_processes_org_code"),
+        # The constraint above cannot bind rows with a NULL organization_id
+        # (Postgres treats NULLs as distinct), which is every globally-scoped
+        # row. See migration 060.
+        Index(
+            "uq_business_processes_global_code",
+            "code",
+            unique=True,
+            postgresql_where=text("organization_id IS NULL"),
+        ),
+    )
+
+
 class TestCaseType(_TaxonomyCommonMixin, Base):
     """Controlled vocabulary for the UAT template's Test Case Type column."""
 
@@ -174,6 +206,7 @@ class TaxonomyRelationship(TimestampMixin, Base):
 
     `from_entity` / `to_entity` are short codes matching one of:
         qa_domain | product_group | product | system | sub_request_type
+        | business_process
     """
 
     __tablename__ = "taxonomy_relationships"
@@ -212,6 +245,7 @@ __all__ = [
     "Product",
     "System",
     "SubRequestType",
+    "BusinessProcess",
     "TestCaseType",
     "TestCaseComplexity",
     "Environment",

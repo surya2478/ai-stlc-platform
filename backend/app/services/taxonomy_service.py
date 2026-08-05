@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.taxonomy import (
+    BusinessProcess,
     Environment,
     Product,
     ProductGroup,
@@ -23,6 +24,8 @@ from app.models.taxonomy import (
 from app.models.user import User
 from app.schemas.taxonomy import (
     RELATION_ENDPOINTS,
+    BusinessProcessCreate,
+    BusinessProcessUpdate,
     EnvironmentCreate,
     EnvironmentUpdate,
     ProductCreate,
@@ -69,6 +72,7 @@ _MODEL_BY_ENTITY: dict[TaxonomyEntity, type] = {
     "product": Product,
     "system": System,
     "sub_request_type": SubRequestType,
+    "business_process": BusinessProcess,
 }
 
 T = TypeVar("T")
@@ -158,7 +162,10 @@ class ProductGroupService:
 
     async def create(self, data: ProductGroupCreate, user: User) -> ProductGroup:
         require_taxonomy_admin(user)
-        await _get_or_404(self.db, QADomain, data.parent_id, "QA Domain")
+        # A domain is optional (migration 059), but naming one that does not
+        # exist is still an error rather than a silently dropped field.
+        if data.parent_id is not None:
+            await _get_or_404(self.db, QADomain, data.parent_id, "QA Domain")
         obj = ProductGroup(**data.model_dump())
         self.db.add(obj)
         await _flush_with_dupe_check(self.db, code=data.code)
@@ -294,6 +301,17 @@ class SubRequestTypeService(_FlatTaxonomyService):
         return await self._update(entity_id, data, user)
 
 
+class BusinessProcessService(_FlatTaxonomyService):
+    model = BusinessProcess
+    label = "Business Process"
+
+    async def create(self, data: BusinessProcessCreate, user: User) -> BusinessProcess:
+        return await self._create(data, user)
+
+    async def update(self, entity_id: int, data: BusinessProcessUpdate, user: User) -> BusinessProcess:
+        return await self._update(entity_id, data, user)
+
+
 class TestCaseTypeService(_FlatTaxonomyService):
     model = TestCaseType
     label = "Test Case Type"
@@ -410,12 +428,15 @@ class TaxonomyTreeService:
 
         sys_stmt = select(System).order_by(System.sort_order, System.name)
         srt_stmt = select(SubRequestType).order_by(SubRequestType.sort_order, SubRequestType.name)
+        bp_stmt = select(BusinessProcess).order_by(BusinessProcess.sort_order, BusinessProcess.name)
         if active_only:
             sys_stmt = sys_stmt.where(System.is_active.is_(True))
             srt_stmt = srt_stmt.where(SubRequestType.is_active.is_(True))
+            bp_stmt = bp_stmt.where(BusinessProcess.is_active.is_(True))
 
         systems = (await self.db.execute(sys_stmt)).scalars().all()
         sub_request_types = (await self.db.execute(srt_stmt)).scalars().all()
+        business_processes = (await self.db.execute(bp_stmt)).scalars().all()
 
         tct_stmt = select(TestCaseType).order_by(TestCaseType.sort_order, TestCaseType.name)
         tcc_stmt = select(TestCaseComplexity).order_by(TestCaseComplexity.sort_order, TestCaseComplexity.name)
@@ -435,6 +456,7 @@ class TaxonomyTreeService:
             ProductTreeNode,
             SystemRead,
             SubRequestTypeRead,
+            BusinessProcessRead,
             TestCaseTypeRead,
             TestCaseComplexityRead,
             EnvironmentRead,
@@ -475,6 +497,7 @@ class TaxonomyTreeService:
             ],
             systems=[SystemRead.model_validate(s) for s in systems],
             sub_request_types=[SubRequestTypeRead.model_validate(s) for s in sub_request_types],
+            business_processes=[BusinessProcessRead.model_validate(b) for b in business_processes],
         )
 
 
@@ -484,6 +507,7 @@ __all__ = [
     "ProductService",
     "SystemService",
     "SubRequestTypeService",
+    "BusinessProcessService",
     "TestCaseTypeService",
     "TestCaseComplexityService",
     "EnvironmentService",

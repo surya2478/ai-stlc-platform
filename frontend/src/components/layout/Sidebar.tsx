@@ -11,6 +11,7 @@ import {
   Hand, Cpu, Sparkles, Gauge, Target,
   Radar,
   Boxes,
+  Layers,
   FlaskConical,
   MoreHorizontal,
   Home,
@@ -123,6 +124,9 @@ const NAV_ITEMS: NavGroup[] = [
     items: [
       { label: "Project Settings", href: "/settings", icon: Settings },
       { label: "Users & Roles", href: "/users", icon: Users },
+      // Organization-wide master data, not project-scoped — it sits beside
+      // Users & Roles rather than inside Project Settings for that reason.
+      { label: "Taxonomy", href: "/taxonomy", icon: Layers },
     ],
   },
   {
@@ -299,10 +303,10 @@ function SidebarContent() {
         {!collapsed && (
           <div className="flex flex-col min-w-0 transition-opacity duration-300">
             <span className="font-bold text-sm text-white leading-tight tracking-wide truncate">
-              nxtQA
+              QAI
             </span>
             <span className="text-[10px] font-medium text-cyan-400 tracking-wider uppercase leading-none mt-0.5">
-              AI Command Center for Quality
+              QAI Command Center
             </span>
           </div>
         )}
