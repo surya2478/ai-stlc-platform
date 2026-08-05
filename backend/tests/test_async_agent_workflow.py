@@ -459,6 +459,33 @@ def test_permanent_failure_classified_no_retry():
     assert agent_tasks.classify_exception(agent_tasks.PermanentAgentError("bad input")) == "permanent"
 
 
+def test_llm_transport_errors_do_not_redeliver_the_task():
+    """A slow or flaky provider must not re-run the whole agent — that is the
+    cost multiplier the per-route fallback loop was removed for."""
+    import httpx
+
+    for exc in (
+        httpx.TimeoutException("read timeout"),
+        httpx.ConnectError("connection refused"),
+        TimeoutError("generic timeout"),
+        ConnectionError("generic connection error"),
+    ):
+        assert agent_tasks.classify_exception(exc) == "permanent", exc
+
+
+def test_broker_and_database_faults_still_redeliver_the_task():
+    """The task never got a fair delivery, so redelivering costs nothing."""
+    import kombu.exceptions
+    import redis.exceptions
+    import sqlalchemy.exc
+
+    assert agent_tasks.classify_exception(redis.exceptions.ConnectionError("broker down")) == "transient"
+    assert agent_tasks.classify_exception(kombu.exceptions.OperationalError("no channel")) == "transient"
+    assert agent_tasks.classify_exception(
+        sqlalchemy.exc.OperationalError("SELECT 1", {}, Exception("server closed the connection"))
+    ) == "transient"
+
+
 def test_cancel_self_triggered_pending_run_revokes_celery_task(monkeypatch):
     now = datetime.now(timezone.utc)
     run = AgentRun(

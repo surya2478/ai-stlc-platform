@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import socket
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
+from asyncpg import exceptions as asyncpg_exc
+from kombu import exceptions as kombu_exc
+from redis import exceptions as redis_exc
+from sqlalchemy import exc as sqlalchemy_exc
 from sqlalchemy import select
 
 from app.agents.automation.automation_agent import AutomationScriptAgent
@@ -2181,12 +2183,45 @@ async def _persist_agent_artifacts(
     return None
 
 
+# The infrastructure the *task* rides on: the broker that delivered it and the
+# database it records its own state in. A blip in either means the work never
+# really started, so redelivering costs nothing. SQLAlchemy wraps most asyncpg
+# connection faults, but the raw class is listed too for code that touches the
+# driver directly.
+_TASK_INFRASTRUCTURE_ERRORS: tuple[type[BaseException], ...] = (
+    sqlalchemy_exc.OperationalError,
+    sqlalchemy_exc.InterfaceError,
+    asyncpg_exc.PostgresConnectionError,
+    redis_exc.ConnectionError,
+    redis_exc.TimeoutError,
+    kombu_exc.OperationalError,
+)
+
+
 def classify_exception(exc: Exception) -> str:
+    """Whether Celery should redeliver this task — which re-runs the whole agent.
+
+    Deliberately narrow. This used to answer "transient" for any TimeoutError,
+    ConnectionError, socket.timeout, httpx.TimeoutException or
+    httpx.ConnectError — which is exactly what an LLM call raises when a
+    provider is slow or drops the connection. One slow model therefore re-ran
+    the entire agent up to max_retries times, repeating every LLM call, tool
+    call and DB write it had already made: the same cost multiplier the
+    per-route fallback loop had, one layer up.
+
+    A retry here now means only that the task never got a fair delivery.
+    Anything the agent hit while doing its work — an LLM timeout included —
+    fails the run with its reason recorded, and the retry button re-runs it
+    deliberately.
+
+    TransientAgentError stays the explicit opt-in for an agent that knows its
+    own failure is worth another delivery.
+    """
     if isinstance(exc, PermanentAgentError):
         return "permanent"
     if isinstance(exc, TransientAgentError):
         return "transient"
-    if isinstance(exc, (TimeoutError, ConnectionError, socket.timeout, httpx.TimeoutException, httpx.ConnectError)):
+    if isinstance(exc, _TASK_INFRASTRUCTURE_ERRORS):
         return "transient"
     return "permanent"
 
