@@ -119,6 +119,16 @@ const NAV_ITEMS: NavGroup[] = [
     ],
   },
   {
+    // A single-destination section: its five screens are tabs on one page, so
+    // the header is the link and there is nothing to expand — the same shape
+    // Applications uses, and it keeps the sidebar from repeating a tab bar
+    // that is already on screen.
+    group: "RAG & Knowledge Base",
+    icon: Database,
+    href: "/knowledge-base",
+    items: [],
+  },
+  {
     group: "Settings",
     icon: SlidersHorizontal,
     items: [

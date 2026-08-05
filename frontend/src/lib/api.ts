@@ -1040,9 +1040,62 @@ export const projectsApi = {
     api.delete(`/projects/${projectId}/memberships/${membershipId}`),
 };
 
+/** One retrieved chunk, as /rag/projects/{id}/search returns it. */
+export interface RagChunk {
+  chunk_id: number;
+  chunk_text: string;
+  source_type: string;
+  source_id: number | null;
+  section: string | null;
+  hybrid_score: number;
+  semantic_score: number | null;
+  keyword_score: number | null;
+}
+
+export interface RagSearchResponse {
+  chunks: RagChunk[];
+  query: string;
+  total_candidates: number;
+  elapsed_ms: number;
+  /** False when the query matched nothing the project owns — the answer would
+   *  not have been grounded, and the UI has to say so rather than show zero
+   *  results as if the corpus were simply empty. */
+  grounded: boolean;
+}
+
+/** A chunk that actually influenced a generated artifact. */
+export interface RagCitation {
+  id: number;
+  artifact_type: string;
+  artifact_id: number;
+  chunk_id: number;
+  retrieval_score: number | null;
+  rerank_score: number | null;
+  citation_reason: string | null;
+  created_at: string;
+  chunk_text: string | null;
+  section: string | null;
+  source_type: string | null;
+}
+
+export interface RagReindexResponse {
+  task_id: string | null;
+  message: string;
+  documents_queued: number;
+  requirements_queued: number;
+}
+
 export const ragApi = {
   status: (projectId: number) =>
     api.get<RagProjectStatus>(`/rag/projects/${projectId}/status`),
+  search: (projectId: number, payload: { query: string; source_types?: string[]; top_k?: number }) =>
+    api.post<RagSearchResponse>(`/rag/projects/${projectId}/search`, payload),
+  citations: (projectId: number, artifactType: string, artifactId: number) =>
+    api.get<RagCitation[]>(
+      `/rag/projects/${projectId}/artifacts/${artifactType}/${artifactId}/citations`,
+    ),
+  reindex: (projectId: number) =>
+    api.post<RagReindexResponse>(`/rag/projects/${projectId}/reindex`, {}),
 };
 
 export const applicationsApi = {
