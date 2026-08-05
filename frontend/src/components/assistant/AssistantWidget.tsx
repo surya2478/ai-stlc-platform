@@ -2,10 +2,9 @@
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { 
-  MessageSquare, X, Send, Trash2, Maximize2, Minimize2, 
-  ThumbsUp, ThumbsDown, HelpCircle, ArrowRight, Check, 
-  Loader2, Info, ChevronRight, CheckCircle2, Shield
+import {
+  X, Send, Trash2, Maximize2, Minimize2,
+  ThumbsUp, ThumbsDown, Loader2, Shield,
 } from "lucide-react";
 import { api, projectsApi, type Project } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -136,6 +135,30 @@ function renderInlineStyles(text: string, projectId: number | null) {
   return parts;
 }
 
+
+// ── Glyphs ─────────────────────────────────────────────────────────────────────
+// Both are the reference's own SVGs: a speech bubble for the launcher and the
+// empty thread, and a chip-with-rays mark for the header. They replace an
+// illustrated headset avatar that shipped its own skin, blush and shirt
+// colours — a palette that answered to nothing else in the app.
+
+const ChatBubbleIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+    />
+  </svg>
+);
+
+const AssistantGlyph: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+    <rect x="7" y="7" width="10" height="10" rx="2" strokeWidth="2" />
+    <path d="M12 3v3M12 21v-3M3 12h3M21 12h-3" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
 
 // ── Main Assistant Widget ───────────────────────────────────────────────────────
 
@@ -344,21 +367,15 @@ export const AssistantWidget: React.FC = () => {
 
   return (
     <>
-      {/* ── 1. Floating Launcher (Etisalat Need Help pill brand styling) ── */}
+      {/* ── 1. Floating Launcher ── the reference's 56px circular button. */}
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-3.5 rounded-full bg-gradient-to-r from-[#43c7df] via-[#56aceb] to-[#F1A4A6] hover:from-[#2fb4d0] hover:via-[#459de2] hover:to-[#6676e8] text-white px-5 py-3 shadow-2xl shadow-[#56aceb]/25 transition-all duration-300 transform hover:scale-105 active:scale-95 shrink-0 select-none border border-white/20"
+          className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-app-brand-600 text-white shadow-lg transition-all duration-200 hover:scale-110 hover:bg-app-brand-700"
+          title="Open chat"
           aria-label="Open QAI Platform Assistant"
         >
-          {/* AI Assistant Text */}
-          <span className="text-sm font-bold tracking-wide pl-1 select-none">AI Assistant</span>
-
-          {/* Divider */}
-          <div className="w-px h-7 bg-white/30 shrink-0" />
-
-          {/* Text */}
-          <span className="text-sm font-bold tracking-wide pr-1">Need Help</span>
+          <ChatBubbleIcon className="h-6 w-6" />
         </button>
       )}
 
@@ -374,84 +391,37 @@ export const AssistantWidget: React.FC = () => {
       {isOpen && (
         <div
           className={cn(
-            "fixed z-50 bg-white shadow-2xl transition-all duration-300 flex flex-col focus:outline-none select-none",
-            isWide 
-              ? "inset-y-0 right-0 h-full w-full sm:max-w-xl md:max-w-2xl border-l border-gray-100" 
-              : "bottom-6 right-6 w-[calc(100vw-32px)] sm:w-[380px] h-[580px] max-h-[calc(100vh-48px)] rounded-2xl border border-gray-200/80"
+            "fixed z-50 flex flex-col overflow-hidden bg-white shadow-2xl transition-all duration-300 focus:outline-none",
+            isWide
+              ? "inset-y-0 right-0 h-full w-full border-l border-gray-200 sm:max-w-xl md:max-w-2xl"
+              : "bottom-6 right-6 h-[520px] max-h-[80vh] w-[calc(100vw-32px)] rounded-lg border border-gray-200 sm:w-96"
           )}
           role="dialog"
           aria-labelledby="assistant-title"
         >
-          {/* Drawer Header (Sales Advisor Help themed) */}
-          <div className={cn(
-            "flex items-center justify-between border-b border-[#56aceb]/20 p-4 shrink-0 bg-gradient-to-r from-[#43c7df] via-[#56aceb] to-[#F1A4A6] text-white",
-            !isWide && "rounded-t-2xl"
-          )}>
-            <div className="flex items-center gap-3 min-w-0">
-              {/* Sales Advisor Avatar with Headset (High Fidelity SVG) */}
-              <div className="shrink-0 relative">
-                <svg viewBox="0 0 100 100" className="w-10 h-10 rounded-full bg-[#111] overflow-hidden border-2 border-white/20 shadow-sm">
-                  {/* Hair (Back) */}
-                  <path d="M20,60 C20,25 80,25 80,60" fill="#222" />
-                  
-                  {/* Face/Neck */}
-                  <path d="M50,80 L50,60" stroke="#ffd9b3" strokeWidth="10" strokeLinecap="round" />
-                  <circle cx="50" cy="45" r="22" fill="#ffd9b3" />
-                  
-                  {/* Face features */}
-                  <circle cx="43" cy="43" r="2" fill="#333" />
-                  <circle cx="57" cy="43" r="2" fill="#333" />
-                  <circle cx="39" cy="49" r="2.5" fill="#ffa6a6" opacity="0.6" />
-                  <circle cx="61" cy="49" r="2.5" fill="#ffa6a6" opacity="0.6" />
-                  <path d="M46,52 Q50,55 54,52" stroke="#e07b7b" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-
-                  {/* Hair (Front/Bangs) */}
-                  <path d="M28,45 C28,30 45,30 48,38 C49,40 50,45 50,50 L46,50 C44,45 36,45 28,45 Z" fill="#111" />
-                  <path d="M72,45 C72,30 55,30 52,38 C51,40 50,45 50,50 L54,50 C56,45 64,45 72,45 Z" fill="#111" />
-                  <path d="M25,43 C23,55 25,65 30,72 C33,76 33,80 33,80 L40,80 C36,70 34,60 34,43 Z" fill="#111" />
-                  <path d="M75,43 C77,55 75,65 70,72 C67,76 67,80 67,80 L60,80 C64,70 66,60 66,43 Z" fill="#111" />
-
-                  {/* Red Shirt */}
-                  <path d="M20,95 C20,75 35,70 50,70 C65,70 80,75 80,95 Z" fill="#56aceb" />
-
-                  {/* Headset */}
-                  <path d="M28,43 C28,18 72,18 72,43" stroke="#E8EAEE" strokeWidth="4" fill="none" strokeLinecap="round" />
-                  <rect x="25" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
-                  <rect x="69" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
-                  <path d="M69,45 L58,58" stroke="#E8EAEE" strokeWidth="2.5" strokeLinecap="round" />
-                  <circle cx="58" cy="58" r="2.5" fill="#E8EAEE" />
-                </svg>
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border border-white" />
-              </div>
-
-              <div className="flex flex-col min-w-0">
-                <h2 id="assistant-title" className="text-sm font-extrabold text-white leading-tight flex items-center gap-1.5">
-                  <span>AI Assistance Help</span>
+          {/* Header — the reference's red gradient bar. The illustrated
+              headset avatar is gone with it: a photoreal mascot at 40px was
+              carrying its own palette (skin, blush, a cyan shirt) that no
+              longer belongs to anything on screen. */}
+          <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-app-brand-600 to-app-brand-700 p-4 text-white">
+            <div className="flex min-w-0 items-center gap-2">
+              <AssistantGlyph className="h-5 w-5 shrink-0" />
+              <div className="min-w-0">
+                <h2 id="assistant-title" className="text-lg font-semibold leading-tight">
+                  AI Assistant
                 </h2>
-                <span className="text-[10px] text-white/80 font-medium">Replies instantly</span>
-                
-                {/* Show active context metadata only in wide expanded view */}
-                {isWide && (
-                  <div className="flex flex-wrap items-center gap-1 mt-1.5">
-                    <span className="inline-flex items-center gap-1 bg-white/10 text-white px-2 py-0.5 rounded-md text-[9px] font-medium leading-none max-w-[130px] truncate">
-                      <span className="h-1 w-1 rounded-full bg-white/60 shrink-0" />
-                      Project: {activeProjectName}
-                    </span>
-                    <span className="inline-flex items-center gap-1 bg-white/20 text-white px-2 py-0.5 rounded-md text-[9px] font-medium leading-none">
-                      <span className="h-1 w-1 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
-                      Page: {activePageLabel}
-                    </span>
-                  </div>
-                )}
+                <p className="truncate text-xs text-app-brand-100">
+                  {isWide ? `${activeProjectName} · ${activePageLabel}` : activePageLabel}
+                </p>
               </div>
             </div>
-            
-            <div className="flex items-center gap-1">
+
+            <div className="flex shrink-0 items-center gap-1">
               {activeConversationId && (
                 <button
                   onClick={handleClearConversation}
                   title="Clear current thread"
-                  className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+                  className="rounded-full p-1 text-white transition-colors hover:bg-app-brand-800"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -459,248 +429,169 @@ export const AssistantWidget: React.FC = () => {
               <button
                 onClick={() => setIsWide(!isWide)}
                 title={isWide ? "Restore window size" : "Expand window size"}
-                className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition-colors hidden sm:block"
+                className="hidden rounded-full p-1 text-white transition-colors hover:bg-app-brand-800 sm:block"
               >
                 {isWide ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </button>
               <button
                 onClick={() => setIsOpen(false)}
-                className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white transition-colors"
-                aria-label="Close Assistant"
+                className="rounded-full p-1 text-white transition-colors hover:bg-app-brand-800"
+                aria-label="Close chat"
               >
-                <X className="h-4.5 w-4.5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
           </div>
 
-          {/* Drawer Body - Scrollable chat thread */}
-          <div 
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/30 scroll-smooth"
-          >
-            {/* Empty state suggestions */}
-            {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center text-center py-10 px-4 space-y-4">
-                <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-[#43c7df] via-[#56aceb] to-[#F1A4A6] flex items-center justify-center shadow-lg shadow-[#56aceb]/25">
-                  <MessageSquare className="h-6 w-6 text-white" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-xs font-bold text-gray-800">Ask QAI anything</h3>
-                  <p className="text-[10px] text-gray-400 max-w-xs leading-normal">
-                    Ask questions about your STLC execution metrics, requirements review state, test case coverage, or platform workflows.
-                  </p>
-                </div>
-                
-                <div className="w-full space-y-2.5 mt-4 px-2">
-                  <p className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest text-center">Suggested prompts for {activePageLabel}</p>
-                  <div className="flex flex-col gap-2 w-full max-w-[320px] mx-auto">
-                    {suggestions.map((s, idx) => (
+          {/* Body — the reference's grey thread on white. */}
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-4 scroll-smooth">
+            {messages.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center px-4 text-center text-sm text-gray-400">
+                <ChatBubbleIcon className="mx-auto mb-2 h-12 w-12 text-gray-300" />
+                <p>Start a conversation</p>
+                <p className="mt-1 text-xs">Ask me anything about {activePageLabel.toLowerCase()}</p>
+
+                {suggestions.length > 0 && (
+                  <div className="mt-6 w-full max-w-xs space-y-2">
+                    {suggestions.map((sug, idx) => (
                       <button
                         key={idx}
-                        onClick={() => handleSendMessage(s)}
+                        onClick={() => handleSendMessage(sug)}
                         disabled={isLoading}
-                        className="w-full text-center text-[10px] bg-white border-2 border-black hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-400 text-black rounded-full py-3.5 px-4 font-bold uppercase tracking-wider transition-all duration-200 shadow-sm"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:border-app-brand-500 hover:text-app-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {s}
+                        {sug}
                       </button>
                     ))}
                   </div>
-                </div>
+                )}
               </div>
-            )}
-
-            {/* Messages */}
-            {messages.map((m, idx) => {
-              const isUser = m.role === "user";
-              const isSystem = m.role === "system";
-              return (
-                <div
-                  key={m.id || idx}
-                  className={cn(
-                    "flex w-full mb-1",
-                    isUser ? "justify-end" : "justify-start"
-                  )}
-                >
-                  <div className={cn("flex items-start gap-2 max-w-[85%]", isUser && "flex-row-reverse")}>
-                    {/* Small Assistant Avatar on Left */}
-                    {!isUser && !isSystem && (
-                      <div className="shrink-0 mt-0.5">
-                        <svg viewBox="0 0 100 100" className="w-7 h-7 rounded-full bg-[#111] overflow-hidden border border-white/20 shadow-sm">
-                          {/* Hair (Back) */}
-                          <path d="M20,60 C20,25 80,25 80,60" fill="#222" />
-                          
-                          {/* Face/Neck */}
-                          <path d="M50,80 L50,60" stroke="#ffd9b3" strokeWidth="10" strokeLinecap="round" />
-                          <circle cx="50" cy="45" r="22" fill="#ffd9b3" />
-                          
-                          {/* Face features */}
-                          <circle cx="43" cy="43" r="2" fill="#333" />
-                          <circle cx="57" cy="43" r="2" fill="#333" />
-                          <circle cx="39" cy="49" r="2.5" fill="#ffa6a6" opacity="0.6" />
-                          <circle cx="61" cy="49" r="2.5" fill="#ffa6a6" opacity="0.6" />
-                          <path d="M46,52 Q50,55 54,52" stroke="#e07b7b" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-
-                          {/* Hair (Front/Bangs) */}
-                          <path d="M28,45 C28,30 45,30 48,38 C49,40 50,45 50,50 L46,50 C44,45 36,45 28,45 Z" fill="#111" />
-                          <path d="M72,45 C72,30 55,30 52,38 C51,40 50,45 50,50 L54,50 C56,45 64,45 72,45 Z" fill="#111" />
-                          <path d="M25,43 C23,55 25,65 30,72 C33,76 33,80 33,80 L40,80 C36,70 34,60 34,43 Z" fill="#111" />
-                          <path d="M75,43 C77,55 75,65 70,72 C67,76 67,80 67,80 L60,80 C64,70 66,60 66,43 Z" fill="#111" />
-
-                          {/* Red Shirt */}
-                          <path d="M20,95 C20,75 35,70 50,70 C65,70 80,75 80,95 Z" fill="#56aceb" />
-
-                          {/* Headset */}
-                          <path d="M28,43 C28,18 72,18 72,43" stroke="#E8EAEE" strokeWidth="4" fill="none" strokeLinecap="round" />
-                          <rect x="25" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
-                          <rect x="69" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
-                          <path d="M69,45 L58,58" stroke="#E8EAEE" strokeWidth="2.5" strokeLinecap="round" />
-                          <circle cx="58" cy="58" r="2.5" fill="#E8EAEE" />
-                        </svg>
-                      </div>
-                    )}
-
-                    <div className="flex flex-col">
-                      <div
-                        className={cn(
-                          "rounded-2xl px-3.5 py-2.5 text-xs shadow-xs leading-relaxed transition-all",
-                          isUser 
-                            ? "bg-[#B71920] text-white rounded-tr-none font-medium"
-                            : isSystem
-                              ? "bg-red-50 text-red-700 border border-red-100 rounded-tl-none font-medium"
-                              : "bg-white text-gray-800 border border-gray-100 rounded-tl-none"
-                        )}
-                      >
-                        {isUser ? (
-                          <p className="whitespace-pre-wrap">{m.content}</p>
-                        ) : (
-                          <MarkdownText text={m.content} projectId={resolvedProjectId} />
-                        )}
-                      </div>
-
-                      {/* Assistant footer & ratings */}
-                      {!isUser && !isSystem && (
-                        <div className="flex items-center justify-between w-full mt-1.5 px-1 text-[9px] text-gray-400 select-none gap-2">
-                          <span className="inline-flex items-center gap-1 font-medium text-gray-300">
-                            <Shield className="h-3 w-3 text-gray-300" />
-                            Project-scoped & role-aware
-                          </span>
-                          <div className="flex items-center gap-1.5 ml-auto">
-                            <button
-                              onClick={() => submitFeedback(m.id, "helpful")}
-                              disabled={feedbackRatings[m.id] !== undefined}
-                              className={cn(
-                                "p-0.5 rounded transition-colors hover:bg-gray-100",
-                                feedbackRatings[m.id] === "helpful" ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-50" : "text-gray-400"
-                              )}
-                              title="Helpful"
-                            >
-                              <ThumbsUp className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => submitFeedback(m.id, "unhelpful")}
-                              disabled={feedbackRatings[m.id] !== undefined}
-                              className={cn(
-                                "p-0.5 rounded transition-colors hover:bg-gray-100",
-                                feedbackRatings[m.id] === "unhelpful" ? "text-rose-600 bg-rose-50 hover:bg-rose-50" : "text-gray-400"
-                              )}
-                              title="Not helpful"
-                            >
-                              <ThumbsDown className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
+            ) : (
+              messages.map((m, idx) => {
+                const isUser = m.role === "user";
+                const isSystem = m.role === "system";
+                return (
+                  <div key={m.id || idx} className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+                    <div
+                      className={cn(
+                        "rounded-lg px-4 py-2 text-sm shadow-sm",
+                        isWide ? "max-w-md" : "max-w-xs",
+                        isUser
+                          ? "rounded-br-none bg-app-brand-600 text-white"
+                          : isSystem
+                            ? "rounded-bl-none border border-red-200 bg-red-100 text-red-700"
+                            : "rounded-bl-none bg-gray-200 text-gray-900",
                       )}
+                    >
+                      {isUser ? (
+                        <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                      ) : (
+                        <MarkdownText text={m.content} projectId={resolvedProjectId} />
+                      )}
+
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className={cn("text-xs", isUser ? "text-app-brand-100" : "text-gray-500")}>
+                          {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+
+                        {/* Kept from this widget: answers are scoped to the
+                            caller's project and role, and can be rated. */}
+                        {!isUser && !isSystem && (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                              <Shield className="h-3 w-3" />
+                              Project-scoped
+                            </span>
+                            <span className="ml-auto flex items-center gap-1">
+                              <button
+                                onClick={() => submitFeedback(m.id, "helpful")}
+                                disabled={feedbackRatings[m.id] !== undefined}
+                                className={cn(
+                                  "rounded p-0.5 transition-colors hover:bg-gray-300",
+                                  feedbackRatings[m.id] === "helpful" ? "text-emerald-600" : "text-gray-500",
+                                )}
+                                title="Helpful"
+                              >
+                                <ThumbsUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => submitFeedback(m.id, "unhelpful")}
+                                disabled={feedbackRatings[m.id] !== undefined}
+                                className={cn(
+                                  "rounded p-0.5 transition-colors hover:bg-gray-300",
+                                  feedbackRatings[m.id] === "unhelpful" ? "text-red-600" : "text-gray-500",
+                                )}
+                                title="Not helpful"
+                              >
+                                <ThumbsDown className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
 
-            {/* Loading bubble */}
+            {/* The reference's three bouncing dots, not a spinner. */}
             {isLoading && (
-              <div className="flex w-full mb-1 justify-start">
-                <div className="flex items-start gap-2 max-w-[85%]">
-                  <div className="shrink-0 mt-0.5">
-                    <svg viewBox="0 0 100 100" className="w-7 h-7 rounded-full bg-[#111] overflow-hidden border border-white/20 shadow-sm animate-pulse">
-                      {/* Hair (Back) */}
-                      <path d="M20,60 C20,25 80,25 80,60" fill="#222" />
-                      
-                      {/* Face/Neck */}
-                      <path d="M50,80 L50,60" stroke="#ffd9b3" strokeWidth="10" strokeLinecap="round" />
-                      <circle cx="50" cy="45" r="22" fill="#ffd9b3" />
-                      
-                      {/* Face features */}
-                      <circle cx="43" cy="43" r="2" fill="#333" />
-                      <circle cx="57" cy="43" r="2" fill="#333" />
-                      <circle cx="39" cy="49" r="2.5" fill="#ffa6a6" opacity="0.6" />
-                      <circle cx="61" cy="49" r="2.5" fill="#ffa6a6" opacity="0.6" />
-                      <path d="M46,52 Q50,55 54,52" stroke="#e07b7b" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-
-                      {/* Hair (Front/Bangs) */}
-                      <path d="M28,45 C28,30 45,30 48,38 C49,40 50,45 50,50 L46,50 C44,45 36,45 28,45 Z" fill="#111" />
-                      <path d="M72,45 C72,30 55,30 52,38 C51,40 50,45 50,50 L54,50 C56,45 64,45 72,45 Z" fill="#111" />
-                      <path d="M25,43 C23,55 25,65 30,72 C33,76 33,80 33,80 L40,80 C36,70 34,60 34,43 Z" fill="#111" />
-                      <path d="M75,43 C77,55 75,65 70,72 C67,76 67,80 67,80 L60,80 C64,70 66,60 66,43 Z" fill="#111" />
-
-                      {/* Red Shirt */}
-                      <path d="M20,95 C20,75 35,70 50,70 C65,70 80,75 80,95 Z" fill="#56aceb" />
-
-                      {/* Headset */}
-                      <path d="M28,43 C28,18 72,18 72,43" stroke="#E8EAEE" strokeWidth="4" fill="none" strokeLinecap="round" />
-                      <rect x="25" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
-                      <rect x="69" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
-                      <path d="M69,45 L58,58" stroke="#E8EAEE" strokeWidth="2.5" strokeLinecap="round" />
-                      <circle cx="58" cy="58" r="2.5" fill="#E8EAEE" />
-                    </svg>
-                  </div>
-                  <div className="rounded-2xl rounded-tl-none bg-white border border-gray-100 px-4 py-3 shadow-xs flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 text-[#B71920] animate-spin" />
-                    <span className="text-[10px] font-medium text-gray-400">QAI is thinking...</span>
+              <div className="flex justify-start">
+                <div className="rounded-lg rounded-bl-none bg-gray-200 px-4 py-2 text-gray-900">
+                  <div className="flex space-x-2">
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-gray-500" />
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-gray-500" style={{ animationDelay: "0.2s" }} />
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-gray-500" style={{ animationDelay: "0.4s" }} />
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Dynamic suggestion chips list when drawer has content (Vertically Stacked, Etisalat styled) */}
+          {/* Suggestions stay reachable once a thread exists — this widget has
+              them and the reference does not, so they borrow its button. */}
           {messages.length > 0 && suggestions.length > 0 && (
-            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100/80 shrink-0 select-none flex flex-col gap-2">
-              {suggestions.slice(0, 2).map((s, idx) => (
+            <div className="flex shrink-0 flex-wrap gap-2 border-t border-gray-200 bg-gray-50 px-4 py-2">
+              {suggestions.slice(0, 2).map((sug, idx) => (
                 <button
                   key={idx}
-                  onClick={() => handleSendMessage(s)}
+                  onClick={() => handleSendMessage(sug)}
                   disabled={isLoading}
-                  className="w-full text-center text-[10px] bg-white border-2 border-black hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-400 text-black rounded-full py-2.5 px-4 font-bold uppercase tracking-wider transition-all duration-200 shadow-sm"
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 transition-colors hover:border-app-brand-500 hover:text-app-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {s}
+                  {sug}
                 </button>
               ))}
             </div>
           )}
 
-          {/* Drawer Footer - Message Input */}
-          <div className={cn(
-            "border-t border-gray-100 p-4 shrink-0 bg-white flex items-center gap-2",
-            !isWide && "rounded-b-2xl"
-          )}>
-            <input
-              type="text"
-              value={inputMsg}
-              onChange={(e) => setInputMsg(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSendMessage(inputMsg);
+          {/* Input */}
+          <div className="shrink-0 border-t border-gray-200 bg-white p-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendMessage(inputMsg);
               }}
-              placeholder="Type your question about QAI..."
-              className="flex-1 rounded-xl border border-gray-200 hover:border-gray-300 focus:border-[#B71920] focus:ring-2 focus:ring-app-brand-100/30 text-xs px-3.5 py-2.5 focus:outline-none transition-all placeholder:text-gray-400"
-              disabled={isLoading}
-            />
-            <button
-              onClick={() => handleSendMessage(inputMsg)}
-              disabled={!inputMsg.trim() || isLoading}
-              className="h-9 w-9 flex items-center justify-center rounded-xl bg-[#B71920] hover:bg-app-brand-700 disabled:bg-gray-100 text-white disabled:text-gray-300 shadow-md transition-colors"
+              className="flex gap-2"
             >
-              <Send className="h-4 w-4" />
-            </button>
+              <input
+                type="text"
+                value={inputMsg}
+                onChange={(e) => setInputMsg(e.target.value)}
+                placeholder="Type your message..."
+                disabled={isLoading}
+                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition-colors focus:border-app-brand-500 focus:ring-1 focus:ring-app-brand-500 disabled:cursor-not-allowed disabled:bg-gray-100"
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !inputMsg.trim()}
+                className="rounded-lg bg-app-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-app-brand-700 disabled:bg-gray-300"
+                aria-label="Send message"
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </button>
+            </form>
           </div>
         </div>
       )}
