@@ -30,7 +30,12 @@ services:
 
   # ── FastAPI Backend ──────────────────────────────────────────────────────────
   backend:
-    user: "1000:1000"   # Non-root
+    # 10001 is the appuser backend/Dockerfile creates and chowns /app to, NOT an
+    # arbitrary non-root uid. Docker seeds a fresh named volume from the image's
+    # ownership of the mount point, so stlc_storage comes up owned by 10001;
+    # running as 1000 (as this did) left the process unable to write a single
+    # upload, report or automation workspace into it.
+    user: "10001:10001"
     volumes:
       - stlc_storage:/app/storage
       # No source bind mount — the built image is the artifact
@@ -62,7 +67,8 @@ services:
 
   # ── Celery Worker ─────────────────────────────────────────────────────────────
   worker:
-    user: "1000:1000"   # Non-root
+    # Must match the backend: both write the same stlc_storage volume.
+    user: "10001:10001"
     volumes:
       - stlc_storage:/app/storage
       # No source bind mount
@@ -91,7 +97,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    user: "1000:1000"
+    # Same appuser as backend and worker — see the note on the backend service.
+    user: "10001:10001"
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
