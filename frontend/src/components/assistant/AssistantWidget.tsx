@@ -9,8 +9,6 @@ import {
 } from "lucide-react";
 import { api, projectsApi, type Project } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { useAIAction } from "@/hooks/useAIAction";
-import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -142,7 +140,6 @@ function renderInlineStyles(text: string, projectId: number | null) {
 // ── Main Assistant Widget ───────────────────────────────────────────────────────
 
 export const AssistantWidget: React.FC = () => {
-  const { runAIAction } = useAIAction();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -266,20 +263,17 @@ export const AssistantWidget: React.FC = () => {
     setMessages((prev) => [...prev, userTempMsg]);
 
     try {
-      const res = await runAIAction({
-        actionName: "retrieve_knowledge_context",
-        title: "Retrieving Knowledge Context",
-        module: "Platform Assistant",
-        artifactType: "Assistant Response",
-        projectId: resolvedProjectId,
-        stages: AI_PROCESSING_STAGES.knowledge,
-        successMessage: "Knowledge context retrieved.",
-        execute: () => api.post("/assistant/chat", {
-          message: textToSend,
-          conversation_id: activeConversationId,
-          current_route: pathname,
-          project_id: resolvedProjectId
-        }),
+      // Called directly rather than through runAIAction: that helper throws a
+      // full-screen processing modal over the app, which is right for a long
+      // generation job you kick off and wait on, and wrong for a chat turn.
+      // The panel already shows its own inline "thinking" indicator while
+      // isLoading is set, and blocking the page hid the conversation you were
+      // having.
+      const res = await api.post("/assistant/chat", {
+        message: textToSend,
+        conversation_id: activeConversationId,
+        current_route: pathname,
+        project_id: resolvedProjectId
       });
 
       const data = res.data;
@@ -355,7 +349,7 @@ export const AssistantWidget: React.FC = () => {
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 z-40 flex items-center gap-3.5 rounded-full bg-gradient-to-r from-[#43c7df] via-[#56aceb] to-[#7485f3] hover:from-[#2fb4d0] hover:via-[#459de2] hover:to-[#6676e8] text-white px-5 py-3 shadow-2xl shadow-[#56aceb]/25 transition-all duration-300 transform hover:scale-105 active:scale-95 shrink-0 select-none border border-white/20"
-          aria-label="Open nxtQA Platform Assistant"
+          aria-label="Open QAI Platform Assistant"
         >
           {/* AI Assistant Text */}
           <span className="text-sm font-bold tracking-wide pl-1 select-none">AI Assistant</span>
@@ -491,7 +485,7 @@ export const AssistantWidget: React.FC = () => {
                   <MessageSquare className="h-6 w-6 text-white" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-xs font-bold text-slate-800">Ask nxtQA anything</h3>
+                  <h3 className="text-xs font-bold text-slate-800">Ask QAI anything</h3>
                   <p className="text-[10px] text-slate-400 max-w-xs leading-normal">
                     Ask questions about your STLC execution metrics, requirements review state, test case coverage, or platform workflows.
                   </p>
@@ -661,7 +655,7 @@ export const AssistantWidget: React.FC = () => {
                   </div>
                   <div className="rounded-2xl rounded-tl-none bg-white border border-slate-100 px-4 py-3 shadow-xs flex items-center gap-2">
                     <Loader2 className="h-4 w-4 text-[#1b59f8] animate-spin" />
-                    <span className="text-[10px] font-medium text-slate-400">nxtQA is thinking...</span>
+                    <span className="text-[10px] font-medium text-slate-400">QAI is thinking...</span>
                   </div>
                 </div>
               </div>
@@ -696,7 +690,7 @@ export const AssistantWidget: React.FC = () => {
               onKeyDown={(e) => {
                 if (e.key === "Enter") handleSendMessage(inputMsg);
               }}
-              placeholder="Type your question about nxtQA..."
+              placeholder="Type your question about QAI..."
               className="flex-1 rounded-xl border border-slate-200 hover:border-slate-300 focus:border-[#1b59f8] focus:ring-2 focus:ring-blue-100/30 text-xs px-3.5 py-2.5 focus:outline-none transition-all placeholder:text-slate-400"
               disabled={isLoading}
             />

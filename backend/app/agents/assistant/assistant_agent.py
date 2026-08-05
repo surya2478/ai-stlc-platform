@@ -65,7 +65,7 @@ class AssistantState(TypedDict):
 SCOPE_CLASSIFICATION_SYSTEM = """You are a classification system for the nxtQA Platform Assistant.
 You must classify the user's message into exactly one of the following categories:
 1. PLATFORM_GUIDANCE: Questions about how to use the nxtQA platform features, modules, navigation, configuration, requirements, test cases, automation, execution, reports, approvals, or integrations.
-2. PROJECT_DATA_QUERY: Requests for statistics, counts, status, open defects, failed runs, requirements pending review, test coverage, or approvals related to the active project.
+2. PROJECT_DATA_QUERY: Requests for statistics, counts, status, open defects, failed runs, requirements pending review, test coverage, or approvals related to the active project. This also covers questions about the state of the work that do not name an artifact explicitly — "what needs attention today?", "what should I focus on?", "is anything blocked?", "summarize current project quality status", "how are we doing?", "what is at risk?". If answering would require looking at the project's own records rather than explaining how a feature works, choose this category.
 3. PLATFORM_WORKFLOW_QUERY: Questions about general platform workflows, approval procedures, or lifecycle rules.
 4. AUTHORIZED_INTEGRATION_QUERY: Questions about Jira synchronization status, RQM configuration, or integration health.
 5. OUT_OF_SCOPE: General knowledge, generic coding questions unrelated to this platform, weather, news, personal questions, entertainment, medical, legal, or financial advice.
@@ -123,35 +123,54 @@ async def get_project_summary_tool(db: AsyncSession, project_id: int) -> dict[st
                 "rejected": metrics.requirements.rejected,
                 "completion_percentage": metrics.requirements.completionPercentage
             },
+            # DashboardMetricsOut is camelCase (testPlans / testCases /
+            # testData / execution). The snake_case names used here raised
+            # AttributeError on the first access, so this tool returned its
+            # error dict every single time and the assistant answered every
+            # project question with no data at all.
             "test_plans": {
-                "total": metrics.test_plans.total,
-                "approved": metrics.test_plans.approved,
-                "completion_percentage": metrics.test_plans.completionPercentage
+                "total": metrics.testPlans.total,
+                "approved": metrics.testPlans.approved,
+                "completion_percentage": metrics.testPlans.completionPercentage
             },
             "test_cases": {
-                "total": metrics.test_cases.total,
-                "automated": metrics.test_cases.automated,
-                "manual": metrics.test_cases.manual,
-                "automation_coverage": metrics.test_cases.automationCoveragePercentage,
-                "test_case_coverage": metrics.test_cases.testCaseCoveragePercentage
+                "total": metrics.testCases.total,
+                "automated": metrics.testCases.automated,
+                "manual": metrics.testCases.manual,
+                "automation_coverage": metrics.testCases.automationCoveragePercentage,
+                "test_case_coverage": metrics.testCases.testCaseCoveragePercentage
             },
             "test_data": {
-                "total": metrics.test_data.total,
-                "approved": metrics.test_data.approved,
-                "pending": metrics.test_data.pending,
-                "readiness_percentage": metrics.test_data.readinessPercentage
+                "total": metrics.testData.total,
+                "approved": metrics.testData.approved,
+                "pending": metrics.testData.pending,
+                "readiness_percentage": metrics.testData.readinessPercentage
             },
             "execution": {
-                "total_runs": metrics.executions.totalRuns if hasattr(metrics.executions, "totalRuns") else 0,
-                "passed_runs": metrics.executions.passedRuns if hasattr(metrics.executions, "passedRuns") else 0,
-                "failed_runs": metrics.executions.failedRuns if hasattr(metrics.executions, "failedRuns") else 0,
-                "pass_rate": metrics.executions.passRatePercentage if hasattr(metrics.executions, "passRatePercentage") else 0.0
+                "total_runs": metrics.execution.totalRuns,
+                "completed_runs": metrics.execution.completedRuns,
+                "failed_runs": metrics.execution.failedRuns,
+                "passed": metrics.execution.passed,
+                "failed": metrics.execution.failed,
+                "blocked": metrics.execution.blocked,
+                "not_run": metrics.execution.notRun,
+                "pass_rate": metrics.execution.passRatePercentage
             },
             "defects": {
-                "total": metrics.defects.total if hasattr(metrics.defects, "total") else 0,
-                "open": metrics.defects.open if hasattr(metrics.defects, "open") else 0,
-                "critical": metrics.defects.critical if hasattr(metrics.defects, "critical") else 0
-            }
+                "total": metrics.defects.total,
+                "open": metrics.defects.open,
+                "critical": metrics.defects.critical,
+                "high": metrics.defects.high
+            },
+            "jira_sync": {
+                "synced": metrics.jiraSync.syncedCount,
+                "failures": metrics.jiraSync.failureCount,
+                "conflicts": metrics.jiraSync.conflictCount
+            },
+            "pending_approvals": [
+                {"title": item.title, "subtitle": item.subtitle, "count": item.count, "priority": item.priority}
+                for item in metrics.pendingApprovals if item.count > 0
+            ]
         }
     except Exception as e:
         logger.error("Failed to run get_project_summary_tool: %s", e)
@@ -267,18 +286,24 @@ async def get_execution_summary_tool(db: AsyncSession, project_id: int) -> dict[
         
         items = []
         for r in runs:
-            # Get result counts for this run
+            # The foreign key is `execution_run_id`; `run_id` does not exist on
+            # ExecutionResult, so this raised AttributeError and the whole tool
+            # returned {} — "Show latest failed executions", one of the app's
+            # own suggested questions, could never be answered.
             res_stmt = select(
                 func.count(ExecutionResult.id),
-                func.count(func.nullif(ExecutionResult.status != "failed", True))
-            ).where(ExecutionResult.run_id == r.id)
+                func.count(ExecutionResult.id).filter(ExecutionResult.status.in_(("fail", "failed", "error"))),
+            ).where(ExecutionResult.execution_run_id == r.id)
             res_val = (await db.execute(res_stmt)).first()
             total_cases = res_val[0] if res_val else 0
             failed_cases = res_val[1] if res_val else 0
-            
+
             items.append({
                 "id": f"RUN-{r.id}",
-                "name": r.name if hasattr(r, "name") else f"Run {r.id}",
+                "execution_id": r.execution_id,
+                "suite_name": r.suite_name,
+                "environment": r.environment,
+                "execution_type": r.execution_type,
                 "status": r.status,
                 "total_cases": total_cases,
                 "failed_cases": failed_cases,
@@ -417,7 +442,12 @@ async def classify_scope_node(state: AssistantState) -> AssistantState:
     if not scope:
         scope = "PLATFORM_GUIDANCE"
         msg_lower = state["user_message"].lower()
-        if any(k in msg_lower for k in ("run", "defect", "fail", "pass", "requirement", "test cases", "block", "how many", "show me")):
+        if any(k in msg_lower for k in (
+            "run", "defect", "fail", "pass", "requirement", "test cases", "block", "how many", "show me",
+            # Same blind spot the LLM prompt had: these ask about the project's
+            # own state without naming an artifact.
+            "attention", "focus", "risk", "today", "priorit", "urgent", "status", "summar",
+        )):
             scope = "PROJECT_DATA_QUERY"
         elif any(k in msg_lower for k in ("weather", "capital", "code", "programming", "medical", "legal", "france", "germany", "who is", "what is")):
             scope = "OUT_OF_SCOPE"
@@ -479,11 +509,42 @@ async def run_tools_node(state: AssistantState) -> AssistantState:
         if any(k in msg for k in ("approval", "pending")):
             tool_names.append("get_pending_approvals")
             tool_outputs["pending_approvals"] = await get_pending_approvals_tool(db, project_id)
-            
+
+        # "What needs attention today?" and friends name no artifact, so none of
+        # the keyword rules above fire — yet they are exactly the questions that
+        # need the widest view. These are also the suggestions the UI itself
+        # offers, so they have to be answerable.
+        if any(k in msg for k in ("attention", "focus", "risk", "blocked", "blocker", "today", "priorit", "urgent", "worry", "concern")):
+            for name, loader in (
+                ("get_pending_approvals", get_pending_approvals_tool),
+                ("get_defect_summary", get_defect_summary_tool),
+                ("get_execution_summary", get_execution_summary_tool),
+                ("get_requirement_summary", get_requirement_summary_tool),
+            ):
+                if name not in tool_names:
+                    tool_names.append(name)
+                    tool_outputs[name.replace("get_", "")] = await loader(db, project_id)
+
         # Fallback to project summary if no tools triggered but project data query is requested
         if not tool_names:
             tool_names.append("get_project_summary")
             tool_outputs["project_summary"] = await get_project_summary_tool(db, project_id)
+
+    # 2b. Knowledge search found nothing, but a project is open.
+    #
+    # `assistant_knowledge_sources` is empty in every deployment that has not
+    # authored articles, so a PLATFORM_GUIDANCE question retrieves zero context
+    # and the model can only apologise — which is what it did for the app's own
+    # suggested question. Rather than answer from nothing, fall back to the live
+    # project record: it is real, authorized data the user is entitled to, and
+    # it is far more likely to address the question than silence.
+    if (
+        scope in ("PLATFORM_GUIDANCE", "PLATFORM_WORKFLOW_QUERY")
+        and project_id
+        and not tool_outputs.get("knowledge_sources")
+    ):
+        tool_names.append("get_project_summary")
+        tool_outputs["project_summary"] = await get_project_summary_tool(db, project_id)
 
     # 3. Integration Health
     if scope == "AUTHORIZED_INTEGRATION_QUERY" and project_id:
