@@ -295,7 +295,7 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
 
   return (
     <div className="space-y-4 pb-8">
-      <Breadcrumb trail={["e& STLC", "Applications", "API & Network Explorer"]} />
+      <Breadcrumb trail={["QAI Command Center","Applications", "API & Network Explorer"]} />
 
       <WorkspaceHeader
         icon={Network}

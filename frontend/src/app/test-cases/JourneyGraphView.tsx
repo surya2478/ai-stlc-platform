@@ -556,7 +556,7 @@ export function JourneyGraphView({ projectId }: Props) {
     <div className="min-h-full">
       <section className="space-y-2 pb-4">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-          <span>e&amp; STLC</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-[#1b59f8]">Test Planning</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-slate-800">Journey Graph</span>
+          <span>QAI Command Center</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-[#1b59f8]">Test Planning</span><ChevronRight className="h-3 w-3 text-slate-300" /><span className="text-slate-800">Journey Graph</span>
         </div>
 
         <div className="flex items-center justify-between gap-4">

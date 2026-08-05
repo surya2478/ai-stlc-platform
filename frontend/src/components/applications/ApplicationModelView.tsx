@@ -377,7 +377,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
 
   return (
     <div className="space-y-4 pb-8">
-      <Breadcrumb trail={["e& STLC", "Applications", "Application Model"]} />
+      <Breadcrumb trail={["QAI Command Center","Applications", "Application Model"]} />
 
       <WorkspaceHeader
         icon={Layers3}

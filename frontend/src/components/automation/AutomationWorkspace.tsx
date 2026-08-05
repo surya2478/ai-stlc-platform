@@ -763,7 +763,7 @@ function ScriptTab({
     return (
       <div className="space-y-3">
         <p className="text-[11px] text-slate-500">
-          External automation. Script lives in the connected tool; nxtQA orchestrates the run
+          External automation. Script lives in the connected tool; QAI orchestrates the run
           and pulls back evidence.
         </p>
         {mapping ? (

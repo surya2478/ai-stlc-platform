@@ -338,7 +338,7 @@ function ApplicationsContent() {
     <div className="min-h-full">
       <section className="space-y-4 pb-4">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-          <span>e&amp; STLC</span>
+          <span>QAI Command Center</span>
           <ChevronRight className="h-3 w-3 text-slate-300" />
           <span>Applications</span>
           <ChevronRight className="h-3 w-3 text-slate-300" />

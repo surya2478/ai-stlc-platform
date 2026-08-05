@@ -759,7 +759,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-4 pb-8">
-      <Breadcrumb trail={["e& STLC", "Applications", "Live Discovery Session"]} />
+      <Breadcrumb trail={["QAI Command Center","Applications", "Live Discovery Session"]} />
 
       <WorkspaceHeader
         icon={Radar}
