@@ -318,7 +318,8 @@ async def _upsert_chunks(
             token_count=chunk_dict.get("token_count"),
             embedding_model=embedding_result.model,
             embedding_dimension=embedding_result.dimension,
-            embedding=json.dumps(vector),
+            # The column is vector(384); the ORM type takes the list.
+            embedding=vector,
             metadata_=chunk_dict.get("metadata"),
             is_active=True,
         )

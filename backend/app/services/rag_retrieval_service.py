@@ -236,13 +236,13 @@ class RAGRetrievalService:
             params["source_types"] = source_types
 
         sql = text(f"""
-            SELECT id, 1 - (embedding <=> :vec::vector) AS score
+            SELECT id, 1 - (embedding <=> CAST(:vec AS vector)) AS score
             FROM knowledge_chunks
             WHERE project_id = :project_id
               AND is_active = true
               AND embedding IS NOT NULL
               {source_filter}
-            ORDER BY embedding <=> :vec::vector
+            ORDER BY embedding <=> CAST(:vec AS vector)
             LIMIT :top_k
         """)
 

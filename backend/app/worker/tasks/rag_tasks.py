@@ -89,7 +89,7 @@ def task_reindex_stale_chunks(self, project_id: int | None = None) -> dict:
             embedding_result = svc.embed(texts)
 
             for chunk, vec in zip(stale, embedding_result.vectors):
-                chunk.embedding = json.dumps(vec)
+                chunk.embedding = vec
                 chunk.embedding_model = embedding_result.model
                 chunk.embedding_dimension = embedding_result.dimension
 

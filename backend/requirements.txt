@@ -67,6 +67,23 @@ pytest-json-report==1.5.0
 # app/services/test_data_generation/telco_providers.py.
 faker==25.0.0
 
+# ── Embeddings (RAG) ──────────────────────────────────────────────────────────
+# EMBEDDING_PROVIDER defaults to "sentence_transformers" and config.py's default
+# model is BAAI/bge-small-en-v1.5, but the package was never a dependency — so
+# embedding_service raised ImportError and nothing could be indexed with the
+# configuration the app ships with.
+#
+# The CPU wheel index is deliberate: the default torch wheel carries the CUDA
+# runtime and adds ~2.5GB to an image that is already 3GB, for a GPU this
+# service does not have. The CPU build is a tenth of that and embeds a
+# bge-small corpus perfectly well.
+--extra-index-url https://download.pytorch.org/whl/cpu
+sentence-transformers==3.0.1
+# The SQLAlchemy type for the vector(384) column migration 018 creates.
+# Without it models/rag.py falls back to Text, and Postgres rejects every
+# insert into knowledge_chunks — indexing could never write a row.
+pgvector==0.3.6
+
 # ── Security scanning (CI / local audit) ──────────────────────────────────────
 bandit[sarif]==1.7.9
 pip-audit==2.7.3
