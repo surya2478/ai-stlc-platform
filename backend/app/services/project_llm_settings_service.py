@@ -416,7 +416,9 @@ async def get_active_and_fallbacks(
     Return the active (primary) LLMRouteConfig and an ordered list of fallback
     LLMRouteConfigs for the given project.
 
-    Used by get_llm_with_automatic_fallback() to drive enterprise-grade failover.
+    Read-only: agent runs use one route and do not fail over, so nothing here
+    drives execution. Kept because the shape — what is primary, what is
+    standing by — is what the project LLM settings screen reports.
     Both the primary and fallback entries respect module_scope filtering when
     module_scope is supplied.
 

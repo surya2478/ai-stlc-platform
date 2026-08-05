@@ -533,7 +533,7 @@ def test_queued_run_cancelled_before_worker_start_is_not_overwritten(monkeypatch
 def test_run_cancelled_mid_execution_is_not_marked_completed(monkeypatch):
     run = AgentRun(id=1, project_id=1, triggered_by=1, agent_name="fake", status="pending")
     # Response order: [0] top-of-task select(AgentRun), [1] the project LLM
-    # route lookup inside _run_agent_with_project_llm_routes (empty = no
+    # route lookup inside _run_agent_with_project_llm_route (empty = no
     # project-specific routes configured), [2] this function's own
     # post-execution cancellation re-check.
     db = _AgentDB([run, [], "cancelled"])
@@ -641,3 +641,84 @@ def test_progress_percent_visible_via_polling_schema():
     assert data == app.dependency_overrides
     assert run.progress_percent == 45
     assert run.progress_message == "Halfway"
+
+
+def _two_routes():
+    """A project primary plus a standby, the shape that used to trigger failover."""
+    from app.services.project_llm_settings_service import LLMRouteConfig
+
+    return [
+        LLMRouteConfig(provider_key="openai", provider_name="OpenAI", model_name="gpt-4o", source="project"),
+        LLMRouteConfig(provider_key="groq", provider_name="Groq", model_name="llama-3", source="project_fallback"),
+    ]
+
+
+def _patch_routes(monkeypatch):
+    async def fake_list_settings(_db, _project_id):
+        return []
+
+    async def fake_resolve(_db, **_kwargs):
+        return _two_routes()
+
+    monkeypatch.setattr(agent_tasks, "list_settings", fake_list_settings)
+    monkeypatch.setattr(agent_tasks, "resolve_project_llm_routes", fake_resolve)
+
+
+def test_unsuccessful_agent_is_not_retried_on_the_standby_provider(monkeypatch):
+    """A business failure is an answer, not an outage — it must not burn a second provider."""
+    run = AgentRun(id=1, project_id=1, triggered_by=1, agent_name="fake", status="running")
+    db = _AgentDB()
+    _patch_routes(monkeypatch)
+    calls = []
+
+    async def fake_agent(_input):
+        calls.append(1)
+        return SimpleNamespace(success=False, error="nothing to generate", data=None, logs=[])
+
+    result = anyio.run(
+        lambda: agent_tasks._run_agent_with_project_llm_route(db, run, "fake", fake_agent, {})
+    )
+
+    assert len(calls) == 1
+    assert result.error == "nothing to generate"
+
+
+def test_raising_agent_fails_the_run_instead_of_moving_to_the_standby(monkeypatch):
+    run = AgentRun(id=1, project_id=1, triggered_by=1, agent_name="fake", status="running")
+    db = _AgentDB()
+    _patch_routes(monkeypatch)
+    calls = []
+
+    async def fake_agent(_input):
+        calls.append(1)
+        raise RuntimeError("provider exploded")
+
+    async def run_it():
+        try:
+            await agent_tasks._run_agent_with_project_llm_route(db, run, "fake", fake_agent, {})
+        except RuntimeError as exc:
+            return str(exc)
+        return None
+
+    assert anyio.run(run_it) == "provider exploded"
+    assert len(calls) == 1
+    # The failing provider is named in the run log, since the caller records
+    # only str(exc) and that never says which route produced it.
+    steps = [log.step for log in db.added if isinstance(log, AgentLog)]
+    assert "llm_route_failed" in steps
+
+
+def test_the_chosen_route_log_says_the_standby_is_not_attempted(monkeypatch):
+    run = AgentRun(id=1, project_id=1, triggered_by=1, agent_name="fake", status="running")
+    db = _AgentDB()
+    _patch_routes(monkeypatch)
+
+    async def fake_agent(_input):
+        return SimpleNamespace(success=True, data={"ok": True}, logs=[])
+
+    anyio.run(lambda: agent_tasks._run_agent_with_project_llm_route(db, run, "fake", fake_agent, {}))
+
+    route_logs = [log for log in db.added if isinstance(log, AgentLog) and log.step == "llm_route"]
+    assert len(route_logs) == 1
+    assert "OpenAI" in route_logs[0].message
+    assert "not attempted" in route_logs[0].message

@@ -2197,13 +2197,40 @@ async def _mark_agent_failed(agent_run_id: int, exc: Exception) -> None:
         await db.commit()
 
 
-async def _run_agent_with_project_llm_routes(
+async def _run_agent_with_project_llm_route(
     db,
     run: AgentRun,
     agent_name: str,
     agent_func: AgentCallable,
     input_data: dict[str, Any],
 ) -> Any:
+    """Run the agent exactly once, against one resolved LLM route.
+
+    This used to re-run the whole agent once per configured route — project
+    primary, then each fallback by priority, then the system default —
+    advancing whenever an attempt raised OR merely returned an unsuccessful
+    result. Three things made that wrong in production:
+
+      - It retried on *business* failure, not just infrastructure failure. An
+        agent that legitimately produced nothing burned every configured
+        provider in turn before reporting the same outcome.
+      - Each attempt re-executed the entire agent: every LLM call, tool call
+        and DB write it makes. A failing run cost 2-3x the tokens and
+        wall-clock, and non-idempotent side effects repeated.
+      - Which model produced an artifact depended on transient
+        circuit-breaker state, so the output was not reproducible from
+        configuration.
+
+    Resilience that does not re-run the agent is deliberately kept:
+    `provider._with_retries` still retries the individual LLM call with
+    backoff behind a per-provider circuit breaker, so a 429 or a dropped
+    connection is absorbed at the call rather than at the run.
+
+    Fallback rows stay configurable and are still resolved, because the
+    project settings UI writes them — the run log now says how many were left
+    unattempted, so a project that has them can see they are inert instead of
+    wondering why they never fire.
+    """
     role = agent_role(agent_name)
     # Fetched once and shared with the vision lookup below — both are
     # in-memory filters over the same project settings rows, so this keeps
@@ -2217,11 +2244,17 @@ async def _run_agent_with_project_llm_routes(
         rows=settings_rows,
     )
 
-    # Pin the project's vision route for the whole run (not per fallback
-    # attempt) so nested get_vision_llm() calls inside this agent — e.g. UI
-    # screenshot analysis called from a reasoning/coding agent — resolve the
-    # vision role correctly instead of collapsing onto whichever text route
-    # is active in the loop below.
+    # resolve_project_llm_routes always appends the system default last, so
+    # this is never empty. routes[0] is exactly the route the old loop tried
+    # first — the change is that there is no second attempt, not which model
+    # a healthy run uses.
+    route = routes[0]
+    unattempted = len(routes) - 1
+
+    # Pin the project's vision route for the whole run so nested
+    # get_vision_llm() calls inside this agent — e.g. UI screenshot analysis
+    # called from a reasoning/coding agent — resolve the vision role correctly
+    # instead of collapsing onto the text route.
     vision_routes = await resolve_project_llm_routes(db, project_id=run.project_id, role="vision", rows=settings_rows)
     vision_top = vision_routes[0] if vision_routes else None
     vision_token = set_llm_role_route_overrides(
@@ -2240,63 +2273,51 @@ async def _run_agent_with_project_llm_routes(
     )
 
     try:
-        last_result: Any = None
-        last_error: Exception | None = None
-        for index, route in enumerate(routes):
-            token = set_llm_route_override(
-                LLMRouteOverride(
-                    provider=route.provider_key,
-                    model=route.model_name,
-                    temperature=route.temperature,
-                    max_tokens=route.max_tokens,
-                    timeout_seconds=route.timeout_seconds,
-                    role=role,
-                )
+        token = set_llm_route_override(
+            LLMRouteOverride(
+                provider=route.provider_key,
+                model=route.model_name,
+                temperature=route.temperature,
+                max_tokens=route.max_tokens,
+                timeout_seconds=route.timeout_seconds,
+                role=role,
             )
+        )
+        try:
+            message = (
+                f"Using LLM provider {route.provider_name} ({route.model_name}) "
+                f"from {route.source} for role {role}"
+            )
+            if unattempted:
+                message += (
+                    f"; {unattempted} further route(s) are configured but not attempted "
+                    f"— this run uses one provider only"
+                )
+            await agent_run_service.add_log(db, run, level="info", step="llm_route", message=message)
+            await db.commit()
+            return await agent_func(input_data or {})
+        except Exception as exc:
+            # Which provider failed is the reason, and it is not in str(exc) —
+            # the caller rolls back and records only the exception message, so
+            # without this the route that produced the failure is unknowable.
+            # Committed immediately so it survives that rollback, and guarded
+            # because a session already broken by a DB error must not mask the
+            # original exception with a logging one.
             try:
                 await agent_run_service.add_log(
                     db,
                     run,
-                    level="info",
-                    step="llm_route",
-                    message=f"Using LLM provider {route.provider_name} ({route.model_name}) from {route.source} for role {role}",
+                    level="error",
+                    step="llm_route_failed",
+                    message=f"LLM provider {route.provider_name} ({route.model_name}) errored; the run is failed rather than retried on another provider",
+                    data={"error_type": type(exc).__name__},
                 )
                 await db.commit()
-                result = await agent_func(input_data or {})
-                if _is_success(result):
-                    return result
-                last_result = result
-                if index < len(routes) - 1:
-                    await agent_run_service.add_log(
-                        db,
-                        run,
-                        level="warning",
-                        step="llm_fallback",
-                        message=f"LLM provider {route.provider_name} failed; trying fallback provider",
-                    )
-                    await db.commit()
-                    continue
-                return result
-            except Exception as exc:
-                last_error = exc
-                if index < len(routes) - 1:
-                    await agent_run_service.add_log(
-                        db,
-                        run,
-                        level="warning",
-                        step="llm_fallback",
-                        message=f"LLM provider {route.provider_name} errored; trying fallback provider",
-                        data={"error_type": type(exc).__name__},
-                    )
-                    await db.commit()
-                    continue
-                raise
-            finally:
-                reset_llm_route_override(token)
-
-        if last_error is not None:
-            raise last_error
-        return last_result
+            except Exception:  # pragma: no cover - diagnostic path only
+                logger.exception("Could not record the failing LLM route for run %s", run.id)
+            raise
+        finally:
+            reset_llm_route_override(token)
     finally:
         reset_llm_role_route_overrides(vision_token)
 
@@ -2377,7 +2398,7 @@ async def _run_agent_task(task_id: str, agent_run_id: int, agent_name: str, inpu
             progress_token = agent_progress.set_progress_reporter(_report)
             try:
                 agent_result = await asyncio.wait_for(
-                    _run_agent_with_project_llm_routes(
+                    _run_agent_with_project_llm_route(
                         db,
                         run,
                         agent_name,
