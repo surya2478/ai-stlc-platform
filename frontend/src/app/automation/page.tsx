@@ -78,7 +78,6 @@ import { AutomationAssetWorkspace } from "@/components/automation/AutomationAsse
 import { AutomationAssetPicker } from "@/components/automation/AutomationAssetPicker";
 import { LiveRecorderLauncher } from "@/components/automation/LiveRecorderLauncher";
 import { LiveRecorderWorkspace } from "@/components/automation/LiveRecorderWorkspace";
-import { RunnerStatusChip } from "@/app/execution/_components/RunnerStatusChip";
 import { RunTriggerDialog, RunAllEligibleDialog, type RunTarget, type BatchRunCandidate } from "@/app/execution/_components/AutomationBuilderTab";
 import { RunDetailDrawer } from "@/app/execution/_components/RunDetailDrawer";
 import { TraceabilityDrawer, type TraceTarget } from "@/app/execution/_components/TraceabilityDrawer";
@@ -97,6 +96,15 @@ function getStatusVariant(status: string | null | undefined): "default" | "secon
   if (["automated", "hybrid", "active", "visible"].includes(s)) return "purple";
   return "outline";
 }
+
+/** The environment the header's generic dropdown used to sit on. It defaulted
+ *  to "staging" and was rarely moved, so keeping the same value leaves the
+ *  external run/sync calls behaving exactly as they did.
+ *
+ *  It is only a starting point: RunTriggerDialog and RunAllEligibleDialog both
+ *  take the project's real `available_environments` and let the user choose
+ *  per run, which is where the decision actually belongs. */
+const DEFAULT_RUN_ENVIRONMENT = "staging";
 
 function messageFromError(error: unknown, fallback: string) {
   if (error && typeof error === "object" && "response" in error) {
@@ -165,7 +173,6 @@ function AutomationContent() {
   const [tcLoading, setTcLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const [environment, setEnvironment] = useState("staging");
   const [showAiScripts, setShowAiScripts] = useState(false);
   const [reviewBusyId, setReviewBusyId] = useState<number | null>(null);
   const [lifecycleBusyId, setLifecycleBusyId] = useState<number | null>(null);
@@ -446,7 +453,7 @@ function AutomationContent() {
     setBusyId(tc.id);
     setError("");
     try {
-      const response = await automationApi.runExternalAutomation(selectedProject, [tc.id], environment);
+      const response = await automationApi.runExternalAutomation(selectedProject, [tc.id], DEFAULT_RUN_ENVIRONMENT);
       toast({ title: "External run triggered", description: `${response.data.message} Run ${response.data.external_run_id}`, variant: "success" });
       loadData();
       // If drawer is open, switch to history tab to see new runs
@@ -470,7 +477,7 @@ function AutomationContent() {
     setBusyId(mapping.test_case_id);
     setError("");
     try {
-      const response = await automationApi.syncExternalAutomationResult(mapping.id, environment);
+      const response = await automationApi.syncExternalAutomationResult(mapping.id, DEFAULT_RUN_ENVIRONMENT);
       toast({ title: "External result synced", description: `${response.data.message} Run ${response.data.external_run_id}`, variant: "success" });
       loadData();
       if (drawerOpen && selectedTestCase?.id === mapping.test_case_id) {
@@ -760,11 +767,10 @@ function AutomationContent() {
 
   async function handleBulkDiscover(ids: number[]) {
     if (!selectedProject) return;
-    // Each test case's own configured environment (test_phase) — not the
-    // page's generic "environment" dropdown, which defaults to "staging"
-    // and has nothing to do with what's actually configured for these test
-    // cases' application. Mirrors the backend auto-chain's own fallback
-    // (tc.test_phase or "QA").
+    // Each test case's own configured environment (test_phase) rather than any
+    // page-level default, which would have nothing to do with what is actually
+    // configured for these test cases' application. Mirrors the backend
+    // auto-chain's own fallback (tc.test_phase or "QA").
     const idsByEnvironment = new Map<string, number[]>();
     for (const id of ids) {
       const env = rows.find((tc) => tc.id === id)?.test_phase || "QA";
@@ -1031,25 +1037,6 @@ function AutomationContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <RunnerStatusChip />
-          <select
-            value={environment}
-            onChange={(e) => setEnvironment(e.target.value)}
-            className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem 1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {["development", "staging", "production", "ci"].map((env) => (
-              <option key={env} value={env}>
-                {env.toUpperCase()}
-              </option>
-            ))}
-          </select>
-
           <Button
             variant="outline"
             size="sm"
@@ -1558,7 +1545,7 @@ function AutomationContent() {
           target={sandboxTarget}
           onClose={() => setSandboxTarget(null)}
           projectId={selectedProject}
-          defaultEnvironment={environment}
+          defaultEnvironment={DEFAULT_RUN_ENVIRONMENT}
           environments={planning?.summary.available_environments ?? []}
         />
       )}
@@ -1568,7 +1555,7 @@ function AutomationContent() {
           onClose={() => setRunAllOpen(false)}
           projectId={selectedProject}
           candidates={runAllCandidates}
-          defaultEnvironment={environment}
+          defaultEnvironment={DEFAULT_RUN_ENVIRONMENT}
           environments={planning?.summary.available_environments ?? []}
           onStarted={(executionRunId) => router.push(`/execution/automation?project=${selectedProject}&run=${executionRunId}`)}
         />
