@@ -17,18 +17,18 @@ export function RunnerStatusChip({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5",
+        "inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5",
         className,
       )}
     >
-      <Cpu className="h-3.5 w-3.5 text-slate-400" />
+      <Cpu className="h-3.5 w-3.5 text-gray-400" />
       {frameworks.map((f) => (
         <span
           key={f.framework}
           title={f.detail}
           className={cn(
             "inline-flex items-center gap-1 text-[11px] font-medium capitalize",
-            f.available ? "text-slate-700" : "text-slate-400 line-through decoration-slate-300",
+            f.available ? "text-gray-700" : "text-gray-400 line-through decoration-gray-300",
           )}
         >
           <span className={cn("h-1.5 w-1.5 rounded-full", f.available ? "bg-emerald-500" : "bg-red-400")} />

@@ -182,8 +182,8 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center text-slate-500">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#1b59f8]" />
+      <div className="flex h-64 items-center justify-center text-gray-500">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#B71920]" />
         <span className="text-sm font-semibold">Loading applications...</span>
       </div>
     );
@@ -199,15 +199,15 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
 
   return (
     <>
-      <section className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <section className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-gray-100 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-blue-100 bg-blue-50">
-              <Globe2 className="h-5 w-5 text-[#1b59f8]" />
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-app-brand-100 bg-app-brand-75">
+              <Globe2 className="h-5 w-5 text-[#B71920]" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Applications & Environments</h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <h2 className="text-xl font-bold text-gray-900">Applications & Environments</h2>
+              <p className="mt-1 text-sm text-gray-500">
                 Real URLs per application/channel, so AI-generated automation scripts use your app instead of a placeholder domain.
               </p>
             </div>
@@ -215,7 +215,7 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
           <div className="flex items-center gap-2">
             <a
               href={`/applications?project=${projectId}`}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-[#1b59f8] hover:bg-slate-50"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-[#B71920] hover:bg-gray-50"
             >
               Open full Application Registry →
             </a>
@@ -227,66 +227,66 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm text-blue-800">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#1b59f8]" />
+          <div className="flex items-start gap-3 rounded-lg border border-app-brand-200 bg-app-brand-75/70 px-4 py-3 text-sm text-app-brand-800">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#B71920]" />
             <p className="leading-6">
               Define each application/channel under test (e.g. Web App, Mobile API, Admin Portal) with its base URL per environment. Mark exactly one as default — untagged test cases resolve to it.
             </p>
           </div>
 
           {apps.length === 0 && (
-            <p className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
+            <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
               No applications configured yet.
             </p>
           )}
 
           <div className="space-y-3">
             {apps.map((app, index) => (
-              <div key={app.id ?? `new-${index}`} className="rounded-xl border border-slate-200 p-4">
+              <div key={app.id ?? `new-${index}`} className="rounded-xl border border-gray-200 p-4">
                 <div className="grid gap-3 md:grid-cols-2">
-                  <label className="space-y-1 text-xs font-semibold text-slate-600">
+                  <label className="space-y-1 text-xs font-semibold text-gray-600">
                     Name
                     <input
                       value={app.name}
                       onChange={(e) => updateApp(index, { name: e.target.value, key: app.key || slugify(e.target.value) })}
                       placeholder="Web App"
-                      className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                      className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:ring-2 focus:ring-app-brand-100"
                     />
                   </label>
-                  <label className="space-y-1 text-xs font-semibold text-slate-600">
+                  <label className="space-y-1 text-xs font-semibold text-gray-600">
                     Key (slug)
                     <input
                       value={app.key}
                       onChange={(e) => updateApp(index, { key: slugify(e.target.value) })}
                       placeholder="web-app"
-                      className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-100"
+                      className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm font-mono outline-none focus:ring-2 focus:ring-app-brand-100"
                     />
                   </label>
                 </div>
 
-                <label className="mt-3 block space-y-1 text-xs font-semibold text-slate-600">
+                <label className="mt-3 block space-y-1 text-xs font-semibold text-gray-600">
                   Description
                   <input
                     value={app.description ?? ""}
                     onChange={(e) => updateApp(index, { description: e.target.value })}
                     placeholder="Optional"
-                    className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                    className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:ring-2 focus:ring-app-brand-100"
                   />
                 </label>
 
                 <div className="mt-3">
-                  <p className="text-xs font-semibold text-slate-600">Environment URLs</p>
+                  <p className="text-xs font-semibold text-gray-600">Environment URLs</p>
                   <div className="mt-1.5 space-y-1.5">
                     {Object.entries(app.environment_urls).map(([env, url]) => (
                       <div key={env} className="flex items-center gap-2">
-                        <span className="w-28 shrink-0 rounded-md bg-slate-100 px-2 py-1.5 text-center text-xs font-bold text-slate-600">{env}</span>
+                        <span className="w-28 shrink-0 rounded-md bg-gray-100 px-2 py-1.5 text-center text-xs font-bold text-gray-600">{env}</span>
                         <input
                           value={url}
                           onChange={(e) => setEnvUrl(index, env, e.target.value)}
                           placeholder="https://..."
-                          className="h-8 flex-1 rounded-lg border border-slate-200 px-3 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-100"
+                          className="h-8 flex-1 rounded-lg border border-gray-200 px-3 text-xs font-mono outline-none focus:ring-2 focus:ring-app-brand-100"
                         />
-                        <button type="button" onClick={() => removeEnv(index, env)} className="text-slate-400 hover:text-rose-600">
+                        <button type="button" onClick={() => removeEnv(index, env)} className="text-gray-400 hover:text-rose-600">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -297,9 +297,9 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
                   </Button>
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3">
                   <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                       <input
                         type="checkbox"
                         checked={app.is_default}
@@ -307,7 +307,7 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
                       />
                       Default application
                     </label>
-                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-600">
                       <input
                         type="checkbox"
                         checked={app.is_active}
@@ -331,15 +331,15 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
         </div>
       </section>
 
-      <section className="mt-4 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <section className="mt-4 min-w-0 flex-1 rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-gray-100 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-amber-100 bg-amber-50">
               <Shield className="h-5 w-5 text-amber-600" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">External Dependencies</h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <h2 className="text-xl font-bold text-gray-900">External Dependencies</h2>
+              <p className="mt-1 text-sm text-gray-500">
                 Third-party services your application calls out to. Generated scripts mock/intercept these instead of calling them live.
               </p>
             </div>
@@ -352,41 +352,41 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
 
         <div className="p-5 space-y-3">
           {deps.length === 0 && (
-            <p className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-400">
+            <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-400">
               No external dependencies registered.
             </p>
           )}
 
           {deps.map((dep, index) => (
-            <div key={dep.id ?? `new-${index}`} className="grid gap-3 rounded-xl border border-slate-200 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
-              <label className="space-y-1 text-xs font-semibold text-slate-600">
+            <div key={dep.id ?? `new-${index}`} className="grid gap-3 rounded-xl border border-gray-200 p-4 md:grid-cols-[1fr_1fr_1fr_auto]">
+              <label className="space-y-1 text-xs font-semibold text-gray-600">
                 Service name
                 <input
                   value={dep.service_name}
                   onChange={(e) => updateDep(index, { service_name: e.target.value })}
                   placeholder="Payment Gateway"
-                  className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                  className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:ring-2 focus:ring-app-brand-100"
                 />
               </label>
-              <label className="space-y-1 text-xs font-semibold text-slate-600">
+              <label className="space-y-1 text-xs font-semibold text-gray-600">
                 Mock strategy
                 <select
                   value={dep.mock_strategy}
                   onChange={(e) => updateDep(index, { mock_strategy: e.target.value as ProjectExternalDependency["mock_strategy"] })}
-                  className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-100"
+                  className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:ring-2 focus:ring-app-brand-100"
                 >
                   <option value="intercept">Intercept (mock in-script)</option>
                   <option value="sandbox">Sandbox URL</option>
                   <option value="ignore">Ignore</option>
                 </select>
               </label>
-              <label className="space-y-1 text-xs font-semibold text-slate-600">
+              <label className="space-y-1 text-xs font-semibold text-gray-600">
                 Sandbox URL
                 <input
                   value={dep.sandbox_url ?? ""}
                   onChange={(e) => updateDep(index, { sandbox_url: e.target.value })}
                   placeholder="Optional"
-                  className="h-9 w-full rounded-lg border border-slate-200 px-3 text-sm font-mono outline-none focus:ring-2 focus:ring-blue-100"
+                  className="h-9 w-full rounded-lg border border-gray-200 px-3 text-sm font-mono outline-none focus:ring-2 focus:ring-app-brand-100"
                 />
               </label>
               <div className="flex items-end justify-end">
@@ -404,14 +404,14 @@ export function ApplicationsTab({ projectId }: { projectId: number }) {
       </section>
 
       {toast && (
-        <div className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+        <div className="fixed bottom-5 right-5 z-50 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
           <div className="flex gap-3">
             {toast.kind === "success" ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <XCircle className="h-5 w-5 text-rose-600" />}
             <div className="min-w-0 flex-1">
-              <p className="font-bold text-slate-900">{toast.title}</p>
-              <p className="mt-1 text-sm text-slate-600">{toast.message}</p>
+              <p className="font-bold text-gray-900">{toast.title}</p>
+              <p className="mt-1 text-sm text-gray-600">{toast.message}</p>
             </div>
-            <button type="button" onClick={() => setToast(null)} className={cn("text-slate-400 hover:text-slate-700")}>
+            <button type="button" onClick={() => setToast(null)} className={cn("text-gray-400 hover:text-gray-700")}>
               <X className="h-4 w-4" />
             </button>
           </div>

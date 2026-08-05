@@ -37,7 +37,7 @@ export default function SuiteExecutionLivePage() {
     // `useSearchParams` requires a Suspense boundary during prerender.
     <Suspense
       fallback={
-        <div className="flex h-64 items-center justify-center text-xs text-slate-500">
+        <div className="flex h-64 items-center justify-center text-xs text-gray-500">
           Loading execution run…
         </div>
       }

@@ -100,12 +100,12 @@ function AgentProgressCard({
           return (
             <div key={agentRun.id} className="mx-auto max-w-lg space-y-1.5">
               <div className="flex items-baseline justify-between gap-2 text-xs">
-                <span className="font-semibold text-slate-700 dark:text-slate-200">
+                <span className="font-semibold text-gray-700 dark:text-gray-200">
                   {agentRun.progress_message || `Agent run #${agentRun.id} — ${agentRun.status}`}
                 </span>
                 <span className="shrink-0 tabular-nums text-muted-foreground">{percent}%</span>
               </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800">
                 <div
                   className="h-full rounded-full bg-violet-600 transition-all duration-500"
                   style={{ width: `${percent}%` }}
@@ -329,7 +329,7 @@ function PlaywrightStudioContent() {
                   <select
                     value={retryRunnerMode}
                     onChange={(e) => setRetryRunnerMode(e.target.value as StudioRunnerMode | "")}
-                    className="h-8 rounded-md border border-amber-300 bg-white px-2 text-xs font-semibold text-slate-700 outline-none dark:bg-slate-900 dark:text-slate-200"
+                    className="h-8 rounded-md border border-amber-300 bg-white px-2 text-xs font-semibold text-gray-700 outline-none dark:bg-gray-900 dark:text-gray-200"
                   >
                     <option value="">Same as before{runDetail.config.runner_mode ? ` (${runDetail.config.runner_mode})` : ""}</option>
                     <option value="executor">Executor (isolated service)</option>

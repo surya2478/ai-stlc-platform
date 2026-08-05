@@ -1042,27 +1042,27 @@ function StatCard({
   ring?: number;
 }) {
   return (
-    <Card className="rounded-lg border-slate-200 bg-white shadow-sm hover:shadow-md">
+    <Card className="rounded-lg border-gray-200 bg-white shadow-sm hover:shadow-md">
       <CardContent className="flex min-h-[74px] items-center gap-2.5 p-3">
         <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border", tone)}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[9px] font-bold text-slate-500 sm:text-[10px]">{title}</p>
+          <p className="truncate text-[9px] font-bold text-gray-500 sm:text-[10px]">{title}</p>
           <div className="mt-1 flex items-center gap-2">
             {ring !== undefined && (
               <span
                 className="h-8 w-8 rounded-full"
                 style={{
-                  background: `conic-gradient(#10b981 ${Math.max(0, Math.min(100, ring))}%, #e5e7eb 0)`,
+                  background: `conic-gradient(#10b981 ${Math.max(0, Math.min(100, ring))}%, #E8EAEE 0)`,
                 }}
               >
                 <span className="m-1 block h-6 w-6 rounded-full bg-white" />
               </span>
             )}
-            <p className="truncate text-lg font-bold tracking-tight text-slate-950 sm:text-xl">{value}</p>
+            <p className="truncate text-lg font-bold tracking-tight text-gray-950 sm:text-xl">{value}</p>
           </div>
-          <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">{helper}</p>
+          <p className="mt-0.5 truncate text-[9px] font-semibold text-gray-400">{helper}</p>
         </div>
       </CardContent>
     </Card>
@@ -1084,11 +1084,11 @@ function SelectBox({
 }) {
   return (
     <label className={cn("relative inline-flex min-w-[150px] flex-col gap-1", className)}>
-      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-8 text-xs font-semibold text-slate-700 shadow-sm outline-none transition focus:ring-2 focus:ring-blue-100"
+        className="h-9 appearance-none rounded-lg border border-gray-200 bg-white px-3 pr-8 text-xs font-semibold text-gray-700 shadow-sm outline-none transition focus:ring-2 focus:ring-app-brand-100"
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -1096,7 +1096,7 @@ function SelectBox({
           </option>
         ))}
       </select>
-      <ChevronDown className="pointer-events-none absolute bottom-2.5 right-2.5 h-3.5 w-3.5 text-slate-400" />
+      <ChevronDown className="pointer-events-none absolute bottom-2.5 right-2.5 h-3.5 w-3.5 text-gray-400" />
     </label>
   );
 }
@@ -1112,11 +1112,11 @@ function ProjectSelect({
 }) {
   return (
     <label className="relative inline-flex min-w-[210px] flex-col gap-1">
-      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Project</span>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Project</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 appearance-none rounded-lg border border-slate-200 bg-white px-3 pr-8 text-xs font-semibold text-slate-700 shadow-sm outline-none transition focus:ring-2 focus:ring-blue-100"
+        className="h-9 appearance-none rounded-lg border border-gray-200 bg-white px-3 pr-8 text-xs font-semibold text-gray-700 shadow-sm outline-none transition focus:ring-2 focus:ring-app-brand-100"
       >
         {projects.map((project) => (
           <option key={project.id} value={project.id}>
@@ -1124,7 +1124,7 @@ function ProjectSelect({
           </option>
         ))}
       </select>
-      <ChevronDown className="pointer-events-none absolute bottom-2.5 right-2.5 h-3.5 w-3.5 text-slate-400" />
+      <ChevronDown className="pointer-events-none absolute bottom-2.5 right-2.5 h-3.5 w-3.5 text-gray-400" />
     </label>
   );
 }
@@ -1145,23 +1145,23 @@ function RunRow({
     <tr
       onClick={onSelect}
       className={cn(
-        "cursor-pointer border-b border-slate-100 text-[11px] transition hover:bg-blue-50/40",
-        selected && "bg-blue-50/70 shadow-[inset_3px_0_0_#1b59f8]"
+        "cursor-pointer border-b border-gray-100 text-[11px] transition hover:bg-app-brand-75/40",
+        selected && "bg-app-brand-75/70 shadow-[inset_3px_0_0_#B71920]"
       )}
     >
       {visibleColumns.map((colKey) => {
         switch (colKey) {
           case "runId":
             return (
-              <td key="runId" className="w-[86px] px-3 py-3 font-mono font-bold text-blue-600">
+              <td key="runId" className="w-[86px] px-3 py-3 font-mono font-bold text-app-brand-600">
                 {run.execution_id}
               </td>
             );
           case "suiteName":
             return (
               <td key="suiteName" className="px-3 py-3">
-                <p className="truncate font-bold text-slate-800">{run.suite_name || "Execution Run"}</p>
-                <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">
+                <p className="truncate font-bold text-gray-800">{run.suite_name || "Execution Run"}</p>
+                <p className="mt-0.5 truncate text-[10px] font-semibold text-gray-400">
                   {run.external_run_id || "Platform run"}
                 </p>
               </td>
@@ -1179,13 +1179,13 @@ function RunRow({
             );
           case "env":
             return (
-              <td key="env" className="w-[64px] px-3 py-3 font-semibold text-slate-600">
+              <td key="env" className="w-[64px] px-3 py-3 font-semibold text-gray-600">
                 {run.environment || "-"}
               </td>
             );
           case "total":
             return (
-              <td key="total" className="w-[70px] px-3 py-3 text-right font-bold text-slate-800">
+              <td key="total" className="w-[70px] px-3 py-3 text-right font-bold text-gray-800">
                 {formatNumber(run.total_tests || 0)}
               </td>
             );
@@ -1211,13 +1211,13 @@ function RunRow({
             );
           case "owner":
             return (
-              <td key="owner" className="w-[110px] px-3 py-3 text-slate-500">
+              <td key="owner" className="w-[110px] px-3 py-3 text-gray-500">
                 {run.triggered_by ? `User ${run.triggered_by}` : "-"}
               </td>
             );
           case "started":
             return (
-              <td key="started" className="w-[150px] px-3 py-3 text-slate-500">
+              <td key="started" className="w-[150px] px-3 py-3 text-gray-500">
                 {dateLabel(run.started_at || run.created_at)}
               </td>
             );
@@ -1225,7 +1225,7 @@ function RunRow({
             return (
               <td key="actions" className="w-[72px] px-3 py-3 text-right">
                 <button
-                  className="rounded-md p-1 text-slate-400 hover:bg-white hover:text-blue-600"
+                  className="rounded-md p-1 text-gray-400 hover:bg-white hover:text-app-brand-600"
                   aria-label={`Open ${run.execution_id}`}
                 >
                   <MoreHorizontal className="h-4 w-4" />
@@ -1243,10 +1243,10 @@ function RunRow({
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex min-h-[180px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/40 p-6 text-center">
-      <CircleDashed className="mb-2 h-8 w-8 text-slate-300" />
-      <p className="text-sm font-bold text-slate-700">{title}</p>
-      <p className="mt-1 max-w-sm text-xs font-medium leading-relaxed text-slate-400">{description}</p>
+    <div className="flex min-h-[180px] flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/40 p-6 text-center">
+      <CircleDashed className="mb-2 h-8 w-8 text-gray-300" />
+      <p className="text-sm font-bold text-gray-700">{title}</p>
+      <p className="mt-1 max-w-sm text-xs font-medium leading-relaxed text-gray-400">{description}</p>
     </div>
   );
 }
@@ -1390,10 +1390,10 @@ function ManualWorkspace({
   return (
     <div className="grid gap-4 p-4 xl:grid-cols-[260px_minmax(0,1fr)] min-[1800px]:grid-cols-[280px_minmax(0,1fr)_310px]">
       <div className="space-y-3">
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-3 py-2">
-            <p className="text-xs font-bold text-slate-800">Test Cases in Run</p>
-            <p className="text-[10px] font-medium text-slate-400">{selectedResults.length} case result rows</p>
+        <div className="rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-100 px-3 py-2">
+            <p className="text-xs font-bold text-gray-800">Test Cases in Run</p>
+            <p className="text-[10px] font-medium text-gray-400">{selectedResults.length} case result rows</p>
           </div>
           <div className="max-h-64 overflow-y-auto p-2">
             {selectedResults.map((result) => {
@@ -1408,16 +1408,16 @@ function ManualWorkspace({
                   onClick={() => onSelectResult(result.id)}
                   className={cn(
                     "mb-2 w-full rounded-lg border p-3 text-left transition",
-                    selected ? "border-blue-200 bg-blue-50" : "border-slate-100 bg-slate-50/50 hover:border-blue-100"
+                    selected ? "border-app-brand-200 bg-app-brand-75" : "border-gray-100 bg-gray-50/50 hover:border-app-brand-100"
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-mono text-[11px] font-bold text-blue-600">{testCase?.test_case_id || result.external_test_case_id || `Result ${result.id}`}</span>
+                    <span className="truncate font-mono text-[11px] font-bold text-app-brand-600">{testCase?.test_case_id || result.external_test_case_id || `Result ${result.id}`}</span>
                     <Badge variant={statusVariant(derivedStatus)} className="text-[9px]">{normalizeStatus(derivedStatus)}</Badge>
                   </div>
-                  <p className="mt-1 line-clamp-2 text-xs font-bold text-slate-800">{result.test_name}</p>
+                  <p className="mt-1 line-clamp-2 text-xs font-bold text-gray-800">{result.test_name}</p>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
-                    <div className="h-full rounded-full bg-blue-600" style={{ width: `${resultSummary.progress}%` }} />
+                    <div className="h-full rounded-full bg-app-brand-600" style={{ width: `${resultSummary.progress}%` }} />
                   </div>
                 </button>
               );
@@ -1425,14 +1425,14 @@ function ManualWorkspace({
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
+        <div className="rounded-lg border border-gray-200 bg-white p-3">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-bold text-slate-800">Step Navigator</p>
+            <p className="text-xs font-bold text-gray-800">Step Navigator</p>
             <Badge variant="outline" className="text-[10px]">{steps.length} Steps</Badge>
           </div>
           <div className="space-y-2">
             {steps.length === 0 ? (
-              <p className="rounded-lg bg-slate-50 p-3 text-[11px] font-medium text-slate-400">No structured steps found for this test case.</p>
+              <p className="rounded-lg bg-gray-50 p-3 text-[11px] font-medium text-gray-400">No structured steps found for this test case.</p>
             ) : (
               steps.map((step, index) => {
                 const state = getManualStepState(manualStepStates, selectedResult.id, step.step_number);
@@ -1442,7 +1442,7 @@ function ManualWorkspace({
                     onClick={() => onStepIndexChange(index)}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition",
-                      index === safeStepIndex ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-100 bg-white text-slate-600 hover:border-blue-100"
+                      index === safeStepIndex ? "border-app-brand-200 bg-app-brand-75 text-app-brand-700" : "border-gray-100 bg-white text-gray-600 hover:border-app-brand-100"
                     )}
                   >
                     <span className={cn(
@@ -1450,7 +1450,7 @@ function ManualWorkspace({
                       state.status === "passed" ? "bg-emerald-100 text-emerald-700" :
                         state.status === "failed" ? "bg-rose-100 text-rose-700" :
                           state.status === "blocked" ? "bg-amber-100 text-amber-700" :
-                            index === safeStepIndex ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"
+                            index === safeStepIndex ? "bg-app-brand-600 text-white" : "bg-gray-100 text-gray-500"
                     )}>
                       {step.step_number}
                     </span>
@@ -1464,8 +1464,8 @@ function ManualWorkspace({
       </div>
 
       <div className="space-y-4">
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="grid gap-3 border-b border-slate-100 p-4 md:grid-cols-5">
+        <div className="rounded-lg border border-gray-200 bg-white">
+          <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-5">
             <MetaTile label="Selected Test Case" value={selectedTestCase?.test_case_id || `Result ${selectedResult.id}`} />
             <MetaTile label="Requirement / Story" value={selectedTestCase?.linked_requirement_key || selectedTestCase?.jira_issue_key || "Not linked"} />
             <MetaTile label="Browser / Environment" value={selectedRun.environment || "Not set"} />
@@ -1476,62 +1476,62 @@ function ManualWorkspace({
           <div className="p-4">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">{selectedResult.test_name}</h3>
-                <p className="text-[11px] font-medium text-slate-400">
+                <h3 className="text-sm font-bold text-gray-900">{selectedResult.test_name}</h3>
+                <p className="text-[11px] font-medium text-gray-400">
                   Execution Progress: Step {steps.length ? safeStepIndex + 1 : 0} of {steps.length}
                 </p>
               </div>
               <div className="min-w-[180px]">
-                <div className="mb-1 flex justify-between text-[10px] font-bold text-slate-400">
+                <div className="mb-1 flex justify-between text-[10px] font-bold text-gray-400">
                   <span>{formatPercent(summary.progress)}</span>
                   <span>{summary.executed}/{summary.total} executed</span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-blue-600" style={{ width: `${summary.progress}%` }} />
+                <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                  <div className="h-full rounded-full bg-app-brand-600" style={{ width: `${summary.progress}%` }} />
                 </div>
               </div>
             </div>
 
             {currentStep ? (
-              <div className="rounded-lg border border-slate-200">
-                <div className="grid border-b border-slate-100 md:grid-cols-[92px_1fr]">
-                  <div className="border-b border-slate-100 bg-slate-50 p-4 md:border-b-0 md:border-r">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step No.</p>
-                    <p className="mt-2 text-2xl font-bold text-blue-600">{currentStep.step_number}</p>
+              <div className="rounded-lg border border-gray-200">
+                <div className="grid border-b border-gray-100 md:grid-cols-[92px_1fr]">
+                  <div className="border-b border-gray-100 bg-gray-50 p-4 md:border-b-0 md:border-r">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Step No.</p>
+                    <p className="mt-2 text-2xl font-bold text-app-brand-600">{currentStep.step_number}</p>
                   </div>
                   <div className="grid gap-3 p-4 sm:grid-cols-2">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step Description</p>
-                      <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-800">{currentStep.action}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Step Description</p>
+                      <p className="mt-1 text-sm font-semibold leading-relaxed text-gray-800">{currentStep.action}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Expected Result</p>
-                      <p className="mt-1 text-sm font-medium leading-relaxed text-slate-600">{currentStep.expected_result}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Expected Result</p>
+                      <p className="mt-1 text-sm font-medium leading-relaxed text-gray-600">{currentStep.expected_result}</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4 p-4">
                   <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Actual Result</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Actual Result</span>
                     <textarea
                       value={currentState.actualResult}
                       onChange={(event) => onUpdateStep(selectedResult, currentStep.step_number, { actualResult: event.target.value })}
                       placeholder="Enter observed behavior for this step..."
-                      className="mt-1 min-h-20 w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
+                      className="mt-1 min-h-20 w-full resize-none rounded-lg border border-gray-200 bg-white p-3 text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-100"
                     />
                   </label>
 
                   <div>
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Step Outcome</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Step Outcome</p>
                       <div className="flex items-center gap-1.5">
                         <Button
                           size="sm"
                           variant="outline"
                           disabled={!currentState.stepId || aiBusy}
                           onClick={() => handleAskAi(currentState.evidence.length > 0)}
-                          className="h-7 border-indigo-200 bg-white text-[11px] font-bold text-indigo-700 hover:bg-indigo-50"
+                          className="h-7 border-app-brand-200 bg-white text-[11px] font-bold text-app-brand-700 hover:bg-app-brand-75"
                           title={currentState.evidence.length > 0 ? "Ask AI with attached screenshot" : "Ask AI (text-only)"}
                         >
                           {aiBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -1554,9 +1554,9 @@ function ManualWorkspace({
                           onClick={() => onUpdateStep(selectedResult, currentStep.step_number, { status }, `Step ${currentStep.step_number} marked as ${normalizeStatus(status)}`)}
                           className={cn(
                             "h-8 text-xs font-bold",
-                            currentState.status !== status && "border-slate-200 bg-white text-slate-700",
+                            currentState.status !== status && "border-gray-200 bg-white text-gray-700",
                             currentState.status === status && variant === "warning" && "bg-amber-500 text-white hover:bg-amber-600",
-                            currentState.status === status && variant === "secondary" && "bg-slate-700 text-white hover:bg-slate-800"
+                            currentState.status === status && variant === "secondary" && "bg-gray-700 text-white hover:bg-gray-800"
                           )}
                         >
                           {label}
@@ -1587,34 +1587,34 @@ function ManualWorkspace({
                               aiSuggestion.status === "failed" && "text-rose-600",
                               aiSuggestion.status === "blocked" && "text-amber-600",
                             )} />
-                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider text-gray-700">
                               AI Suggestion: {normalizeStatus(aiSuggestion.status)}
                             </span>
-                            <span className="text-[10px] font-bold text-slate-500">
+                            <span className="text-[10px] font-bold text-gray-500">
                               {aiSuggestion.confidence}% confidence · {aiSuggestion.mode === "vision" ? "with screenshot" : "text-only"}
                             </span>
                           </div>
                           <button
                             onClick={() => setAiSuggestion(null)}
-                            className="rounded p-0.5 text-slate-400 hover:bg-white hover:text-slate-700"
+                            className="rounded p-0.5 text-gray-400 hover:bg-white hover:text-gray-700"
                             title="Dismiss"
                           >
                             <XCircle className="h-3.5 w-3.5" />
                           </button>
                         </div>
-                        <p className="mt-2 text-[12px] font-medium leading-relaxed text-slate-700">
+                        <p className="mt-2 text-[12px] font-medium leading-relaxed text-gray-700">
                           {aiSuggestion.reasoning}
                         </p>
                         {aiSuggestion.observations.length > 0 && (
-                          <ul className="mt-2 space-y-1 text-[11px] font-medium text-slate-600">
+                          <ul className="mt-2 space-y-1 text-[11px] font-medium text-gray-600">
                             {aiSuggestion.observations.slice(0, 4).map((obs, i) => (
                               <li key={i} className="flex items-start gap-1.5">
-                                <span className="mt-0.5 text-slate-400">•</span>
+                                <span className="mt-0.5 text-gray-400">•</span>
                                 <span>{obs}</span>
                               </li>
                             ))}
                             {aiSuggestion.observations.length > 4 && (
-                              <li className="text-[10px] font-semibold text-slate-400">
+                              <li className="text-[10px] font-semibold text-gray-400">
                                 + {aiSuggestion.observations.length - 4} more
                               </li>
                             )}
@@ -1633,11 +1633,11 @@ function ManualWorkspace({
                             size="sm"
                             variant="outline"
                             onClick={() => setAiSuggestion(null)}
-                            className="h-7 border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600"
+                            className="h-7 border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-600"
                           >
                             Dismiss
                           </Button>
-                          <p className="text-[10px] font-medium text-slate-500">
+                          <p className="text-[10px] font-medium text-gray-500">
                             You decide — the AI&apos;s call is recorded for audit either way.
                           </p>
                         </div>
@@ -1646,18 +1646,18 @@ function ManualWorkspace({
                   </div>
 
                   <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Comments</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Comments</span>
                     <textarea
                       value={currentState.comments}
                       onChange={(event) => onUpdateStep(selectedResult, currentStep.step_number, { comments: event.target.value })}
                       placeholder="Add tester comments, observations, or defect notes..."
-                      className="mt-1 min-h-16 w-full resize-none rounded-lg border border-slate-200 bg-white p-3 text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"
+                      className="mt-1 min-h-16 w-full resize-none rounded-lg border border-gray-200 bg-white p-3 text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-100"
                     />
                   </label>
 
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap gap-2">
-                      <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                      <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-50">
                         <Camera className="h-3.5 w-3.5" />
                         Attach Screenshot
                         <input
@@ -1672,7 +1672,7 @@ function ManualWorkspace({
                           }}
                         />
                       </label>
-                      <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                      <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 transition hover:bg-gray-50">
                         <Paperclip className="h-3.5 w-3.5" />
                         Upload File
                         <input
@@ -1700,7 +1700,7 @@ function ManualWorkspace({
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" disabled={safeStepIndex === 0} onClick={() => onStepIndexChange(safeStepIndex - 1)}>
+                      <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" disabled={safeStepIndex === 0} onClick={() => onStepIndexChange(safeStepIndex - 1)}>
                         <ArrowLeft className="h-3.5 w-3.5" />
                         Previous Step
                       </Button>
@@ -1711,12 +1711,12 @@ function ManualWorkspace({
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-2 border-t border-gray-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-[11px] font-semibold text-emerald-600">
                       <Save className="mr-1 inline h-3.5 w-3.5" />
                       {autoSaveMessage || "Auto-save ready"}
                     </p>
-                    <Button size="sm" variant="outline" className="h-8 border-blue-200 bg-white text-xs font-bold text-blue-600 hover:bg-blue-50" onClick={() => onMarkComplete(selectedResult, steps)}>
+                    <Button size="sm" variant="outline" className="h-8 border-app-brand-200 bg-white text-xs font-bold text-app-brand-600 hover:bg-app-brand-75" onClick={() => onMarkComplete(selectedResult, steps)}>
                       <UserCheck className="h-3.5 w-3.5" />
                       Mark Test Case Complete
                     </Button>
@@ -1731,42 +1731,42 @@ function ManualWorkspace({
       </div>
 
       <div className="space-y-3 xl:col-span-2 min-[1800px]:col-span-1">
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <p className="mb-3 text-xs font-bold text-slate-800">Step-Level Summary</p>
+        <div className="rounded-lg border border-gray-200 bg-white p-3">
+          <p className="mb-3 text-xs font-bold text-gray-800">Step-Level Summary</p>
           <div className="grid grid-cols-2 gap-2">
             <SummaryPill label="Passed" value={summary.passed} className="text-emerald-600" />
             <SummaryPill label="Failed" value={summary.failed} className="text-rose-600" />
             <SummaryPill label="Blocked" value={summary.blocked} className="text-amber-600" />
-            <SummaryPill label="Not Executed" value={summary.notRun} className="text-slate-500" />
-            <SummaryPill label="Total Steps" value={summary.total} className="text-blue-600" />
+            <SummaryPill label="Not Executed" value={summary.notRun} className="text-gray-500" />
+            <SummaryPill label="Total Steps" value={summary.total} className="text-app-brand-600" />
             <SummaryPill label="Pass Rate" value={formatPercent(summary.passRate)} className="text-emerald-600" />
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <p className="mb-2 text-xs font-bold text-slate-800">Evidence and Logs</p>
+        <div className="rounded-lg border border-gray-200 bg-white p-3">
+          <p className="mb-2 text-xs font-bold text-gray-800">Evidence and Logs</p>
           {currentStep && currentState.evidence.length > 0 ? (
             <div className="space-y-2">
               {currentState.evidence.map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
                   <div className="min-w-0">
                     <a
                       href={item.download_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block truncate text-[11px] font-semibold text-blue-600 hover:underline"
+                      className="block truncate text-[11px] font-semibold text-app-brand-600 hover:underline"
                       title={item.filename}
                     >
                       {item.filename}
                     </a>
-                    <p className="mt-0.5 text-[10px] font-medium text-slate-400">
+                    <p className="mt-0.5 text-[10px] font-medium text-gray-400">
                       {(item.size / 1024).toFixed(1)} KB · {dateLabel(item.uploaded_at)}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => onRemoveEvidence(item.id)}
-                    className="shrink-0 rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                    className="shrink-0 rounded p-1 text-gray-400 hover:bg-rose-50 hover:text-rose-600"
                     title="Remove evidence"
                     aria-label="Remove evidence"
                   >
@@ -1776,7 +1776,7 @@ function ManualWorkspace({
               ))}
             </div>
           ) : (
-            <p className="text-[11px] font-medium text-slate-400">
+            <p className="text-[11px] font-medium text-gray-400">
               {currentState.stepId
                 ? "No evidence attached to the current step."
                 : "Start the manual run to attach evidence."}
@@ -1784,27 +1784,27 @@ function ManualWorkspace({
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <p className="mb-2 text-xs font-bold text-slate-800">Activity Timeline</p>
+        <div className="rounded-lg border border-gray-200 bg-white p-3">
+          <p className="mb-2 text-xs font-bold text-gray-800">Activity Timeline</p>
           {selectedActivity.length > 0 ? (
             <div className="space-y-2">
               {selectedActivity.map((event) => (
-                <div key={event.id} className="flex gap-2 rounded-lg bg-slate-50 p-2">
+                <div key={event.id} className="flex gap-2 rounded-lg bg-gray-50 p-2">
                   <span className={cn(
                     "mt-1 h-2 w-2 shrink-0 rounded-full",
                     event.tone === "success" ? "bg-emerald-500" :
                       event.tone === "danger" ? "bg-rose-500" :
-                        event.tone === "warning" ? "bg-amber-500" : "bg-blue-500"
+                        event.tone === "warning" ? "bg-amber-500" : "bg-app-brand-500"
                   )} />
                   <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-slate-700">{event.message}</p>
-                    <p className="text-[10px] font-medium text-slate-400">{dateLabel(event.timestamp)}</p>
+                    <p className="text-[11px] font-bold text-gray-700">{event.message}</p>
+                    <p className="text-[10px] font-medium text-gray-400">{dateLabel(event.timestamp)}</p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-[11px] font-medium text-slate-400">No manual execution activity yet.</p>
+            <p className="text-[11px] font-medium text-gray-400">No manual execution activity yet.</p>
           )}
         </div>
       </div>
@@ -1850,11 +1850,11 @@ function AutomationWorkspace({
           <MetaTile label="Progress" value={`${formatPercent(passRate)} pass rate`} />
         </div>
 
-        <div className="rounded-lg border border-slate-200">
-          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+        <div className="rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
             <div>
-              <p className="text-xs font-bold text-slate-800">Test Cases / Script Mapping</p>
-              <p className="text-[10px] font-semibold text-slate-400">Platform case to automation script path</p>
+              <p className="text-xs font-bold text-gray-800">Test Cases / Script Mapping</p>
+              <p className="text-[10px] font-semibold text-gray-400">Platform case to automation script path</p>
             </div>
             <Badge variant="outline" className="text-[10px]">{selectedResults.length} mapped</Badge>
           </div>
@@ -1862,17 +1862,17 @@ function AutomationWorkspace({
             {selectedResults.length ? selectedResults.map((result) => {
               const testCase = result.test_case_id ? testCaseById.get(result.test_case_id) : undefined;
               return (
-                <div key={result.id} className="mb-2 rounded-lg border border-slate-100 bg-slate-50/50 p-3">
+                <div key={result.id} className="mb-2 rounded-lg border border-gray-100 bg-gray-50/50 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-bold text-slate-800">{testCase?.test_case_id || result.external_test_case_id || `Result ${result.id}`}</p>
-                      <p className="truncate text-[11px] font-semibold text-slate-500">{result.test_name}</p>
+                      <p className="truncate text-xs font-bold text-gray-800">{testCase?.test_case_id || result.external_test_case_id || `Result ${result.id}`}</p>
+                      <p className="truncate text-[11px] font-semibold text-gray-500">{result.test_name}</p>
                     </div>
                     <Badge variant={statusVariant(result.automation_execution_status || result.status)} className="text-[10px]">
                       {normalizeStatus(result.automation_execution_status || result.status)}
                     </Badge>
                   </div>
-                  <p className="mt-2 truncate rounded bg-white px-2 py-1 font-mono text-[10px] text-slate-500">
+                  <p className="mt-2 truncate rounded bg-white px-2 py-1 font-mono text-[10px] text-gray-500">
                     {scriptPathForResult(result, testCase)}
                   </p>
                 </div>
@@ -1889,38 +1889,38 @@ function AutomationWorkspace({
       </div>
 
       <div className="min-w-0 space-y-4">
-        <div className="rounded-lg border border-slate-200 bg-slate-50/30 p-3">
+        <div className="rounded-lg border border-gray-200 bg-gray-50/30 p-3">
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-bold text-slate-800">Automation Execution Orchestrator</p>
-              <p className="text-[11px] font-semibold text-slate-400">{selectedRun.execution_id} - {selectedRun.suite_name || "Automation run"}</p>
+              <p className="text-xs font-bold text-gray-800">Automation Execution Orchestrator</p>
+              <p className="text-[11px] font-semibold text-gray-400">{selectedRun.execution_id} - {selectedRun.suite_name || "Automation run"}</p>
             </div>
             <Badge variant={statusVariant(automationState.status)}>{normalizeStatus(automationState.status)}</Badge>
           </div>
 
           <div className="grid gap-3 2xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
-            <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
+            <div className="min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white">
+              <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
                 <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                <span className="ml-2 truncate font-mono text-[10px] font-semibold text-slate-400">automation://{framework.toLowerCase()}/{selectedRun.environment || "environment"}</span>
+                <span className="ml-2 truncate font-mono text-[10px] font-semibold text-gray-400">automation://{framework.toLowerCase()}/{selectedRun.environment || "environment"}</span>
               </div>
               <div className="flex min-h-[280px] flex-col justify-between bg-white p-4">
                 <div>
                   <div className="mb-4 flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-bold text-slate-900">Live Execution Viewer</p>
-                      <p className="text-[11px] font-semibold text-slate-400">Viewer is ready for runner screenshots, trace, or video stream.</p>
+                      <p className="text-sm font-bold text-gray-900">Live Execution Viewer</p>
+                      <p className="text-[11px] font-semibold text-gray-400">Viewer is ready for runner screenshots, trace, or video stream.</p>
                     </div>
-                    <Monitor className="h-5 w-5 text-blue-500" />
+                    <Monitor className="h-5 w-5 text-app-brand-500" />
                   </div>
-                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4">
-                    <p className="text-xs font-bold text-slate-800">{currentStep}</p>
-                    <p className="mt-2 text-[11px] font-medium leading-relaxed text-slate-500">
+                  <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 p-4">
+                    <p className="text-xs font-bold text-gray-800">{currentStep}</p>
+                    <p className="mt-2 text-[11px] font-medium leading-relaxed text-gray-500">
                       {automationState.message}
                     </p>
-                    <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                       Prepare drafts in Automation, execute them here.
                     </p>
                   </div>
@@ -1928,23 +1928,23 @@ function AutomationWorkspace({
                 <div className="mt-4 grid gap-2 sm:grid-cols-4">
                   <SummaryPill label="Passed" value={counts.passed || selectedRun.passed || 0} className="text-emerald-600" />
                   <SummaryPill label="Failed" value={failedCount} className="text-rose-600" />
-                  <SummaryPill label="Skipped" value={counts.skipped || selectedRun.skipped || 0} className="text-slate-500" />
-                  <SummaryPill label="Pass Rate" value={formatPercent(passRate)} className="text-blue-600" />
+                  <SummaryPill label="Skipped" value={counts.skipped || selectedRun.skipped || 0} className="text-gray-500" />
+                  <SummaryPill label="Pass Rate" value={formatPercent(passRate)} className="text-app-brand-600" />
                 </div>
               </div>
             </div>
 
-            <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
-              <p className="text-xs font-bold text-slate-800">Execution Stream</p>
-              <div className="mt-3 space-y-2 text-[11px] font-medium text-slate-500">
+            <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3">
+              <p className="text-xs font-bold text-gray-800">Execution Stream</p>
+              <div className="mt-3 space-y-2 text-[11px] font-medium text-gray-500">
                 <StreamRow label="Current Step" value={currentStep} />
                 <StreamRow label="Status" value={normalizeStatus(automationState.status)} />
                 <StreamRow label="Started At" value={dateLabel(automationState.startedAt || selectedRun.started_at || selectedRun.created_at)} />
                 <StreamRow label="Elapsed Time" value={`${formatNumber(automationState.elapsedSeconds)}s`} />
               </div>
-              <div className="mt-4 rounded-lg bg-slate-950 p-3 font-mono text-[10px] leading-relaxed text-slate-200">
+              <div className="mt-4 rounded-lg bg-gray-950 p-3 font-mono text-[10px] leading-relaxed text-gray-200">
                 <p>$ automation adapter status</p>
-                <p className="text-slate-400">{automationState.message}</p>
+                <p className="text-gray-400">{automationState.message}</p>
                 {streamRows.length ? streamRows.slice(0, 3).map((result) => (
                   <p key={result.id} className={cn(
                     "truncate",
@@ -1964,10 +1964,10 @@ function AutomationWorkspace({
               {isAutomationActionRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
               Start Execution
             </Button>
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" disabled={isAutomationActionRunning} onClick={() => onAutomationAction("pause")}>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" disabled={isAutomationActionRunning} onClick={() => onAutomationAction("pause")}>
               <Pause className="h-3.5 w-3.5" /> Pause
             </Button>
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" disabled={isAutomationActionRunning} onClick={() => onAutomationAction("retry_failed")}>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" disabled={isAutomationActionRunning} onClick={() => onAutomationAction("retry_failed")}>
               <RotateCcw className="h-3.5 w-3.5" /> Retry Failed
             </Button>
             <Button size="sm" variant="outline" className="h-8 border-violet-200 bg-white text-xs text-violet-700" disabled={isAutomationActionRunning} onClick={() => onAutomationAction("analyze_failure")}>
@@ -1976,22 +1976,22 @@ function AutomationWorkspace({
             <Button size="sm" variant="outline" className="h-8 border-rose-200 bg-white text-xs text-rose-600" disabled={!failure || isAutomationActionRunning} onClick={() => onAutomationAction("create_defect")}>
               <Bug className="h-3.5 w-3.5" /> Create Jira Defect
             </Button>
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" disabled>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" disabled>
               More <ChevronDown className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 p-3">
+        <div className="rounded-lg border border-gray-200 p-3">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-bold text-slate-800">Recent Actions</p>
-            <Clock3 className="h-4 w-4 text-slate-400" />
+            <p className="text-xs font-bold text-gray-800">Recent Actions</p>
+            <Clock3 className="h-4 w-4 text-gray-400" />
           </div>
           <div className="space-y-2">
             {automationState.recentActions.length ? automationState.recentActions.slice(0, 4).map((action, index) => (
-              <p key={`${action}-${index}`} className="rounded-md bg-slate-50 px-2 py-1.5 text-[11px] font-semibold text-slate-600">{action}</p>
+              <p key={`${action}-${index}`} className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-600">{action}</p>
             )) : (
-              <p className="rounded-md bg-slate-50 px-2 py-1.5 text-[11px] font-semibold text-slate-400">No automation actions captured yet.</p>
+              <p className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-400">No automation actions captured yet.</p>
             )}
           </div>
         </div>
@@ -2041,11 +2041,11 @@ function AiWorkspace({
           <MetaTile label="Execution Status" value={normalizeStatus(aiState.status)} />
         </div>
 
-        <div className="rounded-lg border border-slate-200">
-          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+        <div className="rounded-lg border border-gray-200">
+          <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
             <div>
-              <p className="text-xs font-bold text-slate-800">Agent Execution Plan</p>
-              <p className="text-[10px] font-semibold text-slate-400">Pre-execution AI run strategy, not a test plan</p>
+              <p className="text-xs font-bold text-gray-800">Agent Execution Plan</p>
+              <p className="text-[10px] font-semibold text-gray-400">Pre-execution AI run strategy, not a test plan</p>
             </div>
             <Badge variant={aiState.approved ? "success" : aiState.planGenerated ? "warning" : "secondary"} className="text-[10px]">
               {aiState.approved ? "Approved" : aiState.planGenerated ? "Review Required" : "Not Generated"}
@@ -2070,22 +2070,22 @@ function AiWorkspace({
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] font-semibold leading-relaxed text-amber-800">
           AI suggestions require human review before applying changes or creating defects.
         </div>
-        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-[11px] font-semibold leading-relaxed text-blue-800">
+        <div className="rounded-lg border border-app-brand-100 bg-app-brand-75 p-3 text-[11px] font-semibold leading-relaxed text-app-brand-800">
           Traceability: Requirement / Jira Story &gt; Test Case &gt; Execution Run &gt; Step Result / Evidence &gt; Defect Draft &gt; Jira Issue.
         </div>
       </div>
 
       <div className="space-y-4">
-        <div className="rounded-lg border border-slate-200 bg-slate-50/30 p-3">
+        <div className="rounded-lg border border-gray-200 bg-gray-50/30 p-3">
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-bold text-slate-800">AI Agent Workspace</p>
-              <p className="text-[11px] font-semibold text-slate-400">{selectedRun.execution_id} - human-approved AI execution</p>
+              <p className="text-xs font-bold text-gray-800">AI Agent Workspace</p>
+              <p className="text-[11px] font-semibold text-gray-400">{selectedRun.execution_id} - human-approved AI execution</p>
             </div>
             <select
               value={aiState.mode}
               onChange={(event) => onAiModeChange(event.target.value as AiMode)}
-              className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700"
+              className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs font-bold text-gray-700"
             >
               <option>Assistive</option>
               <option>Semi-Autonomous</option>
@@ -2093,24 +2093,24 @@ function AiWorkspace({
             </select>
           </div>
 
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
+          <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2">
               <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
               <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-              <span className="ml-2 truncate font-mono text-[10px] font-semibold text-slate-400">ai-agent://review-gated/{selectedRun.environment || "environment"}</span>
+              <span className="ml-2 truncate font-mono text-[10px] font-semibold text-gray-400">ai-agent://review-gated/{selectedRun.environment || "environment"}</span>
             </div>
             <div className="min-h-[270px] bg-white p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-bold text-slate-900">Live Execution Viewer</p>
-                  <p className="text-[11px] font-semibold text-slate-400">AI execution is disabled until plan generation and human approval are complete.</p>
+                  <p className="text-sm font-bold text-gray-900">Live Execution Viewer</p>
+                  <p className="text-[11px] font-semibold text-gray-400">AI execution is disabled until plan generation and human approval are complete.</p>
                 </div>
                 <Bot className="h-5 w-5 text-violet-600" />
               </div>
               <div className="rounded-lg border border-dashed border-violet-200 bg-violet-50/40 p-4">
-                <p className="text-xs font-bold text-slate-800">{currentStep}</p>
-                <p className="mt-2 text-[11px] font-medium leading-relaxed text-slate-600">
+                <p className="text-xs font-bold text-gray-800">{currentStep}</p>
+                <p className="mt-2 text-[11px] font-medium leading-relaxed text-gray-600">
                   {aiState.planGenerated
                     ? aiState.approved
                       ? "Plan approved. AI execution can be started in a guarded, assistive mode."
@@ -2120,7 +2120,7 @@ function AiWorkspace({
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-3">
                 <SummaryPill label="Confidence" value={formatPercent(aiState.confidence)} className="text-violet-600" />
-                <SummaryPill label="Plan Steps" value={aiState.executionSteps.length} className="text-blue-600" />
+                <SummaryPill label="Plan Steps" value={aiState.executionSteps.length} className="text-app-brand-600" />
                 <SummaryPill label="Evidence Items" value={selectedResults.filter((result) => result.screenshot_url || result.log_url || result.video_url || result.raw_result_json).length} className="text-emerald-600" />
               </div>
             </div>
@@ -2136,7 +2136,7 @@ function AiWorkspace({
             <Button size="sm" className="h-8 text-xs font-bold" disabled={!aiState.planGenerated || !aiState.approved || aiState.status === "in_progress"} onClick={onRunAiExecution}>
               {aiState.status === "in_progress" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} Run AI Execution
             </Button>
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" disabled={!aiState.planGenerated} onClick={onPause}>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" disabled={!aiState.planGenerated} onClick={onPause}>
               <Pause className="h-3.5 w-3.5" /> Pause
             </Button>
             <Button size="sm" variant="outline" className="h-8 border-violet-200 bg-white text-xs text-violet-700" disabled={!aiState.planGenerated} onClick={onAnalyzeFailure}>
@@ -2145,20 +2145,20 @@ function AiWorkspace({
             <Button size="sm" variant="outline" className="h-8 border-rose-200 bg-white text-xs text-rose-600" disabled={!aiState.planGenerated} onClick={onDraftDefect}>
               <Bug className="h-3.5 w-3.5" /> Draft Jira Defect
             </Button>
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" disabled>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" disabled>
               More <ChevronDown className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 p-3">
+        <div className="rounded-lg border border-gray-200 p-3">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-bold text-slate-800">AI Agent Reasoning and Observations</p>
+            <p className="text-xs font-bold text-gray-800">AI Agent Reasoning and Observations</p>
             <Badge variant={aiState.confidence >= 80 ? "success" : aiState.confidence > 0 ? "warning" : "secondary"}>{aiState.confidence ? formatPercent(aiState.confidence) : "No Confidence"}</Badge>
           </div>
           <div className="space-y-2">
             {(aiState.observations.length ? aiState.observations : ["No AI reasoning available until a plan is generated."]).map((item, index) => (
-              <p key={`${item}-${index}`} className="rounded-md bg-slate-50 px-2 py-1.5 text-[11px] font-semibold text-slate-600">{item}</p>
+              <p key={`${item}-${index}`} className="rounded-md bg-gray-50 px-2 py-1.5 text-[11px] font-semibold text-gray-600">{item}</p>
             ))}
             {failedResult && (
               <p className="rounded-md bg-rose-50 px-2 py-1.5 text-[11px] font-semibold text-rose-700">
@@ -2174,11 +2174,11 @@ function AiWorkspace({
 
 function PlanList({ title, items, mono, warning }: { title: string; items: string[]; mono?: boolean; warning?: boolean }) {
   return (
-    <div className={cn("rounded-lg border p-3", warning ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50/60")}>
-      <p className={cn("text-xs font-bold", warning ? "text-amber-800" : "text-slate-800")}>{title}</p>
+    <div className={cn("rounded-lg border p-3", warning ? "border-amber-200 bg-amber-50" : "border-gray-100 bg-gray-50/60")}>
+      <p className={cn("text-xs font-bold", warning ? "text-amber-800" : "text-gray-800")}>{title}</p>
       <ul className="mt-2 space-y-1">
         {items.map((item, index) => (
-          <li key={`${title}-${index}`} className={cn("text-[11px] font-medium leading-relaxed", warning ? "text-amber-700" : "text-slate-600", mono && "font-mono")}>{item}</li>
+          <li key={`${title}-${index}`} className={cn("text-[11px] font-medium leading-relaxed", warning ? "text-amber-700" : "text-gray-600", mono && "font-mono")}>{item}</li>
         ))}
       </ul>
     </div>
@@ -2259,12 +2259,12 @@ function WorkspaceShell({
 
   if (!selectedRun && tab === "ai") {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="font-mono text-xs font-bold text-blue-600">AI EXECUTION QUEUE</p>
-            <h2 className="mt-1 text-base font-bold text-slate-900">No AI execution run selected</h2>
-            <p className="mt-1 text-xs font-semibold text-slate-500">
+            <p className="font-mono text-xs font-bold text-app-brand-600">AI EXECUTION QUEUE</p>
+            <h2 className="mt-1 text-base font-bold text-gray-900">No AI execution run selected</h2>
+            <p className="mt-1 text-xs font-semibold text-gray-500">
               {selectedTestCase
                 ? `${selectedTestCase.test_case_id || "Selected case"} is ready to queue through the backend execution agent.`
                 : "No approved AI or hybrid test case is available for execution."}
@@ -2290,7 +2290,7 @@ function WorkspaceShell({
 
   if (!selectedRun) {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <EmptyState
           title={`No ${TAB_LABELS[tab].toLowerCase()} run selected`}
           description="Select a run from the execution catalog or create a new run when backend orchestration is available."
@@ -2302,11 +2302,11 @@ function WorkspaceShell({
   if (tab === "manual") {
     const isAdapterRun = selectedRun.id < 0;
     return (
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
+      <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-gray-100 p-4 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <p className="font-mono text-xs font-bold text-blue-600">{selectedRun.execution_id}</p>
-            <h2 className="mt-1 truncate text-base font-bold text-slate-900">{selectedRun.suite_name || TAB_LABELS[tab]}</h2>
+            <p className="font-mono text-xs font-bold text-app-brand-600">{selectedRun.execution_id}</p>
+            <h2 className="mt-1 truncate text-base font-bold text-gray-900">{selectedRun.suite_name || TAB_LABELS[tab]}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={statusVariant(selectedRun.status)}>{normalizeStatus(selectedRun.status)}</Badge>
@@ -2315,12 +2315,12 @@ function WorkspaceShell({
           </div>
         </div>
         {isAdapterRun ? (
-          <div className="m-4 flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="m-4 flex flex-col gap-3 rounded-lg border border-app-brand-200 bg-app-brand-75/60 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="text-xs font-bold text-slate-800">
+              <p className="text-xs font-bold text-gray-800">
                 {selectedResults.length} approved manual test case{selectedResults.length === 1 ? "" : "s"} ready
               </p>
-              <p className="mt-1 text-[11px] font-medium text-slate-500">
+              <p className="mt-1 text-[11px] font-medium text-gray-500">
                 Starting a run creates a server-persisted execution: each step result, comment, and
                 evidence file is saved on the backend and survives reloads.
               </p>
@@ -2363,11 +2363,11 @@ function WorkspaceShell({
   if (tab === "automation") {
     const automationState = automationRunStateFor(selectedRun, automationRunStates[automationStateKey(selectedRun.id)]);
     return (
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
+      <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-gray-100 p-4 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
-            <p className="font-mono text-xs font-bold text-blue-600">{selectedRun.execution_id}</p>
-            <h2 className="mt-1 truncate text-base font-bold text-slate-900">{selectedRun.suite_name || TAB_LABELS[tab]}</h2>
+            <p className="font-mono text-xs font-bold text-app-brand-600">{selectedRun.execution_id}</p>
+            <h2 className="mt-1 truncate text-base font-bold text-gray-900">{selectedRun.suite_name || TAB_LABELS[tab]}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={statusVariant(automationState.status)}>{normalizeStatus(automationState.status)}</Badge>
@@ -2389,11 +2389,11 @@ function WorkspaceShell({
 
   const aiState = aiWorkspaceStateFor(selectedRun, aiWorkspaceStates[aiStateKey(selectedRun.id)]);
   return (
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
+    <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-gray-100 p-4 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <p className="font-mono text-xs font-bold text-blue-600">{selectedRun.execution_id}</p>
-          <h2 className="mt-1 truncate text-base font-bold text-slate-900">{selectedRun.suite_name || TAB_LABELS[tab]}</h2>
+          <p className="font-mono text-xs font-bold text-app-brand-600">{selectedRun.execution_id}</p>
+          <h2 className="mt-1 truncate text-base font-bold text-gray-900">{selectedRun.suite_name || TAB_LABELS[tab]}</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={statusVariant(aiState.status)}>{normalizeStatus(aiState.status)}</Badge>
@@ -2420,18 +2420,18 @@ function WorkspaceShell({
 
 function MetaTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
-      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 break-words text-xs font-bold text-slate-800">{value}</p>
+    <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-1 break-words text-xs font-bold text-gray-800">{value}</p>
     </div>
   );
 }
 
 function StreamRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
-      <span className="shrink-0 text-slate-400">{label}</span>
-      <span className="min-w-0 break-words text-right font-bold text-slate-700">{value}</span>
+    <div className="flex items-start justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2">
+      <span className="shrink-0 text-gray-400">{label}</span>
+      <span className="min-w-0 break-words text-right font-bold text-gray-700">{value}</span>
     </div>
   );
 }
@@ -2470,13 +2470,13 @@ function JiraDefectActions({
           Push to Jira
         </Button>
       )}
-      <Button size="sm" variant="outline" className="h-7 border-slate-200 bg-white text-[10px]" disabled={busy} onClick={() => onLinkExisting(defect)}>
+      <Button size="sm" variant="outline" className="h-7 border-gray-200 bg-white text-[10px]" disabled={busy} onClick={() => onLinkExisting(defect)}>
         Link Jira Issue
       </Button>
       <Button
         size="sm"
         variant="outline"
-        className="h-7 border-slate-200 bg-white text-[10px]"
+        className="h-7 border-gray-200 bg-white text-[10px]"
         disabled={!url}
         onClick={() => {
           if (url) window.open(url, "_blank", "noopener,noreferrer");
@@ -2490,13 +2490,13 @@ function JiraDefectActions({
 
 function TraceabilityChain({ items }: { items: Array<{ label: string; value: string }> }) {
   return (
-    <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
-      <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Traceability</p>
+    <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-3">
+      <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">Traceability</p>
       <div className="grid gap-2 md:grid-cols-2">
         {items.map((item) => (
           <div key={item.label} className="rounded-md bg-white px-2 py-1.5">
-            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{item.label}</p>
-            <p className="truncate text-[11px] font-bold text-slate-700">{item.value}</p>
+            <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{item.label}</p>
+            <p className="truncate text-[11px] font-bold text-gray-700">{item.value}</p>
           </div>
         ))}
       </div>
@@ -2597,29 +2597,29 @@ function DetailsPanel({
 
   if (!selectedRun) {
     return (
-      <aside className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 p-4">
-          <h3 className="text-sm font-bold text-slate-900">Execution Details</h3>
-          <PanelRight className="h-4 w-4 text-slate-400" />
+      <aside className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-gray-100 p-4">
+          <h3 className="text-sm font-bold text-gray-900">Execution Details</h3>
+          <PanelRight className="h-4 w-4 text-gray-400" />
         </div>
         <div className="p-4">
-          <p className="text-xs font-medium text-slate-400 text-center py-8">Select an execution run to inspect telemetry details.</p>
+          <p className="text-xs font-medium text-gray-400 text-center py-8">Select an execution run to inspect telemetry details.</p>
         </div>
       </aside>
     );
   }
 
   return (
-    <aside className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 p-4 pb-2">
+    <aside className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-100 p-4 pb-2">
         <div>
-          <h3 className="text-sm font-bold text-slate-900">{tab === "ai" ? "AI Analysis cockpit" : "Execution detail workspace"}</h3>
-          <p className="text-[11px] font-medium text-slate-400">Run ID: {selectedRun.execution_id}</p>
+          <h3 className="text-sm font-bold text-gray-900">{tab === "ai" ? "AI Analysis cockpit" : "Execution detail workspace"}</h3>
+          <p className="text-[11px] font-medium text-gray-400">Run ID: {selectedRun.execution_id}</p>
         </div>
-        <PanelRight className="h-4 w-4 text-slate-400" />
+        <PanelRight className="h-4 w-4 text-gray-400" />
       </div>
 
-      <div className="flex border-b border-slate-100 bg-slate-50/50 px-4">
+      <div className="flex border-b border-gray-100 bg-gray-50/50 px-4">
         {[
           { id: "overview", label: "Overview" },
           { id: "decisions", label: `Failure Decisions (${undecidedCount})` },
@@ -2632,8 +2632,8 @@ function DetailsPanel({
             className={cn(
               "flex h-10 items-center justify-center border-b-2 px-3 text-[11px] font-bold transition",
               detailTab === t.id
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-slate-500 hover:text-slate-900"
+                ? "border-app-brand-600 text-app-brand-600"
+                : "border-transparent text-gray-500 hover:text-gray-900"
             )}
           >
             {t.label}
@@ -2650,15 +2650,15 @@ function DetailsPanel({
             <MetaTile label="Last Updated" value={dateLabel(selectedRun?.updated_at)} />
           </div>
 
-          <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-            <p className="mb-3 text-xs font-bold text-slate-800">Step-Level Summary</p>
+          <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+            <p className="mb-3 text-xs font-bold text-gray-800">Step-Level Summary</p>
             <div className="grid grid-cols-2 gap-2 text-xs lg:grid-cols-3 xl:grid-cols-6">
               <SummaryPill label="Passed" value={counts.passed || selectedRun?.passed || 0} className="text-emerald-600" />
               <SummaryPill label="Failed" value={counts.failed || selectedRun?.failed || 0} className="text-rose-600" />
               <SummaryPill label={tab === "automation" ? "Flaky" : "Blocked"} value={tab === "automation" ? 0 : counts.blocked} className="text-amber-600" />
-              <SummaryPill label="Skipped" value={counts.skipped || selectedRun?.skipped || 0} className="text-slate-500" />
-              <SummaryPill label="Total Steps" value={tab === "manual" ? manualSummary.total : selectedResults.length || selectedRun?.total_tests || 0} className="text-blue-600" />
-              <SummaryPill label="Not Executed" value={counts.notRun} className="text-slate-500" />
+              <SummaryPill label="Skipped" value={counts.skipped || selectedRun?.skipped || 0} className="text-gray-500" />
+              <SummaryPill label="Total Steps" value={tab === "manual" ? manualSummary.total : selectedResults.length || selectedRun?.total_tests || 0} className="text-app-brand-600" />
+              <SummaryPill label="Not Executed" value={counts.notRun} className="text-gray-500" />
             </div>
           </div>
 
@@ -2675,16 +2675,16 @@ function DetailsPanel({
             </div>
           )}
 
-          <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
+          <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-bold text-slate-800">Linked Defects</p>
+              <p className="text-xs font-bold text-gray-800">Linked Defects</p>
               <Badge variant={linkedDefects.length ? "destructive" : "secondary"} className="text-[10px]">{linkedDefects.length}</Badge>
             </div>
             {linkedDefects.length ? (
               linkedDefects.slice(0, 3).map((defect) => (
                 <div key={defect.id} className="mb-2 rounded-lg bg-rose-50 px-3 py-2">
                   <p className="font-mono text-[11px] font-bold text-rose-600">{defect.defect_id}</p>
-                  <p className="truncate text-[11px] font-semibold text-slate-700">{defect.summary}</p>
+                  <p className="truncate text-[11px] font-semibold text-gray-700">{defect.summary}</p>
                   <JiraDefectActions
                     defect={defect}
                     link={jiraLinkForDefect(defect, jiraDefectLinks)}
@@ -2704,17 +2704,17 @@ function DetailsPanel({
                 </div>
               ))
             ) : (
-              <p className="text-[11px] font-medium text-slate-400">No defect draft linked to the selected run results.</p>
+              <p className="text-[11px] font-medium text-gray-400">No defect draft linked to the selected run results.</p>
             )}
           </div>
 
-          <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-            <p className="mb-2 text-xs font-bold text-slate-800">{tab === "automation" ? "Evidence and Artifacts" : "Evidence and Logs"}</p>
+          <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+            <p className="mb-2 text-xs font-bold text-gray-800">{tab === "automation" ? "Evidence and Artifacts" : "Evidence and Logs"}</p>
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-4 xl:grid-cols-5">
               {["Screenshots", "Logs", "Trace", "Video"].map((label) => (
-                <div key={label} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600">
+                <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-600">
                   {label}
-                  <span className="ml-1 text-slate-400">
+                  <span className="ml-1 text-gray-400">
                     {label === "Screenshots" ? automationArtifactCount(selectedResults, "screenshots") :
                       label === "Video" ? automationArtifactCount(selectedResults, "video") :
                         label === "Logs" ? automationArtifactCount(selectedResults, "logs") :
@@ -2723,26 +2723,26 @@ function DetailsPanel({
                 </div>
               ))}
               {tab === "automation" && (
-                <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600">
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-600">
                   Report
-                  <span className="ml-1 text-slate-400">{automationArtifactCount(selectedResults, "report")}</span>
+                  <span className="ml-1 text-gray-400">{automationArtifactCount(selectedResults, "report")}</span>
                 </div>
               )}
             </div>
           </div>
 
           {tab === "automation" && (
-            <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-              <p className="mb-2 text-xs font-bold text-slate-800">Failure Details</p>
+            <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+              <p className="mb-2 text-xs font-bold text-gray-800">Failure Details</p>
               {automationFailure ? (
-                <div className="space-y-2 text-[11px] font-semibold text-slate-600">
+                <div className="space-y-2 text-[11px] font-semibold text-gray-600">
                   <StreamRow label="Failing Step" value={automationFailure.step} />
                   <StreamRow label="Failure Message" value={automationFailure.message} />
                   <StreamRow label="Root Cause Type" value={automationFailure.rootCause} />
                   <StreamRow label="Confidence" value={automationFailure.confidence ? formatPercent(automationFailure.confidence) : "Needs analysis"} />
                 </div>
               ) : (
-                <p className="text-[11px] font-medium text-slate-400">No failed automation result is available for analysis.</p>
+                <p className="text-[11px] font-medium text-gray-400">No failed automation result is available for analysis.</p>
               )}
             </div>
           )}
@@ -2761,8 +2761,8 @@ function DetailsPanel({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-                <p className="mb-2 text-xs font-bold text-slate-800">Root Cause Analysis</p>
+              <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+                <p className="mb-2 text-xs font-bold text-gray-800">Root Cause Analysis</p>
                 <div className="flex flex-wrap gap-2">
                   {["Product Bug", "Automation Issue", "Data Issue", "Environment Issue"].map((label) => (
                     <Badge key={label} variant={label === "Product Bug" && aiFailure ? "destructive" : "outline"} className="text-[10px]">
@@ -2772,28 +2772,28 @@ function DetailsPanel({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-                <p className="mb-2 text-xs font-bold text-slate-800">Self-Heal Suggestion</p>
+              <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+                <p className="mb-2 text-xs font-bold text-gray-800">Self-Heal Suggestion</p>
                 {aiState.selfHealSuggestion ? (
-                  <div className="space-y-2 text-[11px] font-semibold text-slate-600">
+                  <div className="space-y-2 text-[11px] font-semibold text-gray-600">
                     <StreamRow label="Old Selector" value={aiState.selfHealSuggestion.oldSelector} />
                     <StreamRow label="Suggested Selector" value={aiState.selfHealSuggestion.suggestedSelector} />
                     <StreamRow label="Confidence" value={formatPercent(aiState.selfHealSuggestion.confidence)} />
                   </div>
                 ) : (
-                  <p className="text-[11px] font-medium text-slate-400">No self-heal suggestion until plan generation or failure analysis.</p>
+                  <p className="text-[11px] font-medium text-gray-400">No self-heal suggestion until plan generation or failure analysis.</p>
                 )}
               </div>
 
-              <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-                <p className="mb-2 text-xs font-bold text-slate-800">Expected vs Actual</p>
-                <div className="grid gap-2 text-[11px] font-semibold text-slate-600">
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="text-slate-400 font-bold uppercase text-[9px]">Expected</p>
+              <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+                <p className="mb-2 text-xs font-bold text-gray-800">Expected vs Actual</p>
+                <div className="grid gap-2 text-[11px] font-semibold text-gray-600">
+                  <div className="rounded-lg bg-gray-50 p-2">
+                    <p className="text-gray-400 font-bold uppercase text-[9px]">Expected</p>
                     <p>{selectedManualTestCase?.expected_result || aiState.validations[0] || "Expected outcome comes from the linked test case."}</p>
                   </div>
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="text-slate-400 font-bold uppercase text-[9px]">Actual</p>
+                  <div className="rounded-lg bg-gray-50 p-2">
+                    <p className="text-gray-400 font-bold uppercase text-[9px]">Actual</p>
                     <p>{aiFailure?.message || "No observed failure result available yet."}</p>
                   </div>
                 </div>
@@ -2806,13 +2806,13 @@ function DetailsPanel({
                 </p>
               </div>
 
-              <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-                <p className="mb-2 text-xs font-bold text-slate-800">Activity Timeline</p>
+              <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+                <p className="mb-2 text-xs font-bold text-gray-800">Activity Timeline</p>
                 <div className="space-y-2">
                   {(aiState.observations.length ? aiState.observations.slice(0, 4) : ["No AI activity captured yet."]).map((event, index) => (
-                    <div key={`${event}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-bold text-slate-700">{event}</p>
-                      <p className="text-[10px] font-medium text-slate-400">{dateLabel(aiState.lastUpdated || selectedRun?.updated_at)}</p>
+                    <div key={`${event}-${index}`} className="rounded-lg bg-gray-50 px-3 py-2">
+                      <p className="text-[11px] font-bold text-gray-700">{event}</p>
+                      <p className="text-[10px] font-medium text-gray-400">{dateLabel(aiState.lastUpdated || selectedRun?.updated_at)}</p>
                     </div>
                   ))}
                 </div>
@@ -2821,37 +2821,37 @@ function DetailsPanel({
           )}
 
           {tab === "manual" && (
-            <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-              <p className="mb-2 text-xs font-bold text-slate-800">Activity Timeline</p>
+            <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+              <p className="mb-2 text-xs font-bold text-gray-800">Activity Timeline</p>
               {panelActivity.length ? (
                 <div className="space-y-2">
                   {panelActivity.map((event) => (
-                    <div key={event.id} className="rounded-lg bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-bold text-slate-700">{event.message}</p>
-                      <p className="text-[10px] font-medium text-slate-400">{dateLabel(event.timestamp)}</p>
+                    <div key={event.id} className="rounded-lg bg-gray-50 px-3 py-2">
+                      <p className="text-[11px] font-bold text-gray-700">{event.message}</p>
+                      <p className="text-[10px] font-medium text-gray-400">{dateLabel(event.timestamp)}</p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-[11px] font-medium text-slate-400">No manual activity captured yet.</p>
+                <p className="text-[11px] font-medium text-gray-400">No manual activity captured yet.</p>
               )}
             </div>
           )}
 
           {tab === "automation" && (
-            <div className="rounded-lg border border-slate-200 p-3 xl:col-span-4">
-              <p className="mb-2 text-xs font-bold text-slate-800">Activity Timeline</p>
+            <div className="rounded-lg border border-gray-200 p-3 xl:col-span-4">
+              <p className="mb-2 text-xs font-bold text-gray-800">Activity Timeline</p>
               {automationState?.recentActions.length ? (
                 <div className="space-y-2">
                   {automationState.recentActions.slice(0, 4).map((event, index) => (
-                    <div key={`${event}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2">
-                      <p className="text-[11px] font-bold text-slate-700">{event}</p>
-                      <p className="text-[10px] font-medium text-slate-400">{dateLabel(automationState.lastUpdated || selectedRun?.updated_at)}</p>
+                    <div key={`${event}-${index}`} className="rounded-lg bg-gray-50 px-3 py-2">
+                      <p className="text-[11px] font-bold text-gray-700">{event}</p>
+                      <p className="text-[10px] font-medium text-gray-400">{dateLabel(automationState.lastUpdated || selectedRun?.updated_at)}</p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-[11px] font-medium text-slate-400">No automation activity captured yet.</p>
+                <p className="text-[11px] font-medium text-gray-400">No automation activity captured yet.</p>
               )}
             </div>
           )}
@@ -2860,11 +2860,11 @@ function DetailsPanel({
 
       {detailTab === "decisions" && (
         <div className="p-4 space-y-4">
-          <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-[11px] font-semibold text-blue-800 leading-normal">
+          <div className="rounded-lg border border-app-brand-100 bg-app-brand-75/50 p-3 text-[11px] font-semibold text-app-brand-800 leading-normal">
             <strong>PRINCIPLE-05 Compliance Gate:</strong> All failed test execution runs require a documented decision verdict before release readiness reporting can be approved.
           </div>
           {failedResults.length === 0 ? (
-            <div className="py-12 text-center text-xs font-semibold text-slate-400 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+            <div className="py-12 text-center text-xs font-semibold text-gray-400 bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
               <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500 mb-2" />
               No failed test results in this run. Release clearance is green!
             </div>
@@ -2877,14 +2877,14 @@ function DetailsPanel({
                 return (
                   <div key={result.id} className={cn(
                     "rounded-lg border p-4 shadow-sm transition",
-                    decision ? "border-slate-200 bg-white" : "border-rose-100 bg-rose-50/10"
+                    decision ? "border-gray-200 bg-white" : "border-rose-100 bg-rose-50/10"
                   )}>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <span className="font-mono text-xs font-bold text-blue-600">
+                        <span className="font-mono text-xs font-bold text-app-brand-600">
                           {testCase?.test_case_id || result.external_test_case_id || `Result ${result.id}`}
                         </span>
-                        <h4 className="text-xs font-bold text-slate-800 mt-0.5">{result.test_name}</h4>
+                        <h4 className="text-xs font-bold text-gray-800 mt-0.5">{result.test_name}</h4>
                       </div>
                       {decision ? (
                         <Badge
@@ -2906,43 +2906,43 @@ function DetailsPanel({
                       )}
                     </div>
 
-                    <div className="mt-2.5 rounded bg-slate-900 p-2.5 font-mono text-[10px] leading-normal text-rose-300 overflow-x-auto max-h-24">
-                      <p className="font-bold text-slate-400">Error Output:</p>
+                    <div className="mt-2.5 rounded bg-gray-900 p-2.5 font-mono text-[10px] leading-normal text-rose-300 overflow-x-auto max-h-24">
+                      <p className="font-bold text-gray-400">Error Output:</p>
                       <p className="break-all">{result.error_message || "AssertionError: Expected status code 200, got 500"}</p>
                     </div>
 
                     {decision ? (
-                      <div className="mt-3 border-t border-slate-100 pt-3 text-[11px] font-semibold text-slate-500">
+                      <div className="mt-3 border-t border-gray-100 pt-3 text-[11px] font-semibold text-gray-500">
                         <div className="grid gap-1 sm:grid-cols-2">
                           {decision.jiraKey && (
                             <p>
-                              <span className="font-bold text-slate-400">Jira key / Ref:</span>{" "}
-                              <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{decision.jiraKey}</span>
+                              <span className="font-bold text-gray-400">Jira key / Ref:</span>{" "}
+                              <span className="font-mono font-bold text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{decision.jiraKey}</span>
                             </p>
                           )}
                           <p>
-                            <span className="font-bold text-slate-400">Decision On:</span>{" "}
+                            <span className="font-bold text-gray-400">Decision On:</span>{" "}
                             {dateLabel(decision.timestamp)}
                           </p>
                         </div>
                         {decision.comment && (
-                          <div className="mt-2 rounded bg-slate-50 p-2 text-slate-700 text-[10px]">
-                            <span className="font-bold text-slate-400 block mb-0.5 text-[8px] uppercase tracking-wider">Comment Notes</span>
+                          <div className="mt-2 rounded bg-gray-50 p-2 text-gray-700 text-[10px]">
+                            <span className="font-bold text-gray-400 block mb-0.5 text-[8px] uppercase tracking-wider">Comment Notes</span>
                             {decision.comment}
                           </div>
                         )}
                         <Button
                           size="sm"
                           variant="outline"
-                          className="mt-3 h-7 border-slate-200 bg-white text-[10px] font-bold"
+                          className="mt-3 h-7 border-gray-200 bg-white text-[10px] font-bold"
                           onClick={() => onClearFailureDecision(result.id)}
                         >
                           Change Decision
                         </Button>
                       </div>
                     ) : (
-                      <div className="mt-3 border-t border-slate-100 pt-2.5">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Log Compliance Decision</p>
+                      <div className="mt-3 border-t border-gray-100 pt-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Log Compliance Decision</p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {(["defect", "linked", "known_issue", "waived"] as const).map((opt) => (
                             <button
@@ -2960,8 +2960,8 @@ function DetailsPanel({
                               className={cn(
                                 "rounded-md border px-2.5 py-1 text-xs font-bold transition",
                                 activeDec === opt
-                                  ? "border-blue-600 bg-blue-50 text-blue-700"
-                                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                                  ? "border-app-brand-600 bg-app-brand-75 text-app-brand-700"
+                                  : "border-gray-200 bg-white text-gray-500 hover:bg-gray-50"
                               )}
                             >
                               {opt === "defect" ? "Create Defect" :
@@ -2973,7 +2973,7 @@ function DetailsPanel({
 
                         <div className="mt-3 grid gap-3 sm:grid-cols-2">
                           <div>
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
                               {activeDec === "defect" ? "Summary Tag Prefix" : "Jira / Reference Issue Key"}
                             </span>
                             <input
@@ -2991,11 +2991,11 @@ function DetailsPanel({
                                   ? "e.g. BUG (creates defect draft)"
                                   : "e.g. BSS-1847 or release bug key"
                               }
-                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-100 font-semibold text-slate-700"
+                              className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-app-brand-100 font-semibold text-gray-700"
                             />
                           </div>
                           <div>
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Justification Comment</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Justification Comment</span>
                             <input
                               type="text"
                               value={formDecisionStates[result.id]?.comment ?? ""}
@@ -3007,18 +3007,18 @@ function DetailsPanel({
                                 }
                               }))}
                               placeholder="Explanation notes..."
-                              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-100 font-semibold text-slate-700"
+                              className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-app-brand-100 font-semibold text-gray-700"
                             />
                           </div>
                         </div>
 
                         <div className="mt-3 flex items-center justify-between gap-4">
-                          <p className="text-[10px] font-semibold text-slate-400">
+                          <p className="text-[10px] font-semibold text-gray-400">
                             {activeDec === "waived" ? "⚠ requires QA manager approval" : activeDec === "defect" ? "✓ Will draft a local Defect Draft" : "✓ Links to existing ticket"}
                           </p>
                           <Button
                             size="sm"
-                            className="h-7 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700"
+                            className="h-7 text-xs font-bold bg-app-brand-600 text-white hover:bg-app-brand-700"
                             onClick={() => {
                               const sDec = formDecisionStates[result.id]?.decision ?? "defect";
                               const sKey = formDecisionStates[result.id]?.jiraKey ?? "";
@@ -3044,34 +3044,34 @@ function DetailsPanel({
 
       {detailTab === "evidence" && (
         <div className="p-4 space-y-4">
-          <div className="rounded-lg border border-slate-200 p-3 bg-white">
-            <h4 className="text-xs font-bold text-slate-800 mb-2">Screenshot Attachments</h4>
+          <div className="rounded-lg border border-gray-200 p-3 bg-white">
+            <h4 className="text-xs font-bold text-gray-800 mb-2">Screenshot Attachments</h4>
             {selectedResults.some((r) => r.screenshot_url || (r as any).screenshot_path) ? (
               <div className="grid gap-2 grid-cols-2">
                 {selectedResults.filter((r) => r.screenshot_url || (r as any).screenshot_path).map((r) => (
-                  <div key={r.id} className="overflow-hidden rounded border border-slate-100 bg-slate-50 p-2">
-                    <div className="aspect-[16/10] bg-slate-200 rounded flex items-center justify-center font-bold text-slate-400 text-[10px]">
+                  <div key={r.id} className="overflow-hidden rounded border border-gray-100 bg-gray-50 p-2">
+                    <div className="aspect-[16/10] bg-gray-200 rounded flex items-center justify-center font-bold text-gray-400 text-[10px]">
                       [Screen: {r.test_case_id ? `TC-${r.test_case_id}` : "Test"}]
                     </div>
-                    <p className="mt-1 truncate font-mono text-[9px] text-slate-500">{(r as any).screenshot_path || r.screenshot_url || "screenshot.png"}</p>
+                    <p className="mt-1 truncate font-mono text-[9px] text-gray-500">{(r as any).screenshot_path || r.screenshot_url || "screenshot.png"}</p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-[11px] font-medium text-slate-400 bg-slate-50/50 p-4 rounded text-center">No visual screenshots captured in this execution run.</p>
+              <p className="text-[11px] font-medium text-gray-400 bg-gray-50/50 p-4 rounded text-center">No visual screenshots captured in this execution run.</p>
             )}
           </div>
 
-          <div className="rounded-lg border border-slate-200 p-3 bg-white">
-            <h4 className="text-xs font-bold text-slate-800 mb-2">Logs & Trace Logs</h4>
+          <div className="rounded-lg border border-gray-200 p-3 bg-white">
+            <h4 className="text-xs font-bold text-gray-800 mb-2">Logs & Trace Logs</h4>
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {selectedResults.map((r) => (
-                <div key={r.id} className="p-2 border border-slate-100 bg-slate-50 rounded text-[10px]">
-                  <p className="font-bold text-slate-700 truncate">{r.test_name}</p>
+                <div key={r.id} className="p-2 border border-gray-100 bg-gray-50 rounded text-[10px]">
+                  <p className="font-bold text-gray-700 truncate">{r.test_name}</p>
                   <div className="flex flex-wrap gap-2 mt-1.5">
-                    {r.log_url && <a href={r.log_url} target="_blank" rel="noreferrer" className="font-bold text-blue-600 bg-white border border-blue-100 px-1.5 py-0.5 rounded hover:bg-blue-50">View logs ↗</a>}
+                    {r.log_url && <a href={r.log_url} target="_blank" rel="noreferrer" className="font-bold text-app-brand-600 bg-white border border-app-brand-100 px-1.5 py-0.5 rounded hover:bg-app-brand-75">View logs ↗</a>}
                     {((r as any).trace_path || r.raw_result_json?.trace) && (
-                      <span className="font-mono text-slate-400 bg-white border border-slate-100 px-1.5 py-0.5 rounded">
+                      <span className="font-mono text-gray-400 bg-white border border-gray-100 px-1.5 py-0.5 rounded">
                         Trace: {((r as any).trace_path as string) || (r.raw_result_json?.trace as string) || "trace.json"}
                       </span>
                     )}
@@ -3086,21 +3086,21 @@ function DetailsPanel({
 
       {detailTab === "logs" && (
         <div className="p-4">
-          <div className="rounded-lg border border-slate-800 bg-slate-950 p-3 shadow-inner">
-            <div className="flex items-center justify-between border-b border-slate-900 pb-1.5 mb-2">
-              <span className="text-[10px] font-bold text-slate-500 font-mono">STLC_EXECUTION_AGENT_LOGS</span>
+          <div className="rounded-lg border border-gray-800 bg-gray-950 p-3 shadow-inner">
+            <div className="flex items-center justify-between border-b border-gray-900 pb-1.5 mb-2">
+              <span className="text-[10px] font-bold text-gray-500 font-mono">STLC_EXECUTION_AGENT_LOGS</span>
             </div>
             {selectedRun.execution_logs && Array.isArray(selectedRun.execution_logs) && selectedRun.execution_logs.length > 0 ? (
-              <pre className="font-mono text-[9px] leading-relaxed text-slate-300 overflow-auto max-h-[380px] pr-1">
+              <pre className="font-mono text-[9px] leading-relaxed text-gray-300 overflow-auto max-h-[380px] pr-1">
                 {selectedRun.execution_logs.map((log: any, idx) => (
-                  <div key={idx} className="border-b border-slate-900/50 py-0.5 hover:bg-slate-900/50">
+                  <div key={idx} className="border-b border-gray-900/50 py-0.5 hover:bg-gray-900/50">
                     <span className="text-emerald-500">[{new Date(selectedRun.created_at).toLocaleTimeString()}]</span>{" "}
                     {typeof log === "string" ? log : JSON.stringify(log)}
                   </div>
                 ))}
               </pre>
             ) : (
-              <div className="font-mono text-[10px] text-slate-500 py-6 text-center">
+              <div className="font-mono text-[10px] text-gray-500 py-6 text-center">
                 No telemetry execution agent logs found.
               </div>
             )}
@@ -3113,9 +3113,9 @@ function DetailsPanel({
 
 function SummaryPill({ label, value, className }: { label: string; value: number | string; className?: string }) {
   return (
-    <div className="rounded-lg bg-slate-50 p-2">
+    <div className="rounded-lg bg-gray-50 p-2">
       <p className={cn("text-base font-bold", className)}>{typeof value === "number" ? formatNumber(value) : value}</p>
-      <p className="text-[10px] font-semibold text-slate-400">{label}</p>
+      <p className="text-[10px] font-semibold text-gray-400">{label}</p>
     </div>
   );
 }
@@ -3169,20 +3169,20 @@ function ResultsTable({
 
   if (tab === "automation") {
     return (
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Test Case Execution Details</h3>
-            <p className="text-[11px] font-medium text-slate-400">Automation result details from existing execution data and script metadata.</p>
+            <h3 className="text-sm font-bold text-gray-900">Test Case Execution Details</h3>
+            <p className="text-[11px] font-medium text-gray-400">Automation result details from existing execution data and script metadata.</p>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 text-xs" disabled><Filter className="h-3.5 w-3.5" /> Filter</Button>
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 text-xs" disabled>Export</Button>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 text-xs" disabled><Filter className="h-3.5 w-3.5" /> Filter</Button>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 text-xs" disabled>Export</Button>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-[1180px] text-left text-xs">
-            <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
+            <thead className="border-b border-gray-200 bg-gray-50 text-[10px] uppercase tracking-wide text-gray-400">
               <tr>
                 <th className="px-4 py-3">Test Case ID</th>
                 <th className="px-4 py-3">Mapped To Script Path</th>
@@ -3195,10 +3195,10 @@ function ResultsTable({
                 <th className="px-4 py-3">Executed At</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-gray-100">
               {selectedResults.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center text-xs font-semibold text-slate-400">
+                  <td colSpan={9} className="px-4 py-12 text-center text-xs font-semibold text-gray-400">
                     Select an automation run with results to view test case execution details.
                   </td>
                 </tr>
@@ -3209,20 +3209,20 @@ function ResultsTable({
                   const retryCount = typeof result.raw_result_json?.retry === "number" ? result.raw_result_json.retry : 0;
                   const lastResult = typeof result.raw_result_json?.last_result === "string" ? result.raw_result_json.last_result : status;
                   return (
-                    <tr key={result.id} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-3 font-mono text-[11px] font-bold text-blue-600">{testCase?.test_case_id || result.external_test_case_id || "-"}</td>
-                      <td className="max-w-[280px] px-4 py-3 font-mono text-[10px] text-slate-500">{scriptPathForResult(result, testCase)}</td>
-                      <td className="max-w-[260px] px-4 py-3 text-slate-500">{testCase?.expected_result || "Expected result is maintained on the linked test case."}</td>
-                      <td className="max-w-[260px] px-4 py-3 text-slate-500">{result.error_message || (typeof result.raw_result_json?.actual_result === "string" ? result.raw_result_json.actual_result : "-")}</td>
+                    <tr key={result.id} className="hover:bg-gray-50/70">
+                      <td className="px-4 py-3 font-mono text-[11px] font-bold text-app-brand-600">{testCase?.test_case_id || result.external_test_case_id || "-"}</td>
+                      <td className="max-w-[280px] px-4 py-3 font-mono text-[10px] text-gray-500">{scriptPathForResult(result, testCase)}</td>
+                      <td className="max-w-[260px] px-4 py-3 text-gray-500">{testCase?.expected_result || "Expected result is maintained on the linked test case."}</td>
+                      <td className="max-w-[260px] px-4 py-3 text-gray-500">{result.error_message || (typeof result.raw_result_json?.actual_result === "string" ? result.raw_result_json.actual_result : "-")}</td>
                       <td className="px-4 py-3">
                         <Badge variant={statusVariant(status)} className="text-[10px]">{normalizeStatus(status)}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{result.duration_seconds ? `${result.duration_seconds}s` : result.duration_ms ? `${Math.round(result.duration_ms / 1000)}s` : "-"}</td>
-                      <td className="px-4 py-3 text-slate-500">{retryCount}</td>
+                      <td className="px-4 py-3 text-gray-500">{result.duration_seconds ? `${result.duration_seconds}s` : result.duration_ms ? `${Math.round(result.duration_ms / 1000)}s` : "-"}</td>
+                      <td className="px-4 py-3 text-gray-500">{retryCount}</td>
                       <td className="px-4 py-3">
                         <Badge variant={statusVariant(lastResult)} className="text-[10px]">{normalizeStatus(lastResult)}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{dateLabel(result.updated_at || result.created_at)}</td>
+                      <td className="px-4 py-3 text-gray-500">{dateLabel(result.updated_at || result.created_at)}</td>
                     </tr>
                   );
                 })
@@ -3236,24 +3236,24 @@ function ResultsTable({
 
   return (
     <>
-    <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-2 border-b border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-gray-100 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-sm font-bold text-slate-900">
+          <h3 className="text-sm font-bold text-gray-900">
             Step-Level Execution
           </h3>
-          <p className="text-[11px] font-medium text-slate-400">
+          <p className="text-[11px] font-medium text-gray-400">
             {tab === "manual" ? "Interactive local step execution state for the selected manual test case." : "Read-only AI execution result view backed by existing execution results."}
           </p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="h-8 border-slate-200 text-xs" disabled><Filter className="h-3.5 w-3.5" /> Filter</Button>
-          <Button size="sm" variant="outline" className="h-8 border-slate-200 text-xs" disabled>Export</Button>
+          <Button size="sm" variant="outline" className="h-8 border-gray-200 text-xs" disabled><Filter className="h-3.5 w-3.5" /> Filter</Button>
+          <Button size="sm" variant="outline" className="h-8 border-gray-200 text-xs" disabled>Export</Button>
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-left text-xs">
-          <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
+          <thead className="border-b border-gray-200 bg-gray-50 text-[10px] uppercase tracking-wide text-gray-400">
             <tr>
               <th className="px-4 py-3">Test Case ID</th>
               <th className="px-4 py-3">Name / Step</th>
@@ -3264,11 +3264,11 @@ function ResultsTable({
               <th className="px-4 py-3">Executed At</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-gray-100">
             {tab === "manual" ? (
               !manualResult || manualSteps.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-xs font-semibold text-slate-400">
+                  <td colSpan={7} className="px-4 py-12 text-center text-xs font-semibold text-gray-400">
                     Select a manual test case with structured steps to view step-level execution.
                   </td>
                 </tr>
@@ -3276,26 +3276,26 @@ function ResultsTable({
                 manualSteps.map((step) => {
                   const state = getManualStepState(manualStepStates, manualResult.id, step.step_number);
                   return (
-                    <tr key={`${manualResult.id}-${step.step_number}`} className="hover:bg-slate-50/70">
-                      <td className="px-4 py-3 font-mono text-[11px] font-bold text-blue-600">{manualTestCase?.test_case_id || `Result ${manualResult.id}`}</td>
+                    <tr key={`${manualResult.id}-${step.step_number}`} className="hover:bg-gray-50/70">
+                      <td className="px-4 py-3 font-mono text-[11px] font-bold text-app-brand-600">{manualTestCase?.test_case_id || `Result ${manualResult.id}`}</td>
                       <td className="max-w-[260px] px-4 py-3">
-                        <p className="truncate font-bold text-slate-800">Step {step.step_number}</p>
-                        <p className="truncate text-[10px] font-medium text-slate-400">{step.action}</p>
+                        <p className="truncate font-bold text-gray-800">Step {step.step_number}</p>
+                        <p className="truncate text-[10px] font-medium text-gray-400">{step.action}</p>
                       </td>
-                      <td className="max-w-[260px] px-4 py-3 text-slate-500">{step.expected_result}</td>
-                      <td className="max-w-[260px] px-4 py-3 text-slate-500">{state.actualResult || "-"}</td>
+                      <td className="max-w-[260px] px-4 py-3 text-gray-500">{step.expected_result}</td>
+                      <td className="max-w-[260px] px-4 py-3 text-gray-500">{state.actualResult || "-"}</td>
                       <td className="px-4 py-3">
                         <Badge variant={statusVariant(state.status)} className="text-[10px]">{normalizeStatus(state.status)}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{state.evidence.length ? state.evidence.join(", ") : "-"}</td>
-                      <td className="px-4 py-3 text-slate-500">{dateLabel(state.updatedAt)}</td>
+                      <td className="px-4 py-3 text-gray-500">{state.evidence.length ? state.evidence.join(", ") : "-"}</td>
+                      <td className="px-4 py-3 text-gray-500">{dateLabel(state.updatedAt)}</td>
                     </tr>
                   );
                 })
               )
             ) : selectedResults.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-xs font-semibold text-slate-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-xs font-semibold text-gray-400">
                   Select a run with results to view execution detail rows.
                 </td>
               </tr>
@@ -3303,21 +3303,21 @@ function ResultsTable({
               selectedResults.map((result) => {
                 const testCase = result.test_case_id ? testCaseById.get(result.test_case_id) : undefined;
                 return (
-                  <tr key={result.id} className="hover:bg-slate-50/70">
-                    <td className="px-4 py-3 font-mono text-[11px] font-bold text-blue-600">{testCase?.test_case_id || result.external_test_case_id || "-"}</td>
+                  <tr key={result.id} className="hover:bg-gray-50/70">
+                    <td className="px-4 py-3 font-mono text-[11px] font-bold text-app-brand-600">{testCase?.test_case_id || result.external_test_case_id || "-"}</td>
                     <td className="max-w-[260px] px-4 py-3">
-                      <p className="truncate font-bold text-slate-800">{result.test_name}</p>
-                      <p className="truncate text-[10px] font-medium text-slate-400">{modeLabelForResult(tab, result)}</p>
+                      <p className="truncate font-bold text-gray-800">{result.test_name}</p>
+                      <p className="truncate text-[10px] font-medium text-gray-400">{modeLabelForResult(tab, result)}</p>
                     </td>
-                    <td className="max-w-[260px] px-4 py-3 text-slate-500">{testCase?.expected_result || "Derived from test case steps"}</td>
-                    <td className="max-w-[260px] px-4 py-3 text-slate-500">{result.error_message || result.raw_result_json?.actual_result as string || "-"}</td>
+                    <td className="max-w-[260px] px-4 py-3 text-gray-500">{testCase?.expected_result || "Derived from test case steps"}</td>
+                    <td className="max-w-[260px] px-4 py-3 text-gray-500">{result.error_message || result.raw_result_json?.actual_result as string || "-"}</td>
                     <td className="px-4 py-3">
                       <Badge variant={statusVariant(result.status)} className="text-[10px]">{normalizeStatus(result.status)}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-slate-500">
+                    <td className="px-4 py-3 text-gray-500">
                       {result.screenshot_url || result.video_url || result.log_url || result.external_result_url ? "Available" : "-"}
                     </td>
-                    <td className="px-4 py-3 text-slate-500">{dateLabel(result.created_at)}</td>
+                    <td className="px-4 py-3 text-gray-500">{dateLabel(result.created_at)}</td>
                   </tr>
                 );
               })
@@ -3332,9 +3332,9 @@ function ResultsTable({
           <div>
             <div className="flex items-center gap-2">
               <Bug className="h-4 w-4 text-rose-600" />
-              <h3 className="text-sm font-bold text-slate-900">Defect Draft</h3>
+              <h3 className="text-sm font-bold text-gray-900">Defect Draft</h3>
             </div>
-            <p className="mt-1 text-[11px] font-medium text-slate-400">AI-generated draft. Human approval is required before Jira creation.</p>
+            <p className="mt-1 text-[11px] font-medium text-gray-400">AI-generated draft. Human approval is required before Jira creation.</p>
           </div>
           {aiDraftDefect ? (
             <JiraDefectActions
@@ -3346,7 +3346,7 @@ function ResultsTable({
               onLinkExisting={onLinkExistingJira}
             />
           ) : (
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" disabled>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" disabled>
               View in Jira
             </Button>
           )}
@@ -3725,21 +3725,21 @@ function ExecutionContent() {
       value: formatNumber(totalTestCases),
       helper: "From test case library",
       icon: TestTube2,
-      tone: "border-blue-100 bg-blue-50 text-blue-600",
+      tone: "border-app-brand-100 bg-app-brand-75 text-app-brand-600",
     },
     {
       title: "Planned for Execution",
       value: formatNumber(planned),
       helper: "Approved or automated cases",
       icon: ClipboardList,
-      tone: "border-indigo-100 bg-indigo-50 text-indigo-600",
+      tone: "border-app-brand-100 bg-app-brand-75 text-app-brand-600",
     },
     {
       title: "Executed",
       value: formatNumber(executed),
       helper: "Passed + failed + blocked + skipped",
       icon: Play,
-      tone: "border-blue-100 bg-blue-50 text-blue-600",
+      tone: "border-app-brand-100 bg-app-brand-75 text-app-brand-600",
     },
     {
       title: "Passed",
@@ -3760,7 +3760,7 @@ function ExecutionContent() {
       value: formatNumber(undecidedFailuresCount),
       helper: "PRINCIPLE-05 blockers",
       icon: AlertTriangle,
-      tone: undecidedFailuresCount > 0 ? "border-amber-100 bg-amber-50 text-amber-600 animate-pulse font-bold" : "border-slate-100 bg-slate-50 text-slate-400",
+      tone: undecidedFailuresCount > 0 ? "border-amber-100 bg-amber-50 text-amber-600 animate-pulse font-bold" : "border-gray-100 bg-gray-50 text-gray-400",
     },
     {
       title: "Pass Rate",
@@ -4724,8 +4724,8 @@ function ExecutionContent() {
     <div className="space-y-5 pb-8">
       <header className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Test Execution</h1>
-          <p className="mt-1 text-sm font-medium text-slate-500">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-950">Test Execution</h1>
+          <p className="mt-1 text-sm font-medium text-gray-500">
             Execute, monitor, and analyze manual, automation, and AI-driven test runs.
           </p>
         </div>
@@ -4734,11 +4734,11 @@ function ExecutionContent() {
             <Plus className="h-3.5 w-3.5" />
             Create Execution Run
           </Button>
-          <Button size="sm" variant="outline" className="h-9 border-slate-200 bg-white text-xs font-bold" onClick={handleImportResults} aria-label="Import execution results">
+          <Button size="sm" variant="outline" className="h-9 border-gray-200 bg-white text-xs font-bold" onClick={handleImportResults} aria-label="Import execution results">
             <FileUp className="h-3.5 w-3.5" />
             Import Results
           </Button>
-          <Button size="sm" variant="outline" className="h-9 border-slate-200 bg-white text-xs font-bold" onClick={handleConfigureExecution} aria-label="Configure execution">
+          <Button size="sm" variant="outline" className="h-9 border-gray-200 bg-white text-xs font-bold" onClick={handleConfigureExecution} aria-label="Configure execution">
             <Settings className="h-3.5 w-3.5" />
             Configure Execution
           </Button>
@@ -4754,7 +4754,7 @@ function ExecutionContent() {
       )}
 
       {notice && (
-        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
+        <div className="flex items-center gap-2 rounded-lg border border-app-brand-200 bg-app-brand-75 px-4 py-3 text-xs font-semibold text-app-brand-700">
           <ShieldCheck className="h-4 w-4 shrink-0" />
           <span className="flex-1">{notice}</span>
           <button onClick={() => setNotice(null)} aria-label="Dismiss notice"><XCircle className="h-4 w-4" /></button>
@@ -4767,8 +4767,8 @@ function ExecutionContent() {
         ))}
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+      <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex overflow-x-auto">
             {(["manual", "automation", "ai"] as ExecutionTab[]).map((tab) => (
               <button
@@ -4776,7 +4776,7 @@ function ExecutionContent() {
                 onClick={() => handleTabChange(tab)}
                 className={cn(
                   "flex h-10 min-w-[150px] items-center justify-center gap-2 border-b-2 px-3 text-xs font-bold transition",
-                  activeTab === tab ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-900"
+                  activeTab === tab ? "border-app-brand-600 text-app-brand-600" : "border-transparent text-gray-500 hover:text-gray-900"
                 )}
               >
                 {tab === "manual" && <BriefcaseBusiness className="h-4 w-4" />}
@@ -4786,7 +4786,7 @@ function ExecutionContent() {
               </button>
             ))}
           </div>
-          <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" onClick={loadData} disabled={loading}>
+          <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" onClick={loadData} disabled={loading}>
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             Refresh
           </Button>
@@ -4794,26 +4794,26 @@ function ExecutionContent() {
 
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 p-4">
+      <section className="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-gray-100 p-4">
           <div>
-            <h2 className="text-sm font-bold text-slate-900">{TAB_LABELS[activeTab]} Runs</h2>
-            <p className="text-[11px] font-medium text-slate-400">Filtered execution catalog</p>
+            <h2 className="text-sm font-bold text-gray-900">{TAB_LABELS[activeTab]} Runs</h2>
+            <p className="text-[11px] font-medium text-gray-400">Filtered execution catalog</p>
           </div>
           <div className="flex gap-1">
-            <button className="rounded-md p-2 text-slate-400 hover:bg-slate-50" aria-label="Refresh runs">
+            <button className="rounded-md p-2 text-gray-400 hover:bg-gray-50" aria-label="Refresh runs">
               <RefreshCw className="h-4 w-4" />
             </button>
-            <button className="rounded-md p-2 text-slate-400 hover:bg-slate-50" aria-label="Configure run table">
+            <button className="rounded-md p-2 text-gray-400 hover:bg-gray-50" aria-label="Configure run table">
               <SlidersHorizontal className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 bg-slate-50/30 px-4 py-4.5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 bg-gray-50/30 px-4 py-4.5">
           <div className="flex flex-wrap items-center gap-3">
             {/* Status Filters */}
-            <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1 shrink-0">
+            <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-1 shrink-0">
               {["All", "Passed", "Failed", "In Progress", "Completed", "Pending"].map((status) => (
                 <button
                   key={status}
@@ -4821,8 +4821,8 @@ function ExecutionContent() {
                   className={cn(
                     "rounded-md px-3 py-1 text-xs font-semibold transition-all",
                     statusFilter === status
-                      ? "bg-[#1b59f8] text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-900"
+                      ? "bg-[#B71920] text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-900"
                   )}
                 >
                   {status}
@@ -4831,7 +4831,7 @@ function ExecutionContent() {
             </div>
 
             {/* Mode Filters */}
-            <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1 shrink-0">
+            <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-1 shrink-0">
               {["All", "Manual", "Automation", "AI"].map((mode) => (
                 <button
                   key={mode}
@@ -4839,8 +4839,8 @@ function ExecutionContent() {
                   className={cn(
                     "rounded-md px-3 py-1 text-xs font-semibold transition-all",
                     modeFilter === mode
-                      ? "bg-[#1b59f8] text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-900"
+                      ? "bg-[#B71920] text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-900"
                   )}
                 >
                   {mode}
@@ -4860,7 +4860,7 @@ function ExecutionContent() {
                   setNotice(`Preset "${preset.label}" applied.`);
                 }
               }}
-              className="appearance-none bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer select-none"
+              className="appearance-none bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-semibold px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-[#B71920] transition-colors cursor-pointer select-none"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
                 backgroundPosition: 'right 0.5rem center',
@@ -4878,11 +4878,11 @@ function ExecutionContent() {
               variant="outline"
               size="sm"
               onClick={() => setShowColumns((v) => !v)}
-              className="h-8 text-xs border-slate-200 bg-white"
+              className="h-8 text-xs border-gray-200 bg-white"
             >
-              <SlidersHorizontal className="h-4 w-4 text-slate-500" />
+              <SlidersHorizontal className="h-4 w-4 text-gray-500" />
               Columns
-              <Badge variant="secondary" className="px-1.5 py-0 bg-slate-100 ml-1">{visibleColumns.length}</Badge>
+              <Badge variant="secondary" className="px-1.5 py-0 bg-gray-100 ml-1">{visibleColumns.length}</Badge>
             </Button>
 
             {(statusFilter !== "All" || modeFilter !== "All") && (
@@ -4896,7 +4896,7 @@ function ExecutionContent() {
               </Button>
             )}
 
-            <span className="text-xs text-slate-400 font-semibold ml-2">
+            <span className="text-xs text-gray-400 font-semibold ml-2">
               {visibleRuns.length} item{visibleRuns.length !== 1 && "s"}
             </span>
 
@@ -4904,10 +4904,10 @@ function ExecutionContent() {
             {showColumns && (
               <>
                 <div className="fixed inset-0 z-20" onClick={() => setShowColumns(false)} />
-                <div className="absolute right-0 top-10 z-30 w-72 rounded-xl border border-slate-200 bg-white p-4 shadow-xl animate-fade-in select-none text-left">
+                <div className="absolute right-0 top-10 z-30 w-72 rounded-xl border border-gray-200 bg-white p-4 shadow-xl animate-fade-in select-none text-left">
                   <div className="mb-3.5 flex items-center justify-between">
-                    <p className="text-xs font-bold text-slate-800">Column Configuration</p>
-                    <button onClick={() => setShowColumns(false)} className="rounded p-1 text-slate-400 hover:bg-slate-50 hover:text-slate-600">
+                    <p className="text-xs font-bold text-gray-800">Column Configuration</p>
+                    <button onClick={() => setShowColumns(false)} className="rounded p-1 text-gray-400 hover:bg-gray-50 hover:text-gray-600">
                       <XCircle className="h-4 w-4" />
                     </button>
                   </div>
@@ -4915,13 +4915,13 @@ function ExecutionContent() {
                   <div className="mb-3.5 grid grid-cols-2 gap-2">
                     <button
                       onClick={() => setVisibleColumns(EXECUTION_COLUMNS.map((col) => col.key))}
-                      className="rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+                      className="rounded-lg border border-gray-200 px-2 py-1.5 text-[10px] font-bold text-gray-600 hover:bg-gray-50"
                     >
                       Select All
                     </button>
                     <button
                       onClick={() => setVisibleColumns(DEFAULT_EXECUTION_COLUMN_KEYS)}
-                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50"
+                      className="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-200 px-2 py-1.5 text-[10px] font-bold text-gray-600 hover:bg-gray-50"
                     >
                       <RotateCcw className="h-3 w-3" />Reset Defaults
                     </button>
@@ -4930,18 +4930,18 @@ function ExecutionContent() {
                   <div className="max-h-60 space-y-3.5 overflow-y-auto pr-1">
                     {(["core", "advanced"] as const).map((group) => (
                       <div key={group}>
-                        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wider text-gray-400">
                           {group === "core" ? "Recommended Fields" : "Advanced Details"}
                         </p>
                         <div className="space-y-1">
                           {EXECUTION_COLUMNS.filter((col) => col.group === group).map((col) => (
-                            <label key={col.key} className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-xs text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors">
+                            <label key={col.key} className="flex cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
                               <span className="font-medium">{col.label}</span>
                               <input
                                 type="checkbox"
                                 checked={visibleColumns.includes(col.key)}
                                 disabled={col.required}
-                                className="rounded border-slate-300 text-[#1b59f8] focus:ring-[#1b59f8]"
+                                className="rounded border-gray-300 text-[#B71920] focus:ring-[#B71920]"
                                 onChange={() => {
                                   if (col.required) return;
                                   const isVisible = visibleColumns.includes(col.key);
@@ -4962,7 +4962,7 @@ function ExecutionContent() {
 
         <div className="overflow-x-auto">
           <table className="min-w-[980px] w-full table-fixed text-left">
-            <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-400">
+            <thead className="border-b border-gray-200 bg-gray-50 text-[10px] uppercase tracking-wide text-gray-400">
               <tr>
                 {visibleColumns.map((colKey) => {
                   const config = EXECUTION_COLUMNS.find((c) => c.key === colKey);
@@ -4978,8 +4978,8 @@ function ExecutionContent() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={visibleColumns.length} className="px-4 py-16 text-center text-xs font-semibold text-slate-400">
-                    <Loader2 className="mr-2 inline h-4 w-4 animate-spin text-blue-600" />
+                  <td colSpan={visibleColumns.length} className="px-4 py-16 text-center text-xs font-semibold text-gray-400">
+                    <Loader2 className="mr-2 inline h-4 w-4 animate-spin text-app-brand-600" />
                     Loading execution runs...
                   </td>
                 </tr>
@@ -4997,7 +4997,7 @@ function ExecutionContent() {
             </tbody>
           </table>
         </div>
-        <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-3 text-[11px] font-semibold text-slate-500 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 border-t border-gray-100 px-4 py-3 text-[11px] font-semibold text-gray-500 lg:flex-row lg:items-center lg:justify-between">
           <span>
             Showing {visibleRuns.length === 0 ? "0" : formatNumber((currentPage - 1) * pageSize + 1)}
             {" - "}
@@ -5006,17 +5006,17 @@ function ExecutionContent() {
             {formatNumber(visibleRuns.length)} run rows
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" onClick={handleExportReport} disabled={visibleRuns.length === 0}>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" onClick={handleExportReport} disabled={visibleRuns.length === 0}>
               Export Report
             </Button>
             <SelectBox label="Rows" value={String(pageSize)} onChange={(value) => setPageSize(Number(value))} options={PAGE_SIZE_OPTIONS} className="min-w-[90px]" />
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage <= 1}>
               Previous
             </Button>
-            <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <span className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
               Page {formatNumber(currentPage)} / {formatNumber(totalPages)}
             </span>
-            <Button size="sm" variant="outline" className="h-8 border-slate-200 bg-white text-xs" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>
+            <Button size="sm" variant="outline" className="h-8 border-gray-200 bg-white text-xs" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage >= totalPages}>
               Next
             </Button>
           </div>
@@ -5083,7 +5083,7 @@ function ExecutionContent() {
         />
 
         {resultsLoading && (
-          <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
+          <div className="rounded-lg border border-app-brand-100 bg-app-brand-75 px-4 py-3 text-xs font-semibold text-app-brand-700">
             <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
             Loading selected run details...
           </div>
@@ -5115,8 +5115,8 @@ export default function ExecutionPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">
-          <Loader2 className="mr-2 h-5 w-5 animate-spin text-blue-600" />
+        <div className="flex h-64 items-center justify-center text-xs font-semibold text-gray-400">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin text-app-brand-600" />
           Loading Test Execution...
         </div>
       }

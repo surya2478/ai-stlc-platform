@@ -61,9 +61,9 @@ export const RESULT_TONE: Record<
   PENDING: {
     label: "Pending",
     short: "Pending",
-    dot: "bg-slate-300",
-    text: "text-slate-400",
-    bar: "bg-slate-200",
+    dot: "bg-gray-300",
+    text: "text-gray-400",
+    bar: "bg-gray-200",
   },
   PASS: {
     label: "Pass",
@@ -117,16 +117,16 @@ export const RESULT_TONE: Record<
   POLICY_BLOCKED: {
     label: "Policy blocked",
     short: "Policy",
-    dot: "bg-slate-700",
-    text: "text-slate-700",
-    bar: "bg-slate-700",
+    dot: "bg-gray-700",
+    text: "text-gray-700",
+    bar: "bg-gray-700",
   },
   SKIPPED: {
     label: "Skipped",
     short: "Skipped",
-    dot: "bg-slate-400",
-    text: "text-slate-500",
-    bar: "bg-slate-400",
+    dot: "bg-gray-400",
+    text: "text-gray-500",
+    bar: "bg-gray-400",
   },
 };
 
@@ -167,7 +167,7 @@ export function ItemLifecyclePill({ item }: { item: SuiteRunItem }) {
     <span
       className={cn(
         "flex items-center gap-1.5 text-[10px] font-semibold",
-        running ? "text-[#1b59f8]" : "text-slate-500",
+        running ? "text-[#B71920]" : "text-gray-500",
       )}
     >
       <span
@@ -176,10 +176,10 @@ export function ItemLifecyclePill({ item }: { item: SuiteRunItem }) {
           running
             ? // Respects reduced-motion per Section 13; the colour alone still
               // distinguishes a running row for anyone who suppresses animation.
-              "bg-[#1b59f8] motion-safe:animate-pulse"
+              "bg-[#B71920] motion-safe:animate-pulse"
             : item.lifecycle_state === "COMPLETED"
-              ? "bg-slate-400"
-              : "bg-slate-300",
+              ? "bg-gray-400"
+              : "bg-gray-300",
         )}
       />
       {ITEM_LIFECYCLE_LABEL[item.lifecycle_state] ?? item.lifecycle_state}
@@ -260,12 +260,12 @@ const PRIORITY_TONE: Record<string, string> = {
   "very critical": "text-red-700",
   critical: "text-red-600",
   high: "text-orange-600",
-  medium: "text-slate-600",
-  low: "text-slate-400",
+  medium: "text-gray-600",
+  low: "text-gray-400",
 };
 
 export function priorityClass(priority: string | null): string {
-  return PRIORITY_TONE[(priority ?? "").toLowerCase()] ?? "text-slate-500";
+  return PRIORITY_TONE[(priority ?? "").toLowerCase()] ?? "text-gray-500";
 }
 
 /** Human wording for the readiness axis names the backend returns. */

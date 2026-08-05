@@ -136,7 +136,7 @@ export function CreateDefectDialog({
             <input
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
               placeholder="Short description of the failure"
             />
           </Field>
@@ -145,7 +145,7 @@ export function CreateDefectDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
             />
           </Field>
           <Field label="Steps to reproduce (one per line)">
@@ -153,7 +153,7 @@ export function CreateDefectDialog({
               value={steps}
               onChange={(e) => setSteps(e.target.value)}
               rows={4}
-              className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-app-brand-100"
             />
           </Field>
           <div className="grid grid-cols-2 gap-3">
@@ -162,7 +162,7 @@ export function CreateDefectDialog({
                 value={expected}
                 onChange={(e) => setExpected(e.target.value)}
                 rows={2}
-                className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-app-brand-100"
               />
             </Field>
             <Field label="Actual result">
@@ -170,7 +170,7 @@ export function CreateDefectDialog({
                 value={actual}
                 onChange={(e) => setActual(e.target.value)}
                 rows={2}
-                className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-app-brand-100"
               />
             </Field>
           </div>
@@ -179,7 +179,7 @@ export function CreateDefectDialog({
               <select
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value)}
-                className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm capitalize focus:outline-none focus:ring-2 focus:ring-app-brand-100"
               >
                 {SEVERITIES.map((s) => (
                   <option key={s} value={s}>{s}</option>
@@ -190,7 +190,7 @@ export function CreateDefectDialog({
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
-                className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-blue-100"
+                className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-app-brand-100"
               >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>{p.toUpperCase()}</option>
@@ -216,7 +216,7 @@ export function CreateDefectDialog({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
         {label}
       </label>
       {children}

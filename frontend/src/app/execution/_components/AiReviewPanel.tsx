@@ -19,7 +19,7 @@ type Decision = "approve" | "override" | "request_rerun" | "reject";
 const DECISIONS: Array<{ key: Decision; label: string; tone: string }> = [
   { key: "approve", label: "Approve", tone: "bg-emerald-600 hover:bg-emerald-700 text-white" },
   { key: "override", label: "Override status", tone: "bg-amber-600 hover:bg-amber-700 text-white" },
-  { key: "request_rerun", label: "Request re-run", tone: "bg-blue-600 hover:bg-blue-700 text-white" },
+  { key: "request_rerun", label: "Request re-run", tone: "bg-app-brand-600 hover:bg-app-brand-700 text-white" },
   { key: "reject", label: "Reject", tone: "bg-red-600 hover:bg-red-700 text-white" },
 ];
 
@@ -129,12 +129,12 @@ export function AiReviewPanel({
           </p>
           <ul className="space-y-1">
             {reviewLog.map((entry, i) => (
-              <li key={i} className="rounded-md border border-violet-100 bg-white px-2.5 py-1.5 text-[11px] text-slate-600">
-                <span className="font-semibold capitalize text-slate-800">
+              <li key={i} className="rounded-md border border-violet-100 bg-white px-2.5 py-1.5 text-[11px] text-gray-600">
+                <span className="font-semibold capitalize text-gray-800">
                   {entry.decision.replace(/_/g, " ")}
                 </span>
                 {" — "}{entry.reason}
-                <span className="ml-2 text-slate-400">{formatDate(entry.ts)}</span>
+                <span className="ml-2 text-gray-400">{formatDate(entry.ts)}</span>
               </li>
             ))}
           </ul>
@@ -152,7 +152,7 @@ export function AiReviewPanel({
                 "rounded-md px-2.5 py-1 text-[11px] font-semibold transition",
                 decision === d.key
                   ? d.tone
-                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50",
               )}
             >
               {d.label}
@@ -164,7 +164,7 @@ export function AiReviewPanel({
           <select
             value={overrideStatus}
             onChange={(e) => setOverrideStatus(e.target.value as (typeof OVERRIDE_STATUSES)[number])}
-            className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs capitalize focus:outline-none focus:ring-2 focus:ring-violet-100"
+            className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs capitalize focus:outline-none focus:ring-2 focus:ring-violet-100"
           >
             {OVERRIDE_STATUSES.map((s) => (
               <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
@@ -177,7 +177,7 @@ export function AiReviewPanel({
           onChange={(e) => setReason(e.target.value)}
           rows={2}
           placeholder="Reason (recorded in the audit trail)…"
-          className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-100"
+          className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-100"
         />
 
         <div className="flex items-center justify-between">

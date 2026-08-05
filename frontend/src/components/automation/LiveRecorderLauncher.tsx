@@ -152,9 +152,9 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Panel title="1 — Automation Test Suite">
           {suitesLoading ? (
-            <p className="p-3 text-[11px] font-semibold text-slate-400">Loading suites…</p>
+            <p className="p-3 text-[11px] font-semibold text-gray-400">Loading suites…</p>
           ) : suites.length === 0 ? (
-            <p className="p-3 text-[11px] font-semibold text-slate-400">
+            <p className="p-3 text-[11px] font-semibold text-gray-400">
               No Automation Test Suites in this project yet. Create one in the Automation Workspace first —
               a recording always belongs to a suite member.
             </p>
@@ -168,13 +168,13 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
                   className={cn(
                     "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
                     suiteId === suite.id
-                      ? "border-[#1b59f8] bg-blue-50/60"
-                      : "border-slate-200 bg-white hover:bg-slate-50",
+                      ? "border-[#B71920] bg-app-brand-75/60"
+                      : "border-gray-200 bg-white hover:bg-gray-50",
                   )}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate text-xs font-bold text-slate-800">{suite.name}</span>
-                    <span className="block text-[10px] font-semibold text-slate-500">
+                    <span className="block truncate text-xs font-bold text-gray-800">{suite.name}</span>
+                    <span className="block text-[10px] font-semibold text-gray-500">
                       v{suite.version} · {suite.members_included} included ·{" "}
                       {suite.members_blocked} blocked
                     </span>
@@ -188,11 +188,11 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
 
         <Panel title="2 — Test Case">
           {!suiteId ? (
-            <p className="p-3 text-[11px] font-semibold text-slate-400">
+            <p className="p-3 text-[11px] font-semibold text-gray-400">
               Select a suite to see its test cases.
             </p>
           ) : membersLoading ? (
-            <p className="p-3 text-[11px] font-semibold text-slate-400">Loading members…</p>
+            <p className="p-3 text-[11px] font-semibold text-gray-400">Loading members…</p>
           ) : membersError ? (
             // Never render "no members" for a request that failed — an empty
             // suite and an unreachable API are different situations.
@@ -200,7 +200,7 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
               Could not load this suite&apos;s members: {membersError}
             </p>
           ) : (members?.length ?? 0) === 0 ? (
-            <p className="p-3 text-[11px] font-semibold text-slate-400">
+            <p className="p-3 text-[11px] font-semibold text-gray-400">
               This suite has no included members. Add test cases to it in the Automation Workspace.
             </p>
           ) : (
@@ -213,15 +213,15 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
                   className={cn(
                     "flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors",
                     testCaseId === member.test_case_id
-                      ? "border-[#1b59f8] bg-blue-50/60"
-                      : "border-slate-200 bg-white hover:bg-slate-50",
+                      ? "border-[#B71920] bg-app-brand-75/60"
+                      : "border-gray-200 bg-white hover:bg-gray-50",
                   )}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate text-xs font-bold text-slate-800">
+                    <span className="block truncate text-xs font-bold text-gray-800">
                       {member.test_case_reference} — {member.title}
                     </span>
-                    <span className="block truncate text-[10px] font-semibold text-slate-500">
+                    <span className="block truncate text-[10px] font-semibold text-gray-500">
                       {member.resolved_environment ?? "no environment"} ·{" "}
                       {member.resolved_framework ?? "no framework"}
                       {member.resolved_script_id ? " · has script" : ""}
@@ -245,17 +245,17 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
               className={cn(
                 "rounded-lg border px-3 py-2.5 text-left transition-colors",
                 mode === option.value
-                  ? "border-[#1b59f8] bg-blue-50/60"
-                  : "border-slate-200 bg-white hover:bg-slate-50",
+                  ? "border-[#B71920] bg-app-brand-75/60"
+                  : "border-gray-200 bg-white hover:bg-gray-50",
               )}
             >
-              <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-gray-800">
                 <CircleDot
-                  className={cn("h-3 w-3", mode === option.value ? "text-[#1b59f8]" : "text-slate-300")}
+                  className={cn("h-3 w-3", mode === option.value ? "text-[#B71920]" : "text-gray-300")}
                 />
                 {option.label}
               </span>
-              <span className="mt-1 block text-[10px] font-semibold leading-relaxed text-slate-500">
+              <span className="mt-1 block text-[10px] font-semibold leading-relaxed text-gray-500">
                 {option.description}
               </span>
             </button>
@@ -263,11 +263,11 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
         </div>
 
         {selectedMember && (
-          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5">
-            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2.5">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
               Inherited for this member — read-only
             </p>
-            <p className="mt-1 text-[11px] font-semibold text-slate-600">
+            <p className="mt-1 text-[11px] font-semibold text-gray-600">
               Environment {selectedMember.resolved_environment ?? "—"} · Framework{" "}
               {selectedMember.resolved_framework ?? "—"} · Readiness{" "}
               {selectedMember.readiness_checks_passed}/{selectedMember.readiness_checks_total}
@@ -295,18 +295,18 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
         title={suiteId ? "Recordings in this suite" : "Recordings in this project"}
         action={
           recordingsQuery.isFetching ? (
-            <span className="text-[9px] font-bold text-slate-400">Refreshing…</span>
+            <span className="text-[9px] font-bold text-gray-400">Refreshing…</span>
           ) : null
         }
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="border-b border-slate-200">
+              <tr className="border-b border-gray-200">
                 {["Recording", "Test Case", "Mode", "Status", "IR", "Created", ""].map((heading) => (
                   <th
                     key={heading}
-                    className="px-2 py-1.5 text-[9px] font-extrabold uppercase tracking-wide text-slate-500"
+                    className="px-2 py-1.5 text-[9px] font-extrabold uppercase tracking-wide text-gray-500"
                   >
                     {heading}
                   </th>
@@ -318,17 +318,17 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
                 <EmptyRow colSpan={7} message="No recordings yet." />
               ) : (
                 recordings.map((recording) => (
-                  <tr key={recording.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-2 py-2 text-[11px] font-bold text-slate-800">
+                  <tr key={recording.id} className="border-b border-gray-100 last:border-0">
+                    <td className="px-2 py-2 text-[11px] font-bold text-gray-800">
                       #{recording.id}
-                      <span className="ml-1 text-[10px] font-semibold text-slate-400">
+                      <span className="ml-1 text-[10px] font-semibold text-gray-400">
                         v{recording.recording_version}
                       </span>
                     </td>
-                    <td className="px-2 py-2 text-[11px] font-semibold text-slate-600">
+                    <td className="px-2 py-2 text-[11px] font-semibold text-gray-600">
                       {recording.test_case_id ?? "—"}
                     </td>
-                    <td className="px-2 py-2 text-[10px] font-semibold text-slate-500">
+                    <td className="px-2 py-2 text-[10px] font-semibold text-gray-500">
                       {recording.recording_mode === "EXPLORATORY" ? "Exploratory" : "Guided"}
                     </td>
                     <td className="px-2 py-2">
@@ -340,10 +340,10 @@ export function LiveRecorderLauncher({ projectId }: { projectId: number }) {
                           Draft
                         </Badge>
                       ) : (
-                        <span className="text-[10px] font-semibold text-slate-400">—</span>
+                        <span className="text-[10px] font-semibold text-gray-400">—</span>
                       )}
                     </td>
-                    <td className="px-2 py-2 text-[10px] font-semibold text-slate-500">
+                    <td className="px-2 py-2 text-[10px] font-semibold text-gray-500">
                       {formatDateTime(recording.created_at)}
                     </td>
                     <td className="px-2 py-2 text-right">

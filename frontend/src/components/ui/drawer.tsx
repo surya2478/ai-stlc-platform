@@ -49,7 +49,7 @@ const DrawerContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed inset-y-0 right-0 z-50 h-full border-l border-slate-200 bg-white shadow-2xl transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out duration-300 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right flex flex-col focus:outline-none",
+          "fixed inset-y-0 right-0 z-50 h-full border-l border-gray-200 bg-white shadow-2xl transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out duration-300 data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right flex flex-col focus:outline-none",
           sizes[size],
           className
         )}
@@ -68,7 +68,7 @@ const DrawerHeader = ({
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
     className={cn(
-      "flex items-center justify-between border-b border-slate-100 p-5 shrink-0",
+      "flex items-center justify-between border-b border-gray-100 p-5 shrink-0",
       className
     )}
     {...props}
@@ -82,7 +82,7 @@ const DrawerTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-sm font-bold text-slate-900 leading-none", className)}
+    className={cn("text-sm font-bold text-gray-900 leading-none", className)}
     {...props}
   />
 ));
@@ -116,7 +116,7 @@ const DrawerFooter = ({
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
   <div
-    className={cn("border-t border-slate-100 p-4 flex items-center justify-end gap-2 shrink-0 bg-slate-50", className)}
+    className={cn("border-t border-gray-100 p-4 flex items-center justify-end gap-2 shrink-0 bg-gray-50", className)}
     {...props}
   />
 );

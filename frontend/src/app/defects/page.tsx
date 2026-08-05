@@ -49,9 +49,9 @@ function getClassificationVariant(cls: string | null | undefined): "default" | "
 
 function StepList({ steps }: { steps: string[] }) {
   return (
-    <ol className="list-decimal list-inside space-y-1 bg-slate-50 border rounded-lg p-3">
+    <ol className="list-decimal list-inside space-y-1 bg-gray-50 border rounded-lg p-3">
       {steps.map((s, i) => (
-        <li key={i} className="text-xs text-slate-600 font-medium leading-relaxed">{s}</li>
+        <li key={i} className="text-xs text-gray-600 font-medium leading-relaxed">{s}</li>
       ))}
     </ol>
   );
@@ -104,20 +104,20 @@ function DefectRow({
 
   return (
     <div className={cn(
-      "bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-200 hover:border-slate-300",
-      expanded && "ring-1 ring-[#1b59f8]/10"
+      "bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:border-gray-300",
+      expanded && "ring-1 ring-[#B71920]/10"
     )}>
       <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex-1 min-w-0" onClick={() => setExpanded(!expanded)}>
           <div className="flex flex-wrap items-center gap-2 mb-1.5 cursor-pointer">
-            <span className="text-[10px] font-mono font-bold text-slate-400">{defect.defect_id}</span>
+            <span className="text-[10px] font-mono font-bold text-gray-400">{defect.defect_id}</span>
             <Badge variant={getSeverityVariant(defect.severity)}>{defect.severity}</Badge>
             <Badge variant={getStatusVariant(defect.status)} className="capitalize">{defect.status.replace(/_/g, " ")}</Badge>
             <Badge variant={getClassificationVariant(defect.classification)} className="capitalize">{defect.classification.replace(/_/g, " ")}</Badge>
           </div>
-          <h4 className="text-xs font-bold text-slate-800 leading-snug cursor-pointer hover:text-[#1b59f8] transition-colors">{defect.summary}</h4>
+          <h4 className="text-xs font-bold text-gray-800 leading-snug cursor-pointer hover:text-[#B71920] transition-colors">{defect.summary}</h4>
           {defect.description && !expanded && (
-            <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">{defect.description}</p>
+            <p className="text-[11px] text-gray-500 mt-1 line-clamp-1">{defect.description}</p>
           )}
         </div>
 
@@ -127,12 +127,12 @@ function DefectRow({
               {confirming === "approve" ? (
                 <div className="flex gap-1">
                   <Button onClick={() => { void runAction(() => onApprove(defect.id), "Approve failed"); setConfirming(null); }} size="sm" variant="default" className="h-7 text-[10px] bg-emerald-600 hover:bg-emerald-700">Confirm</Button>
-                  <Button onClick={() => setConfirming(null)} size="sm" variant="outline" className="h-7 text-[10px] border-slate-200 text-slate-600">Cancel</Button>
+                  <Button onClick={() => setConfirming(null)} size="sm" variant="outline" className="h-7 text-[10px] border-gray-200 text-gray-600">Cancel</Button>
                 </div>
               ) : confirming === "reject" ? (
                 <div className="flex gap-1">
                   <Button onClick={() => { void runAction(() => onReject(defect.id), "Reject failed"); setConfirming(null); }} size="sm" variant="default" className="h-7 text-[10px] bg-rose-600 hover:bg-rose-700">Confirm</Button>
-                  <Button onClick={() => setConfirming(null)} size="sm" variant="outline" className="h-7 text-[10px] border-slate-200 text-slate-600">Cancel</Button>
+                  <Button onClick={() => setConfirming(null)} size="sm" variant="outline" className="h-7 text-[10px] border-gray-200 text-gray-600">Cancel</Button>
                 </div>
               ) : (
                 <>
@@ -162,8 +162,8 @@ function DefectRow({
               Push to Jira
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => setExpanded(!expanded)} className="h-8 w-8 p-0 border-slate-200">
-            {expanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+          <Button variant="outline" size="sm" onClick={() => setExpanded(!expanded)} className="h-8 w-8 p-0 border-gray-200">
+            {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
           </Button>
         </div>
       </div>
@@ -176,36 +176,36 @@ function DefectRow({
       )}
 
       {expanded && (
-        <div className="border-t border-slate-100 bg-slate-50/30 p-5 space-y-4">
+        <div className="border-t border-gray-100 bg-gray-50/30 p-5 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Expected Result</label>
-              <p className="text-xs text-slate-600 bg-white border border-slate-200 rounded-lg p-3 leading-relaxed font-semibold">{defect.expected_result || "—"}</p>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Expected Result</label>
+              <p className="text-xs text-gray-600 bg-white border border-gray-200 rounded-lg p-3 leading-relaxed font-semibold">{defect.expected_result || "—"}</p>
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase tracking-wider text-rose-500 block mb-1">Actual Result</label>
-              <p className="text-xs text-slate-600 bg-rose-50/30 border border-rose-100 rounded-lg p-3 leading-relaxed font-semibold">{defect.actual_result || "—"}</p>
+              <p className="text-xs text-gray-600 bg-rose-50/30 border border-rose-100 rounded-lg p-3 leading-relaxed font-semibold">{defect.actual_result || "—"}</p>
             </div>
           </div>
 
           {defect.steps_to_reproduce && defect.steps_to_reproduce.length > 0 && (
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">Steps to Reproduce</label>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1.5">Steps to Reproduce</label>
               <StepList steps={defect.steps_to_reproduce} />
             </div>
           )}
 
           {defect.root_cause_hypothesis && (
             <div>
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Root Cause Hypothesis</label>
-              <p className="text-xs text-slate-700 bg-amber-50/30 border border-amber-100 rounded-lg p-3 italic leading-relaxed font-semibold">{defect.root_cause_hypothesis}</p>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-1">Root Cause Hypothesis</label>
+              <p className="text-xs text-gray-700 bg-amber-50/30 border border-amber-100 rounded-lg p-3 italic leading-relaxed font-semibold">{defect.root_cause_hypothesis}</p>
             </div>
           )}
 
-          <div className="flex gap-4 text-[10px] text-slate-400 font-bold border-t pt-3 border-slate-100">
-            <span>PRIORITY: <span className="text-slate-600 font-extrabold">{defect.priority.toUpperCase()}</span></span>
-            <span>SEVERITY: <span className="text-slate-600 font-extrabold">{defect.severity.toUpperCase()}</span></span>
-            <span>JIRA SYNC READY: <span className="text-slate-600 font-extrabold">{defect.jira_ready ? "YES" : "NO"}</span></span>
+          <div className="flex gap-4 text-[10px] text-gray-400 font-bold border-t pt-3 border-gray-100">
+            <span>PRIORITY: <span className="text-gray-600 font-extrabold">{defect.priority.toUpperCase()}</span></span>
+            <span>SEVERITY: <span className="text-gray-600 font-extrabold">{defect.severity.toUpperCase()}</span></span>
+            <span>JIRA SYNC READY: <span className="text-gray-600 font-extrabold">{defect.jira_ready ? "YES" : "NO"}</span></span>
           </div>
         </div>
       )}
@@ -356,8 +356,8 @@ function DefectsContent() {
       {
         title: "Total Defects",
         icon: Bug,
-        iconBg: "bg-blue-50 border-blue-100",
-        iconColor: "text-blue-500",
+        iconBg: "bg-app-brand-75 border-app-brand-100",
+        iconColor: "text-app-brand-500",
         value: total.toLocaleString(),
         sublabel: "Defects",
         footer: "Total AI identified defect drafts",
@@ -401,13 +401,13 @@ function DefectsContent() {
             <Bug className="h-6 w-6 text-red-500" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Defect Management</h1>
-            <p className="text-xs text-slate-500 mt-1">Audit AI-generated defect drafts, review root cause analysis, and push verified issues to Jira</p>
+            <h1 className="text-xl font-bold text-gray-900">Defect Management</h1>
+            <p className="text-xs text-gray-500 mt-1">Audit AI-generated defect drafts, review root cause analysis, and push verified issues to Jira</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
-            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-gray-200">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-gray-500", loading && "animate-spin")} />
           </Button>
 
           <Button
@@ -427,21 +427,21 @@ function DefectsContent() {
         {stats.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.title} className="border-slate-200 hover:-translate-y-0.5 transition-all">
+            <Card key={card.title} className="border-gray-200 hover:-translate-y-0.5 transition-all">
               <CardContent className="p-4 flex flex-col justify-between h-full space-y-3">
                 <div className="flex items-center gap-2">
                   <div className={cn("rounded-lg p-1.5 flex items-center justify-center shrink-0 border", card.iconBg)}>
                     <Icon className={cn("h-4 w-4", card.iconColor)} />
                   </div>
-                  <span className="text-xs font-bold text-slate-700 truncate">{card.title}</span>
+                  <span className="text-xs font-bold text-gray-700 truncate">{card.title}</span>
                 </div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-bold text-slate-900">{card.value}</span>
+                  <span className="text-xl font-bold text-gray-900">{card.value}</span>
                   {card.sublabel && (
-                    <span className="text-[10px] font-bold text-slate-400">{card.sublabel}</span>
+                    <span className="text-[10px] font-bold text-gray-400">{card.sublabel}</span>
                   )}
                 </div>
-                <div className="text-[10px] text-slate-400 font-semibold border-t border-slate-50 pt-2">
+                <div className="text-[10px] text-gray-400 font-semibold border-t border-gray-50 pt-2">
                   {card.footer}
                 </div>
               </CardContent>
@@ -458,11 +458,11 @@ function DefectsContent() {
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5 text-red-500" />
                 <div>
-                  <h3 className="text-xs font-bold text-slate-800">Failure Analysis Hub (Agent 9)</h3>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Select failed test cases from a completed run to draft defects</p>
+                  <h3 className="text-xs font-bold text-gray-800">Failure Analysis Hub (Agent 9)</h3>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Select failed test cases from a completed run to draft defects</p>
                 </div>
               </div>
-              <button onClick={() => setShowAgentPanel(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+              <button onClick={() => setShowAgentPanel(false)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
             </div>
 
             {runs.length === 0 ? (
@@ -473,7 +473,7 @@ function DefectsContent() {
               <div className="space-y-4">
                 {/* Run selector */}
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Select Completed Execution Run</label>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block mb-2">Select Completed Execution Run</label>
                   <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-1">
                     {runs.map((run) => (
                       <button
@@ -483,7 +483,7 @@ function DefectsContent() {
                           "px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all",
                           selectedRunId === run.id
                             ? "bg-red-500 border-red-500 text-white shadow-sm"
-                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                            : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
                         )}
                       >
                         {run.execution_id} ({run.failed} failed)
@@ -501,7 +501,7 @@ function DefectsContent() {
                 {selectedRunId && failedResults.length > 0 && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-xs font-semibold">
-                      <span className="text-slate-700">Failed results selection ({selectedResultIds.size})</span>
+                      <span className="text-gray-700">Failed results selection ({selectedResultIds.size})</span>
                       <button
                         onClick={() => setSelectedResultIds(
                           selectedResultIds.size === failedResults.length
@@ -516,15 +516,15 @@ function DefectsContent() {
 
                     <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
                       {failedResults.map((r) => (
-                        <label key={r.id} className="flex items-start gap-2.5 bg-white border border-slate-250 rounded-lg p-3 cursor-pointer hover:border-red-300 transition-colors">
+                        <label key={r.id} className="flex items-start gap-2.5 bg-white border border-gray-250 rounded-lg p-3 cursor-pointer hover:border-red-300 transition-colors">
                           <input
                             type="checkbox"
                             checked={selectedResultIds.has(r.id)}
                             onChange={() => toggleResult(r.id)}
-                            className="rounded border-slate-350 text-red-500 focus:ring-red-500 mt-0.5 h-4.5 w-4.5"
+                            className="rounded border-gray-350 text-red-500 focus:ring-red-500 mt-0.5 h-4.5 w-4.5"
                           />
                           <div className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-bold text-slate-800">{r.test_name}</span>
+                            <span className="block truncate text-xs font-bold text-gray-800">{r.test_name}</span>
                             {r.error_message && (
                               <p className="text-[10px] text-red-500 truncate mt-0.5 font-semibold font-mono">{r.error_message}</p>
                             )}
@@ -572,7 +572,7 @@ function DefectsContent() {
 
       {/* ── Filters Bar ────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-3 items-center justify-between">
-        <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-200 bg-white p-1">
+        <div className="flex flex-wrap gap-1.5 rounded-lg border border-gray-200 bg-white p-1">
           {["all", "draft", "approved", "pushed_to_jira", "rejected"].map((s) => (
             <button
               key={s}
@@ -580,8 +580,8 @@ function DefectsContent() {
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-semibold capitalize transition-all",
                 filterStatus === s
-                  ? "bg-slate-900 text-slate-50 shadow-sm"
-                  : "text-slate-500 hover:text-slate-900"
+                  ? "bg-gray-900 text-gray-50 shadow-sm"
+                  : "text-gray-500 hover:text-gray-900"
               )}
             >
               {s === "all" ? "All Status" : s.replace(/_/g, " ")}
@@ -589,7 +589,7 @@ function DefectsContent() {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-200 bg-white p-1">
+        <div className="flex flex-wrap gap-1.5 rounded-lg border border-gray-200 bg-white p-1">
           {["all", "Critical", "High", "Medium", "Low"].map((sv) => (
             <button
               key={sv}
@@ -597,8 +597,8 @@ function DefectsContent() {
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-semibold capitalize transition-all",
                 filterSeverity === sv
-                  ? "bg-slate-900 text-slate-50 shadow-sm"
-                  : "text-slate-500 hover:text-slate-900"
+                  ? "bg-gray-900 text-gray-50 shadow-sm"
+                  : "text-gray-500 hover:text-gray-900"
               )}
             >
               {sv === "all" ? "All Severity" : sv}
@@ -609,15 +609,15 @@ function DefectsContent() {
 
       {/* ── Defects List Catalog ───────────────────────────────────────────────── */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-xs font-semibold">
-          <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mb-2" />
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-xs font-semibold">
+          <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mb-2" />
           Loading defects registry...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-250">
-          <Bug className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-          <p className="text-xs text-slate-500 font-bold">No defect drafts found matching filters</p>
-          <p className="text-[10px] text-slate-400 font-semibold mt-1">Select completed execution runs above and let AI Analyse Failures</p>
+        <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-250">
+          <Bug className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+          <p className="text-xs text-gray-500 font-bold">No defect drafts found matching filters</p>
+          <p className="text-[10px] text-gray-400 font-semibold mt-1">Select completed execution runs above and let AI Analyse Failures</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -633,7 +633,7 @@ function DefectsContent() {
 export default function DefectsPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
+      <div className="flex h-64 items-center justify-center text-gray-400 text-xs font-semibold">
         <Loader2 className="h-6 w-6 animate-spin text-red-500 mr-2" />
         Loading Defects Center...
       </div>

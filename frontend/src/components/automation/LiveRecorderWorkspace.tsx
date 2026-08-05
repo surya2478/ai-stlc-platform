@@ -254,10 +254,10 @@ export function LiveRecorderWorkspace({
   );
 
   if (recordingQuery.isLoading) {
-    return <p className="p-8 text-sm font-semibold text-slate-400">Loading recording…</p>;
+    return <p className="p-8 text-sm font-semibold text-gray-400">Loading recording…</p>;
   }
   if (!recording) {
-    return <p className="p-8 text-sm font-semibold text-slate-400">Recording not found.</p>;
+    return <p className="p-8 text-sm font-semibold text-gray-400">Recording not found.</p>;
   }
 
   const context = contextQuery.data;
@@ -268,20 +268,20 @@ export function LiveRecorderWorkspace({
   return (
     <div className="flex h-[calc(100vh-8rem)] min-h-0 flex-col gap-2">
       {/* ── Header (Section 9) ────────────────────────────────────────────── */}
-      <div className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      <div className="shrink-0 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5">
             <button
               type="button"
               onClick={() => router.push(`/automation?view=recorder&project=${projectId}`)}
-              className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-50"
+              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-50"
               title="Back to Live Recorder"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
             </button>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="truncate text-sm font-extrabold text-slate-900">
+                <h2 className="truncate text-sm font-extrabold text-gray-900">
                   {context?.test_case
                     ? `${context.test_case.display_id}: ${context.test_case.title}`
                     : `Recording #${recording.id}`}
@@ -291,7 +291,7 @@ export function LiveRecorderWorkspace({
                   v{recording.recording_version}
                 </Badge>
               </div>
-              <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
+              <p className="mt-0.5 truncate text-[10px] font-semibold text-gray-500">
                 Suite: {context?.suite?.name ?? "—"} · App: {context?.application?.name ?? "—"} ·
                 Framework: {context?.framework ?? "—"} · Environment: {context?.environment ?? "—"} ·
                 Mode: {recording.recording_mode === "EXPLORATORY" ? "Exploratory" : "Guided Recording"}
@@ -301,11 +301,11 @@ export function LiveRecorderWorkspace({
 
           <div className="flex items-center gap-1.5">
             <span
-              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-extrabold text-slate-800"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-extrabold text-gray-800"
               title="Session duration"
             >
               {live && <CircleDot className="h-3 w-3 animate-pulse text-red-500" />}
-              <Clock className="h-3 w-3 text-slate-400" />
+              <Clock className="h-3 w-3 text-gray-400" />
               {formatDuration(elapsed)}
             </span>
 
@@ -390,7 +390,7 @@ export function LiveRecorderWorkspace({
                 <button
                   type="button"
                   onClick={() => setLeftOpen(false)}
-                  className="text-slate-400 hover:text-slate-700"
+                  className="text-gray-400 hover:text-gray-700"
                   title="Collapse panel"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
@@ -400,7 +400,7 @@ export function LiveRecorderWorkspace({
               <StepProgress steps={steps} />
               <div className="mt-2 min-h-0 flex-1 space-y-1 overflow-y-auto">
                 {steps.length === 0 ? (
-                  <p className="p-2 text-[10px] font-semibold text-slate-400">
+                  <p className="p-2 text-[10px] font-semibold text-gray-400">
                     This test case has no steps.
                   </p>
                 ) : (
@@ -437,15 +437,15 @@ export function LiveRecorderWorkspace({
               </div>
 
               {substepFor && (
-                <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                  <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
+                  <p className="text-[9px] font-bold uppercase tracking-wide text-gray-500">
                     Discovered sub-step under {substepFor}
                   </p>
                   <input
                     value={substepLabel}
                     onChange={(event) => setSubstepLabel(event.target.value)}
                     placeholder="What did the application actually require?"
-                    className="mt-1 w-full rounded border border-slate-200 px-2 py-1 text-[10px] font-semibold"
+                    className="mt-1 w-full rounded border border-gray-200 px-2 py-1 text-[10px] font-semibold"
                   />
                   <div className="mt-1.5 flex gap-1.5">
                     <Button
@@ -474,11 +474,11 @@ export function LiveRecorderWorkspace({
 
         {/* Centre — proxied live application viewport (Section 11) */}
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 px-2.5 py-1.5">
-              <Globe className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <div className="flex shrink-0 items-center gap-2 border-b border-gray-200 px-2.5 py-1.5">
+              <Globe className="h-3.5 w-3.5 shrink-0 text-gray-400" />
               <span
-                className="min-w-0 flex-1 truncate rounded bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-600"
+                className="min-w-0 flex-1 truncate rounded bg-gray-50 px-2 py-1 text-[10px] font-semibold text-gray-600"
                 title={latestViewQuery.data?.page_url ?? ""}
               >
                 {latestViewQuery.data?.page_url ?? "No page loaded yet"}
@@ -488,7 +488,7 @@ export function LiveRecorderWorkspace({
                   href={latestViewQuery.data.page_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="shrink-0 rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50"
+                  className="shrink-0 rounded border border-gray-200 p-1 text-gray-500 hover:bg-gray-50"
                   title="Open this URL in your own browser (does not record)"
                 >
                   <ExternalLink className="h-3 w-3" />
@@ -497,14 +497,14 @@ export function LiveRecorderWorkspace({
               <button
                 type="button"
                 onClick={() => latestViewQuery.refetch()}
-                className="shrink-0 rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50"
+                className="shrink-0 rounded border border-gray-200 p-1 text-gray-500 hover:bg-gray-50"
                 title="Refresh the captured view"
               >
                 <RefreshCw className={cn("h-3 w-3", latestViewQuery.isFetching && "animate-spin")} />
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-2">
+            <div className="min-h-0 flex-1 overflow-auto bg-gray-100 p-2">
               {latestViewQuery.data?.screenshot_capture_id ? (
                 <>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -514,21 +514,21 @@ export function LiveRecorderWorkspace({
                       latestViewQuery.data.screenshot_capture_id,
                     )}
                     alt="Latest captured view of the application under test"
-                    className="mx-auto max-w-full rounded border border-slate-200 bg-white shadow-sm"
+                    className="mx-auto max-w-full rounded border border-gray-200 bg-white shadow-sm"
                   />
-                  <p className="mt-1.5 text-center text-[9px] font-bold text-slate-400">
+                  <p className="mt-1.5 text-center text-[9px] font-bold text-gray-400">
                     Captured after action #{latestViewQuery.data.sequence} — this is a screenshot of the
                     real application, not a live embed.
                   </p>
                 </>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-1.5 text-center">
-                  <p className="text-xs font-bold text-slate-500">
+                  <p className="text-xs font-bold text-gray-500">
                     {recording.status === "NOT_STARTED"
                       ? "Start the recording to launch the application."
                       : "No view captured yet — perform an action to capture one."}
                   </p>
-                  <p className="max-w-md text-[10px] font-semibold text-slate-400">
+                  <p className="max-w-md text-[10px] font-semibold text-gray-400">
                     The application runs in a browser on the backend host. You drive it by choosing a real
                     element and an action below; every recorded step is one the platform actually performed.
                   </p>
@@ -537,9 +537,9 @@ export function LiveRecorderWorkspace({
             </div>
 
             {/* Action composer — the proxied interaction surface */}
-            <div className="shrink-0 border-t border-slate-200 bg-white p-2">
+            <div className="shrink-0 border-t border-gray-200 bg-white p-2">
               {!live ? (
-                <p className="px-1 text-[10px] font-semibold text-slate-400">
+                <p className="px-1 text-[10px] font-semibold text-gray-400">
                   {recording.status === "PAUSED"
                     ? "Paused — no user action or locator capture is happening. Resume to continue recording."
                     : "The recording is not live, so no actions can be performed."}
@@ -547,7 +547,7 @@ export function LiveRecorderWorkspace({
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+                    <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
                       Recording into
                     </span>
                     {activeStep ? (
@@ -579,7 +579,7 @@ export function LiveRecorderWorkspace({
                       value={navUrl}
                       onChange={(event) => setNavUrl(event.target.value)}
                       placeholder="https://… navigate to a URL"
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
+                      className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#B71920]"
                     />
                     <Button
                       size="sm"
@@ -599,16 +599,16 @@ export function LiveRecorderWorkspace({
                   </div>
 
                   <div className="grid gap-1.5 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                    <div className="rounded-lg border border-slate-200">
+                    <div className="rounded-lg border border-gray-200">
                       <input
                         value={elementFilter}
                         onChange={(event) => setElementFilter(event.target.value)}
                         placeholder={`Filter ${snapshotElements.length} element(s) on the page…`}
-                        className="w-full rounded-t-lg border-b border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold focus:outline-none"
+                        className="w-full rounded-t-lg border-b border-gray-200 px-2.5 py-1.5 text-[10px] font-semibold focus:outline-none"
                       />
                       <div className="max-h-28 overflow-y-auto">
                         {filteredElements.length === 0 ? (
-                          <p className="p-2 text-[10px] font-semibold text-slate-400">
+                          <p className="p-2 text-[10px] font-semibold text-gray-400">
                             No elements available — perform an action to capture the page.
                           </p>
                         ) : (
@@ -618,8 +618,8 @@ export function LiveRecorderWorkspace({
                               type="button"
                               onClick={() => setSelectedRef(element.ref)}
                               className={cn(
-                                "flex w-full items-center gap-1.5 px-2 py-1 text-left text-[10px] font-semibold hover:bg-slate-50",
-                                selectedRef === element.ref && "bg-blue-50 text-[#1b59f8]",
+                                "flex w-full items-center gap-1.5 px-2 py-1 text-left text-[10px] font-semibold hover:bg-gray-50",
+                                selectedRef === element.ref && "bg-app-brand-75 text-[#B71920]",
                               )}
                             >
                               <Badge variant="outline" className="shrink-0 text-[8px]">
@@ -633,7 +633,7 @@ export function LiveRecorderWorkspace({
                     </div>
 
                     <div className="flex flex-col gap-1.5">
-                      <p className="truncate text-[10px] font-bold text-slate-600">
+                      <p className="truncate text-[10px] font-bold text-gray-600">
                         {selectedElement
                           ? `${selectedElement.role} — ${selectedElement.name ?? selectedElement.ref}`
                           : "Select an element to act on"}
@@ -661,7 +661,7 @@ export function LiveRecorderWorkspace({
                           onChange={(event) => setTypeValue(event.target.value)}
                           placeholder="Text to type"
                           disabled={!selectedElement || !TYPEABLE_ROLES.has(selectedElement.role)}
-                          className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold disabled:bg-slate-50"
+                          className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold disabled:bg-gray-50"
                         />
                         <Button
                           size="sm"
@@ -693,7 +693,7 @@ export function LiveRecorderWorkspace({
                     </div>
                   </div>
                   {recordAction.isPending && (
-                    <p className="flex items-center gap-1.5 px-1 text-[10px] font-bold text-[#1b59f8]">
+                    <p className="flex items-center gap-1.5 px-1 text-[10px] font-bold text-[#B71920]">
                       <Loader2 className="h-3 w-3 animate-spin" />
                       Performing the action against the live application…
                     </p>
@@ -704,8 +704,8 @@ export function LiveRecorderWorkspace({
           </section>
 
           {/* Bottom — recording activity (Section 12) */}
-          <section className="flex h-[38%] min-h-0 shrink-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <div className="flex shrink-0 items-center gap-0.5 border-b border-slate-200 px-1.5">
+          <section className="flex h-[38%] min-h-0 shrink-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+            <div className="flex shrink-0 items-center gap-0.5 border-b border-gray-200 px-1.5">
               {ACTIVITY_TABS.map((tab) => (
                 <button
                   key={tab.id}
@@ -714,14 +714,14 @@ export function LiveRecorderWorkspace({
                   className={cn(
                     "flex items-center gap-1 whitespace-nowrap border-b-2 px-2.5 py-2 text-[10px] font-bold transition-colors",
                     activityTab === tab.id
-                      ? "border-[#1b59f8] text-[#1b59f8]"
-                      : "border-transparent text-slate-500 hover:text-slate-800",
+                      ? "border-[#B71920] text-[#B71920]"
+                      : "border-transparent text-gray-500 hover:text-gray-800",
                   )}
                 >
                   <tab.icon className="h-3 w-3" />
                   {tab.label}
                   {tab.id === "actions" && actions.length > 0 && (
-                    <span className="text-slate-400">({actions.length})</span>
+                    <span className="text-gray-400">({actions.length})</span>
                   )}
                 </button>
               ))}
@@ -751,14 +751,14 @@ export function LiveRecorderWorkspace({
                 <button
                   type="button"
                   onClick={() => setRightOpen(false)}
-                  className="text-slate-400 hover:text-slate-700"
+                  className="text-gray-400 hover:text-gray-700"
                   title="Collapse panel"
                 >
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
               }
             >
-              <p className="mb-2 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-bold text-slate-500">
+              <p className="mb-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[9px] font-bold text-gray-500">
                 Inherited and read-only — correct it in the source, not here.
               </p>
               <div className="space-y-2">
@@ -855,10 +855,10 @@ export function LiveRecorderWorkspace({
               <Panel title="Advisories">
                 <ul className="space-y-1.5">
                   {advisories.map((check) => (
-                    <li key={check.name} className="text-[10px] font-semibold text-slate-600">
+                    <li key={check.name} className="text-[10px] font-semibold text-gray-600">
                       {check.detail}
                       {check.remediation_href && (
-                        <a href={check.remediation_href} className="ml-1 text-[#1b59f8] underline">
+                        <a href={check.remediation_href} className="ml-1 text-[#B71920] underline">
                           Open
                         </a>
                       )}
@@ -874,7 +874,7 @@ export function LiveRecorderWorkspace({
       </div>
 
       {/* ── Bottom dock (Section 8) ───────────────────────────────────────── */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2">
         <div className="flex flex-wrap items-center gap-4">
           <DockStat
             label="Recording Status"
@@ -947,16 +947,16 @@ function StepProgress({ steps }: { steps: RecorderStep[] }) {
   const percent = denominator ? Math.round((recorded / denominator) * 100) : 0;
   return (
     <div>
-      <p className="text-[10px] font-bold text-slate-600">
+      <p className="text-[10px] font-bold text-gray-600">
         {recorded} / {denominator} steps recorded
         {steps.length !== denominator && (
-          <span className="ml-1 font-semibold text-slate-400">
+          <span className="ml-1 font-semibold text-gray-400">
             ({steps.length - denominator} skipped)
           </span>
         )}
       </p>
-      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100">
-        <div className="h-full rounded-full bg-[#1b59f8] transition-all" style={{ width: `${percent}%` }} />
+      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-gray-100">
+        <div className="h-full rounded-full bg-[#B71920] transition-all" style={{ width: `${percent}%` }} />
       </div>
     </div>
   );
@@ -984,21 +984,21 @@ function StepRow({
       className={cn(
         "rounded-lg border px-2.5 py-2 transition-colors",
         step.status === "ACTIVE"
-          ? "border-[#1b59f8] bg-blue-50/60"
-          : "border-slate-200 bg-white hover:bg-slate-50",
+          ? "border-[#B71920] bg-app-brand-75/60"
+          : "border-gray-200 bg-white hover:bg-gray-50",
         step.is_discovered_substep && "ml-3 border-dashed",
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-800">
-            <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[9px]">
+          <p className="flex items-center gap-1.5 text-[11px] font-extrabold text-gray-800">
+            <span className="shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-[9px]">
               {step.step_key}
             </span>
             <span className="truncate">{step.action_text ?? "(no step text)"}</span>
           </p>
           {step.expected_result && (
-            <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500" title={step.expected_result}>
+            <p className="mt-0.5 truncate text-[10px] font-semibold text-gray-500" title={step.expected_result}>
               Expects: {step.expected_result}
             </p>
           )}
@@ -1008,7 +1008,7 @@ function StepRow({
         </div>
         <div className="shrink-0 text-right">
           <StepStatusPill status={step.status} reason={step.status_reason} />
-          <p className="mt-0.5 text-[9px] font-bold text-slate-400">
+          <p className="mt-0.5 text-[9px] font-bold text-gray-400">
             {step.recorded_action_count} action(s)
             {step.checkpoint_count > 0 && ` · ${step.accepted_checkpoint_count}/${step.checkpoint_count} ✓`}
           </p>
@@ -1047,7 +1047,7 @@ function StepAction({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+      className="flex items-center gap-1 rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[9px] font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
     >
       <Icon className="h-2.5 w-2.5" />
       {label}
@@ -1058,8 +1058,8 @@ function StepAction({
 function DockStat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="text-[11px] font-extrabold capitalize text-slate-800">{value}</p>
+      <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="text-[11px] font-extrabold capitalize text-gray-800">{value}</p>
     </div>
   );
 }
@@ -1077,7 +1077,7 @@ function CollapsedRail({
     <button
       type="button"
       onClick={onExpand}
-      className="flex w-8 shrink-0 flex-col items-center gap-2 rounded-lg border border-slate-200 bg-white py-3 text-slate-400 hover:text-slate-700"
+      className="flex w-8 shrink-0 flex-col items-center gap-2 rounded-lg border border-gray-200 bg-white py-3 text-gray-400 hover:text-gray-700"
       title={`Expand ${label} panel`}
     >
       {side === "left" ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}

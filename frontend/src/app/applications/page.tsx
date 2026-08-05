@@ -45,23 +45,23 @@ function StatCard({
   title: string; value: string | number; subtitle: string; icon: typeof Boxes; tone: Tone;
 }) {
   const toneMap: Record<Tone, string> = {
-    blue: "bg-blue-50 border-blue-100 text-blue-600",
+    blue: "bg-app-brand-75 border-app-brand-100 text-app-brand-600",
     emerald: "bg-emerald-50 border-emerald-100 text-emerald-600",
     red: "bg-red-50 border-red-100 text-red-600",
     purple: "bg-purple-50 border-purple-100 text-purple-600",
     amber: "bg-amber-50 border-amber-100 text-amber-600",
-    slate: "bg-slate-50 border-slate-100 text-slate-600",
+    slate: "bg-gray-50 border-gray-100 text-gray-600",
   };
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-2.5">
         <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg border", toneMap[tone])}>
           <Icon className="h-4 w-4" />
         </div>
-        <p className="min-w-0 truncate text-xs font-bold text-slate-700">{title}</p>
+        <p className="min-w-0 truncate text-xs font-bold text-gray-700">{title}</p>
       </div>
-      <p className="mt-3 text-2xl font-extrabold leading-none text-slate-950">{value}</p>
-      <p className="mt-1.5 text-[11px] font-semibold text-slate-500">{subtitle}</p>
+      <p className="mt-3 text-2xl font-extrabold leading-none text-gray-950">{value}</p>
+      <p className="mt-1.5 text-[11px] font-semibold text-gray-500">{subtitle}</p>
     </div>
   );
 }
@@ -77,7 +77,7 @@ function ReadinessRing({ percent }: { percent: number }) {
   return (
     <div className="relative flex h-[76px] w-[76px] items-center justify-center">
       <svg height={radius * 2} width={radius * 2} className="-rotate-90">
-        <circle stroke="#f1f5f9" fill="transparent" strokeWidth={stroke} r={r} cx={radius} cy={radius} />
+        <circle stroke="#F4F5F7" fill="transparent" strokeWidth={stroke} r={r} cx={radius} cy={radius} />
         <circle
           stroke={color} fill="transparent" strokeWidth={stroke}
           strokeDasharray={`${circ} ${circ}`} style={{ strokeDashoffset: offset }}
@@ -85,8 +85,8 @@ function ReadinessRing({ percent }: { percent: number }) {
         />
       </svg>
       <div className="absolute flex flex-col items-center">
-        <span className="text-base font-extrabold text-slate-900">{Math.round(percent)}%</span>
-        <span className="text-[9px] font-bold uppercase text-slate-400">{label}</span>
+        <span className="text-base font-extrabold text-gray-900">{Math.round(percent)}%</span>
+        <span className="text-[9px] font-bold uppercase text-gray-400">{label}</span>
       </div>
     </div>
   );
@@ -94,7 +94,7 @@ function ReadinessRing({ percent }: { percent: number }) {
 
 function ReadinessItem({ label, value, tone = "emerald" }: { label: string; value: string; tone?: Tone }) {
   const iconTone = tone === "amber" ? "bg-amber-50 text-amber-600 border-amber-100"
-    : tone === "slate" ? "bg-slate-50 text-slate-400 border-slate-100"
+    : tone === "slate" ? "bg-gray-50 text-gray-400 border-gray-100"
     : "bg-emerald-50 text-emerald-600 border-emerald-100";
   return (
     <div className="flex items-center gap-2.5">
@@ -102,8 +102,8 @@ function ReadinessItem({ label, value, tone = "emerald" }: { label: string; valu
         {tone === "slate" ? <CircleDot className="h-3.5 w-3.5" /> : tone === "amber" ? <AlertTriangle className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
       </span>
       <div className="min-w-0">
-        <p className="truncate text-[10px] font-bold text-slate-500">{label}</p>
-        <p className="text-xs font-extrabold text-slate-900">{value}</p>
+        <p className="truncate text-[10px] font-bold text-gray-500">{label}</p>
+        <p className="text-xs font-extrabold text-gray-900">{value}</p>
       </div>
     </div>
   );
@@ -299,7 +299,7 @@ function ApplicationsContent() {
 
   if (view === "discovery") {
     if (!selectedProject) {
-      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Live Discovery Session.</div>;
+      return <div className="p-8 text-sm font-semibold text-gray-400">Select a project to open Live Discovery Session.</div>;
     }
     return (
       <div className="min-h-full space-y-4 pb-8">
@@ -311,7 +311,7 @@ function ApplicationsContent() {
 
   if (view === "model") {
     if (!selectedProject) {
-      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Application Model.</div>;
+      return <div className="p-8 text-sm font-semibold text-gray-400">Select a project to open Application Model.</div>;
     }
     const modelParam = Number(searchParams.get("model")) || null;
     return (
@@ -324,7 +324,7 @@ function ApplicationsContent() {
 
   if (view === "api-network") {
     if (!selectedProject) {
-      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open API &amp; Network Explorer.</div>;
+      return <div className="p-8 text-sm font-semibold text-gray-400">Select a project to open API &amp; Network Explorer.</div>;
     }
     return (
       <div className="min-h-full space-y-4 pb-8">
@@ -337,12 +337,12 @@ function ApplicationsContent() {
   return (
     <div className="min-h-full">
       <section className="space-y-4 pb-4">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
           <span>QAI Command Center</span>
-          <ChevronRight className="h-3 w-3 text-slate-300" />
+          <ChevronRight className="h-3 w-3 text-gray-300" />
           <span>Applications</span>
-          <ChevronRight className="h-3 w-3 text-slate-300" />
-          <span className="text-[#1b59f8]">Application Registry</span>
+          <ChevronRight className="h-3 w-3 text-gray-300" />
+          <span className="text-[#B71920]">Application Registry</span>
         </div>
 
         <ApplicationsTabs active="registry" projectId={selectedProject} />
@@ -354,25 +354,25 @@ function ApplicationsContent() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-extrabold tracking-tight text-slate-950">Application Registry</h1>
+                <h1 className="text-2xl font-extrabold tracking-tight text-gray-950">Application Registry</h1>
                 <Badge variant="purple">P1-S4 UI-014</Badge>
               </div>
-              <p className="mt-1 text-xs font-semibold text-slate-500">
+              <p className="mt-1 text-xs font-semibold text-gray-500">
                 Govern applications, environments, ownership and discovery readiness across the enterprise.
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {lastRefreshed && (
-              <span className="text-[11px] font-semibold text-slate-500">
+              <span className="text-[11px] font-semibold text-gray-500">
                 Last refreshed: {lastRefreshed.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
-            <Button variant="outline" size="sm" onClick={loadData} disabled={loading} className="h-9 gap-2 border-slate-200 text-xs font-bold">
+            <Button variant="outline" size="sm" onClick={loadData} disabled={loading} className="h-9 gap-2 border-gray-200 text-xs font-bold">
               <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
               Refresh
             </Button>
-            <Button variant="outline" size="sm" onClick={exportRegistry} disabled={!filteredApplications.length} className="h-9 gap-2 border-slate-200 text-xs font-bold">
+            <Button variant="outline" size="sm" onClick={exportRegistry} disabled={!filteredApplications.length} className="h-9 gap-2 border-gray-200 text-xs font-bold">
               <Download className="h-4 w-4" />
               Export Registry
             </Button>
@@ -381,7 +381,7 @@ function ApplicationsContent() {
               disabled={!canManage}
               title={canManage ? undefined : "Requires application-registry management permission."}
               onClick={() => { setSelectedApp(null); setDrawerMode("add"); }}
-              className="h-9 gap-2 bg-[#1b59f8] text-xs font-bold text-white hover:bg-blue-700"
+              className="h-9 gap-2 bg-[#B71920] text-xs font-bold text-white hover:bg-app-brand-700"
             >
               <Plus className="h-4 w-4" />
               Add Application
@@ -392,7 +392,7 @@ function ApplicationsContent() {
         {(error || notice) && (
           <div className={cn(
             "flex items-center gap-2 rounded-lg border px-4 py-3 text-xs font-semibold",
-            error ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-blue-50 text-blue-700",
+            error ? "border-red-200 bg-red-50 text-red-700" : "border-app-brand-200 bg-app-brand-75 text-app-brand-700",
           )}>
             {error ? <AlertTriangle className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
             <span className="flex-1">{error || notice}</span>
@@ -411,9 +411,9 @@ function ApplicationsContent() {
           <StatCard title="Mapping Conflicts" value={summary?.mapping_conflicts.length ?? "—"} subtitle={summary?.mapping_conflicts.length ? "have overlapping mappings" : "No overlaps found"} icon={Plug} tone="red" />
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-4">
-            <p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Registry Readiness Overview</p>
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-gray-800">Registry Readiness Overview</p>
             {!loading && (
               <Button
                 size="sm"
@@ -421,7 +421,7 @@ function ApplicationsContent() {
                 disabled={!canManage || seeding}
                 title={canManage ? "Adds any of the 8 canonical applications not already registered for this project. Never overwrites existing rows." : "Requires application-registry management permission."}
                 onClick={handleSeedCanonical}
-                className="h-8 gap-2 border-slate-200 text-[11px] font-bold"
+                className="h-8 gap-2 border-gray-200 text-[11px] font-bold"
               >
                 {seeding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                 Seed Canonical Applications
@@ -442,25 +442,25 @@ function ApplicationsContent() {
               <ReadinessItem label="Lifecycle Valid" value={`${readiness.lifecycleValidCount} / ${readiness.n}`} />
             </div>
             <div className="flex flex-col items-center gap-1" title="Average of Owner Assigned, Environments Configured and Products/Channels Mapped. Checks with no persisted data (auth profile, discovery, health, dependency review) are excluded, not counted as failures.">
-              <span className="text-[9px] font-bold uppercase text-slate-400">Registry Readiness</span>
+              <span className="text-[9px] font-bold uppercase text-gray-400">Registry Readiness</span>
               <ReadinessRing percent={readiness.overall} />
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-50 p-1">
+          <div className="flex flex-wrap items-center gap-1 rounded-lg bg-gray-50 p-1">
             {QUEUE_TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setQueueTab(tab.key)}
                 className={cn(
                   "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition",
-                  queueTab === tab.key ? "bg-[#07142d] text-white" : "text-slate-600 hover:bg-white",
+                  queueTab === tab.key ? "bg-[#4D0507] text-white" : "text-gray-600 hover:bg-white",
                 )}
               >
                 {tab.label}
-                <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", queueTab === tab.key ? "bg-white/15 text-white" : "bg-slate-200 text-slate-500")}>
+                <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", queueTab === tab.key ? "bg-white/15 text-white" : "bg-gray-200 text-gray-500")}>
                   {tab.key === "health_issues" ? 0 : queueCounts[tab.key]}
                 </span>
               </button>
@@ -470,60 +470,60 @@ function ApplicationsContent() {
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-64 flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by app ID, name, key, owner, domain..."
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
             />
           </div>
-          <select value={lifecycleFilter} onChange={(e) => setLifecycleFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none">
+          <select value={lifecycleFilter} onChange={(e) => setLifecycleFilter(e.target.value)} className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 outline-none">
             <option value="all">Lifecycle: All</option>
             <option value="draft">Draft</option>
             <option value="active">Active</option>
             <option value="deprecated">Deprecated</option>
             <option value="retired">Retired</option>
           </select>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none">
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 outline-none">
             <option value="all">Type: All</option>
             {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none">
+          <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 outline-none">
             <option value="all">Domain: All</option>
             {domainOptions.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
-          <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none">
+          <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 outline-none">
             <option value="all">Owner: All</option>
             {ownerOptions.map((o) => <option key={o.id} value={String(o.id)}>{o.name}</option>)}
           </select>
-          <select value={environmentFilter} onChange={(e) => setEnvironmentFilter(e.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none">
+          <select value={environmentFilter} onChange={(e) => setEnvironmentFilter(e.target.value)} className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 outline-none">
             <option value="all">Environment: All</option>
             {availableEnvironments.map((env) => <option key={env} value={env}>{env}</option>)}
           </select>
           {(lifecycleFilter !== "all" || typeFilter !== "all" || domainFilter !== "all" || ownerFilter !== "all" || environmentFilter !== "all" || query) && (
             <button
               onClick={() => { setLifecycleFilter("all"); setTypeFilter("all"); setDomainFilter("all"); setOwnerFilter("all"); setEnvironmentFilter("all"); setQuery(""); }}
-              className="text-xs font-bold text-[#1b59f8]"
+              className="text-xs font-bold text-[#B71920]"
             >
               Clear Filters
             </button>
           )}
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid min-w-[1400px] border-b border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: TABLE_GRID }}>
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="grid min-w-[1400px] border-b border-gray-200 bg-gray-50/70 px-3 py-2.5 text-[9px] font-extrabold uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: TABLE_GRID }}>
             <span>App ID</span><span>Stable Key</span><span>Name</span><span>Type</span><span>Domain / Product</span>
             <span>Channels</span><span>Owner</span><span>Environments</span><span>Default</span><span>Discovery</span>
             <span>Health</span><span>Mapping Usage</span><span>Lifecycle</span><span>Updated</span>
           </div>
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-xs font-bold text-slate-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+            <div className="flex items-center justify-center py-16 text-xs font-bold text-gray-500">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" />
               Loading application registry...
             </div>
           ) : filteredApplications.length === 0 ? (
-            <div className="py-16 text-center text-xs font-semibold text-slate-400">
+            <div className="py-16 text-center text-xs font-semibold text-gray-400">
               {applications.length === 0
                 ? canManage
                   ? "No applications registered yet. Seed the canonical applications above or use Add Application."
@@ -531,7 +531,7 @@ function ApplicationsContent() {
                 : "No applications match the selected filters."}
             </div>
           ) : (
-            <div className="min-w-[1400px] divide-y divide-slate-100">
+            <div className="min-w-[1400px] divide-y divide-gray-100">
               {filteredApplications.map((app) => {
                 const envCount = Object.keys(app.environment_urls || {}).length;
                 const discoveryReady = app.is_active && envCount > 0;
@@ -541,30 +541,30 @@ function ApplicationsContent() {
                   <button
                     key={app.id}
                     onClick={() => setSelectedApp(app)}
-                    className={cn("grid w-full items-center px-3 py-2.5 text-left text-[10px] transition hover:bg-slate-50", selected && "border-l-2 border-[#1b59f8] bg-blue-50/30")}
+                    className={cn("grid w-full items-center px-3 py-2.5 text-left text-[10px] transition hover:bg-gray-50", selected && "border-l-2 border-[#B71920] bg-app-brand-75/30")}
                     style={{ gridTemplateColumns: TABLE_GRID }}
                   >
-                    <span className="font-mono font-extrabold text-[#1b59f8]">APP-{app.id}</span>
-                    <span className="truncate font-bold text-slate-700">{app.key}</span>
-                    <span className="truncate font-bold text-slate-900">{app.name}</span>
-                    <span className="truncate text-slate-600">{app.application_type || "—"}</span>
-                    <span className="truncate text-slate-600">{[app.domain, app.product].filter(Boolean).join(" / ") || "—"}</span>
-                    <span className="truncate text-slate-600">{app.channel || "—"}</span>
-                    <span className="truncate text-slate-600">{resolveUserName(userNames, app.business_owner_id ?? app.technical_owner_id)}</span>
-                    <span className="text-slate-600">{envCount}</span>
+                    <span className="font-mono font-extrabold text-[#B71920]">APP-{app.id}</span>
+                    <span className="truncate font-bold text-gray-700">{app.key}</span>
+                    <span className="truncate font-bold text-gray-900">{app.name}</span>
+                    <span className="truncate text-gray-600">{app.application_type || "—"}</span>
+                    <span className="truncate text-gray-600">{[app.domain, app.product].filter(Boolean).join(" / ") || "—"}</span>
+                    <span className="truncate text-gray-600">{app.channel || "—"}</span>
+                    <span className="truncate text-gray-600">{resolveUserName(userNames, app.business_owner_id ?? app.technical_owner_id)}</span>
+                    <span className="text-gray-600">{envCount}</span>
                     <span>{app.is_default ? <Badge variant="info">Default</Badge> : "—"}</span>
                     <span><Badge variant={discoveryReady ? "success" : "secondary"}>{discoveryReady ? "Ready" : "Gap"}</Badge></span>
-                    <span className="text-slate-400">Not tracked</span>
-                    <span className="text-slate-600">{usage} TC</span>
+                    <span className="text-gray-400">Not tracked</span>
+                    <span className="text-gray-600">{usage} TC</span>
                     <span><Badge variant={badgeVariant(lifecycleBadgeTone(app.lifecycle_status))}>{app.lifecycle_status}</Badge></span>
-                    <span className="truncate text-slate-500">{app.updated_at ? new Date(app.updated_at).toLocaleDateString() : "—"}</span>
+                    <span className="truncate text-gray-500">{app.updated_at ? new Date(app.updated_at).toLocaleDateString() : "—"}</span>
                   </button>
                 );
               })}
             </div>
           )}
-          <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2.5">
-            <span className="text-xs font-semibold text-slate-500">Showing {filteredApplications.length} of {applications.length} applications</span>
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2.5">
+            <span className="text-xs font-semibold text-gray-500">Showing {filteredApplications.length} of {applications.length} applications</span>
           </div>
         </div>
       </section>
@@ -606,7 +606,7 @@ function ApplicationsContent() {
 
 export default function ApplicationsPage() {
   return (
-    <Suspense fallback={<div className="flex h-full items-center justify-center text-xs font-semibold text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading Application Registry...</div>}>
+    <Suspense fallback={<div className="flex h-full items-center justify-center text-xs font-semibold text-gray-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading Application Registry...</div>}>
       <ApplicationsContent />
     </Suspense>
   );

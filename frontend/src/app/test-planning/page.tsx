@@ -66,11 +66,11 @@ function PlanSection({ title, items }: { title: string; items?: string[] }) {
   if (!items || items.length === 0) return null;
   return (
     <div className="space-y-1.5">
-      <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{title}</h4>
-      <ul className="text-xs space-y-1.5 font-semibold text-slate-700 bg-white border rounded-lg p-3">
+      <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{title}</h4>
+      <ul className="text-xs space-y-1.5 font-semibold text-gray-700 bg-white border rounded-lg p-3">
         {items.map((item, i) => (
           <li key={i} className="flex items-start gap-2">
-            <span className="text-[#1b59f8] font-bold select-none mt-0.5">•</span>
+            <span className="text-[#B71920] font-bold select-none mt-0.5">•</span>
             <span className="leading-relaxed">{item}</span>
           </li>
         ))}
@@ -204,10 +204,10 @@ function ConfirmDeleteModal({
             <AlertTriangle className="h-5 w-5 text-red-500" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-sm text-slate-800">{title}</h2>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed font-semibold">{description}</p>
+            <h2 className="font-bold text-sm text-gray-800">{title}</h2>
+            <p className="text-xs text-gray-500 mt-1.5 leading-relaxed font-semibold">{description}</p>
           </div>
-          <button onClick={onCancel} className="rounded-md p-1 hover:bg-slate-50 text-slate-400 shrink-0" title="Close">
+          <button onClick={onCancel} className="rounded-md p-1 hover:bg-gray-50 text-gray-400 shrink-0" title="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -217,7 +217,7 @@ function ConfirmDeleteModal({
           </div>
         )}
         <div className="flex gap-2 pt-1">
-          <Button onClick={onCancel} disabled={deleting} variant="outline" size="sm" className="flex-1 h-9 border-slate-200 text-slate-650 bg-white">
+          <Button onClick={onCancel} disabled={deleting} variant="outline" size="sm" className="flex-1 h-9 border-gray-200 text-gray-650 bg-white">
             Cancel
           </Button>
           <Button onClick={handleConfirm} disabled={deleting} variant="default" size="sm" className="flex-1 h-9 bg-rose-600 hover:bg-rose-700 font-semibold text-white">
@@ -304,18 +304,18 @@ function PlanEnrollmentPanel({ plan }: { plan: TestPlan }) {
 
   return (
     <div className="space-y-2.5">
-      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-        <ClipboardList className="h-4 w-4 text-[#1b59f8]" />
+      <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+        <ClipboardList className="h-4 w-4 text-[#B71920]" />
         Enrolled Test Cases ({enrollments.length})
       </h4>
       {error && <p className="text-[11px] font-semibold text-rose-600">{error}</p>}
       {loading ? (
-        <p className="text-xs font-medium text-slate-400">Loading enrollments…</p>
+        <p className="text-xs font-medium text-gray-400">Loading enrollments…</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="w-full min-w-[640px] text-[11px]">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-gray-100 bg-gray-50/70 text-left text-[9px] font-extrabold uppercase tracking-wide text-gray-500">
                 <th className="px-3 py-2">Test Case</th>
                 <th className="px-3 py-2">Environment</th>
                 <th className="px-3 py-2">Tester</th>
@@ -325,18 +325,18 @@ function PlanEnrollmentPanel({ plan }: { plan: TestPlan }) {
             </thead>
             <tbody>
               {enrollments.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-4 text-center text-slate-400">No test cases enrolled in this plan yet.</td></tr>
+                <tr><td colSpan={5} className="px-3 py-4 text-center text-gray-400">No test cases enrolled in this plan yet.</td></tr>
               ) : enrollments.map((e) => (
-                <tr key={e.id} className="border-b border-slate-50 last:border-0">
-                  <td className="px-3 py-2 font-mono font-bold text-[#1b59f8]">
+                <tr key={e.id} className="border-b border-gray-50 last:border-0">
+                  <td className="px-3 py-2 font-mono font-bold text-[#B71920]">
                     {e.test_case_display_id || e.test_case_id}
-                    <span className="ml-1 font-sans font-medium text-slate-500">{e.test_case_title}</span>
+                    <span className="ml-1 font-sans font-medium text-gray-500">{e.test_case_title}</span>
                   </td>
                   <td className="px-3 py-2">
                     <select
                       value={e.environment_id ?? ""}
                       onChange={(ev) => updateEnrollment(e.id, { environment_id: ev.target.value ? Number(ev.target.value) : null })}
-                      className="h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700"
+                      className="h-8 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-700"
                     >
                       <option value="">—</option>
                       {environments.map((env) => <option key={env.id} value={env.id}>{env.name}</option>)}
@@ -346,7 +346,7 @@ function PlanEnrollmentPanel({ plan }: { plan: TestPlan }) {
                     <select
                       value={e.tester_user_id ?? ""}
                       onChange={(ev) => updateEnrollment(e.id, { tester_user_id: ev.target.value ? Number(ev.target.value) : null })}
-                      className="h-8 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700"
+                      className="h-8 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-700"
                     >
                       <option value="">—</option>
                       {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -361,11 +361,11 @@ function PlanEnrollmentPanel({ plan }: { plan: TestPlan }) {
                           updateEnrollment(e.id, { planned_execution_sequence: ev.target.value || null });
                         }
                       }}
-                      className="h-8 w-32 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700"
+                      className="h-8 w-32 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-700"
                     />
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <button onClick={() => removeEnrollment(e.id)} className="rounded-md p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600">
+                    <button onClick={() => removeEnrollment(e.id)} className="rounded-md p-1 text-gray-400 hover:bg-rose-50 hover:text-rose-600">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </td>
@@ -373,11 +373,11 @@ function PlanEnrollmentPanel({ plan }: { plan: TestPlan }) {
               ))}
             </tbody>
           </table>
-          <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2">
+          <div className="flex items-center gap-2 border-t border-gray-100 px-3 py-2">
             <select
               value={addTestCaseId}
               onChange={(ev) => setAddTestCaseId(ev.target.value)}
-              className="h-8 flex-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-700"
+              className="h-8 flex-1 rounded-md border border-gray-200 bg-white px-2 text-[11px] font-semibold text-gray-700"
             >
               <option value="">Select a test case to enroll…</option>
               {availableTestCases.map((tc) => <option key={tc.id} value={tc.id}>{tc.test_case_id} — {tc.title}</option>)}
@@ -386,7 +386,7 @@ function PlanEnrollmentPanel({ plan }: { plan: TestPlan }) {
               onClick={addEnrollment}
               disabled={!addTestCaseId || adding}
               size="sm"
-              className="h-8 bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1447c9]"
+              className="h-8 bg-[#B71920] text-xs font-bold text-white hover:bg-[#941216]"
             >
               {adding ? "Adding…" : "Add"}
             </Button>
@@ -515,31 +515,31 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
 
   return (
     <Card className={cn(
-      "border-slate-200 overflow-hidden hover:shadow-sm transition-all",
-      expanded && "border-slate-350 shadow-sm"
+      "border-gray-200 overflow-hidden hover:shadow-sm transition-all",
+      expanded && "border-gray-350 shadow-sm"
     )}>
       {/* Header row */}
       <div
-        className="flex items-center justify-between gap-4 px-4 py-3.5 cursor-pointer hover:bg-slate-50/50 transition-colors"
+        className="flex items-center justify-between gap-4 px-4 py-3.5 cursor-pointer hover:bg-gray-50/50 transition-colors"
         onClick={() => setExpanded((e) => !e)}
       >
         <div className="flex items-center gap-3 min-w-0">
-          <div className="rounded-lg bg-blue-50 border border-blue-100 p-2 shrink-0">
-            <ClipboardList className="h-4 w-4 text-[#1b59f8]" />
+          <div className="rounded-lg bg-app-brand-75 border border-app-brand-100 p-2 shrink-0">
+            <ClipboardList className="h-4 w-4 text-[#B71920]" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-mono font-bold text-[#1b59f8] bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] font-mono font-bold text-[#B71920] bg-app-brand-75 border border-app-brand-100 px-1.5 py-0.5 rounded">
                 {plan.test_plan_id}
               </span>
-              <span className="font-bold text-slate-800 text-sm truncate">{plan.title}</span>
+              <span className="font-bold text-gray-800 text-sm truncate">{plan.title}</span>
             </div>
             <div className="flex items-center gap-2.5 mt-1 flex-wrap">
               <Badge variant={getStatusVariant(plan.status)} className="capitalize">
                 {plan.status.replace(/_/g, " ")}
               </Badge>
               {plan.estimated_effort && (
-                <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1">
+                <span className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
                   <Clock className="h-3.5 w-3.5" />
                   {plan.estimated_effort}
                 </span>
@@ -609,7 +609,7 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
               variant="outline"
               size="sm"
               onClick={() => setShowExportMenu((v) => !v)}
-              className="h-8 border-slate-200 text-slate-700 hover:bg-slate-50 bg-white text-xs font-semibold"
+              className="h-8 border-gray-200 text-gray-700 hover:bg-gray-50 bg-white text-xs font-semibold"
             >
               <Download className="h-3.5 w-3.5 mr-1" />
               Export
@@ -617,15 +617,15 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
             {showExportMenu && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setShowExportMenu(false)} />
-                <div className="absolute right-0 mt-1.5 w-40 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-40 animate-in fade-in slide-in-from-top-2 duration-100">
+                <div className="absolute right-0 mt-1.5 w-40 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 z-40 animate-in fade-in slide-in-from-top-2 duration-100">
                   <button
                     onClick={() => {
                       exportPlanAsMarkdown(plan);
                       setShowExportMenu(false);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-1.5"
                   >
-                    <FileText className="h-3.5 w-3.5 text-blue-500" />
+                    <FileText className="h-3.5 w-3.5 text-app-brand-500" />
                     As Markdown
                   </button>
                   <button
@@ -633,7 +633,7 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
                       exportPlanAsJson(plan);
                       setShowExportMenu(false);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-1.5"
                   >
                     <FileText className="h-3.5 w-3.5 text-amber-500" />
                     As JSON
@@ -643,7 +643,7 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
                       exportPlanAsDocx(plan.id, plan.test_plan_id);
                       setShowExportMenu(false);
                     }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                    className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-1.5"
                   >
                     <FileText className="h-3.5 w-3.5 text-emerald-500" />
                     As Word (.docx)
@@ -655,12 +655,12 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
           
           <button 
             onClick={() => setExpanded((e) => !e)}
-            className="rounded-md p-1.5 hover:bg-slate-100 text-slate-400 shrink-0"
+            className="rounded-md p-1.5 hover:bg-gray-100 text-gray-400 shrink-0"
           >
             {expanded ? (
-              <ChevronUp className="h-4.5 w-4.5 text-slate-500" />
+              <ChevronUp className="h-4.5 w-4.5 text-gray-500" />
             ) : (
-              <ChevronDown className="h-4.5 w-4.5 text-slate-500" />
+              <ChevronDown className="h-4.5 w-4.5 text-gray-500" />
             )}
           </button>
         </div>
@@ -668,12 +668,12 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
 
       {/* Approve/Reject panel */}
       {(approving || rejecting) && (
-        <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 space-y-2.5 animate-in fade-in duration-100">
+        <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/50 space-y-2.5 animate-in fade-in duration-100">
           <textarea
             placeholder={approving ? "Add optional review comments/notes..." : "Explain the reason for rejecting this test plan (required)..."}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full text-xs border border-slate-200 rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-[#1b59f8] bg-white font-semibold text-slate-700"
+            className="w-full text-xs border border-gray-200 rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-[#B71920] bg-white font-semibold text-gray-700"
             rows={2}
           />
           <div className="flex gap-2">
@@ -700,7 +700,7 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
                 setNotes("");
               }}
               variant="outline"
-              className="h-8 text-xs font-semibold bg-white border-slate-200 text-slate-505"
+              className="h-8 text-xs font-semibold bg-white border-gray-200 text-gray-505"
             >
               Cancel
             </Button>
@@ -710,29 +710,29 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="border-t border-slate-100 px-5 py-4 bg-slate-50/10 space-y-4 animate-in fade-in duration-150">
+        <div className="border-t border-gray-100 px-5 py-4 bg-gray-50/10 space-y-4 animate-in fade-in duration-150">
           {/* Covered Requirements and High Level Metadata */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
             <div className="space-y-2.5">
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <ClipboardList className="h-4 w-4 text-[#1b59f8]" />
+              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                <ClipboardList className="h-4 w-4 text-[#B71920]" />
                 High-Level Details
               </h4>
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                 <div>
-                  <span className="text-slate-400 font-bold block">Estimated Effort</span>
-                  <span className="font-semibold text-slate-700">{plan.estimated_effort || "Not Specified"}</span>
+                  <span className="text-gray-400 font-bold block">Estimated Effort</span>
+                  <span className="font-semibold text-gray-700">{plan.estimated_effort || "Not Specified"}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-bold block">Resource Recommendation</span>
-                  <span className="font-semibold text-slate-700">{plan.resource_recommendation || "Not Specified"}</span>
+                  <span className="text-gray-400 font-bold block">Resource Recommendation</span>
+                  <span className="font-semibold text-gray-700">{plan.resource_recommendation || "Not Specified"}</span>
                 </div>
               </div>
             </div>
 
             <div className="space-y-2">
-              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Layers className="h-4 w-4 text-[#1b59f8]" />
+              <h4 className="text-xs font-bold text-gray-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Layers className="h-4 w-4 text-[#B71920]" />
                 Covered Requirements
               </h4>
               {plan.metadata_?.source_requirement_ids && plan.metadata_.source_requirement_ids.length > 0 ? (
@@ -740,14 +740,14 @@ ${markdownList(planItems(p, "automation_candidates", linked))}
                   {plan.metadata_.source_requirement_ids.map((reqId: number) => {
                     const label = requirementLabelById?.get(reqId);
                     return (
-                      <span key={reqId} className="text-[10px] font-mono font-bold text-[#1b59f8] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md">
+                      <span key={reqId} className="text-[10px] font-mono font-bold text-[#B71920] bg-app-brand-75 border border-app-brand-100 px-2 py-0.5 rounded-md">
                         {label || `REQ-${reqId}`}
                       </span>
                     );
                   })}
                 </div>
               ) : (
-                <span className="text-xs text-slate-400 font-medium">No linked requirements</span>
+                <span className="text-xs text-gray-400 font-medium">No linked requirements</span>
               )}
             </div>
           </div>
@@ -800,7 +800,7 @@ function ScenarioCard({
   const [notes, setNotes] = useState("");
 
   return (
-    <div className="px-4 py-3.5 hover:bg-slate-50/30 transition-colors font-medium">
+    <div className="px-4 py-3.5 hover:bg-gray-50/30 transition-colors font-medium">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <div className="rounded-lg bg-purple-50 border border-purple-100 p-2 shrink-0">
@@ -808,9 +808,9 @@ function ScenarioCard({
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="font-mono text-[10px] font-bold text-slate-450">{scenario.scenario_id}</span>
+              <span className="font-mono text-[10px] font-bold text-gray-450">{scenario.scenario_id}</span>
               {scenario.requirement_id && (
-                <span className="text-[10px] font-mono font-bold text-[#1b59f8] bg-[#1b59f8]/5 border border-[#1b59f8]/10 px-1.5 py-0.5 rounded shrink-0">
+                <span className="text-[10px] font-mono font-bold text-[#B71920] bg-[#B71920]/5 border border-[#B71920]/10 px-1.5 py-0.5 rounded shrink-0">
                   {requirementLabelById.get(scenario.requirement_id) ?? `REQ-${scenario.requirement_id}`}
                 </span>
               )}
@@ -826,7 +826,7 @@ function ScenarioCard({
                 />
               )}
               {scenario.scenario_type && (
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 border px-1.5 py-0.5 rounded shrink-0">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50 border px-1.5 py-0.5 rounded shrink-0">
                   {scenario.scenario_type}
                 </span>
               )}
@@ -835,7 +835,7 @@ function ScenarioCard({
                   "text-[10px] font-bold uppercase tracking-wider border px-1.5 py-0.5 rounded shrink-0",
                   scenario.priority.toLowerCase() === "high" ? "border-rose-100 bg-rose-50 text-rose-600" :
                   scenario.priority.toLowerCase() === "medium" ? "border-amber-100 bg-amber-50 text-amber-600" :
-                  "border-slate-100 bg-slate-50 text-slate-600"
+                  "border-gray-100 bg-gray-50 text-gray-600"
                 )}>
                   {scenario.priority}
                 </span>
@@ -847,15 +847,15 @@ function ScenarioCard({
                 compact
               />
             </div>
-            <h3 className="font-bold text-slate-800 text-sm mt-1.5">{scenario.title}</h3>
+            <h3 className="font-bold text-gray-800 text-sm mt-1.5">{scenario.title}</h3>
             {scenario.description && (
-              <p className="text-xs text-slate-500 mt-1 leading-relaxed font-semibold">{scenario.description}</p>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed font-semibold">{scenario.description}</p>
             )}
             
             {/* Show review notes if present in metadata */}
             {scenario.metadata_?.review_notes && (
-              <div className="mt-2 text-[10px] font-semibold bg-slate-50 border rounded p-2 text-slate-550 leading-normal">
-                <span className="font-bold text-slate-700 block mb-0.5">Review Notes:</span>
+              <div className="mt-2 text-[10px] font-semibold bg-gray-50 border rounded p-2 text-gray-550 leading-normal">
+                <span className="font-bold text-gray-700 block mb-0.5">Review Notes:</span>
                 {scenario.metadata_.review_notes}
               </div>
             )}
@@ -903,12 +903,12 @@ function ScenarioCard({
 
       {/* Approve/Reject notes panel */}
       {(approving || rejecting) && (
-        <div className="mt-3 py-3 border-t border-slate-100 bg-slate-50/50 space-y-2.5 animate-in fade-in duration-100 rounded-lg px-3">
+        <div className="mt-3 py-3 border-t border-gray-100 bg-gray-50/50 space-y-2.5 animate-in fade-in duration-100 rounded-lg px-3">
           <textarea
             placeholder={approving ? "Add optional review comments/notes..." : "Explain the reason for rejecting this test scenario (required)..."}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full text-xs border border-slate-200 rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-[#1b59f8] bg-white font-semibold text-slate-700"
+            className="w-full text-xs border border-gray-200 rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-[#B71920] bg-white font-semibold text-gray-700"
             rows={2}
           />
           <div className="flex gap-2">
@@ -941,7 +941,7 @@ function ScenarioCard({
                 setNotes("");
               }}
               variant="outline"
-              className="h-8 text-xs font-semibold bg-white border-slate-200 text-slate-505"
+              className="h-8 text-xs font-semibold bg-white border-gray-200 text-gray-505"
             >
               Cancel
             </Button>
@@ -1375,8 +1375,8 @@ function TestPlanningContent() {
       {
         title: "Total Test Plans",
         icon: ClipboardList,
-        iconBg: "bg-blue-50 border-blue-100",
-        iconColor: "text-blue-500",
+        iconBg: "bg-app-brand-75 border-app-brand-100",
+        iconColor: "text-app-brand-500",
         value: totalPlans.toLocaleString(),
         sublabel: "Plans",
         footer: "Total generated test plans spec",
@@ -1445,17 +1445,17 @@ function TestPlanningContent() {
       {/* ── Title & Global Controls ────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            <ClipboardList className="h-6 w-6 text-[#1b59f8]" />
+          <div className="rounded-xl bg-app-brand-75 border border-app-brand-100 p-2.5">
+            <ClipboardList className="h-6 w-6 text-[#B71920]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Test Planning</h1>
-            <p className="text-xs text-slate-500 mt-1">Generate and manage comprehensive test plans and scenarios from approved requirements</p>
+            <h1 className="text-xl font-bold text-gray-900">Test Planning</h1>
+            <p className="text-xs text-gray-500 mt-1">Generate and manage comprehensive test plans and scenarios from approved requirements</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
-            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-gray-200">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-gray-500", loading && "animate-spin")} />
           </Button>
         </div>
       </div>
@@ -1467,21 +1467,21 @@ function TestPlanningContent() {
             {stats.map((card) => {
               const Icon = card.icon;
               return (
-                <Card key={card.title} className="border-slate-200 hover:-translate-y-0.5 transition-all">
+                <Card key={card.title} className="border-gray-200 hover:-translate-y-0.5 transition-all">
                   <CardContent className="p-4 flex flex-col justify-between h-full space-y-3">
                     <div className="flex items-center gap-2">
                       <div className={cn("rounded-lg p-1.5 flex items-center justify-center shrink-0 border", card.iconBg)}>
                         <Icon className={cn("h-4 w-4", card.iconColor)} />
                       </div>
-                      <span className="text-xs font-bold text-slate-700 truncate">{card.title}</span>
+                      <span className="text-xs font-bold text-gray-700 truncate">{card.title}</span>
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                      <span className="text-xl font-bold text-slate-900">{card.value}</span>
+                      <span className="text-xl font-bold text-gray-900">{card.value}</span>
                       {card.sublabel && (
-                        <span className="text-[10px] font-bold text-slate-400">{card.sublabel}</span>
+                        <span className="text-[10px] font-bold text-gray-400">{card.sublabel}</span>
                       )}
                     </div>
-                    <div className="text-[10px] text-slate-400 font-semibold border-t border-slate-50 pt-2">
+                    <div className="text-[10px] text-gray-400 font-semibold border-t border-gray-50 pt-2">
                       {card.footer}
                     </div>
                   </CardContent>
@@ -1496,12 +1496,12 @@ function TestPlanningContent() {
               "flex items-center gap-3 rounded-xl border px-4 py-3 text-xs font-semibold animate-pulse",
               agentError
                 ? "border-red-200 bg-red-50 text-red-700"
-                : "border-blue-200 bg-blue-50 text-blue-700"
+                : "border-app-brand-200 bg-app-brand-75 text-app-brand-700"
             )}>
               {agentError ? (
                 <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
               ) : (
-                <Bot className="h-4 w-4 text-[#1b59f8] shrink-0" />
+                <Bot className="h-4 w-4 text-[#B71920] shrink-0" />
               )}
               <span className="flex-1">{agentError ?? agentStatus}</span>
               <button 
@@ -1509,7 +1509,7 @@ function TestPlanningContent() {
                   setAgentStatus(null);
                   setAgentError(null);
                 }} 
-                className="text-slate-400 hover:text-slate-700 font-bold"
+                className="text-gray-400 hover:text-gray-700 font-bold"
               >
                 Dismiss
               </button>
@@ -1517,43 +1517,43 @@ function TestPlanningContent() {
           )}
 
           {/* ── Agent Panel Card ─────────────────────────────────────────────────── */}
-          <Card className="border-slate-200 overflow-hidden shadow-sm">
+          <Card className="border-gray-200 overflow-hidden shadow-sm">
             <button
               onClick={() => setShowAgentPanel((v) => !v)}
-              className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors text-left border-b border-slate-100"
+              className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 transition-colors text-left border-b border-gray-100"
             >
-              <div className="rounded-lg bg-blue-50 border border-blue-100 p-1.5 shrink-0">
-                <Bot className="h-4 w-4 text-[#1b59f8]" />
+              <div className="rounded-lg bg-app-brand-75 border border-app-brand-100 p-1.5 shrink-0">
+                <Bot className="h-4 w-4 text-[#B71920]" />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="font-bold text-sm text-slate-800">AI Agent Test Planning Copilot</span>
-                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">
+                <span className="font-bold text-sm text-gray-800">AI Agent Test Planning Copilot</span>
+                <p className="text-[11px] text-gray-400 font-semibold mt-0.5">
                   {requirements.length} approved requirements available for plan generation
                 </p>
               </div>
               <div className="ml-auto flex items-center gap-2">
                 {showAgentPanel ? (
-                  <ChevronUp className="h-4.5 w-4.5 text-slate-500" />
+                  <ChevronUp className="h-4.5 w-4.5 text-gray-500" />
                 ) : (
-                  <ChevronDown className="h-4.5 w-4.5 text-slate-500" />
+                  <ChevronDown className="h-4.5 w-4.5 text-gray-500" />
                 )}
               </div>
             </button>
 
             {showAgentPanel && (
-              <div className="p-4 bg-slate-50/20 space-y-4">
+              <div className="p-4 bg-gray-50/20 space-y-4">
                 {requirements.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center p-6 text-center rounded-xl border border-dashed bg-white border-slate-200">
+                  <div className="flex flex-col items-center justify-center p-6 text-center rounded-xl border border-dashed bg-white border-gray-200">
                     <AlertTriangle className="h-8 w-8 text-amber-500 mb-2" />
-                    <p className="text-xs font-bold text-slate-700">No Approved Requirements Found</p>
-                    <p className="text-[10px] text-slate-400 font-semibold max-w-xs mt-1">
+                    <p className="text-xs font-bold text-gray-700">No Approved Requirements Found</p>
+                    <p className="text-[10px] text-gray-400 font-semibold max-w-xs mt-1">
                       Please approve requirements in the Requirements Library first before generating test plans.
                     </p>
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between border-b pb-2 border-slate-100">
-                      <span className="text-xs font-bold text-slate-700">Select requirements to cover:</span>
+                    <div className="flex items-center justify-between border-b pb-2 border-gray-100">
+                      <span className="text-xs font-bold text-gray-700">Select requirements to cover:</span>
                       <button
                         onClick={() => {
                           if (selectedReqIds.length === requirements.length) {
@@ -1562,13 +1562,13 @@ function TestPlanningContent() {
                             setSelectedReqIds(requirements.map((r) => r.id));
                           }
                         }}
-                        className="text-[11px] font-bold text-[#1b59f8] hover:underline"
+                        className="text-[11px] font-bold text-[#B71920] hover:underline"
                       >
                         {selectedReqIds.length === requirements.length ? "Deselect All" : "Select All"}
                       </button>
                     </div>
                     
-                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 font-semibold text-xs text-slate-655">
+                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 font-semibold text-xs text-gray-655">
                       {requirements.map((req) => {
                         const isSelected = selectedReqIds.includes(req.id);
                         const hasPlan = planCoveredReqIds.has(req.id);
@@ -1578,8 +1578,8 @@ function TestPlanningContent() {
                             key={req.id}
                             onClick={() => toggleReq(req.id)}
                             className={cn(
-                              "flex flex-col gap-1.5 px-3 py-2 rounded-xl border bg-white cursor-pointer transition-all hover:bg-slate-50",
-                              isSelected ? "border-[#1b59f8] bg-[#1b59f8]/5 shadow-sm" : "border-slate-200"
+                              "flex flex-col gap-1.5 px-3 py-2 rounded-xl border bg-white cursor-pointer transition-all hover:bg-gray-50",
+                              isSelected ? "border-[#B71920] bg-[#B71920]/5 shadow-sm" : "border-gray-200"
                             )}
                           >
                             <div className="flex items-center gap-3">
@@ -1587,12 +1587,12 @@ function TestPlanningContent() {
                                 type="checkbox"
                                 checked={isSelected}
                                 onChange={() => {}} // handled by parent onClick
-                                className="rounded border-slate-350 text-[#1b59f8] focus:ring-[#1b59f8]"
+                                className="rounded border-gray-350 text-[#B71920] focus:ring-[#B71920]"
                               />
-                              <span className="font-mono text-[10px] font-bold text-[#1b59f8] bg-[#1b59f8]/10 px-1.5 py-0.5 rounded shrink-0">
+                              <span className="font-mono text-[10px] font-bold text-[#B71920] bg-[#B71920]/10 px-1.5 py-0.5 rounded shrink-0">
                                 {req.requirement_id || `REQ-${req.id}`}
                               </span>
-                              <span className="truncate flex-1 text-slate-800">{req.title}</span>
+                              <span className="truncate flex-1 text-gray-800">{req.title}</span>
                             </div>
                             <div className="flex items-center flex-wrap gap-2 pl-7">
                               <AuditStamp
@@ -1600,13 +1600,13 @@ function TestPlanningContent() {
                                 createdByName={resolveUser(req.created_by ?? undefined)}
                                 compact
                               />
-                              <span className="text-slate-300">·</span>
+                              <span className="text-gray-300">·</span>
                               <span
                                 className={cn(
                                   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold",
                                   hasPlan
                                     ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                                    : "bg-slate-50 border-slate-200 text-slate-500"
+                                    : "bg-gray-50 border-gray-200 text-gray-500"
                                 )}
                                 title={hasPlan ? "Test plan has been generated for this requirement" : "No test plan generated yet"}
                               >
@@ -1622,7 +1622,7 @@ function TestPlanningContent() {
                                   "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold",
                                   hasScenarios
                                     ? "bg-violet-50 border-violet-200 text-violet-700"
-                                    : "bg-slate-50 border-slate-200 text-slate-500"
+                                    : "bg-gray-50 border-gray-200 text-gray-500"
                                 )}
                                 title={hasScenarios ? "Test scenarios have been generated for this requirement" : "No test scenarios generated yet"}
                               >
@@ -1644,7 +1644,7 @@ function TestPlanningContent() {
                         onClick={handleGeneratePlan}
                         disabled={selectedReqIds.length === 0 || agentStatus !== null}
                         variant="default"
-                        className="flex-1 text-xs font-semibold bg-[#1b59f8] hover:bg-[#1546c7] text-white h-9"
+                        className="flex-1 text-xs font-semibold bg-[#B71920] hover:bg-[#941216] text-white h-9"
                       >
                         <ClipboardList className="h-4 w-4 mr-1.5" />
                         Generate Test Plan
@@ -1666,17 +1666,17 @@ function TestPlanningContent() {
 
           {/* ── Test Plans Accordions List ─────────────────────────────────────────── */}
           <div className="space-y-3.5">
-            <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-              <ClipboardList className="h-4.5 w-4.5 text-slate-400" />
+            <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <ClipboardList className="h-4.5 w-4.5 text-gray-400" />
               Test Plans
-              {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+              {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-gray-400" />}
             </h2>
 
             {!loading && plans.length === 0 ? (
-              <div className="bg-white border border-dashed border-slate-200 rounded-xl p-8 text-center shadow-sm">
-                <ClipboardList className="h-8 w-8 text-slate-350 mx-auto mb-2" />
-                <p className="text-xs font-bold text-slate-500">No test plans created yet.</p>
-                <p className="text-[10px] text-slate-400 font-semibold mt-1">
+              <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center shadow-sm">
+                <ClipboardList className="h-8 w-8 text-gray-350 mx-auto mb-2" />
+                <p className="text-xs font-bold text-gray-500">No test plans created yet.</p>
+                <p className="text-[10px] text-gray-400 font-semibold mt-1">
                   Select approved requirements above and click &quot;Generate Test Plan&quot; to begin.
                 </p>
               </div>
@@ -1701,10 +1701,10 @@ function TestPlanningContent() {
           {/* ── Test Scenarios Catalog ─────────────────────────────────────────────── */}
           <div className="space-y-3.5">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                <Layers className="h-4.5 w-4.5 text-slate-400" />
+              <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <Layers className="h-4.5 w-4.5 text-gray-400" />
                 Test Scenarios Catalog
-                {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+                {loading && <RefreshCw className="h-3.5 w-3.5 animate-spin text-gray-400" />}
               </h2>
 
               {scenarios.length > 0 && (
@@ -1713,7 +1713,7 @@ function TestPlanningContent() {
                     variant="outline"
                     size="sm"
                     onClick={() => setShowScenariosExportMenu((v) => !v)}
-                    className="h-8 border-slate-200 text-slate-700 hover:bg-slate-50 bg-white text-xs font-semibold"
+                    className="h-8 border-gray-200 text-gray-700 hover:bg-gray-50 bg-white text-xs font-semibold"
                   >
                     <Download className="h-3.5 w-3.5 mr-1" />
                     Export All
@@ -1721,15 +1721,15 @@ function TestPlanningContent() {
                   {showScenariosExportMenu && (
                     <>
                       <div className="fixed inset-0 z-30" onClick={() => setShowScenariosExportMenu(false)} />
-                      <div className="absolute right-0 mt-1.5 w-44 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-40 animate-in fade-in slide-in-from-top-2 duration-100">
+                      <div className="absolute right-0 mt-1.5 w-44 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 z-40 animate-in fade-in slide-in-from-top-2 duration-100">
                         <button
                           onClick={() => {
                             exportScenariosAsMarkdown();
                             setShowScenariosExportMenu(false);
                           }}
-                          className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-1.5"
                         >
-                          <FileText className="h-3.5 w-3.5 text-blue-500" />
+                          <FileText className="h-3.5 w-3.5 text-app-brand-500" />
                           As Markdown
                         </button>
                         <button
@@ -1737,7 +1737,7 @@ function TestPlanningContent() {
                             exportScenariosAsJson();
                             setShowScenariosExportMenu(false);
                           }}
-                          className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-1.5"
                         >
                           <FileText className="h-3.5 w-3.5 text-amber-500" />
                           As JSON
@@ -1747,9 +1747,9 @@ function TestPlanningContent() {
                             exportScenariosAsCsv();
                             setShowScenariosExportMenu(false);
                           }}
-                          className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-1.5"
                         >
-                          <FileText className="h-3.5 w-3.5 text-slate-500" />
+                          <FileText className="h-3.5 w-3.5 text-gray-500" />
                           As CSV
                         </button>
                         <button
@@ -1757,7 +1757,7 @@ function TestPlanningContent() {
                             exportScenariosAsXlsx();
                             setShowScenariosExportMenu(false);
                           }}
-                          className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50 font-semibold flex items-center gap-1.5"
+                          className="w-full text-left px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 font-semibold flex items-center gap-1.5"
                         >
                           <FileText className="h-3.5 w-3.5 text-emerald-500" />
                           As Excel (.xlsx)
@@ -1770,15 +1770,15 @@ function TestPlanningContent() {
             </div>
 
             {!loading && scenarios.length === 0 ? (
-              <div className="bg-white border border-dashed border-slate-200 rounded-xl p-8 text-center shadow-sm">
-                <Layers className="h-8 w-8 text-slate-350 mx-auto mb-2" />
-                <p className="text-xs font-bold text-slate-500">No scenarios generated yet.</p>
-                <p className="text-[10px] text-slate-400 font-semibold mt-1">
+              <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center shadow-sm">
+                <Layers className="h-8 w-8 text-gray-350 mx-auto mb-2" />
+                <p className="text-xs font-bold text-gray-500">No scenarios generated yet.</p>
+                <p className="text-[10px] text-gray-400 font-semibold mt-1">
                   Select approved requirements above and click &quot;Generate Scenarios&quot; to begin.
                 </p>
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden shadow-sm">
                 {scenarios.map((scenario) => (
                   <ScenarioCard
                     key={scenario.id}
@@ -1812,8 +1812,8 @@ function TestPlanningContent() {
 export default function TestPlanningPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
-        <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
+      <div className="flex h-64 items-center justify-center text-gray-400 text-xs font-semibold">
+        <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mr-2" />
         Loading Test Planning...
       </div>
     }>

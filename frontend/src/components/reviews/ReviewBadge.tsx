@@ -83,12 +83,12 @@ export function ReviewBadge({
           </DrawerHeader>
           <DrawerBody>
             {loading && (
-              <div className="flex items-center gap-2 text-xs text-slate-500">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading history…
               </div>
             )}
             {(history ?? [review]).map((r) => (
-              <div key={r.id} className="rounded-lg border border-slate-200 p-4 space-y-3">
+              <div key={r.id} className="rounded-lg border border-gray-200 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <VerdictIcon verdict={r.verdict} className="h-3.5 w-3.5" />
@@ -96,10 +96,10 @@ export function ReviewBadge({
                       {r.verdict.replace(/_/g, " ")}
                     </Badge>
                     {r.overall_score !== undefined && r.overall_score !== null && (
-                      <span className="text-xs font-bold text-slate-600">{Number(r.overall_score).toFixed(1)}/5</span>
+                      <span className="text-xs font-bold text-gray-600">{Number(r.overall_score).toFixed(1)}/5</span>
                     )}
                   </div>
-                  <span className="text-[10px] font-semibold text-slate-400">
+                  <span className="text-[10px] font-semibold text-gray-400">
                     {new Date(r.created_at).toLocaleString()}
                   </span>
                 </div>
@@ -107,9 +107,9 @@ export function ReviewBadge({
                 {r.scores && Object.keys(r.scores).length > 0 && (
                   <div className="grid grid-cols-2 gap-2">
                     {Object.entries(r.scores).map(([dim, score]) => (
-                      <div key={dim} className="flex items-center justify-between text-[11px] bg-slate-50 rounded px-2 py-1">
-                        <span className="text-slate-500 capitalize">{dim.replace(/_/g, " ")}</span>
-                        <span className="font-bold text-slate-700">{Number(score).toFixed(1)}</span>
+                      <div key={dim} className="flex items-center justify-between text-[11px] bg-gray-50 rounded px-2 py-1">
+                        <span className="text-gray-500 capitalize">{dim.replace(/_/g, " ")}</span>
+                        <span className="font-bold text-gray-700">{Number(score).toFixed(1)}</span>
                       </div>
                     ))}
                   </div>
@@ -123,7 +123,7 @@ export function ReviewBadge({
                         <li key={i} className={cn(
                           "text-[11px] leading-relaxed rounded px-2 py-1 border",
                           gap.severity === "high" ? "bg-rose-50 border-rose-100 text-rose-700" :
-                          gap.severity === "low" ? "bg-slate-50 border-slate-100 text-slate-600" :
+                          gap.severity === "low" ? "bg-gray-50 border-gray-100 text-gray-600" :
                           "bg-amber-50 border-amber-100 text-amber-700"
                         )}>
                           {gap.description}
@@ -135,10 +135,10 @@ export function ReviewBadge({
 
                 {r.findings && r.findings.length > 0 && (
                   <div>
-                    <div className="text-[11px] font-bold text-slate-600 mb-1">Findings</div>
+                    <div className="text-[11px] font-bold text-gray-600 mb-1">Findings</div>
                     <ul className="space-y-1">
                       {r.findings.map((f, i) => (
-                        <li key={i} className="text-[11px] leading-relaxed text-slate-600">
+                        <li key={i} className="text-[11px] leading-relaxed text-gray-600">
                           <span className="font-bold capitalize">{f.dimension}:</span> {f.issue}
                         </li>
                       ))}

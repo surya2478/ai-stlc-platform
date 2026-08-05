@@ -40,11 +40,11 @@ const STEP_STATUS_TONE: Record<
   RecorderStepStatus,
   { label: string; dot: string; text: string }
 > = {
-  PENDING: { label: "Pending", dot: "bg-slate-300", text: "text-slate-400" },
-  ACTIVE: { label: "Recording…", dot: "bg-[#1b59f8] animate-pulse", text: "text-[#1b59f8]" },
+  PENDING: { label: "Pending", dot: "bg-gray-300", text: "text-gray-400" },
+  ACTIVE: { label: "Recording…", dot: "bg-[#B71920] animate-pulse", text: "text-[#B71920]" },
   RECORDED: { label: "Recorded", dot: "bg-emerald-500", text: "text-emerald-600" },
   PARTIALLY_RECORDED: { label: "Partial", dot: "bg-amber-500", text: "text-amber-600" },
-  SKIPPED: { label: "Skipped", dot: "bg-slate-400", text: "text-slate-500" },
+  SKIPPED: { label: "Skipped", dot: "bg-gray-400", text: "text-gray-500" },
   MISMATCH: { label: "Mismatch", dot: "bg-red-500", text: "text-red-600" },
   NEEDS_REVIEW: { label: "Needs Review", dot: "bg-amber-500", text: "text-amber-600" },
   COMPLETED: { label: "Completed", dot: "bg-emerald-600", text: "text-emerald-700" },
@@ -85,18 +85,18 @@ export function MeasureValue({
   if (!measure || measure.value === null) {
     return (
       <span
-        className={cn("font-extrabold text-slate-300", className)}
+        className={cn("font-extrabold text-gray-300", className)}
         title={measure?.reason ?? "Not available."}
       >
         —
       </span>
     );
   }
-  return <span className={cn("font-extrabold text-slate-950", className)}>{measure.value}</span>;
+  return <span className={cn("font-extrabold text-gray-950", className)}>{measure.value}</span>;
 }
 
 const CONFIDENCE_TONE = (confidence: number | null) => {
-  if (confidence === null) return "bg-slate-100 text-slate-500 border-slate-200";
+  if (confidence === null) return "bg-gray-100 text-gray-500 border-gray-200";
   if (confidence >= 80) return "bg-emerald-50 text-emerald-700 border-emerald-100";
   if (confidence >= 60) return "bg-amber-50 text-amber-700 border-amber-100";
   return "bg-red-50 text-red-700 border-red-100";
@@ -162,19 +162,19 @@ export function InheritedField({
   return (
     <div className="min-w-0">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+        <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
         {href && (
           <a
             href={href}
-            className="text-[9px] font-bold text-[#1b59f8] hover:underline"
+            className="text-[9px] font-bold text-[#B71920] hover:underline"
             title="Corrections are made in the authoritative source, not in the recorder."
           >
             Change
           </a>
         )}
       </div>
-      <div className="mt-0.5 truncate text-xs font-bold text-slate-800" title={hint}>
-        {value ?? <span className="text-slate-300">—</span>}
+      <div className="mt-0.5 truncate text-xs font-bold text-gray-800" title={hint}>
+        {value ?? <span className="text-gray-300">—</span>}
       </div>
     </div>
   );

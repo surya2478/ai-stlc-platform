@@ -636,8 +636,8 @@ function TestDataContent() {
     {
       title: "Total Datasets",
       icon: Database,
-      iconBg: "bg-blue-50 border-blue-100",
-      iconColor: "text-blue-500",
+      iconBg: "bg-app-brand-75 border-app-brand-100",
+      iconColor: "text-app-brand-500",
       value: total.toLocaleString(),
       sublabel: "Total",
       footer: "100% of all datasets",
@@ -699,8 +699,8 @@ function TestDataContent() {
     {
       title: "Linked Test Cases",
       icon: CheckCircle,
-      iconBg: "bg-slate-50 border-slate-100",
-      iconColor: "text-slate-500",
+      iconBg: "bg-gray-50 border-gray-100",
+      iconColor: "text-gray-500",
       value: linked.toLocaleString(),
       sublabel: "Linked",
       footer: "Direct bindings to test cases",
@@ -721,17 +721,17 @@ function TestDataContent() {
       {/* ── Title & Global Controls ────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            <Database className="h-6 w-6 text-[#1b59f8]" />
+          <div className="rounded-xl bg-app-brand-75 border border-app-brand-100 p-2.5">
+            <Database className="h-6 w-6 text-[#B71920]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Test Data Set governs</h1>
-            <p className="text-xs text-slate-500 mt-1">Manage synthetic profiles, PII masking rules, synthetic generations, validation runs, and test case bindings</p>
+            <h1 className="text-xl font-bold text-gray-900">Test Data Set governs</h1>
+            <p className="text-xs text-gray-500 mt-1">Manage synthetic profiles, PII masking rules, synthetic generations, validation runs, and test case bindings</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
-            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-gray-200">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-gray-500", loading && "animate-spin")} />
           </Button>
         </div>
       </div>
@@ -741,21 +741,21 @@ function TestDataContent() {
         {cards.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.title} className="border-slate-200 hover:-translate-y-0.5 transition-all">
+            <Card key={card.title} className="border-gray-200 hover:-translate-y-0.5 transition-all">
               <CardContent className="p-4 flex flex-col justify-between h-full space-y-3">
                 <div className="flex items-center gap-2">
                   <div className={cn("rounded-lg p-1.5 flex items-center justify-center shrink-0 border", card.iconBg)}>
                     <Icon className={cn("h-4 w-4", card.iconColor)} />
                   </div>
-                  <span className="text-xs font-bold text-slate-700 truncate">{card.title}</span>
+                  <span className="text-xs font-bold text-gray-700 truncate">{card.title}</span>
                 </div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-bold text-slate-900">{card.value}</span>
+                  <span className="text-xl font-bold text-gray-900">{card.value}</span>
                   {card.sublabel && (
-                    <span className="text-[10px] font-bold text-slate-400">{card.sublabel}</span>
+                    <span className="text-[10px] font-bold text-gray-400">{card.sublabel}</span>
                   )}
                 </div>
-                <div className="text-[10px] text-slate-400 font-semibold border-t border-slate-50 pt-2">
+                <div className="text-[10px] text-gray-400 font-semibold border-t border-gray-50 pt-2">
                   {card.footer}
                 </div>
               </CardContent>
@@ -780,15 +780,15 @@ function TestDataContent() {
       )}
 
       {/* ── Actions Card ───────────────────────────────────────────────────────── */}
-      <Card className="border-slate-200 bg-white">
+      <Card className="border-gray-200 bg-white">
         <CardContent className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <div className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg bg-blue-50 border border-blue-100">
-              <Wand2 className="h-5 w-5 text-blue-500" />
+            <div className="h-9 w-9 shrink-0 flex items-center justify-center rounded-lg bg-app-brand-75 border border-app-brand-100">
+              <Wand2 className="h-5 w-5 text-app-brand-500" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-slate-800">Datasets Actions Hub</h3>
-              <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">Synthesise bulk rows, allocate manual mock values, or import external files to the active project</p>
+              <h3 className="text-xs font-bold text-gray-800">Datasets Actions Hub</h3>
+              <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">Synthesise bulk rows, allocate manual mock values, or import external files to the active project</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
@@ -817,7 +817,7 @@ function TestDataContent() {
               size="sm"
               onClick={() => { setImportOpen(true); setError(""); }}
               disabled={!canImport}
-              className="h-8 text-xs border-slate-200 font-semibold text-slate-600"
+              className="h-8 text-xs border-gray-200 font-semibold text-gray-600"
             >
               <Upload className="h-3.5 w-3.5" />
               Import CSV/Excel
@@ -827,7 +827,7 @@ function TestDataContent() {
       </Card>
 
       {/* ── Filter Buttons ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-200 bg-white p-1 self-start w-fit">
+      <div className="flex flex-wrap gap-1.5 rounded-lg border border-gray-200 bg-white p-1 self-start w-fit">
         {FILTERS.map((value) => (
           <button
             key={value}
@@ -835,8 +835,8 @@ function TestDataContent() {
             className={cn(
               "rounded-md px-3 py-1 text-xs font-semibold capitalize transition-all",
               filter === value
-                ? "bg-[#1b59f8] text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-900"
+                ? "bg-[#B71920] text-white shadow-sm"
+                : "text-gray-500 hover:text-gray-900"
             )}
           >
             {value.replace(/_/g, " ")}
@@ -845,9 +845,9 @@ function TestDataContent() {
       </div>
 
       {/* ── Datasets Table ────────────────────────────────────────────────────── */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full text-left border-collapse text-xs select-none">
-          <thead className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          <thead className="bg-gray-50/70 border-b border-gray-200 text-[10px] font-bold uppercase tracking-wider text-gray-400">
             <tr>
               <th className="px-4 py-2.5">Data ID</th>
               <th className="px-4 py-2.5">Name</th>
@@ -861,17 +861,17 @@ function TestDataContent() {
               <th className="px-4 py-2.5 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
+          <tbody className="divide-y divide-gray-100 text-gray-600 font-medium">
             {loading ? (
               <tr>
-                <td colSpan={10} className="px-4 py-16 text-center text-slate-400 font-semibold">
-                  <Loader2 className="inline mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+                <td colSpan={10} className="px-4 py-16 text-center text-gray-400 font-semibold">
+                  <Loader2 className="inline mr-2 h-4 w-4 animate-spin text-[#B71920]" />
                   Loading governed test data catalog...
                 </td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-16 text-center text-slate-400 font-semibold">
+                <td colSpan={10} className="px-4 py-16 text-center text-gray-400 font-semibold">
                   No datasets found matching selection filter.
                 </td>
               </tr>
@@ -883,22 +883,22 @@ function TestDataContent() {
                     key={item.id} 
                     onClick={() => setSelectedItem(item)}
                     className={cn(
-                      "hover:bg-slate-50/50 cursor-pointer transition-colors",
-                      selectedItem?.id === item.id && "bg-[#1b59f8]/5"
+                      "hover:bg-gray-50/50 cursor-pointer transition-colors",
+                      selectedItem?.id === item.id && "bg-[#B71920]/5"
                     )}
                   >
-                    <td className="px-4 py-2.5 font-mono text-[11px] font-bold text-[#1b59f8]">{item.data_id}</td>
+                    <td className="px-4 py-2.5 font-mono text-[11px] font-bold text-[#B71920]">{item.data_id}</td>
                     <td className="px-4 py-2.5 max-w-[200px] truncate">
-                      <p className="font-bold text-slate-800 text-xs">{item.name}</p>
-                      <p className="text-[10px] text-slate-400 truncate mt-0.5">{item.linked_requirement_key || "No spec link"}</p>
+                      <p className="font-bold text-gray-800 text-xs">{item.name}</p>
+                      <p className="text-[10px] text-gray-400 truncate mt-0.5">{item.linked_requirement_key || "No spec link"}</p>
                     </td>
-                    <td className="px-4 py-2.5 font-semibold text-slate-700">{item.data_type}</td>
+                    <td className="px-4 py-2.5 font-semibold text-gray-700">{item.data_type}</td>
                     <td className="px-4 py-2.5">
                       <Badge variant={item.source_type === "manual" ? "secondary" : "purple"} className="capitalize">
                         {item.source_type}
                       </Badge>
                     </td>
-                    <td className="px-4 py-2.5 font-semibold text-slate-700">{item.environment}</td>
+                    <td className="px-4 py-2.5 font-semibold text-gray-700">{item.environment}</td>
                     <td className="px-4 py-2.5">
                       <Badge variant={
                         item.approval_status === "approved" ? "success" :
@@ -917,7 +917,7 @@ function TestDataContent() {
                         {item.generation_status}
                       </Badge>
                     </td>
-                    <td className="px-4 py-2.5 font-bold text-slate-800">{item.actual_record_count}</td>
+                    <td className="px-4 py-2.5 font-bold text-gray-800">{item.actual_record_count}</td>
                     <td className="px-4 py-2.5">
                       {item.quality_score != null ? (
                         <span className={cn(
@@ -926,17 +926,17 @@ function TestDataContent() {
                         )}>
                           {Math.round(item.quality_score)}/100
                         </span>
-                      ) : <span className="text-slate-400 font-medium">-</span>}
+                      ) : <span className="text-gray-400 font-medium">-</span>}
                     </td>
                     <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setSelectedItem(item)}
-                        className="h-7 px-3 text-xs border-slate-200"
+                        className="h-7 px-3 text-xs border-gray-200"
                       >
                         Details
-                        <ChevronRight className="h-3 w-3 text-slate-400" />
+                        <ChevronRight className="h-3 w-3 text-gray-400" />
                       </Button>
                     </td>
                   </tr>
@@ -952,90 +952,90 @@ function TestDataContent() {
         <DrawerContent size="xl">
           <DrawerHeader>
             <div className="flex items-center gap-2">
-              <Database className="h-5 w-5 text-[#1b59f8]" />
+              <Database className="h-5 w-5 text-[#B71920]" />
               <div>
                 <DrawerTitle>Add Manual Test Data Set</DrawerTitle>
                 <DrawerDescription>Create a governed test data record with custom attributes and payload JSON</DrawerDescription>
               </div>
             </div>
-            <button onClick={() => setCreateOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+            <button onClick={() => setCreateOpen(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-50"><X className="h-4 w-4" /></button>
           </DrawerHeader>
           <DrawerBody className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dataset Name</label>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="e.g. eSIM Activation Profiles" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Dataset Name</label>
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="e.g. eSIM Activation Profiles" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Data Type</label>
-              <select value={form.data_type} onChange={e => setForm(f => ({ ...f, data_type: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Data Type</label>
+              <select value={form.data_type} onChange={e => setForm(f => ({ ...f, data_type: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {DATA_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Environment</label>
-              <select value={form.environment} onChange={e => setForm(f => ({ ...f, environment: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Environment</label>
+              <select value={form.environment} onChange={e => setForm(f => ({ ...f, environment: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {ENVIRONMENT_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Telecom Domain</label>
-              <select value={form.telecom_domain} onChange={e => setForm(f => ({ ...f, telecom_domain: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Telecom Domain</label>
+              <select value={form.telecom_domain} onChange={e => setForm(f => ({ ...f, telecom_domain: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {DOMAIN_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Test Phase</label>
-              <select value={form.test_phase} onChange={e => setForm(f => ({ ...f, test_phase: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Test Phase</label>
+              <select value={form.test_phase} onChange={e => setForm(f => ({ ...f, test_phase: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {PHASE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Product Group</label>
-              <select value={form.product_group} onChange={e => setForm(f => ({ ...f, product_group: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Product Group</label>
+              <select value={form.product_group} onChange={e => setForm(f => ({ ...f, product_group: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {PRODUCT_GROUP_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Product</label>
-              <select value={form.product} onChange={e => setForm(f => ({ ...f, product: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Product</label>
+              <select value={form.product} onChange={e => setForm(f => ({ ...f, product: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {PRODUCT_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sub Request Type</label>
-              <select value={form.sub_request_type} onChange={e => setForm(f => ({ ...f, sub_request_type: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sub Request Type</label>
+              <select value={form.sub_request_type} onChange={e => setForm(f => ({ ...f, sub_request_type: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {SUB_REQUEST_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Privacy Level</label>
-              <select value={form.privacy_level} onChange={e => setForm(f => ({ ...f, privacy_level: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Privacy Level</label>
+              <select value={form.privacy_level} onChange={e => setForm(f => ({ ...f, privacy_level: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {PRIVACY_LEVELS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tags</label>
-              <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="smoke, eSIM, activations" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Tags</label>
+              <input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="smoke, eSIM, activations" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sensitive PII Fields</label>
-              <input value={form.sensitive_fields} onChange={e => setForm(f => ({ ...f, sensitive_fields: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="msisdn, email, imsi" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sensitive PII Fields</label>
+              <input value={form.sensitive_fields} onChange={e => setForm(f => ({ ...f, sensitive_fields: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="msisdn, email, imsi" />
             </div>
-            <div className="flex items-center justify-between border rounded-lg p-2.5 bg-slate-50">
-              <label className="text-xs font-bold text-slate-700">Contains PII</label>
-              <input type="checkbox" checked={form.contains_pii} onChange={e => setForm(f => ({ ...f, contains_pii: e.target.checked }))} className="rounded border-slate-300 text-[#1b59f8] focus:ring-[#1b59f8] h-4.5 w-4.5" />
+            <div className="flex items-center justify-between border rounded-lg p-2.5 bg-gray-50">
+              <label className="text-xs font-bold text-gray-700">Contains PII</label>
+              <input type="checkbox" checked={form.contains_pii} onChange={e => setForm(f => ({ ...f, contains_pii: e.target.checked }))} className="rounded border-gray-300 text-[#B71920] focus:ring-[#B71920] h-4.5 w-4.5" />
             </div>
-            <div className="flex items-center justify-between border rounded-lg p-2.5 bg-slate-50">
-              <label className="text-xs font-bold text-slate-700">Submit for Approval</label>
-              <input type="checkbox" checked={form.submit_for_approval} onChange={e => setForm(f => ({ ...f, submit_for_approval: e.target.checked }))} className="rounded border-slate-300 text-[#1b59f8] focus:ring-[#1b59f8] h-4.5 w-4.5" />
+            <div className="flex items-center justify-between border rounded-lg p-2.5 bg-gray-50">
+              <label className="text-xs font-bold text-gray-700">Submit for Approval</label>
+              <input type="checkbox" checked={form.submit_for_approval} onChange={e => setForm(f => ({ ...f, submit_for_approval: e.target.checked }))} className="rounded border-gray-300 text-[#B71920] focus:ring-[#B71920] h-4.5 w-4.5" />
             </div>
             <div className="flex flex-col gap-1 col-span-2">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Payload JSON</label>
-              <textarea value={form.payload} onChange={e => setForm(f => ({ ...f, payload: e.target.value }))} rows={7} className="rounded-lg border border-slate-200 p-2 text-xs font-mono bg-slate-50" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Payload JSON</label>
+              <textarea value={form.payload} onChange={e => setForm(f => ({ ...f, payload: e.target.value }))} rows={7} className="rounded-lg border border-gray-200 p-2 text-xs font-mono bg-gray-50" />
             </div>
           </DrawerBody>
           <DrawerFooter>
-            <Button variant="outline" size="sm" onClick={() => setCreateOpen(false)} className="h-9 border-slate-200">Cancel</Button>
+            <Button variant="outline" size="sm" onClick={() => setCreateOpen(false)} className="h-9 border-gray-200">Cancel</Button>
             <Button variant="default" size="sm" disabled={saving || !form.name.trim()} onClick={handleCreate} className="h-9 font-semibold">
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               Save Test Data
@@ -1049,108 +1049,108 @@ function TestDataContent() {
         <DrawerContent size="xl">
           <DrawerHeader>
             <div className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5 text-indigo-500" />
+              <Wand2 className="h-5 w-5 text-app-brand-500" />
               <div>
                 <DrawerTitle>Generate Synthetic Test Data</DrawerTitle>
                 <DrawerDescription>Configure AI or external tools to generate synthetic datasets</DrawerDescription>
               </div>
             </div>
-            <button onClick={() => setGenerateOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+            <button onClick={() => setGenerateOpen(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-50"><X className="h-4 w-4" /></button>
           </DrawerHeader>
           <DrawerBody className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Data Set Name</label>
-              <input value={generateForm.name} onChange={e => setGenerateForm(f => ({ ...f, name: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Data Set Name</label>
+              <input value={generateForm.name} onChange={e => setGenerateForm(f => ({ ...f, name: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Data Type</label>
-              <select value={generateForm.data_type} onChange={e => setGenerateForm(f => ({ ...f, data_type: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Data Type</label>
+              <select value={generateForm.data_type} onChange={e => setGenerateForm(f => ({ ...f, data_type: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {DATA_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Environment</label>
-              <select value={generateForm.environment} onChange={e => setGenerateForm(f => ({ ...f, environment: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Environment</label>
+              <select value={generateForm.environment} onChange={e => setGenerateForm(f => ({ ...f, environment: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {ENVIRONMENT_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Telecom Domain</label>
-              <select value={generateForm.telecom_domain} onChange={e => setGenerateForm(f => ({ ...f, telecom_domain: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Telecom Domain</label>
+              <select value={generateForm.telecom_domain} onChange={e => setGenerateForm(f => ({ ...f, telecom_domain: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {DOMAIN_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Test Phase</label>
-              <select value={generateForm.test_phase} onChange={e => setGenerateForm(f => ({ ...f, test_phase: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Test Phase</label>
+              <select value={generateForm.test_phase} onChange={e => setGenerateForm(f => ({ ...f, test_phase: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {PHASE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Product Group</label>
-              <select value={generateForm.product_group} onChange={e => setGenerateForm(f => ({ ...f, product_group: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Product Group</label>
+              <select value={generateForm.product_group} onChange={e => setGenerateForm(f => ({ ...f, product_group: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {PRODUCT_GROUP_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Product</label>
-              <select value={generateForm.product} onChange={e => setGenerateForm(f => ({ ...f, product: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Product</label>
+              <select value={generateForm.product} onChange={e => setGenerateForm(f => ({ ...f, product: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {PRODUCT_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sub Request Type</label>
-              <select value={generateForm.sub_request_type} onChange={e => setGenerateForm(f => ({ ...f, sub_request_type: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sub Request Type</label>
+              <select value={generateForm.sub_request_type} onChange={e => setGenerateForm(f => ({ ...f, sub_request_type: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {SUB_REQUEST_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External Generation Tool</label>
-              <select value={generateForm.external_tool} onChange={e => setGenerateForm(f => ({ ...f, external_tool: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External Generation Tool</label>
+              <select value={generateForm.external_tool} onChange={e => setGenerateForm(f => ({ ...f, external_tool: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {EXTERNAL_TOOLS.map(v => <option key={v} value={v}>{v}{v === "Faker" ? " (local — synthetic)" : ""}</option>)}
               </select>
               {generateForm.external_tool === "Faker" && (
-                <p className="text-[10px] font-medium text-slate-500 mt-1">
+                <p className="text-[10px] font-medium text-gray-500 mt-1">
                   Real synthetic records via Faker + telco providers (msisdn, imsi, imei, iccid).
                 </p>
               )}
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Number of Records</label>
-              <input type="number" min={1} max={10000} value={generateForm.number_of_records} onChange={e => setGenerateForm(f => ({ ...f, number_of_records: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Number of Records</label>
+              <input type="number" min={1} max={10000} value={generateForm.number_of_records} onChange={e => setGenerateForm(f => ({ ...f, number_of_records: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Generation Mode</label>
-              <select value={generateForm.generation_mode} onChange={e => setGenerateForm(f => ({ ...f, generation_mode: e.target.value as GenerateForm["generation_mode"] }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Generation Mode</label>
+              <select value={generateForm.generation_mode} onChange={e => setGenerateForm(f => ({ ...f, generation_mode: e.target.value as GenerateForm["generation_mode"] }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {GENERATION_MODES.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External Suite ID</label>
-              <input value={generateForm.external_suite_id} onChange={e => setGenerateForm(f => ({ ...f, external_suite_id: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External Suite ID</label>
+              <input value={generateForm.external_suite_id} onChange={e => setGenerateForm(f => ({ ...f, external_suite_id: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External Dataset ID</label>
-              <input value={generateForm.external_dataset_id} onChange={e => setGenerateForm(f => ({ ...f, external_dataset_id: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External Dataset ID</label>
+              <input value={generateForm.external_dataset_id} onChange={e => setGenerateForm(f => ({ ...f, external_dataset_id: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External URL</label>
-              <input value={generateForm.external_url} onChange={e => setGenerateForm(f => ({ ...f, external_url: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="https://..." />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External URL</label>
+              <input value={generateForm.external_url} onChange={e => setGenerateForm(f => ({ ...f, external_url: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="https://..." />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Priority</label>
-              <select value={generateForm.priority} onChange={e => setGenerateForm(f => ({ ...f, priority: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Priority</label>
+              <select value={generateForm.priority} onChange={e => setGenerateForm(f => ({ ...f, priority: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                 {PRIORITIES.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div className="flex flex-col gap-1 col-span-2">
-              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Generation Notes</label>
-              <textarea value={generateForm.request_notes} onChange={e => setGenerateForm(f => ({ ...f, request_notes: e.target.value }))} rows={3} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" />
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Generation Notes</label>
+              <textarea value={generateForm.request_notes} onChange={e => setGenerateForm(f => ({ ...f, request_notes: e.target.value }))} rows={3} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" />
             </div>
 
             {generateForm.external_tool === "Faker" && (
               <div className="flex flex-col gap-1 col-span-2">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                   Faker Schema (JSON)
                 </label>
                 <textarea
@@ -1158,19 +1158,19 @@ function TestDataContent() {
                   onChange={e => setGenerateForm(f => ({ ...f, schema_text: e.target.value }))}
                   rows={12}
                   spellCheck={false}
-                  className="rounded-lg border border-slate-200 p-2 text-[11px] font-mono bg-slate-50 leading-relaxed"
+                  className="rounded-lg border border-gray-200 p-2 text-[11px] font-mono bg-gray-50 leading-relaxed"
                   placeholder='{"locale":"en_US","fields":[{"name":"...","provider":"..."}]}'
                 />
-                <p className="text-[10px] font-medium text-slate-500 mt-1 leading-relaxed">
+                <p className="text-[10px] font-medium text-gray-500 mt-1 leading-relaxed">
                   Built-in providers: <span className="font-mono">first_name, last_name, email, address, uuid4, pydecimal, date_of_birth</span>.<br />
                   Telco providers: <span className="font-mono">msisdn, imsi, imei, iccid, lac, cell_id, tac</span> (msisdn / imsi accept <span className="font-mono">params: {`{country: "IN"}`}</span>).<br />
-                  <a className="text-blue-600 hover:underline" target="_blank" rel="noopener noreferrer" href="https://faker.readthedocs.io/en/master/providers.html">Full Faker provider list →</a>
+                  <a className="text-app-brand-600 hover:underline" target="_blank" rel="noopener noreferrer" href="https://faker.readthedocs.io/en/master/providers.html">Full Faker provider list →</a>
                 </p>
               </div>
             )}
           </DrawerBody>
           <DrawerFooter>
-            <Button variant="outline" size="sm" onClick={() => setGenerateOpen(false)} className="h-9 border-slate-200">Cancel</Button>
+            <Button variant="outline" size="sm" onClick={() => setGenerateOpen(false)} className="h-9 border-gray-200">Cancel</Button>
             <Button variant="default" size="sm" disabled={generating || !generateForm.name.trim()} onClick={handleGenerate} className="h-9 font-semibold">
               {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
               Submit Generation Request
@@ -1184,75 +1184,75 @@ function TestDataContent() {
         <DrawerContent size="xl">
           <DrawerHeader>
             <div className="flex items-center gap-2">
-              <Upload className="h-5 w-5 text-indigo-500" />
+              <Upload className="h-5 w-5 text-app-brand-500" />
               <div>
                 <DrawerTitle>Import Test Data Set</DrawerTitle>
                 <DrawerDescription>Upload a local CSV or Excel sheet to register rows in the project</DrawerDescription>
               </div>
             </div>
-            <button onClick={() => setImportOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+            <button onClick={() => setImportOpen(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-50"><X className="h-4 w-4" /></button>
           </DrawerHeader>
           <DrawerBody className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">File</label>
-                <input type="file" accept=".csv,.xlsx,.xls" onChange={e => setImportForm(f => ({ ...f, file: e.target.files?.[0] ?? null }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-white" />
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">File</label>
+                <input type="file" accept=".csv,.xlsx,.xls" onChange={e => setImportForm(f => ({ ...f, file: e.target.files?.[0] ?? null }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-white" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dataset Name Override</label>
-                <input value={importForm.name} onChange={e => setImportForm(f => ({ ...f, name: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" />
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Dataset Name Override</label>
+                <input value={importForm.name} onChange={e => setImportForm(f => ({ ...f, name: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Data Type</label>
-                <select value={importForm.data_type} onChange={e => setImportForm(f => ({ ...f, data_type: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Data Type</label>
+                <select value={importForm.data_type} onChange={e => setImportForm(f => ({ ...f, data_type: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {DATA_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Telecom Domain</label>
-                <select value={importForm.telecom_domain} onChange={e => setImportForm(f => ({ ...f, telecom_domain: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Telecom Domain</label>
+                <select value={importForm.telecom_domain} onChange={e => setImportForm(f => ({ ...f, telecom_domain: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {DOMAIN_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Test Phase</label>
-                <select value={importForm.test_phase} onChange={e => setImportForm(f => ({ ...f, test_phase: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Test Phase</label>
+                <select value={importForm.test_phase} onChange={e => setImportForm(f => ({ ...f, test_phase: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {PHASE_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Product Group</label>
-                <select value={importForm.product_group} onChange={e => setImportForm(f => ({ ...f, product_group: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Product Group</label>
+                <select value={importForm.product_group} onChange={e => setImportForm(f => ({ ...f, product_group: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {PRODUCT_GROUP_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Product</label>
-                <select value={importForm.product} onChange={e => setImportForm(f => ({ ...f, product: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Product</label>
+                <select value={importForm.product} onChange={e => setImportForm(f => ({ ...f, product: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {PRODUCT_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sub Request Type</label>
-                <select value={importForm.sub_request_type} onChange={e => setImportForm(f => ({ ...f, sub_request_type: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sub Request Type</label>
+                <select value={importForm.sub_request_type} onChange={e => setImportForm(f => ({ ...f, sub_request_type: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {SUB_REQUEST_TYPE_OPTIONS.map(v => <option key={v} value={v}>{v || "None"}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Environment</label>
-                <select value={importForm.environment} onChange={e => setImportForm(f => ({ ...f, environment: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Environment</label>
+                <select value={importForm.environment} onChange={e => setImportForm(f => ({ ...f, environment: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {ENVIRONMENT_OPTIONS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Privacy Level</label>
-                <select value={importForm.privacy_level} onChange={e => setImportForm(f => ({ ...f, privacy_level: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Privacy Level</label>
+                <select value={importForm.privacy_level} onChange={e => setImportForm(f => ({ ...f, privacy_level: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {PRIVACY_LEVELS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Import Mode</label>
-                <select value={importForm.import_mode} onChange={e => setImportForm(f => ({ ...f, import_mode: e.target.value as ImportForm["import_mode"] }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Import Mode</label>
+                <select value={importForm.import_mode} onChange={e => setImportForm(f => ({ ...f, import_mode: e.target.value as ImportForm["import_mode"] }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50">
                   {IMPORT_MODES.map(v => <option key={v} value={v}>{v.replace(/_/g, " ")}</option>)}
                 </select>
               </div>
@@ -1267,11 +1267,11 @@ function TestDataContent() {
 
             {/* Preview Section */}
             {importPreview && (
-              <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
                   <div>
-                    <h4 className="font-bold text-slate-800 text-xs">Previewing Import Data</h4>
-                    <p className="text-[10px] text-slate-400 mt-0.5">{importPreview.filename} • {importPreview.row_count} rows</p>
+                    <h4 className="font-bold text-gray-800 text-xs">Previewing Import Data</h4>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{importPreview.filename} • {importPreview.row_count} rows</p>
                   </div>
                   <Badge variant={importPreview.can_import ? "success" : "destructive"}>
                     {importPreview.can_import ? "Valid File" : "Invalid Layout"}
@@ -1284,10 +1284,10 @@ function TestDataContent() {
                 )}
                 <div className="overflow-x-auto rounded-lg border max-h-40">
                   <table className="min-w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 border-b">
+                    <thead className="bg-gray-50 text-[10px] font-bold text-gray-500 border-b">
                       <tr>{importPreview.detected_columns.map(col => <th key={col} className="px-2.5 py-1.5">{col}</th>)}</tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-gray-100">
                       {importPreview.preview_rows.slice(0, 5).map((row, rIdx) => (
                         <tr key={rIdx}>
                           {importPreview.detected_columns.map(col => <td key={col} className="px-2.5 py-1.5 truncate max-w-[120px]">{String(row[col] ?? "")}</td>)}
@@ -1307,7 +1307,7 @@ function TestDataContent() {
                     {confirmingImport ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
                     Confirm Import
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setImportPreview(null)} className="h-8 border-slate-200 text-xs">
+                  <Button variant="outline" size="sm" onClick={() => setImportPreview(null)} className="h-8 border-gray-200 text-xs">
                     Reset Preview
                   </Button>
                 </div>
@@ -1315,7 +1315,7 @@ function TestDataContent() {
             )}
           </DrawerBody>
           <DrawerFooter>
-            <Button variant="outline" size="sm" onClick={() => setImportOpen(false)} className="h-9 border-slate-200">Cancel</Button>
+            <Button variant="outline" size="sm" onClick={() => setImportOpen(false)} className="h-9 border-gray-200">Cancel</Button>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
@@ -1327,10 +1327,10 @@ function TestDataContent() {
             <>
               <DrawerHeader>
                 <div className="min-w-0">
-                  <span className="font-mono text-xs font-bold text-[#1b59f8]">
+                  <span className="font-mono text-xs font-bold text-[#B71920]">
                     {selectedItem.data_id}
                   </span>
-                  <DrawerTitle className="mt-1.5 truncate text-slate-800" title={selectedItem.name}>
+                  <DrawerTitle className="mt-1.5 truncate text-gray-800" title={selectedItem.name}>
                     {selectedItem.name}
                   </DrawerTitle>
                   <DrawerDescription>
@@ -1339,7 +1339,7 @@ function TestDataContent() {
                 </div>
                 <DrawerClose asChild>
                   <button 
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 focus:outline-none"
+                    className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-50 hover:text-gray-600 focus:outline-none"
                   >
                     <X className="h-4.5 w-4.5" />
                   </button>
@@ -1347,7 +1347,7 @@ function TestDataContent() {
               </DrawerHeader>
 
               {/* Tabs */}
-              <div className="flex border-b border-slate-100 px-4 shrink-0 bg-slate-50/50">
+              <div className="flex border-b border-gray-100 px-4 shrink-0 bg-gray-50/50">
                 {(["attributes", "payload", "history"] as const).map((tab) => (
                   <button
                     key={tab}
@@ -1355,8 +1355,8 @@ function TestDataContent() {
                     className={cn(
                       "px-4 py-2.5 text-xs font-semibold capitalize border-b-2 -mb-px transition-colors focus:outline-none",
                       drawerTab === tab
-                        ? "border-[#1b59f8] text-[#1b59f8]"
-                        : "border-transparent text-slate-500 hover:text-slate-800"
+                        ? "border-[#B71920] text-[#B71920]"
+                        : "border-transparent text-gray-500 hover:text-gray-800"
                     )}
                   >
                     {tab}
@@ -1370,30 +1370,30 @@ function TestDataContent() {
                 {drawerTab === "attributes" && (
                   <div className="space-y-5">
                     {/* Attributes Grid */}
-                    <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div className="grid grid-cols-2 gap-3 text-xs bg-gray-50 p-4 rounded-xl border border-gray-100">
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Data Type</p>
-                        <p className="font-bold text-slate-700 mt-1">{selectedItem.data_type}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Data Type</p>
+                        <p className="font-bold text-gray-700 mt-1">{selectedItem.data_type}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Environment</p>
-                        <p className="font-bold text-slate-700 mt-1">{selectedItem.environment}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Environment</p>
+                        <p className="font-bold text-gray-700 mt-1">{selectedItem.environment}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Telecom Domain</p>
-                        <p className="font-bold text-slate-700 mt-1">{selectedItem.telecom_domain || "Generic"}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Telecom Domain</p>
+                        <p className="font-bold text-gray-700 mt-1">{selectedItem.telecom_domain || "Generic"}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Privacy Level</p>
-                        <p className="font-bold text-slate-700 mt-1 capitalize">{selectedItem.privacy_level}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Privacy Level</p>
+                        <p className="font-bold text-gray-700 mt-1 capitalize">{selectedItem.privacy_level}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contains PII</p>
-                        <p className="font-bold text-slate-700 mt-1">{selectedItem.contains_pii ? "Yes" : "No"}</p>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Contains PII</p>
+                        <p className="font-bold text-gray-700 mt-1">{selectedItem.contains_pii ? "Yes" : "No"}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quality Score</p>
-                        <p className="font-bold text-slate-700 mt-1">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Quality Score</p>
+                        <p className="font-bold text-gray-700 mt-1">
                           {selectedItem.quality_score != null ? `${Math.round(selectedItem.quality_score)}/100` : "Not Evaluated"}
                         </p>
                       </div>
@@ -1413,14 +1413,14 @@ function TestDataContent() {
 
                     {/* Operational controls */}
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">TDM Operations & Controls</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">TDM Operations & Controls</label>
                       <div className="grid grid-cols-2 gap-2">
                         {/* 1. Validation */}
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => runAction(selectedItem, "validate")}
-                          className="h-8 text-xs border-slate-200 justify-start"
+                          className="h-8 text-xs border-gray-200 justify-start"
                         >
                           <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
                           Validate Quality
@@ -1432,9 +1432,9 @@ function TestDataContent() {
                           size="sm"
                           disabled={!canMask || !selectedItem.contains_pii}
                           onClick={() => runAction(selectedItem, "mask")}
-                          className="h-8 text-xs border-slate-200 justify-start"
+                          className="h-8 text-xs border-gray-200 justify-start"
                         >
-                          <Shield className="h-3.5 w-3.5 text-indigo-500" />
+                          <Shield className="h-3.5 w-3.5 text-app-brand-500" />
                           Mask PII Payload
                         </Button>
 
@@ -1445,7 +1445,7 @@ function TestDataContent() {
                             size="sm"
                             disabled={!canReserve}
                             onClick={() => runAction(selectedItem, "reserve")}
-                            className="h-8 text-xs border-slate-200 justify-start"
+                            className="h-8 text-xs border-gray-200 justify-start"
                           >
                             <Clock className="h-3.5 w-3.5 text-orange-500" />
                             Reserve dataset
@@ -1455,7 +1455,7 @@ function TestDataContent() {
                             variant="outline"
                             size="sm"
                             onClick={() => runAction(selectedItem, "release")}
-                            className="h-8 text-xs border-slate-200 justify-start bg-orange-50"
+                            className="h-8 text-xs border-gray-200 justify-start bg-orange-50"
                           >
                             <XCircle className="h-3.5 w-3.5 text-orange-600" />
                             Release reservation
@@ -1467,9 +1467,9 @@ function TestDataContent() {
                           variant="outline"
                           size="sm"
                           onClick={() => runAction(selectedItem, "consume")}
-                          className="h-8 text-xs border-slate-200 justify-start"
+                          className="h-8 text-xs border-gray-200 justify-start"
                         >
-                          <PlayCircle className="h-3.5 w-3.5 text-blue-500" />
+                          <PlayCircle className="h-3.5 w-3.5 text-app-brand-500" />
                           Mark as Consumed
                         </Button>
                       </div>
@@ -1477,8 +1477,8 @@ function TestDataContent() {
 
                     {/* Approval Quality Sign-off */}
                     {selectedItem.approval_status === "pending_approval" && (
-                      <div className="space-y-2 border-t border-slate-100 pt-4">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Approval Quality Gate</label>
+                      <div className="space-y-2 border-t border-gray-100 pt-4">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Approval Quality Gate</label>
                         <div className="flex gap-2">
                           <Button
                             variant="default"
@@ -1509,8 +1509,8 @@ function TestDataContent() {
                 {/* TAB 2: PAYLOAD JSON PREVIEW */}
                 {drawerTab === "payload" && (
                   <div className="space-y-2.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sample Records Payload JSON</label>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 font-mono text-xs overflow-auto max-h-96">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Sample Records Payload JSON</label>
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 font-mono text-xs overflow-auto max-h-96">
                       <pre>{JSON.stringify(selectedItem.data_payload_json || selectedItem.sample_preview_json || {}, null, 2)}</pre>
                     </div>
                   </div>
@@ -1519,24 +1519,24 @@ function TestDataContent() {
                 {/* TAB 3: TIMELINE logs */}
                 {drawerTab === "history" && (
                   <div className="space-y-3">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dataset Activity History</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Dataset Activity History</label>
                     {historyLoading ? (
-                      <div className="flex items-center justify-center py-8 text-xs text-slate-400">
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+                      <div className="flex items-center justify-center py-8 text-xs text-gray-400">
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" />
                         Fetching activity log...
                       </div>
                     ) : historyRows.length === 0 ? (
-                      <p className="text-xs text-slate-400 font-medium italic p-2 bg-slate-50/50 rounded border">No history records mapped for this dataset.</p>
+                      <p className="text-xs text-gray-400 font-medium italic p-2 bg-gray-50/50 rounded border">No history records mapped for this dataset.</p>
                     ) : (
                       <div className="space-y-2">
                         {historyRows.map((row) => (
-                          <div key={row.id} className="rounded-lg border border-slate-200 p-3 text-xs bg-white space-y-1">
+                          <div key={row.id} className="rounded-lg border border-gray-200 p-3 text-xs bg-white space-y-1">
                             <div className="flex items-center justify-between">
                               <Badge variant="secondary" className="text-[10px] font-bold uppercase">{row.action_type}</Badge>
-                              <span className="text-[10px] text-slate-400 font-semibold">{new Date(row.created_at).toLocaleString()}</span>
+                              <span className="text-[10px] text-gray-400 font-semibold">{new Date(row.created_at).toLocaleString()}</span>
                             </div>
-                            <p className="text-slate-800 font-semibold text-[11px] mt-1.5">Decision: {row.decision.replace(/_/g, " ")}</p>
-                            {row.notes && <p className="text-[10px] text-slate-400 italic mt-0.5">Notes: {row.notes}</p>}
+                            <p className="text-gray-800 font-semibold text-[11px] mt-1.5">Decision: {row.decision.replace(/_/g, " ")}</p>
+                            {row.notes && <p className="text-[10px] text-gray-400 italic mt-0.5">Notes: {row.notes}</p>}
                           </div>
                         ))}
                       </div>
@@ -1547,7 +1547,7 @@ function TestDataContent() {
 
               <DrawerFooter>
                 <DrawerClose asChild>
-                  <Button variant="outline" size="sm" className="h-9 border-slate-200">Close</Button>
+                  <Button variant="outline" size="sm" className="h-9 border-gray-200">Close</Button>
                 </DrawerClose>
               </DrawerFooter>
             </>
@@ -1562,8 +1562,8 @@ function TestDataContent() {
 export default function TestDataPage() {
   return (
     <Suspense fallback={
-      <div className="p-8 text-center text-xs text-slate-500 font-semibold flex items-center justify-center gap-2">
-        <Loader2 className="h-4 w-4 animate-spin text-[#1b59f8]" />
+      <div className="p-8 text-center text-xs text-gray-500 font-semibold flex items-center justify-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin text-[#B71920]" />
         Loading Test Data Governs Catalog...
       </div>
     }>

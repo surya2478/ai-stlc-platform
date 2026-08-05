@@ -106,24 +106,24 @@ function CollapsibleSection({
   const [open, setOpen] = useState(defaultOpen);
   const isOpen = forceOpen || open;
   return (
-    <div className="rounded-lg border border-slate-200 bg-white">
+    <div className="rounded-lg border border-gray-200 bg-white">
       <button
         type="button"
         className="flex w-full items-center justify-between px-3 py-2 text-left"
         onClick={() => !forceOpen && setOpen((v) => !v)}
         disabled={forceOpen}
       >
-        <span className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide text-slate-800">
+        <span className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wide text-gray-800">
           {isOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           {title}
           {count !== undefined ? (
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+            <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">
               {count}
             </span>
           ) : null}
         </span>
       </button>
-      {isOpen ? <div className="border-t border-slate-100 px-3 py-2">{children}</div> : null}
+      {isOpen ? <div className="border-t border-gray-100 px-3 py-2">{children}</div> : null}
     </div>
   );
 }
@@ -297,9 +297,9 @@ export function IrEditorTab({
 
   if (!asset.ir) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-        <p className="text-[12px] font-semibold text-slate-700">No Automation IR yet</p>
-        <p className="mx-auto mt-1 max-w-lg text-[11px] text-slate-500">
+      <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+        <p className="text-[12px] font-semibold text-gray-700">No Automation IR yet</p>
+        <p className="mx-auto mt-1 max-w-lg text-[11px] text-gray-500">
           {asset.unavailable.ir ??
             "Record this test case in the Live Recorder to produce an Automation IR."}
         </p>
@@ -327,8 +327,8 @@ export function IrEditorTab({
                 (asset as unknown as { behaviour: { steps: Array<Record<string, unknown>> } })
                   .behaviour.steps
               ).map((step, i) => (
-                <li key={i} className="flex gap-2 text-[11px] text-slate-700">
-                  <span className="shrink-0 font-semibold text-slate-400">{i + 1}.</span>
+                <li key={i} className="flex gap-2 text-[11px] text-gray-700">
+                  <span className="shrink-0 font-semibold text-gray-400">{i + 1}.</span>
                   <span>
                     {String(
                       step.description ?? step.action ?? step.step ?? JSON.stringify(step),
@@ -338,7 +338,7 @@ export function IrEditorTab({
               ))}
             </ol>
           ) : (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-gray-400">
               {asset.unavailable.behaviour ?? "This test case records no steps."}
             </p>
           )}
@@ -394,17 +394,17 @@ export function IrEditorTab({
         ) : null}
 
         {/* IR CONTRACT */}
-        <div className="rounded-lg border border-slate-200 bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
+        <div className="rounded-lg border border-gray-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-3 py-2">
             <div className="flex items-center gap-2">
-              <h3 className="text-[10px] font-extrabold uppercase tracking-wide text-slate-800">
+              <h3 className="text-[10px] font-extrabold uppercase tracking-wide text-gray-800">
                 IR Contract
               </h3>
-              <span className="text-[10px] text-slate-400">AutomationGenerationContract</span>
+              <span className="text-[10px] text-gray-400">AutomationGenerationContract</span>
             </div>
             <div className="flex items-center gap-1.5">
               {validating ? (
-                <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                <span className="flex items-center gap-1 text-[10px] text-gray-500">
                   <Loader2 className="h-3 w-3 animate-spin" /> Validating…
                 </span>
               ) : validation ? (
@@ -438,7 +438,7 @@ export function IrEditorTab({
                 {/* The Advanced surface bypasses the pickers, never the validator:
                     it posts to the same endpoint and shows the same errors. */}
                 <textarea
-                  className="h-[420px] w-full rounded border border-slate-200 bg-slate-50 p-2 font-mono text-[11px] text-slate-800"
+                  className="h-[420px] w-full rounded border border-gray-200 bg-gray-50 p-2 font-mono text-[11px] text-gray-800"
                   value={jsonText}
                   spellCheck={false}
                   readOnly={!editable}
@@ -452,7 +452,7 @@ export function IrEditorTab({
               <>
                 <CollapsibleSection title="Steps" count={steps.length} defaultOpen forceOpen={false}>
                   {steps.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">This contract has no steps.</p>
+                    <p className="text-[11px] text-gray-400">This contract has no steps.</p>
                   ) : (
                     <div className="space-y-1.5">
                       {steps.map((step, index) => {
@@ -468,16 +468,16 @@ export function IrEditorTab({
                                 ? "border-amber-300 bg-amber-50"
                                 : fieldErrors.length
                                   ? "border-red-300 bg-red-50"
-                                  : "border-slate-200 bg-white",
+                                  : "border-gray-200 bg-white",
                             )}
                           >
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="w-5 text-[10px] font-bold text-slate-400">
+                              <span className="w-5 text-[10px] font-bold text-gray-400">
                                 {index + 1}
                               </span>
 
                               <select
-                                className="h-6 rounded border border-slate-200 bg-white px-1 text-[11px]"
+                                className="h-6 rounded border border-gray-200 bg-white px-1 text-[11px]"
                                 value={step.phase ?? "act"}
                                 disabled={!editable}
                                 onChange={(e) => updateStep(index, { phase: e.target.value })}
@@ -491,7 +491,7 @@ export function IrEditorTab({
 
                               {/* Closed vocabulary — free text is impossible. */}
                               <select
-                                className="h-6 rounded border border-slate-200 bg-white px-1 text-[11px] font-medium"
+                                className="h-6 rounded border border-gray-200 bg-white px-1 text-[11px] font-medium"
                                 value={step.action ?? "click"}
                                 disabled={!editable}
                                 onChange={(e) => {
@@ -516,7 +516,7 @@ export function IrEditorTab({
                                 <select
                                   className={cn(
                                     "h-6 min-w-[190px] rounded border bg-white px-1 text-[11px]",
-                                    fieldErrors.length ? "border-red-400" : "border-slate-200",
+                                    fieldErrors.length ? "border-red-400" : "border-gray-200",
                                   )}
                                   value={step.target ?? ""}
                                   disabled={!editable}
@@ -537,7 +537,7 @@ export function IrEditorTab({
                                 </select>
                               ) : step.action === "navigate" ? (
                                 <input
-                                  className="h-6 min-w-[190px] rounded border border-slate-200 px-1 text-[11px]"
+                                  className="h-6 min-w-[190px] rounded border border-gray-200 px-1 text-[11px]"
                                   placeholder="/path"
                                   value={step.value ?? step.target ?? ""}
                                   disabled={!editable}
@@ -545,7 +545,7 @@ export function IrEditorTab({
                                 />
                               ) : step.action === "wait_for_url" ? (
                                 <input
-                                  className="h-6 min-w-[190px] rounded border border-slate-200 px-1 text-[11px]"
+                                  className="h-6 min-w-[190px] rounded border border-gray-200 px-1 text-[11px]"
                                   placeholder="url fragment"
                                   value={step.value ?? ""}
                                   disabled={!editable}
@@ -589,13 +589,13 @@ export function IrEditorTab({
                   count={declared.length}
                 >
                   {declared.length === 0 ? (
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-gray-400">
                       This contract declares no page objects.
                     </p>
                   ) : (
                     <table className="w-full text-[11px]">
                       <thead>
-                        <tr className="text-left text-[10px] uppercase text-slate-400">
+                        <tr className="text-left text-[10px] uppercase text-gray-400">
                           <th className="py-1">Page object</th>
                           <th>Element</th>
                           <th>Strategy</th>
@@ -605,9 +605,9 @@ export function IrEditorTab({
                       </thead>
                       <tbody>
                         {declared.map((d) => (
-                          <tr key={`${d.page_object}.${d.name}`} className="border-t border-slate-100">
-                            <td className="py-1 text-slate-600">{d.page_object}</td>
-                            <td className="font-medium text-slate-800">
+                          <tr key={`${d.page_object}.${d.name}`} className="border-t border-gray-100">
+                            <td className="py-1 text-gray-600">{d.page_object}</td>
+                            <td className="font-medium text-gray-800">
                               {d.name}
                               {!SAFE_IDENTIFIER.test(d.name) ? (
                                 <span className="ml-1 text-red-600" title="Not a safe identifier">
@@ -615,8 +615,8 @@ export function IrEditorTab({
                                 </span>
                               ) : null}
                             </td>
-                            <td className="text-slate-600">{d.locator_strategy ?? "—"}</td>
-                            <td className="max-w-[180px] truncate text-slate-500">
+                            <td className="text-gray-600">{d.locator_strategy ?? "—"}</td>
+                            <td className="max-w-[180px] truncate text-gray-500">
                               {d.locator_value ?? "—"}
                             </td>
                             <td>
@@ -645,7 +645,7 @@ export function IrEditorTab({
                   title="Assertions"
                   count={(contract.assertions as unknown[] | undefined)?.length ?? 0}
                 >
-                  <pre className="max-h-48 overflow-auto text-[10px] text-slate-600">
+                  <pre className="max-h-48 overflow-auto text-[10px] text-gray-600">
                     {JSON.stringify(contract.assertions ?? [], null, 2)}
                   </pre>
                 </CollapsibleSection>
@@ -654,7 +654,7 @@ export function IrEditorTab({
                   title="Test data bindings"
                   count={(contract.testDataBindings as unknown[] | undefined)?.length ?? 0}
                 >
-                  <pre className="max-h-48 overflow-auto text-[10px] text-slate-600">
+                  <pre className="max-h-48 overflow-auto text-[10px] text-gray-600">
                     {JSON.stringify(contract.testDataBindings ?? [], null, 2)}
                   </pre>
                 </CollapsibleSection>
@@ -662,8 +662,8 @@ export function IrEditorTab({
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-3 py-2">
-            <span className="text-[10px] text-slate-400">
+          <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-3 py-2">
+            <span className="text-[10px] text-gray-400">
               Schema: AutomationGenerationContract v{asset.ir.contract_version}
             </span>
             <div className="flex items-center gap-2">
@@ -702,23 +702,23 @@ export function IrEditorTab({
         <Panel title="IR Source">
           <div className="space-y-1 text-[11px]">
             <div className="flex items-center justify-between">
-              <span className="text-slate-500">Draft</span>
-              <span className="font-medium text-slate-800">
+              <span className="text-gray-500">Draft</span>
+              <span className="font-medium text-gray-800">
                 {asset.ir.id ? `IRD-${asset.ir.id}` : "From compiled script"}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-slate-500">Version</span>
-              <span className="font-medium text-slate-800">v{asset.ir.version}</span>
+              <span className="text-gray-500">Version</span>
+              <span className="font-medium text-gray-800">v{asset.ir.version}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-slate-500">Status</span>
+              <span className="text-gray-500">Status</span>
               <Badge variant={asset.ir.editable ? "info" : "outline"} className="text-[9px]">
                 {asset.ir.status}
               </Badge>
             </div>
             {validation?.summary ? (
-              <div className="mt-2 border-t border-slate-100 pt-2 text-[10px] text-slate-500">
+              <div className="mt-2 border-t border-gray-100 pt-2 text-[10px] text-gray-500">
                 {validation.summary.step_count} steps · {validation.summary.locator_count} locators ·{" "}
                 {validation.summary.assertion_count} assertions
                 {validation.summary.custom_step_count > 0 ? (
@@ -731,7 +731,7 @@ export function IrEditorTab({
           </div>
         </Panel>
 
-        <Panel title="Readiness" action={<span className="text-[10px] text-slate-400">{unresolved.length} items</span>}>
+        <Panel title="Readiness" action={<span className="text-[10px] text-gray-400">{unresolved.length} items</span>}>
           {unresolved.length === 0 ? (
             <p className="text-[11px] text-emerald-700">Nothing unresolved.</p>
           ) : (
@@ -751,16 +751,16 @@ export function IrEditorTab({
 
         <Panel
           title="Provenance"
-          action={<span className="text-[10px] text-slate-400">{provenance.length} actions</span>}
+          action={<span className="text-[10px] text-gray-400">{provenance.length} actions</span>}
         >
           {provenance.length === 0 ? (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-gray-400">
               This IR records no source actions — its steps are authored, not recorded.
             </p>
           ) : (
             <ul className="space-y-1">
               {provenance.map((a) => (
-                <li key={a.id} className="flex items-start gap-1.5 text-[11px] text-slate-700">
+                <li key={a.id} className="flex items-start gap-1.5 text-[11px] text-gray-700">
                   <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
                   <span
                     className="truncate"
@@ -776,18 +776,18 @@ export function IrEditorTab({
         </Panel>
 
         {versions.length > 1 || otherDrafts > 0 ? (
-          <Panel title="Versions" action={<History className="h-3 w-3 text-slate-400" />}>
+          <Panel title="Versions" action={<History className="h-3 w-3 text-gray-400" />}>
             <ul className="space-y-1">
               {versions.map((v) => (
                 <li
                   key={v.id}
                   className={cn(
                     "flex items-center justify-between rounded px-1.5 py-1 text-[11px]",
-                    v.is_current ? "bg-blue-50 font-medium text-blue-800" : "text-slate-600",
+                    v.is_current ? "bg-app-brand-75 font-medium text-app-brand-800" : "text-gray-600",
                   )}
                 >
                   <span>v{v.version}</span>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-gray-400">
                     {v.step_count} steps · {v.unresolved_count} unresolved
                   </span>
                 </li>
@@ -796,7 +796,7 @@ export function IrEditorTab({
             {otherDrafts > 0 ? (
               // Drafts from other recording sessions are counted, never merged
               // into this chain — they are separate chains, not older versions.
-              <p className="mt-2 border-t border-slate-100 pt-2 text-[10px] text-slate-500">
+              <p className="mt-2 border-t border-gray-100 pt-2 text-[10px] text-gray-500">
                 {otherDrafts} draft{otherDrafts === 1 ? "" : "s"} from other recording
                 sessions of this test case are not shown here.
               </p>

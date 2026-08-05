@@ -86,7 +86,7 @@ export function StartRunDialog({
         <DrawerHeader>
           <div>
             <DrawerTitle className="flex items-center gap-2">
-              <Play className="h-4 w-4 text-[#1b59f8]" /> Start manual execution
+              <Play className="h-4 w-4 text-[#B71920]" /> Start manual execution
             </DrawerTitle>
             <DrawerDescription>
               {selectedTcs.length} test case{selectedTcs.length === 1 ? "" : "s"} · environment {environment}
@@ -95,35 +95,35 @@ export function StartRunDialog({
         </DrawerHeader>
         <DrawerBody>
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
               Suite name
             </label>
             <input
               value={suiteName}
               onChange={(e) => setSuiteName(e.target.value)}
-              className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
             />
           </div>
 
           <div>
             <div className="mb-1.5 flex items-center justify-between">
-              <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              <label className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 <Database className="h-3 w-3" /> Test data binding (optional)
               </label>
-              {recordsLoading && <Loader2 className="h-3 w-3 animate-spin text-slate-300" />}
+              {recordsLoading && <Loader2 className="h-3 w-3 animate-spin text-gray-300" />}
             </div>
-            <p className="mb-2 text-[11px] text-slate-400">
-              Bound records fill <code className="rounded bg-slate-100 px-1">{"${field}"}</code> placeholders
+            <p className="mb-2 text-[11px] text-gray-400">
+              Bound records fill <code className="rounded bg-gray-100 px-1">{"${field}"}</code> placeholders
               in step text when the run starts.
             </p>
             <div className="space-y-2">
               {selectedTcs.map((tc) => {
                 const options = optionsForTc.get(tc.id) ?? [];
                 return (
-                  <div key={tc.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
+                  <div key={tc.id} className="flex items-center gap-2 rounded-lg border border-gray-100 px-2.5 py-2">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-mono text-[11px] text-[#1b59f8]">{tc.test_case_id}</p>
-                      <p className="truncate text-[11px] text-slate-600">{tc.title}</p>
+                      <p className="truncate font-mono text-[11px] text-[#B71920]">{tc.test_case_id}</p>
+                      <p className="truncate text-[11px] text-gray-600">{tc.title}</p>
                     </div>
                     <select
                       value={bindings[tc.id] ?? ""}
@@ -137,7 +137,7 @@ export function StartRunDialog({
                         });
                       }}
                       disabled={options.length === 0}
-                      className="w-52 shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+                      className="w-52 shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-app-brand-100 disabled:bg-gray-50 disabled:text-gray-400"
                     >
                       <option value="">
                         {options.length === 0 ? "No records available" : "No binding"}
@@ -155,7 +155,7 @@ export function StartRunDialog({
           </div>
         </DrawerBody>
         <DrawerFooter>
-          <span className="mr-auto text-[11px] text-slate-400">
+          <span className="mr-auto text-[11px] text-gray-400">
             {boundCount > 0 ? `${boundCount} record(s) bound` : "No data bound"}
           </span>
           <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>

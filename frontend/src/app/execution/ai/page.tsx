@@ -29,11 +29,11 @@ function Redirector() {
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-50">
         <Sparkles className="h-5 w-5 text-violet-600" />
       </div>
-      <p className="text-sm font-semibold text-slate-800">AI Execution has moved</p>
-      <p className="max-w-sm text-xs text-slate-500">
+      <p className="text-sm font-semibold text-gray-800">AI Execution has moved</p>
+      <p className="max-w-sm text-xs text-gray-500">
         AI is now a mode of Automation Execution. Taking you to the AI-Assisted view now…
       </p>
-      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
+      <div className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-400">
         <Loader2 className="h-3 w-3 animate-spin" />
         Redirecting
       </div>
@@ -50,8 +50,8 @@ function Redirector() {
 export default function AiExecutionRedirectPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
-        <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
+      <div className="flex h-64 items-center justify-center text-gray-400 text-xs font-semibold">
+        <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mr-2" />
         Loading…
       </div>
     }>

@@ -107,7 +107,7 @@ export const EXECUTION_TREND_MOCK = [
 
 export const DEFECT_AGING_MOCK = [
   { label: "0-2 days",  count: 28, pct: 37, color: "#10b981" },
-  { label: "3-7 days",  count: 18, pct: 24, color: "#3b82f6" },
+  { label: "3-7 days",  count: 18, pct: 24, color: "#D52B31" },
   { label: "8-15 days", count: 14, pct: 18, color: "#f59e0b" },
   { label: ">15 days",  count: 16, pct: 21, color: "#ef4444" },
 ];

@@ -35,7 +35,7 @@ export function EnvironmentFilter({ defaultValue = "" }: { defaultValue?: string
 
   return (
     <div className="hidden md:flex shrink-0 items-center gap-2">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
         Environment
       </span>
       <input
@@ -47,7 +47,7 @@ export function EnvironmentFilter({ defaultValue = "" }: { defaultValue?: string
         onKeyDown={(e) => {
           if (e.key === "Enter") commit((e.target as HTMLInputElement).value.trim());
         }}
-        className="w-32 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 rounded-lg text-xs font-medium px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors"
+        className="w-32 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-800 rounded-lg text-xs font-medium px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#B71920] transition-colors"
       />
       <datalist id="environment-filter-suggestions">
         {ENV_SUGGESTIONS.map((env) => (

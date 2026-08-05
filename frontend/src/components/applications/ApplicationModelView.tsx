@@ -403,28 +403,28 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
 
       <Notices error={error} notice={notice} onDismiss={() => { setError(""); setNotice(""); }} />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Application</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">Application</span>
           <select
             value={selectedApplicationId ?? ""}
             onChange={(e) => {
               setSelectedApplicationId(Number(e.target.value) || null);
               setModel(null); setNodes([]); setGaps([]); setSelectedNodeId(null); setSelectedSessionId(null);
             }}
-            className="h-9 w-60 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            className="h-9 w-60 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
           >
             <option value="">Select application…</option>
             {applications.map((a) => <option key={a.id ?? a.key} value={a.id ?? ""}>{a.name}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Version</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">Version</span>
           <select
             value={model?.id ?? ""}
             disabled={versions.length === 0}
             onChange={(e) => loadModel(Number(e.target.value), selectedApplicationId)}
-            className="h-9 w-64 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+            className="h-9 w-64 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100 disabled:bg-gray-50 disabled:text-gray-400"
           >
             {versions.length === 0 && <option value="">No versions yet</option>}
             {versions.map((v) => (
@@ -441,7 +441,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
             #28 sitting next to a provenance of #24 read as one value
             disagreeing with itself. */}
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">
             {model ? "Rebuild from" : "Build from"}
           </span>
           <select
@@ -451,7 +451,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
               ? `This version is ${STATUS_TONE[model.status].label.toLowerCase()} and cannot be rebuilt. Create a new draft first.`
               : "The completed discovery session the next build will read its evidence from."}
             onChange={(e) => { setSelectedSessionId(Number(e.target.value) || null); setSessionPickedByUser(true); }}
-            className="h-9 w-64 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+            className="h-9 w-64 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100 disabled:bg-gray-50 disabled:text-gray-400"
           >
             {eligibleSessions.length === 0 && <option value="">No completed sessions</option>}
             {eligibleSessions.map((s) => (
@@ -465,7 +465,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
               value rather than a locked control — reported as exactly that.
               Say it where the control is. */}
           {model && !isMutable && (
-            <span className="flex max-w-64 flex-wrap items-center gap-1.5 text-[11px] font-semibold leading-snug text-slate-500">
+            <span className="flex max-w-64 flex-wrap items-center gap-1.5 text-[11px] font-semibold leading-snug text-gray-500">
               {STATUS_TONE[model.status].label} —
               {["approved", "published", "rejected"].includes(model.status) ? (
                 // The unlock lives here as well as in the governance row. Being
@@ -474,7 +474,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                 // how a locked picker reads as a hardcoded value.
                 <button
                   type="button" disabled={busy} onClick={handleCreateDraft}
-                  className="font-bold text-[#1b59f8] underline underline-offset-2 disabled:text-slate-400"
+                  className="font-bold text-[#B71920] underline underline-offset-2 disabled:text-gray-400"
                 >
                   create a draft to rebuild
                 </button>
@@ -485,11 +485,11 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
           )}
         </label>
         {selectedApplication && (
-          <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-            <Boxes className="h-3.5 w-3.5 text-slate-400" />
-            <span className="font-mono font-bold text-[#1b59f8]">APP-{selectedApplication.id}</span>
+          <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-gray-500">
+            <Boxes className="h-3.5 w-3.5 text-gray-400" />
+            <span className="font-mono font-bold text-[#B71920]">APP-{selectedApplication.id}</span>
             {model?.source_session_id && (
-              <a href={discoveryHref} className="ml-2 inline-flex items-center gap-1 font-bold text-[#1b59f8]" title="Open the discovery session this version was built from">
+              <a href={discoveryHref} className="ml-2 inline-flex items-center gap-1 font-bold text-[#B71920]" title="Open the discovery session this version was built from">
                 <Radar className="h-3.5 w-3.5" /> Built from session #{model.source_session_id} <ExternalLink className="h-3 w-3" />
               </a>
             )}
@@ -500,8 +500,8 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
       <GuidanceCard {...guidance} />
 
       {loading && (
-        <div className="rounded-lg border border-slate-200 bg-white p-10 text-center text-xs font-bold text-slate-500">
-          <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-[#1b59f8]" /> Loading model…
+        <div className="rounded-lg border border-gray-200 bg-white p-10 text-center text-xs font-bold text-gray-500">
+          <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-[#B71920]" /> Loading model…
         </div>
       )}
 
@@ -517,11 +517,11 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
           </div>
 
           {/* ── governance ─────────────────────────────────────────── */}
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Readiness &amp; Governance</p>
-                <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                <p className="text-[11px] font-extrabold uppercase tracking-wide text-gray-800">Readiness &amp; Governance</p>
+                <p className="mt-1 text-[11px] font-semibold text-gray-500">
                   Version {model.version} · built {model.built_at ? new Date(model.built_at).toLocaleString() : "—"}
                   {" · "}{model.built_from_action_count} action{model.built_from_action_count === 1 ? "" : "s"} used
                 </p>
@@ -532,7 +532,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-1 gap-x-8 border-t border-slate-100 pt-3 md:grid-cols-2">
+            <div className="mt-3 grid grid-cols-1 gap-x-8 border-t border-gray-100 pt-3 md:grid-cols-2">
               <ChecklistRow label="Registered application valid" state="pass" detail="Stable application identity resolved from the registry" />
               <ChecklistRow
                 label="Source discovery session completed"
@@ -574,7 +574,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
             </div>
 
             {rebuildSourceDiffers && (
-              <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-[11px] font-semibold text-blue-900">
+              <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-app-brand-200 bg-app-brand-75 p-2.5 text-[11px] font-semibold text-app-brand-900">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
                   Version {model.version} was built from <b>session #{model.source_session_id}</b>. Rebuilding now would
@@ -584,7 +584,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
               </p>
             )}
 
-            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
               {isMutable && (
                 <Button
                   size="sm" variant="outline" disabled={busy || !selectedSessionId}
@@ -649,7 +649,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                 </Button>
               )}
               {!isMutable && model.status !== "pending_review" && (
-                <span className="text-[11px] font-semibold text-slate-500">
+                <span className="text-[11px] font-semibold text-gray-500">
                   This version is locked. Structural edits require a new draft.
                 </span>
               )}
@@ -660,12 +660,12 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-64 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={queueTab === "gaps" ? "Search gaps by type or remediation…" : "Search by name or external reference…"}
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
               />
             </div>
             {queueTab !== "gaps" && (
@@ -675,7 +675,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
               />
             )}
             {(search || stateFilter) && (
-              <button onClick={() => { setSearch(""); setStateFilter(""); }} className="text-xs font-bold text-[#1b59f8]">Clear Filters</button>
+              <button onClick={() => { setSearch(""); setStateFilter(""); }} className="text-xs font-bold text-[#B71920]">Clear Filters</button>
             )}
           </div>
 
@@ -690,16 +690,16 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                   detail="The build found nothing missing or ambiguous in this model. Gaps appear here when a screen, component or element could not be grounded in the captured evidence."
                 />
               ) : undefined}
-              footer={<span className="text-xs font-semibold text-slate-500">{openGaps.length} open · {gaps.length - openGaps.length} resolved</span>}
+              footer={<span className="text-xs font-semibold text-gray-500">{openGaps.length} open · {gaps.length - openGaps.length} resolved</span>}
             >
               {visibleGaps.map((gap) => {
                 const node = gap.node_id != null ? nodes.find((n) => n.id === gap.node_id) : undefined;
                 return (
                   <div key={gap.id} className="grid items-center gap-2 px-3 py-2.5 text-[11px]" style={{ gridTemplateColumns: GAP_GRID }}>
                     <span><Badge variant={gap.severity === "critical" ? "destructive" : "warning"}>{gap.severity}</Badge></span>
-                    <span className="font-bold text-slate-800">{gap.gap_type.replace(/_/g, " ")}</span>
-                    <span className="font-semibold text-slate-600">{gap.remediation || "No remediation recorded."}</span>
-                    <span className="truncate font-semibold text-slate-500">{node?.display_name || "Model-wide"}</span>
+                    <span className="font-bold text-gray-800">{gap.gap_type.replace(/_/g, " ")}</span>
+                    <span className="font-semibold text-gray-600">{gap.remediation || "No remediation recorded."}</span>
+                    <span className="truncate font-semibold text-gray-500">{node?.display_name || "Model-wide"}</span>
                     <span className="flex items-center gap-2">
                       {gap.status === "open" ? (
                         <Button
@@ -737,7 +737,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                     : "Try clearing the search box or switching queue."}
                 />
               ) : undefined}
-              footer={<span className="text-xs font-semibold text-slate-500">Showing {visibleNodes.length} of {nodes.length} nodes</span>}
+              footer={<span className="text-xs font-semibold text-gray-500">Showing {visibleNodes.length} of {nodes.length} nodes</span>}
             >
               {visibleNodes.map((node) => {
                 const Icon = NODE_ICON[node.node_type as keyof typeof NODE_ICON] ?? Component;
@@ -752,17 +752,17 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                     onClick={() => { setSelectedNodeId(node.id); setDrawerTab("overview"); setRenaming(false); }}
                   >
                     <span className="flex min-w-0 items-center gap-2">
-                      <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      <span className="truncate font-bold text-slate-900">{node.display_name}</span>
+                      <Icon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                      <span className="truncate font-bold text-gray-900">{node.display_name}</span>
                     </span>
-                    <span className="font-semibold capitalize text-slate-600">{node.node_type}</span>
-                    <span className="truncate font-mono font-semibold text-slate-500" title={node.external_ref}>{node.external_ref}</span>
-                    <span className="truncate font-semibold text-slate-500">{parent?.display_name || "—"}</span>
+                    <span className="font-semibold capitalize text-gray-600">{node.node_type}</span>
+                    <span className="truncate font-mono font-semibold text-gray-500" title={node.external_ref}>{node.external_ref}</span>
+                    <span className="truncate font-semibold text-gray-500">{parent?.display_name || "—"}</span>
                     <span><Badge variant={node.state === "DISCOVERED" ? "info" : "secondary"}>{node.state}</Badge></span>
                     <span>
                       {openNodeGaps.length > 0
                         ? <Badge variant={openNodeGaps.some((g) => g.severity === "critical") ? "destructive" : "warning"}>{openNodeGaps.length}</Badge>
-                        : <span className="font-semibold text-slate-300">None</span>}
+                        : <span className="font-semibold text-gray-300">None</span>}
                     </span>
                   </ListRow>
                 );
@@ -777,7 +777,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
         <DrawerContent size="xl">
           {selectedNode && model && (
             <div className="flex h-full flex-col">
-              <div className="border-b border-slate-100 p-5">
+              <div className="border-b border-gray-100 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="info" className="capitalize">{selectedNode.node_type}</Badge>
@@ -786,7 +786,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                       <Badge variant="warning">Has open gaps</Badge>
                     )}
                   </div>
-                  <button onClick={() => setSelectedNodeId(null)} aria-label="Close" className="rounded-md p-1 text-slate-500 hover:bg-slate-50">
+                  <button onClick={() => setSelectedNodeId(null)} aria-label="Close" className="rounded-md p-1 text-gray-500 hover:bg-gray-50">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
@@ -796,7 +796,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                       autoFocus
                       value={renameValue}
                       onChange={(e) => setRenameValue(e.target.value)}
-                      className="h-9 min-w-[16rem] flex-1 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-100"
+                      className="h-9 min-w-[16rem] flex-1 rounded-lg border border-gray-200 px-3 text-sm font-bold outline-none focus:ring-2 focus:ring-app-brand-100"
                     />
                     <Button
                       size="sm"
@@ -812,14 +812,14 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => setRenaming(false)}>Cancel</Button>
                   </div>
                 ) : (
-                  <h2 className="mt-4 text-base font-extrabold text-slate-950">{selectedNode.display_name}</h2>
+                  <h2 className="mt-4 text-base font-extrabold text-gray-950">{selectedNode.display_name}</h2>
                 )}
-                <p className="mt-2 break-all font-mono text-xs font-semibold text-slate-500">{selectedNode.external_ref}</p>
+                <p className="mt-2 break-all font-mono text-xs font-semibold text-gray-500">{selectedNode.external_ref}</p>
               </div>
 
               <DrawerTabBar tabs={DRAWER_TABS} active={drawerTab} onChange={setDrawerTab} />
 
-              <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 p-4">
+              <div className="flex-1 space-y-4 overflow-y-auto bg-gray-50/50 p-4">
                 {drawerTab === "overview" && (
                   <DrawerCard
                     title="Node details"
@@ -836,17 +836,17 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                       <InfoPair label="Model version" value={`v${model.version}`} />
                     </div>
                     <div className="mt-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">External reference</p>
-                      <p className="mt-1 break-all font-mono text-xs font-semibold text-slate-700">{selectedNode.external_ref}</p>
+                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">External reference</p>
+                      <p className="mt-1 break-all font-mono text-xs font-semibold text-gray-700">{selectedNode.external_ref}</p>
                     </div>
                     <div className="mt-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Description</p>
-                      <p className={cn("mt-1 text-xs font-semibold leading-5", selectedNode.description ? "text-slate-700" : "text-slate-400")}>
+                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">Description</p>
+                      <p className={cn("mt-1 text-xs font-semibold leading-5", selectedNode.description ? "text-gray-700" : "text-gray-400")}>
                         {selectedNode.description || "No description recorded by the build."}
                       </p>
                     </div>
                     {!isMutable && (
-                      <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] font-semibold text-slate-500">
+                      <p className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-2.5 text-[11px] font-semibold text-gray-500">
                         This model version is {STATUS_TONE[model.status].label.toLowerCase()}, so nodes cannot be edited.
                         Create a new draft from the governance panel to make changes.
                       </p>
@@ -861,7 +861,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                       value={nodes.find((n) => n.id === selectedNode.parent_node_id)?.display_name || "None — this is a top-level node"}
                     />
                     <div className="mt-4">
-                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">
+                      <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">
                         Children ({nodes.filter((n) => n.parent_node_id === selectedNode.id).length})
                       </p>
                       <div className="mt-2 space-y-1">
@@ -869,14 +869,14 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                           <button
                             key={child.id}
                             onClick={() => { setSelectedNodeId(child.id); setDrawerTab("overview"); }}
-                            className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-bold text-slate-700 hover:border-blue-200 hover:bg-blue-50/40"
+                            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs font-bold text-gray-700 hover:border-app-brand-200 hover:bg-app-brand-75/40"
                           >
                             <span className="truncate">{child.display_name}</span>
-                            <span className="ml-2 shrink-0 font-semibold capitalize text-slate-400">{child.node_type}</span>
+                            <span className="ml-2 shrink-0 font-semibold capitalize text-gray-400">{child.node_type}</span>
                           </button>
                         ))}
                         {nodes.filter((n) => n.parent_node_id === selectedNode.id).length === 0 && (
-                          <p className="text-xs font-semibold text-slate-400">Nothing is nested under this node.</p>
+                          <p className="text-xs font-semibold text-gray-400">Nothing is nested under this node.</p>
                         )}
                       </div>
                     </div>
@@ -895,7 +895,7 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                     />
                   ) : (
                     <DrawerCard title="Locators" icon={Target}>
-                      <p className="text-xs font-semibold text-slate-500">
+                      <p className="text-xs font-semibold text-gray-500">
                         Only elements carry locator evidence. This node is a {selectedNode.node_type} — open one of its
                         child elements to review and confirm its locators.
                       </p>
@@ -906,15 +906,15 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                 {drawerTab === "gaps" && (
                   <DrawerCard title="Gaps on this node" icon={AlertTriangle}>
                     {(gapsByNode.get(selectedNode.id) ?? []).length === 0 ? (
-                      <p className="text-xs font-semibold text-slate-500">No gaps were recorded against this node.</p>
+                      <p className="text-xs font-semibold text-gray-500">No gaps were recorded against this node.</p>
                     ) : (
                       <div className="space-y-2">
                         {(gapsByNode.get(selectedNode.id) ?? []).map((gap) => (
-                          <div key={gap.id} className="rounded-lg border border-slate-200 p-3">
+                          <div key={gap.id} className="rounded-lg border border-gray-200 p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <Badge variant={gap.severity === "critical" ? "destructive" : "warning"}>{gap.severity}</Badge>
-                                <span className="text-xs font-extrabold text-slate-800">{gap.gap_type.replace(/_/g, " ")}</span>
+                                <span className="text-xs font-extrabold text-gray-800">{gap.gap_type.replace(/_/g, " ")}</span>
                               </div>
                               {gap.status === "open" ? (
                                 <Button
@@ -935,9 +935,9 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                                 </Button>
                               ) : <Badge variant="success">Resolved</Badge>}
                             </div>
-                            {gap.remediation && <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-600">{gap.remediation}</p>}
+                            {gap.remediation && <p className="mt-2 text-[11px] font-semibold leading-5 text-gray-600">{gap.remediation}</p>}
                             {gap.reviewer_notes && (
-                              <p className="mt-2 rounded-lg bg-slate-50 p-2 text-[11px] font-semibold text-slate-500">
+                              <p className="mt-2 rounded-lg bg-gray-50 p-2 text-[11px] font-semibold text-gray-500">
                                 Reviewer: {gap.reviewer_notes}
                               </p>
                             )}
@@ -951,16 +951,16 @@ export function ApplicationModelView({ projectId, applicationId, modelId }: Prop
                 {drawerTab === "activity" && (
                   <DrawerCard title="Model activity" icon={ShieldCheck}>
                     {activity.length === 0 ? (
-                      <p className="text-xs font-semibold text-slate-400">No activity recorded for this model yet.</p>
+                      <p className="text-xs font-semibold text-gray-400">No activity recorded for this model yet.</p>
                     ) : (
                       <div className="space-y-2">
                         {activity
                           .filter((entry) => entry.node_id == null || entry.node_id === selectedNode.id)
                           .map((entry) => (
-                            <div key={entry.id} className="rounded-lg border border-slate-200 p-2.5">
-                              <p className="text-xs font-bold text-slate-800">{entry.event_type.replace(/_/g, " ")}</p>
-                              <p className="mt-0.5 text-[11px] font-semibold text-slate-400">{new Date(entry.at).toLocaleString()}</p>
-                              {entry.reason && <p className="mt-1 text-[11px] font-semibold text-slate-600">{entry.reason}</p>}
+                            <div key={entry.id} className="rounded-lg border border-gray-200 p-2.5">
+                              <p className="text-xs font-bold text-gray-800">{entry.event_type.replace(/_/g, " ")}</p>
+                              <p className="mt-0.5 text-[11px] font-semibold text-gray-400">{new Date(entry.at).toLocaleString()}</p>
+                              {entry.reason && <p className="mt-1 text-[11px] font-semibold text-gray-600">{entry.reason}</p>}
                             </div>
                           ))}
                       </div>
@@ -1037,7 +1037,7 @@ function NodeLocatorPanel({
       <DrawerCard title="Current locator" icon={Target}>
         {latest ? (
           <>
-            <p className="break-all rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs font-bold text-slate-800">
+            <p className="break-all rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs font-bold text-gray-800">
               {latest.locator_value || "No locator value recorded"}
             </p>
             <div className="mt-3 grid grid-cols-3 gap-4">
@@ -1050,13 +1050,13 @@ function NodeLocatorPanel({
             )}
           </>
         ) : (
-          <p className="text-xs font-semibold text-slate-500">
+          <p className="text-xs font-semibold text-gray-500">
             No locator evidence was captured for this element. It cannot be targeted by generated automation until
             one is recorded — re-record the source session with this element in a performed step.
           </p>
         )}
 
-        <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+        <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
           <Button
             size="sm" variant="outline" disabled={disabled || !latest}
             title={!isMutable ? "This model version is locked." : !latest ? "There is no locator to confirm." : "Mark this locator as verified against the real application."}
@@ -1099,7 +1099,7 @@ function NodeLocatorPanel({
           </Button>
         </div>
         {!isMutable && (
-          <p className="mt-3 text-[11px] font-semibold text-slate-500">
+          <p className="mt-3 text-[11px] font-semibold text-gray-500">
             Locator decisions are only editable while the model version is a draft or in review.
           </p>
         )}
@@ -1107,17 +1107,17 @@ function NodeLocatorPanel({
 
       <DrawerCard title={`Locator history (${Math.max(history.length - 1, 0)})`} icon={Search}>
         {history.length <= 1 ? (
-          <p className="text-xs font-semibold text-slate-400">No earlier locator revisions.</p>
+          <p className="text-xs font-semibold text-gray-400">No earlier locator revisions.</p>
         ) : (
           <div className="space-y-2">
             {history.slice(1).map((entry) => (
-              <div key={entry.id} className="rounded-lg border border-slate-200 p-2.5">
+              <div key={entry.id} className="rounded-lg border border-gray-200 p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-[11px] font-bold text-slate-700">{entry.locator_value || "—"}</span>
+                  <span className="font-mono text-[11px] font-bold text-gray-700">{entry.locator_value || "—"}</span>
                   <Badge variant="secondary" className="capitalize">{entry.status}</Badge>
                 </div>
-                <p className="mt-1 text-[11px] font-semibold text-slate-400">{new Date(entry.created_at).toLocaleString()}</p>
-                {entry.reason && <p className="mt-1 text-[11px] font-semibold text-slate-600">{entry.reason}</p>}
+                <p className="mt-1 text-[11px] font-semibold text-gray-400">{new Date(entry.created_at).toLocaleString()}</p>
+                {entry.reason && <p className="mt-1 text-[11px] font-semibold text-gray-600">{entry.reason}</p>}
               </div>
             ))}
           </div>

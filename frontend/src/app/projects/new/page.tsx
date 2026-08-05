@@ -56,8 +56,8 @@ function FieldWrapper({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-        {icon && <span className="text-slate-400">{icon}</span>}
+      <label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+        {icon && <span className="text-gray-400">{icon}</span>}
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
@@ -73,9 +73,9 @@ function FieldWrapper({
 }
 
 const inputClass =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition-all focus:border-app-brand-500 focus:ring-2 focus:ring-app-brand-100 disabled:opacity-50";
 const inputErrorClass =
-  "w-full rounded-lg border border-red-300 bg-red-50/40 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:opacity-50";
+  "w-full rounded-lg border border-red-300 bg-red-50/40 px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition-all focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:opacity-50";
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -148,7 +148,7 @@ export default function NewProjectPage() {
       {/* Back navigation */}
       <Link
         href="/projects"
-        className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition-colors font-medium"
+        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors font-medium"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         Back to Projects
@@ -156,8 +156,8 @@ export default function NewProjectPage() {
 
       {/* Page header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">Create Project</h1>
-        <p className="text-sm text-slate-500 mt-1 leading-6">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Create Project</h1>
+        <p className="text-sm text-gray-500 mt-1 leading-6">
           A project groups all requirements, test cases, and executions for a product or release.
           HP PPM integration fields are required for portfolio tracking.
         </p>
@@ -171,11 +171,11 @@ export default function NewProjectPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-gray-200 bg-white shadow-sm">
         {/* Form header */}
-        <div className="px-6 pt-6 pb-4 border-b border-slate-100">
-          <h2 className="text-base font-bold text-slate-800">Project Details</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Fields marked <span className="text-red-500 font-semibold">*</span> are required</p>
+        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+          <h2 className="text-base font-bold text-gray-800">Project Details</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Fields marked <span className="text-red-500 font-semibold">*</span> are required</p>
         </div>
 
         <div className="p-6 space-y-6">
@@ -278,7 +278,7 @@ export default function NewProjectPage() {
           </div>
 
           {/* Divider */}
-          <hr className="border-slate-100" />
+          <hr className="border-gray-100" />
 
           {/* Description — full width */}
           <FieldWrapper
@@ -306,11 +306,11 @@ export default function NewProjectPage() {
         </div>
 
         {/* Form footer */}
-        <div className="flex items-center gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60 rounded-b-2xl">
+        <div className="flex items-center gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/60 rounded-b-2xl">
           <button
             type="submit"
             disabled={loading || success}
-            className="flex items-center gap-2 rounded-lg bg-[#1b59f8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+            className="flex items-center gap-2 rounded-lg bg-[#B71920] px-5 py-2.5 text-sm font-semibold text-white hover:bg-app-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -321,7 +321,7 @@ export default function NewProjectPage() {
           </button>
           <Link
             href="/projects"
-            className="rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+            className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-200 transition-colors"
           >
             Cancel
           </Link>
@@ -329,11 +329,11 @@ export default function NewProjectPage() {
       </form>
 
       {/* Info box */}
-      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-1.5">
-        <p className="text-sm font-semibold text-slate-800">What happens next?</p>
-        <p className="text-xs text-slate-500 leading-5">1. Upload requirement documents (PDF, DOCX, TXT, Markdown, CSV)</p>
-        <p className="text-xs text-slate-500 leading-5">2. Or connect Jira and fetch Epics / Stories</p>
-        <p className="text-xs text-slate-500 leading-5">3. AI agents analyze requirements and generate the full STLC pipeline</p>
+      <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 space-y-1.5">
+        <p className="text-sm font-semibold text-gray-800">What happens next?</p>
+        <p className="text-xs text-gray-500 leading-5">1. Upload requirement documents (PDF, DOCX, TXT, Markdown, CSV)</p>
+        <p className="text-xs text-gray-500 leading-5">2. Or connect Jira and fetch Epics / Stories</p>
+        <p className="text-xs text-gray-500 leading-5">3. AI agents analyze requirements and generate the full STLC pipeline</p>
       </div>
     </div>
   );

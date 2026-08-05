@@ -57,7 +57,7 @@ function qualityScorePercent(score: number): number {
 }
 
 // ── Circular Progress Ring ────────────────────────────────────────────────────
-function ProgressRing({ radius = 22, stroke = 3, progress = 0, color = "#1b59f8" }: {
+function ProgressRing({ radius = 22, stroke = 3, progress = 0, color = "#B71920" }: {
   radius?: number; stroke?: number; progress?: number; color?: string;
 }) {
   const r = radius - stroke * 2;
@@ -65,7 +65,7 @@ function ProgressRing({ radius = 22, stroke = 3, progress = 0, color = "#1b59f8"
   const offset = circ - (Math.min(Math.max(progress, 0), 100) / 100) * circ;
   return (
     <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
-      <circle stroke="#f1f5f9" fill="transparent" strokeWidth={stroke} r={r} cx={radius} cy={radius} />
+      <circle stroke="#F4F5F7" fill="transparent" strokeWidth={stroke} r={r} cx={radius} cy={radius} />
       <circle
         stroke={color} fill="transparent" strokeWidth={stroke}
         strokeDasharray={`${circ} ${circ}`} style={{ strokeDashoffset: offset }}
@@ -76,11 +76,11 @@ function ProgressRing({ radius = 22, stroke = 3, progress = 0, color = "#1b59f8"
 }
 
 // ── Mini inline bar for table cells ──────────────────────────────────────────
-function MiniBar({ value, color = "#3b82f6" }: { value: number; color?: string }) {
+function MiniBar({ value, color = "#D52B31" }: { value: number; color?: string }) {
   return (
     <div className="flex items-center gap-1">
-      <span className="text-[10px] font-bold text-slate-700 w-7">{value}%</span>
-      <div className="flex-1 h-1 rounded-full bg-slate-100 overflow-hidden">
+      <span className="text-[10px] font-bold text-gray-700 w-7">{value}%</span>
+      <div className="flex-1 h-1 rounded-full bg-gray-100 overflow-hidden">
         <div className="h-full rounded-full" style={{ width: `${value}%`, backgroundColor: color }} />
       </div>
     </div>
@@ -140,7 +140,7 @@ function RiskBadge({ risk }: { risk: "Low" | "Medium" | "High" | "Critical" }) {
 function AgentPill({ status }: { status: AgentStatus }) {
   const map: Record<AgentStatus, string> = {
     Active: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    Running: "bg-blue-50 text-blue-700 border-blue-200",
+    Running: "bg-app-brand-75 text-app-brand-700 border-app-brand-200",
     Waiting: "bg-amber-50 text-amber-700 border-amber-200",
     Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
   };
@@ -156,14 +156,14 @@ function NBACard({ action, href }: {
   action: DashboardAction;
   href: string;
 }) {
-  const labelStyle = action.variant === "high"     ? "text-blue-600 bg-blue-50 border-blue-200"
+  const labelStyle = action.variant === "high"     ? "text-app-brand-600 bg-app-brand-75 border-app-brand-200"
     : action.variant === "ai"       ? "text-violet-600 bg-violet-50 border-violet-200"
     : action.variant === "critical" ? "text-red-600 bg-red-50 border-red-200"
-    : "text-slate-500 bg-slate-50 border-slate-200";
-  const iconBg = action.variant === "high"     ? "bg-blue-50 border-blue-100 text-blue-500"
+    : "text-gray-500 bg-gray-50 border-gray-200";
+  const iconBg = action.variant === "high"     ? "bg-app-brand-75 border-app-brand-100 text-app-brand-500"
     : action.variant === "ai"       ? "bg-violet-50 border-violet-100 text-violet-500"
     : action.variant === "critical" ? "bg-red-50 border-red-100 text-red-500"
-    : "bg-slate-50 border-slate-100 text-slate-400";
+    : "bg-gray-50 border-gray-100 text-gray-400";
   const ActionIcon = action.variant === "ai"       ? TestTube2
     : action.variant === "critical"                ? Bug
     : action.href.includes("test-data")            ? Database
@@ -171,12 +171,12 @@ function NBACard({ action, href }: {
     : FileText;
   return (
     <Link href={href}>
-      <div className="flex items-start gap-2 p-2.5 rounded-xl border border-slate-100 hover:border-blue-200 hover:bg-blue-50/20 transition-all cursor-pointer group h-full">
+      <div className="flex items-start gap-2 p-2.5 rounded-xl border border-gray-100 hover:border-app-brand-200 hover:bg-app-brand-75/20 transition-all cursor-pointer group h-full">
         <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border mt-0.5", iconBg)}>
           <ActionIcon className="h-3.5 w-3.5" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-semibold text-slate-800 leading-snug group-hover:text-blue-600 transition-colors">
+          <p className="text-[11px] font-semibold text-gray-800 leading-snug group-hover:text-app-brand-600 transition-colors">
             {action.title}
           </p>
           <span className={cn("inline-flex items-center mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded border", labelStyle)}>
@@ -413,11 +413,11 @@ function DashboardContent() {
     const execRate = stats.totalTCs > 0 ? Math.round((executedTests / stats.totalTCs) * 100) : 0;
     return [
       { label: "Requirements", current: stats.approvedReqs, total: stats.totalReqs, rate: reqRate, color: "#10b981" },
-      { label: "Test Planning", current: testPlans.filter(p => p.status === "approved").length, total: testPlans.length, rate: planRate, color: "#3b82f6" },
+      { label: "Test Planning", current: testPlans.filter(p => p.status === "approved").length, total: testPlans.length, rate: planRate, color: "#D52B31" },
       { label: "Test Cases", current: reqsWithTC, total: stats.totalReqs, rate: tcRate, color: "#8b5cf6" },
       { label: "Test Data", current: stats.approvedData, total: stats.totalData, rate: dataRate, color: "#06b6d4" },
       { label: "Automation", current: scriptsCount, total: stats.totalTCs, rate: autoRate, color: "#f59e0b" },
-      { label: "Execution", current: executedTests, total: stats.totalTCs, rate: execRate, color: "#3b82f6" },
+      { label: "Execution", current: executedTests, total: stats.totalTCs, rate: execRate, color: "#D52B31" },
       { label: "Defects", current: stats.totalDefects, total: stats.totalDefects, rate: stats.totalDefects > 0 ? Math.max(0, 100 - stats.criticalDefects * 10) : 100, color: "#ef4444", isDefects: true },
       { label: "Reports", current: 0, total: 0, rate: 0, color: "#10b981" },
     ];
@@ -497,7 +497,7 @@ function DashboardContent() {
     const now = Date.now();
     const buckets = [
       { label: "0-2 days",  max: 2,  color: "#10b981" },
-      { label: "3-7 days",  max: 7,  color: "#3b82f6" },
+      { label: "3-7 days",  max: 7,  color: "#D52B31" },
       { label: "8-15 days", max: 15, color: "#f59e0b" },
       { label: ">15 days",  max: Infinity, color: "#ef4444" },
     ];
@@ -700,18 +700,18 @@ function DashboardContent() {
       {/* ── Page Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-indigo-500" />
+          <h1 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-app-brand-500" />
             STLC Command Center
           </h1>
-          <p className="text-[11px] text-slate-400 mt-0.5">AI-powered quality engineering lifecycle overview</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">AI-powered quality engineering lifecycle overview</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-slate-400 font-mono hidden sm:block">
+          <span className="text-[10px] text-gray-400 font-mono hidden sm:block">
             {mounted ? `Updated ${lastUpdated.toLocaleTimeString()}` : ""}
           </span>
-          <Button variant="outline" size="sm" onClick={loadData} disabled={loading} className="h-8 w-8 p-0 border-slate-200">
-            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          <Button variant="outline" size="sm" onClick={loadData} disabled={loading} className="h-8 w-8 p-0 border-gray-200">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-gray-500", loading && "animate-spin")} />
           </Button>
           <div className="relative">
             <Button variant="default" size="sm" className="h-8 font-semibold gap-1" onClick={() => setNewDropdownOpen(!newDropdownOpen)}>
@@ -720,9 +720,9 @@ function DashboardContent() {
             {newDropdownOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setNewDropdownOpen(false)} />
-                <div className="absolute right-0 mt-1.5 w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-lg z-20">
+                <div className="absolute right-0 mt-1.5 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-lg z-20">
                   {[["Create Project", "/projects"], ["Add Test Case", projectLink("/test-cases")], ["Draft Test Plan", projectLink("/test-planning")]].map(([label, href]) => (
-                    <Link key={href} href={href} className="block px-4 py-2 text-xs text-slate-700 hover:bg-slate-50" onClick={() => setNewDropdownOpen(false)}>{label}</Link>
+                    <Link key={href} href={href} className="block px-4 py-2 text-xs text-gray-700 hover:bg-gray-50" onClick={() => setNewDropdownOpen(false)}>{label}</Link>
                   ))}
                 </div>
               </>
@@ -742,9 +742,9 @@ function DashboardContent() {
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
 
         {/* 1. Release Readiness */}
-        <Card className="border-slate-200 xl:col-span-1">
+        <Card className="border-gray-200 xl:col-span-1">
           <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Release Readiness</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Release Readiness</span>
             {readinessInfo.status === "GO"
               ? <CheckCircle className="h-4 w-4 text-emerald-500" />
               : <AlertTriangle className="h-4 w-4 text-red-500 animate-pulse" />
@@ -752,7 +752,7 @@ function DashboardContent() {
           </CardHeader>
           <CardContent className="p-4 pt-1">
             <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-2xl font-bold text-slate-900">{readinessInfo.score}%</span>
+              <span className="text-2xl font-bold text-gray-900">{readinessInfo.score}%</span>
               <span className={cn(
                 "text-[10px] font-bold px-2 py-0.5 rounded-full",
                 readinessInfo.status === "GO" ? "bg-emerald-600 text-white"
@@ -760,19 +760,19 @@ function DashboardContent() {
                   : "bg-red-600 text-white"
               )}>{readinessInfo.status}</span>
             </div>
-            <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
+            <div className="w-full bg-gray-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
               <div className={cn("h-full rounded-full transition-all", readinessInfo.barColor)} style={{ width: `${readinessInfo.score}%` }} />
             </div>
-            <p className="text-[10px] text-slate-400 mt-1.5">Target: 85%</p>
-            <div className="mt-3 space-y-1.5 border-t border-slate-50 pt-2.5">
+            <p className="text-[10px] text-gray-400 mt-1.5">Target: 85%</p>
+            <div className="mt-3 space-y-1.5 border-t border-gray-50 pt-2.5">
               {stats.pendingReqs > 0 && (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
+                <div className="flex items-center gap-1.5 text-[10px] text-gray-600">
                   <FileText className="h-3 w-3 text-amber-500 shrink-0" />
                   <span>{stats.pendingReqs} pending requirements</span>
                 </div>
               )}
               {stats.totalDefects > 0 && (
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
+                <div className="flex items-center gap-1.5 text-[10px] text-gray-600">
                   <Bug className="h-3 w-3 text-red-500 shrink-0" />
                   <span>{stats.totalDefects} open defects</span>
                 </div>
@@ -782,9 +782,9 @@ function DashboardContent() {
         </Card>
 
         {/* 2. AI Quality Intelligence */}
-        <Card className="border-slate-200 ai-glow-card xl:col-span-1">
+        <Card className="border-gray-200 ai-glow-card xl:col-span-1">
           <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">AI Quality Intelligence</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">AI Quality Intelligence</span>
             <Brain className="h-4 w-4 text-violet-500" />
           </CardHeader>
           <CardContent className="p-4 pt-1">
@@ -797,16 +797,16 @@ function DashboardContent() {
               </div>
               <Sparkline data={aiQuality.sparkline} />
             </div>
-            <div className="mt-3 space-y-1.5 border-t border-slate-50 pt-2.5">
+            <div className="mt-3 space-y-1.5 border-t border-gray-50 pt-2.5">
               {[
                 { label: "Ambiguity", value: aiQuality.ambiguity, level: aiQuality.ambiguity >= 30 ? "High" : aiQuality.ambiguity > 0 ? "Medium" : "Low" },
                 { label: "Coverage Gaps", value: aiQuality.coverageGaps, level: aiQuality.coverageGaps >= 30 ? "High" : aiQuality.coverageGaps > 0 ? "Medium" : "Low" },
                 { label: "Defect Pred. Risk", value: aiQuality.defectRisk, level: aiQuality.defectRisk >= 30 ? "High" : aiQuality.defectRisk > 0 ? "Medium" : "Low" },
               ].map(m => (
                 <div key={m.label} className="flex items-center justify-between text-[10px]">
-                  <span className="text-slate-500">{m.label}</span>
+                  <span className="text-gray-500">{m.label}</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-slate-700">{m.value}%</span>
+                    <span className="font-bold text-gray-700">{m.value}%</span>
                     <span className={cn("font-semibold", m.level === "High" ? "text-red-500" : "text-amber-500")}>
                       ● {m.level}
                     </span>
@@ -818,9 +818,9 @@ function DashboardContent() {
         </Card>
 
         {/* 3. RAG Knowledge Health */}
-        <Card className="border-slate-200 xl:col-span-1">
+        <Card className="border-gray-200 xl:col-span-1">
           <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">RAG Knowledge Health</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">RAG Knowledge Health</span>
             <span className="text-[9px] font-bold px-2 py-0.5 rounded border border-teal-200 bg-teal-50 text-teal-700">RAG</span>
           </CardHeader>
           <CardContent className="p-4 pt-1">
@@ -831,27 +831,27 @@ function DashboardContent() {
                 { label: "Chunks", value: ragStatus?.total_active_chunks ?? 0 },
               ].map(m => (
                 <div key={m.label} className="text-center">
-                  <div className="text-base font-bold text-slate-800">{m.value}</div>
-                  <div className="text-[9px] text-slate-400 leading-tight mt-0.5">{m.label}</div>
+                  <div className="text-base font-bold text-gray-800">{m.value}</div>
+                  <div className="text-[9px] text-gray-400 leading-tight mt-0.5">{m.label}</div>
                 </div>
               ))}
             </div>
-            <div className="mt-3 border-t border-slate-50 pt-2.5 space-y-1.5">
+            <div className="mt-3 border-t border-gray-50 pt-2.5 space-y-1.5">
               <div className="flex items-center justify-between text-[10px]">
-                <span className="text-slate-500">Index Coverage</span>
-                <span className="font-bold text-slate-700">{ragStatus?.index_coverage_pct ?? 0}%</span>
+                <span className="text-gray-500">Index Coverage</span>
+                <span className="font-bold text-gray-700">{ragStatus?.index_coverage_pct ?? 0}%</span>
               </div>
-              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+              <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
                 <div
-                  className={cn("h-full rounded-full", ragStatus?.rag_enabled ? "bg-teal-500" : "bg-slate-300")}
+                  className={cn("h-full rounded-full", ragStatus?.rag_enabled ? "bg-teal-500" : "bg-gray-300")}
                   style={{ width: `${ragStatus?.index_coverage_pct ?? 0}%` }}
                 />
               </div>
               <div className="flex items-center gap-1.5 mt-1">
                 {ragStatus?.rag_enabled
                   ? <CheckCircle className="h-3.5 w-3.5 text-teal-500" />
-                  : <AlertTriangle className="h-3.5 w-3.5 text-slate-400" />}
-                <span className="text-[10px] font-semibold text-slate-500">
+                  : <AlertTriangle className="h-3.5 w-3.5 text-gray-400" />}
+                <span className="text-[10px] font-semibold text-gray-500">
                   {ragStatus ? (ragStatus.rag_enabled ? `${ragStatus.embedded_chunks} chunks embedded` : "RAG is disabled") : "RAG status unavailable"}
                 </span>
               </div>
@@ -860,10 +860,10 @@ function DashboardContent() {
         </Card>
 
         {/* 4. Jira Sync Health */}
-        <Card className="border-slate-200 xl:col-span-1">
+        <Card className="border-gray-200 xl:col-span-1">
           <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jira Sync Health</span>
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded border border-blue-200 bg-blue-50 text-blue-700">Jira</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jira Sync Health</span>
+            <span className="text-[9px] font-bold px-2 py-0.5 rounded border border-app-brand-200 bg-app-brand-75 text-app-brand-700">Jira</span>
           </CardHeader>
           <CardContent className="p-4 pt-1">
             <div className="flex items-center gap-1.5 mt-1">
@@ -871,9 +871,9 @@ function DashboardContent() {
                 "h-2 w-2 rounded-full",
                 jiraStats.failureCount || jiraStats.conflictCount
                   ? "bg-red-500"
-                  : jiraStats.syncedCount > 0 ? "bg-emerald-500" : "bg-slate-300"
+                  : jiraStats.syncedCount > 0 ? "bg-emerald-500" : "bg-gray-300"
               )} />
-              <span className="text-xs font-semibold text-slate-700">
+              <span className="text-xs font-semibold text-gray-700">
                 {jiraStats.failureCount || jiraStats.conflictCount
                   ? "Sync issues detected"
                   : jiraStats.syncedCount > 0 ? "Jira artifacts synchronized" : "No sync activity"}
@@ -882,21 +882,21 @@ function DashboardContent() {
             <div className={cn(
               "text-[10px] font-semibold mt-0.5",
               jiraStats.failureCount || jiraStats.conflictCount
-                ? "text-red-500" : jiraStats.syncedCount > 0 ? "text-emerald-600" : "text-slate-400"
+                ? "text-red-500" : jiraStats.syncedCount > 0 ? "text-emerald-600" : "text-gray-400"
             )}>
               {jiraStats.failureCount || jiraStats.conflictCount
                 ? `${jiraStats.failureCount} failures, ${jiraStats.conflictCount} conflicts`
                 : jiraStats.syncedCount > 0 ? "Healthy" : "No Jira artifacts synchronized"}
             </div>
-            <div className="grid grid-cols-3 gap-1 mt-3 pt-2.5 border-t border-slate-50 text-center">
+            <div className="grid grid-cols-3 gap-1 mt-3 pt-2.5 border-t border-gray-50 text-center">
               {[
-                { label: "Synced Issues", value: jiraStats.syncedCount, color: "text-slate-800" },
-                { label: "Sync Failures", value: jiraStats.failureCount, color: jiraStats.failureCount > 0 ? "text-red-600" : "text-slate-800" },
-                { label: "Conflicts", value: jiraStats.conflictCount, color: jiraStats.conflictCount > 0 ? "text-amber-500" : "text-slate-800" },
+                { label: "Synced Issues", value: jiraStats.syncedCount, color: "text-gray-800" },
+                { label: "Sync Failures", value: jiraStats.failureCount, color: jiraStats.failureCount > 0 ? "text-red-600" : "text-gray-800" },
+                { label: "Conflicts", value: jiraStats.conflictCount, color: jiraStats.conflictCount > 0 ? "text-amber-500" : "text-gray-800" },
               ].map(m => (
                 <div key={m.label}>
                   <div className={cn("text-base font-bold", m.color)}>{m.value}</div>
-                  <div className="text-[9px] text-slate-400 leading-tight mt-0.5">{m.label}</div>
+                  <div className="text-[9px] text-gray-400 leading-tight mt-0.5">{m.label}</div>
                 </div>
               ))}
             </div>
@@ -906,7 +906,7 @@ function DashboardContent() {
         {/* 5. Critical Blockers */}
         <Card className="border-red-100 bg-red-50/30 xl:col-span-1">
           <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between space-y-0">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Critical Blockers</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Critical Blockers</span>
             <AlertTriangle className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent className="p-4 pt-1">
@@ -914,25 +914,25 @@ function DashboardContent() {
             <div className="text-[10px] font-semibold text-red-400 mb-3">Release Blockers</div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-[10px]">
-                <div className="flex items-center gap-1.5 text-slate-600">
+                <div className="flex items-center gap-1.5 text-gray-600">
                   <XCircle className="h-3 w-3 text-red-500" />
                   <span>High/Critical Defects</span>
                 </div>
-                <span className="font-bold text-slate-800">{criticalBlockers.hcDefects}</span>
+                <span className="font-bold text-gray-800">{criticalBlockers.hcDefects}</span>
               </div>
               <div className="flex items-center justify-between text-[10px]">
-                <div className="flex items-center gap-1.5 text-slate-600">
+                <div className="flex items-center gap-1.5 text-gray-600">
                   <Clock className="h-3 w-3 text-amber-500" />
                   <span>Pending Approvals</span>
                 </div>
-                <span className="font-bold text-slate-800">{criticalBlockers.pendingApprovalCount}</span>
+                <span className="font-bold text-gray-800">{criticalBlockers.pendingApprovalCount}</span>
               </div>
               <div className="flex items-center justify-between text-[10px]">
-                <div className="flex items-center gap-1.5 text-slate-600">
-                  <Database className="h-3 w-3 text-slate-400" />
+                <div className="flex items-center gap-1.5 text-gray-600">
+                  <Database className="h-3 w-3 text-gray-400" />
                   <span>Test Data Gaps</span>
                 </div>
-                <span className="font-bold text-slate-800">{criticalBlockers.testDataGaps}</span>
+                <span className="font-bold text-gray-800">{criticalBlockers.testDataGaps}</span>
               </div>
             </div>
             <Link href={projectLink("/defects")} className="mt-3 flex items-center gap-1 text-[10px] font-semibold text-red-600 hover:underline">
@@ -946,8 +946,8 @@ function DashboardContent() {
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
 
         {/* Next Best Actions */}
-        <Card className="xl:col-span-2 border-slate-200">
-          <CardHeader className="p-5 pb-3 border-b border-slate-100">
+        <Card className="xl:col-span-2 border-gray-200">
+          <CardHeader className="p-5 pb-3 border-b border-gray-100">
             <div className="flex items-center gap-2">
               <CardTitle className="text-sm font-semibold">Next Best Actions</CardTitle>
               <span className="text-[9px] font-bold px-2 py-0.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 flex items-center gap-1">
@@ -973,14 +973,14 @@ function DashboardContent() {
         </Card>
 
         {/* STLC Pipeline with Risk Overlay */}
-        <Card className="xl:col-span-3 border-slate-200">
-          <CardHeader className="p-5 pb-3 border-b border-slate-100 flex flex-row items-center justify-between space-y-0">
+        <Card className="xl:col-span-3 border-gray-200">
+          <CardHeader className="p-5 pb-3 border-b border-gray-100 flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle className="text-sm font-semibold">STLC Pipeline with Risk Overlay</CardTitle>
               <CardDescription className="text-[10px] mt-0.5">Overall progress and risk by lifecycle stage</CardDescription>
             </div>
             <Link href={projectLink("/reports")}>
-              <Button variant="outline" size="sm" className="h-7 text-[10px] border-slate-200 gap-1">
+              <Button variant="outline" size="sm" className="h-7 text-[10px] border-gray-200 gap-1">
                 <BarChart3 className="h-3 w-3" /> Report
               </Button>
             </Link>
@@ -993,21 +993,21 @@ function DashboardContent() {
                   <div className="flex flex-col items-center text-center flex-1 min-w-[58px]">
                     <div className="relative flex items-center justify-center">
                       <ProgressRing progress={step.rate} color={step.color} radius={22} stroke={2.5} />
-                      <span className="absolute text-[8px] font-bold text-slate-800">{step.rate}%</span>
+                      <span className="absolute text-[8px] font-bold text-gray-800">{step.rate}%</span>
                     </div>
-                    <span className="text-[9px] font-bold text-slate-800 mt-1 leading-tight">{step.label}</span>
-                    <span className="text-[8px] text-slate-400 mt-0.5 leading-tight">
+                    <span className="text-[9px] font-bold text-gray-800 mt-1 leading-tight">{step.label}</span>
+                    <span className="text-[8px] text-gray-400 mt-0.5 leading-tight">
                       {(step as typeof step & { isDefects?: boolean }).isDefects
                         ? `${step.current} Open` : `${step.current} / ${step.total}`}
                     </span>
-                    <p className="text-[8px] text-slate-500 mt-0.5 leading-tight px-0.5">{step.note}</p>
+                    <p className="text-[8px] text-gray-500 mt-0.5 leading-tight px-0.5">{step.note}</p>
                     <div className="mt-1">
                       <RiskBadge risk={step.risk as "Low" | "Medium" | "High" | "Critical"} />
                     </div>
                   </div>
                   {/* Arrow connector */}
                   {idx < pipelineWithMeta.length - 1 && (
-                    <ChevronRight className="h-3.5 w-3.5 text-slate-300 shrink-0 mx-0.5" />
+                    <ChevronRight className="h-3.5 w-3.5 text-gray-300 shrink-0 mx-0.5" />
                   )}
                 </div>
               ))}
@@ -1020,17 +1020,17 @@ function DashboardContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* Quality Gates */}
-        <Card className="border-slate-200">
-          <CardHeader className="p-5 pb-3 border-b border-slate-100">
+        <Card className="border-gray-200">
+          <CardHeader className="p-5 pb-3 border-b border-gray-100">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-blue-500" /> Quality Gates
+              <ShieldCheck className="h-4 w-4 text-app-brand-500" /> Quality Gates
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4">
             <div className="grid grid-cols-2 gap-2">
               {qualityGates.map(gate => (
-                <div key={gate.name} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 border border-slate-100">
-                  <span className="text-[10px] font-medium text-slate-700 truncate">{gate.name}</span>
+                <div key={gate.name} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-50 border border-gray-100">
+                  <span className="text-[10px] font-medium text-gray-700 truncate">{gate.name}</span>
                   <GateBadge status={gate.status} />
                 </div>
               ))}
@@ -1039,8 +1039,8 @@ function DashboardContent() {
         </Card>
 
         {/* Traceability Health */}
-        <Card className="border-slate-200">
-          <CardHeader className="p-5 pb-3 border-b border-slate-100">
+        <Card className="border-gray-200">
+          <CardHeader className="p-5 pb-3 border-b border-gray-100">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Activity className="h-4 w-4 text-teal-500" /> Traceability Health
             </CardTitle>
@@ -1054,16 +1054,16 @@ function DashboardContent() {
               ].map(m => (
                 <div key={m.label}>
                   <div className="flex items-center justify-between text-[10px] mb-1">
-                    <span className="text-slate-600">{m.label}</span>
-                    <span className="font-bold text-slate-800">{m.value}%</span>
+                    <span className="text-gray-600">{m.label}</span>
+                    <span className="font-bold text-gray-800">{m.value}%</span>
                   </div>
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${m.value}%`, backgroundColor: m.color }} />
                   </div>
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-slate-50">
+            <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-gray-50">
               <div className="text-center p-2 rounded-lg bg-red-50 border border-red-100">
                 <div className="text-lg font-bold text-red-600">{traceability.uncoveredRequirements}</div>
                 <div className="text-[9px] text-red-400 font-medium mt-0.5">Uncovered Requirements</div>
@@ -1077,31 +1077,31 @@ function DashboardContent() {
         </Card>
 
         {/* Domain Quality Matrix */}
-        <Card className="border-slate-200">
-          <CardHeader className="p-5 pb-3 border-b border-slate-100">
+        <Card className="border-gray-200">
+          <CardHeader className="p-5 pb-3 border-b border-gray-100">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <BarChart2 className="h-4 w-4 text-indigo-500" /> Domain Quality Matrix
+              <BarChart2 className="h-4 w-4 text-app-brand-500" /> Domain Quality Matrix
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-[10px]">
                 <thead>
-                  <tr className="border-b border-slate-100">
+                  <tr className="border-b border-gray-100">
                     {["Domain", "Req %", "TC %", "Auto %", "Pass %", "Bugs", "Risk"].map(h => (
-                      <th key={h} className="px-3 py-2 text-left font-semibold text-slate-400 whitespace-nowrap">{h}</th>
+                      <th key={h} className="px-3 py-2 text-left font-semibold text-gray-400 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {domainMatrix.map((row, i) => (
-                    <tr key={row.domain} className={cn("border-b border-slate-50 hover:bg-slate-50", i % 2 === 0 ? "" : "bg-slate-50/30")}>
-                      <td className="px-3 py-2 font-semibold text-slate-700 whitespace-nowrap">{row.domain}</td>
-                      <td className="px-3 py-2 w-16"><MiniBar value={row.reqCoverage} color="#3b82f6" /></td>
+                    <tr key={row.domain} className={cn("border-b border-gray-50 hover:bg-gray-50", i % 2 === 0 ? "" : "bg-gray-50/30")}>
+                      <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">{row.domain}</td>
+                      <td className="px-3 py-2 w-16"><MiniBar value={row.reqCoverage} color="#D52B31" /></td>
                       <td className="px-3 py-2 w-16"><MiniBar value={row.tcCoverage} color="#8b5cf6" /></td>
                       <td className="px-3 py-2 w-16"><MiniBar value={row.automation} color="#06b6d4" /></td>
                       <td className="px-3 py-2 w-16"><MiniBar value={row.passRate} color="#10b981" /></td>
-                      <td className="px-3 py-2 font-bold text-slate-700 text-center">{row.openDefects}</td>
+                      <td className="px-3 py-2 font-bold text-gray-700 text-center">{row.openDefects}</td>
                       <td className="px-3 py-2"><RiskBadge risk={row.risk} /></td>
                     </tr>
                   ))}
@@ -1116,13 +1116,13 @@ function DashboardContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* Execution Trend */}
-        <Card className="border-slate-200">
+        <Card className="border-gray-200">
           <CardHeader className="p-5 pb-3 flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle className="text-sm font-semibold">Execution Trend</CardTitle>
               <CardDescription className="text-[10px]">Test outcomes over the last 14 days</CardDescription>
             </div>
-            <select className="border border-slate-200 rounded-lg text-[10px] font-semibold px-2 py-1 text-slate-500 focus:outline-none">
+            <select className="border border-gray-200 rounded-lg text-[10px] font-semibold px-2 py-1 text-gray-500 focus:outline-none">
               <option>Last 14 Days</option>
               <option>Last 30 Days</option>
             </select>
@@ -1141,17 +1141,17 @@ function DashboardContent() {
                       <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gBlocked" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.12} />
-                      <stop offset="95%" stopColor="#94a3b8" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#9CA3AF" stopOpacity={0.12} />
+                      <stop offset="95%" stopColor="#9CA3AF" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} axisLine={false} />
-                  <RechartsTooltip contentStyle={{ fontSize: "11px", borderRadius: "8px", border: "1px solid #e2e8f0" }} />
+                  <XAxis dataKey="name" stroke="#9CA3AF" fontSize={9} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#9CA3AF" fontSize={9} tickLine={false} axisLine={false} />
+                  <RechartsTooltip contentStyle={{ fontSize: "11px", borderRadius: "8px", border: "1px solid #E8EAEE" }} />
                   <Legend iconSize={8} wrapperStyle={{ fontSize: "10px", paddingTop: "8px" }} />
                   <Area type="monotone" dataKey="Passed" stroke="#10b981" fill="url(#gPassed)" strokeWidth={2} dot={{ r: 2.5 }} />
                   <Area type="monotone" dataKey="Failed" stroke="#ef4444" fill="url(#gFailed)" strokeWidth={2} dot={{ r: 2.5 }} />
-                  <Area type="monotone" dataKey="Blocked" stroke="#94a3b8" fill="url(#gBlocked)" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                  <Area type="monotone" dataKey="Blocked" stroke="#9CA3AF" fill="url(#gBlocked)" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -1159,8 +1159,8 @@ function DashboardContent() {
         </Card>
 
         {/* Defect Intelligence */}
-        <Card className="border-slate-200">
-          <CardHeader className="p-5 pb-3 border-b border-slate-100">
+        <Card className="border-gray-200">
+          <CardHeader className="p-5 pb-3 border-b border-gray-100">
             <CardTitle className="text-sm font-semibold">Defect Intelligence</CardTitle>
             <CardDescription className="text-[10px]">Active defect severity and aging</CardDescription>
           </CardHeader>
@@ -1170,17 +1170,17 @@ function DashboardContent() {
               <div className="relative shrink-0" style={{ width: 90, height: 90 }}>
                 <ResponsiveContainer width={90} height={90}>
                   <PieChart>
-                    <Pie data={defectChartData.length ? defectChartData : [{ name: "None", value: 1, color: "#f1f5f9" }]}
+                    <Pie data={defectChartData.length ? defectChartData : [{ name: "None", value: 1, color: "#F4F5F7" }]}
                       cx="50%" cy="50%" innerRadius={28} outerRadius={42} paddingAngle={2} dataKey="value">
-                      {(defectChartData.length ? defectChartData : [{ color: "#f1f5f9" }]).map((e, i) => (
+                      {(defectChartData.length ? defectChartData : [{ color: "#F4F5F7" }]).map((e, i) => (
                         <Cell key={i} fill={e.color} />
                       ))}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-lg font-bold text-slate-800">{stats.totalDefects}</span>
-                  <span className="text-[8px] text-slate-400 uppercase font-semibold">Total</span>
+                  <span className="text-lg font-bold text-gray-800">{stats.totalDefects}</span>
+                  <span className="text-[8px] text-gray-400 uppercase font-semibold">Total</span>
                 </div>
               </div>
               {/* Legend */}
@@ -1189,9 +1189,9 @@ function DashboardContent() {
                   <div key={d.name} className="flex items-center justify-between text-[10px]">
                     <div className="flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: d.color }} />
-                      <span className="text-slate-600">{d.name}</span>
+                      <span className="text-gray-600">{d.name}</span>
                     </div>
-                    <span className="font-bold text-slate-700">
+                    <span className="font-bold text-gray-700">
                       {d.value} ({stats.totalDefects > 0 ? Math.round((d.value / stats.totalDefects) * 100) : 0}%)
                     </span>
                   </div>
@@ -1199,16 +1199,16 @@ function DashboardContent() {
               </div>
             </div>
             {/* Defect Aging */}
-            <div className="mt-4 pt-3 border-t border-slate-50">
-              <p className="text-[10px] font-semibold text-slate-500 mb-2">Defect Aging</p>
+            <div className="mt-4 pt-3 border-t border-gray-50">
+              <p className="text-[10px] font-semibold text-gray-500 mb-2">Defect Aging</p>
               <div className="space-y-1.5">
                 {defectAging.map(b => (
                   <div key={b.label} className="flex items-center gap-2 text-[10px]">
-                    <span className="w-14 text-slate-500 shrink-0">{b.label}</span>
-                    <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <span className="w-14 text-gray-500 shrink-0">{b.label}</span>
+                    <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                       <div className="h-full rounded-full" style={{ width: `${b.pct}%`, backgroundColor: b.color }} />
                     </div>
-                    <span className="w-6 font-bold text-slate-700 text-right">{b.count}</span>
+                    <span className="w-6 font-bold text-gray-700 text-right">{b.count}</span>
                   </div>
                 ))}
               </div>
@@ -1217,8 +1217,8 @@ function DashboardContent() {
         </Card>
 
         {/* AI Agent Status */}
-        <Card className="border-slate-200 ai-glow-card">
-          <CardHeader className="p-5 pb-3 border-b border-slate-100">
+        <Card className="border-gray-200 ai-glow-card">
+          <CardHeader className="p-5 pb-3 border-b border-gray-100">
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle className="text-sm font-semibold">AI Agent Status</CardTitle>
@@ -1226,7 +1226,7 @@ function DashboardContent() {
               </div>
               <div className="text-right">
                 <div className="text-[10px] font-bold text-violet-600">
-                  <span className="text-base text-slate-800">{agentStats.actionsToday}</span> AI actions today
+                  <span className="text-base text-gray-800">{agentStats.actionsToday}</span> AI actions today
                 </div>
                 <div className="text-[10px] font-semibold text-emerald-600 mt-0.5">
                   <Zap className="inline h-2.5 w-2.5" /> {agentStats.runtimeHours.toFixed(1)} hrs runtime
@@ -1238,22 +1238,22 @@ function DashboardContent() {
             <div className="space-y-3">
               {agentActivity.map((agent, i) => (
                 <div key={i} className="flex items-center gap-3">
-                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-50 border border-indigo-100">
-                    <Bot className="h-3.5 w-3.5 text-indigo-500" />
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-app-brand-75 border border-app-brand-100">
+                    <Bot className="h-3.5 w-3.5 text-app-brand-500" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-[11px] font-semibold text-slate-800 truncate">{agent.name}</p>
-                      <span className="text-[9px] text-slate-400 shrink-0">{agent.time}</span>
+                      <p className="text-[11px] font-semibold text-gray-800 truncate">{agent.name}</p>
+                      <span className="text-[9px] text-gray-400 shrink-0">{agent.time}</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 truncate mt-0.5">{agent.detail}</p>
+                    <p className="text-[10px] text-gray-500 truncate mt-0.5">{agent.detail}</p>
                   </div>
                   <AgentPill status={agent.status} />
                 </div>
               ))}
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-50">
-              <Link href={projectLink("/agents")} className="text-[11px] font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
+            <div className="mt-4 pt-3 border-t border-gray-50">
+              <Link href={projectLink("/agents")} className="text-[11px] font-semibold text-[#B71920] hover:underline flex items-center gap-1">
                 View All Agent Runs <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </div>
@@ -1265,8 +1265,8 @@ function DashboardContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
         {/* Pending Approvals */}
-        <Card className="border-slate-200">
-          <CardHeader className="p-5 pb-3 border-b border-slate-100 flex flex-row items-center justify-between space-y-0">
+        <Card className="border-gray-200">
+          <CardHeader className="p-5 pb-3 border-b border-gray-100 flex flex-row items-center justify-between space-y-0">
             <div>
               <CardTitle className="text-sm font-semibold">Pending Approvals</CardTitle>
               <CardDescription className="text-[10px]">Quality gate authorization requests</CardDescription>
@@ -1278,16 +1278,16 @@ function DashboardContent() {
               {pendingApprovals.map((item, i) => (
                 <div key={i} className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-2.5 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 border border-slate-200">
-                      <FileText className="h-3.5 w-3.5 text-slate-500" />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 border border-gray-200">
+                      <FileText className="h-3.5 w-3.5 text-gray-500" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[11px] font-bold text-slate-800 truncate">{item.title}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5 truncate">{item.subtitle}</p>
+                      <p className="text-[11px] font-bold text-gray-800 truncate">{item.title}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5 truncate">{item.subtitle}</p>
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className="text-sm font-bold text-slate-700">{item.count}</span>
+                    <span className="text-sm font-bold text-gray-700">{item.count}</span>
                     <span className={cn("text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border", item.priorityColor)}>
                       {item.priority.split(" ")[0]}
                     </span>
@@ -1295,8 +1295,8 @@ function DashboardContent() {
                 </div>
               ))}
             </div>
-            <div className="mt-4 pt-3 border-t border-slate-50">
-              <Link href={projectLink("/requirements")} className="text-[11px] font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
+            <div className="mt-4 pt-3 border-t border-gray-50">
+              <Link href={projectLink("/requirements")} className="text-[11px] font-semibold text-[#B71920] hover:underline flex items-center gap-1">
                 View All Approvals <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </div>
@@ -1304,14 +1304,14 @@ function DashboardContent() {
         </Card>
 
         {/* Recent Activity */}
-        <Card className="lg:col-span-2 border-slate-200">
-          <CardHeader className="p-5 pb-0 border-b border-slate-100">
+        <Card className="lg:col-span-2 border-gray-200">
+          <CardHeader className="p-5 pb-0 border-b border-gray-100">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <CardTitle className="text-sm font-semibold">Recent Activity</CardTitle>
                 <CardDescription className="text-[10px] mt-0.5">QA lifecycle audit log</CardDescription>
               </div>
-              <Link href={projectLink("/dashboard")} className="text-[10px] font-semibold text-[#1b59f8] hover:underline flex items-center gap-1">
+              <Link href={projectLink("/dashboard")} className="text-[10px] font-semibold text-[#B71920] hover:underline flex items-center gap-1">
                 View All <ArrowUpRight className="h-3 w-3" />
               </Link>
             </div>
@@ -1324,8 +1324,8 @@ function DashboardContent() {
                   className={cn(
                     "px-4 py-2 text-[10px] font-semibold border-b-2 capitalize transition-colors",
                     activityTab === tab
-                      ? "border-[#1b59f8] text-[#1b59f8]"
-                      : "border-transparent text-slate-400 hover:text-slate-600"
+                      ? "border-[#B71920] text-[#B71920]"
+                      : "border-transparent text-gray-400 hover:text-gray-600"
                   )}
                 >{tab === "all" ? "All" : tab === "human" ? "Human" : "Agent"}</button>
               ))}
@@ -1334,28 +1334,28 @@ function DashboardContent() {
           <CardContent className="p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {filteredActivities.slice(0, 4).map((act, i) => (
-                <div key={i} className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-50 hover:bg-slate-50 transition-colors">
+                <div key={i} className="flex items-start gap-3 p-2.5 rounded-xl border border-gray-50 hover:bg-gray-50 transition-colors">
                   <div className={cn(
                     "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold",
-                    act.isAgent ? "bg-violet-50 border-violet-200 text-violet-600" : "bg-slate-100 border-slate-200 text-slate-600"
+                    act.isAgent ? "bg-violet-50 border-violet-200 text-violet-600" : "bg-gray-100 border-gray-200 text-gray-600"
                   )}>
                     {act.isAgent ? <Bot className="h-3.5 w-3.5" /> : act.user.split(" ").map(n => n[0]).join("")}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-1">
-                      <p className="text-[11px] font-semibold text-slate-800 leading-tight">
+                      <p className="text-[11px] font-semibold text-gray-800 leading-tight">
                         {act.isAgent ? "AI Agent" : act.user}
                       </p>
-                      <span className="text-[9px] text-slate-400 shrink-0">{act.time}</span>
+                      <span className="text-[9px] text-gray-400 shrink-0">{act.time}</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">
+                    <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">
                       {act.action}{act.subject ? ` — ${act.subject}` : ""}
                     </p>
                   </div>
                 </div>
               ))}
               {filteredActivities.length === 0 && (
-                <div className="sm:col-span-2 rounded-xl border border-dashed border-slate-200 p-5 text-center text-[10px] font-semibold text-slate-400">
+                <div className="sm:col-span-2 rounded-xl border border-dashed border-gray-200 p-5 text-center text-[10px] font-semibold text-gray-400">
                   No {activityTab === "all" ? "" : `${activityTab} `}activity recorded for this project.
                 </div>
               )}
@@ -1369,7 +1369,7 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-semibold">Loading Command Center...</div>}>
+    <Suspense fallback={<div className="p-8 text-center text-xs text-gray-500 font-semibold">Loading Command Center...</div>}>
       <DashboardContent />
     </Suspense>
   );

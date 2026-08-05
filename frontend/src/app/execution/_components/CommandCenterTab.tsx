@@ -312,9 +312,9 @@ function RunsRail({
   return (
     <Card className="flex flex-col overflow-hidden">
       <CardContent className="flex flex-1 flex-col p-0">
-        <div className="border-b border-slate-100 p-3">
+        <div className="border-b border-gray-100 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-slate-800">Runs &amp; Run History</h3>
+            <h3 className="text-sm font-semibold text-gray-800">Runs &amp; Run History</h3>
             <Button
               size="sm"
               onClick={onNewRun}
@@ -326,13 +326,13 @@ function RunsRail({
             </Button>
           </div>
           <div className="relative mb-2">
-            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
             <input
               type="search"
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search by run ID or name…"
-              className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-md border border-gray-200 bg-white py-1.5 pl-7 pr-2 text-xs focus:outline-none focus:ring-2 focus:ring-app-brand-100"
             />
           </div>
           <div className="flex gap-1 overflow-x-auto">
@@ -343,7 +343,7 @@ function RunsRail({
                 onClick={() => onFilterChange(f.key)}
                 className={cn(
                   "shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold transition",
-                  filter === f.key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                  filter === f.key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200",
                 )}
               >
                 {f.label} ({counts[f.key]})
@@ -364,7 +364,7 @@ function RunsRail({
               />
             </div>
           ) : (
-            <div className="divide-y divide-slate-50">
+            <div className="divide-y divide-gray-50">
               {runs.map((r) => (
                 <RunCard key={r.id} run={r} selected={r.id === selectedRunId} onClick={() => onSelect(r.id)} />
               ))}
@@ -373,7 +373,7 @@ function RunsRail({
         </div>
 
         {totalFiltered > 0 && (
-          <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2 text-[11px] text-slate-500">
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2 text-[11px] text-gray-500">
             <span>
               {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, totalFiltered)} of {totalFiltered}
             </span>
@@ -382,7 +382,7 @@ function RunsRail({
                 type="button"
                 disabled={page <= 1}
                 onClick={() => onPageChange(page - 1)}
-                className="rounded px-2 py-0.5 font-semibold hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
+                className="rounded px-2 py-0.5 font-semibold hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 ‹
               </button>
@@ -390,7 +390,7 @@ function RunsRail({
                 type="button"
                 disabled={page >= pageCount}
                 onClick={() => onPageChange(page + 1)}
-                className="rounded px-2 py-0.5 font-semibold hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
+                className="rounded px-2 py-0.5 font-semibold hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 ›
               </button>
@@ -411,19 +411,19 @@ function RunCard({ run, selected, onClick }: { run: ExecutionRun; selected: bool
     <button
       type="button"
       onClick={onClick}
-      className={cn("block w-full px-3 py-2.5 text-left transition", selected ? "bg-blue-50/70" : "hover:bg-slate-50")}
+      className={cn("block w-full px-3 py-2.5 text-left transition", selected ? "bg-app-brand-75/70" : "hover:bg-gray-50")}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className={cn("truncate font-mono text-[11px]", selected ? "text-violet-700" : "text-[#1b59f8]")}>
+        <span className={cn("truncate font-mono text-[11px]", selected ? "text-violet-700" : "text-[#B71920]")}>
           {run.execution_id}
         </span>
         <RunVerdictBadge run={run} />
       </div>
       <div className="mt-0.5 flex items-center gap-1.5">
-        <p className="truncate text-xs font-semibold text-slate-800">{run.suite_name ?? "Untitled run"}</p>
+        <p className="truncate text-xs font-semibold text-gray-800">{run.suite_name ?? "Untitled run"}</p>
         <AiAssistedBadge run={run} />
       </div>
-      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-400">
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] text-gray-400">
         {/* Sourced from the Test Cases module: test_environment is
             TestCase.test_phase, test_suite_name is TestCase.test_suite_id ->
             TestSuite.name — not the run's own deployment environment field.
@@ -433,11 +433,11 @@ function RunCard({ run, selected, onClick }: { run: ExecutionRun; selected: bool
         <span className="truncate" title="Test Suite">{run.test_suite_name ?? "—"}</span>
         <span className="ml-auto shrink-0">{formatDate(run.started_at ?? run.created_at)}</span>
       </div>
-      <div className="mt-1.5 flex items-center gap-3 text-[10px] tabular-nums text-slate-500">
+      <div className="mt-1.5 flex items-center gap-3 text-[10px] tabular-nums text-gray-500">
         <span className="text-emerald-600">✓ {run.passed}</span>
         <span className="text-red-600">✕ {run.failed}</span>
-        <span className="text-slate-400">↷ {run.skipped}</span>
-        {pct !== null && <span className="ml-auto font-semibold text-[#1b59f8]">{pct}%</span>}
+        <span className="text-gray-400">↷ {run.skipped}</span>
+        {pct !== null && <span className="ml-auto font-semibold text-[#B71920]">{pct}%</span>}
       </div>
     </button>
   );
@@ -472,7 +472,7 @@ function RunDetailPanel({
       <Card>
         <CardContent className="flex h-full min-h-[400px] items-center justify-center p-6">
           {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-slate-300" />
+            <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
           ) : (
             <EmptyState icon={PlayCircle} title="No run selected" description="Pick a run from the list, or start a new one." />
           )}
@@ -507,14 +507,14 @@ function RunDetailPanel({
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate text-sm font-bold text-slate-900">{run.suite_name ?? run.execution_id}</h3>
+              <h3 className="truncate text-sm font-bold text-gray-900">{run.suite_name ?? run.execution_id}</h3>
               <RunVerdictBadge run={run} />
               <AiAssistedBadge run={run} />
             </div>
             <button
               type="button"
               onClick={() => onTrace(run.id, run.execution_id)}
-              className="mt-0.5 font-mono text-[11px] text-slate-400 hover:text-[#1b59f8] hover:underline"
+              className="mt-0.5 font-mono text-[11px] text-gray-400 hover:text-[#B71920] hover:underline"
               title="Show the Requirement → Test Case → Script → Run chain"
             >
               {run.execution_id}
@@ -572,31 +572,31 @@ function RunDetailPanel({
           />
         </div>
 
-        <div className="mb-3 flex items-center gap-4 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+        <div className="mb-3 flex items-center gap-4 rounded-lg border border-gray-200 bg-gray-50/50 p-3">
           <ProgressRing pct={displayPct} />
           <div className="grid flex-1 grid-cols-4 gap-2 text-center">
             <div>
               <p className="text-lg font-bold tabular-nums text-emerald-600">{run.passed}</p>
-              <p className="text-[10px] text-slate-400">Passed</p>
+              <p className="text-[10px] text-gray-400">Passed</p>
             </div>
             <div>
               <p className="text-lg font-bold tabular-nums text-red-600">{run.failed}</p>
-              <p className="text-[10px] text-slate-400">Failed</p>
+              <p className="text-[10px] text-gray-400">Failed</p>
             </div>
             <div>
-              <p className="text-lg font-bold tabular-nums text-slate-500">{run.skipped}</p>
-              <p className="text-[10px] text-slate-400">Skipped</p>
+              <p className="text-lg font-bold tabular-nums text-gray-500">{run.skipped}</p>
+              <p className="text-[10px] text-gray-400">Skipped</p>
             </div>
             <div>
-              <p className="text-lg font-bold tabular-nums text-slate-700">{notRun}</p>
-              <p className="text-[10px] text-slate-400">Not Run</p>
+              <p className="text-lg font-bold tabular-nums text-gray-700">{notRun}</p>
+              <p className="text-[10px] text-gray-400">Not Run</p>
             </div>
           </div>
         </div>
 
         <RunLifecycleStepper run={run} />
 
-        <div className="mt-3 flex gap-4 border-b border-slate-200">
+        <div className="mt-3 flex gap-4 border-b border-gray-200">
           {([
             ["monitor", "Execution Monitor"],
             ["tests", `Test Cases (${run.total_tests})`],
@@ -608,7 +608,7 @@ function RunDetailPanel({
               onClick={() => setSubTab(key)}
               className={cn(
                 "-mb-px border-b-2 pb-2 text-xs font-semibold transition-colors",
-                subTab === key ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500 hover:text-slate-700",
+                subTab === key ? "border-[#B71920] text-[#B71920]" : "border-transparent text-gray-500 hover:text-gray-700",
               )}
             >
               {label}
@@ -620,11 +620,11 @@ function RunDetailPanel({
           {subTab === "monitor" && (
             <>
               {currentlyRunning && (
-                <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/60 p-3 text-xs">
-                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500" />
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-app-brand-100 bg-app-brand-75/60 p-3 text-xs">
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-app-brand-500" />
                   <div className="min-w-0">
-                    <p className="font-semibold text-blue-700">Currently running</p>
-                    <p className="truncate text-slate-600">{currentlyRunning.test_name}</p>
+                    <p className="font-semibold text-app-brand-700">Currently running</p>
+                    <p className="truncate text-gray-600">{currentlyRunning.test_name}</p>
                   </div>
                 </div>
               )}
@@ -639,7 +639,7 @@ function RunDetailPanel({
                 <button
                   type="button"
                   onClick={() => setSubTab("tests")}
-                  className="mt-2 text-[11px] font-semibold text-[#1b59f8] hover:underline"
+                  className="mt-2 text-[11px] font-semibold text-[#B71920] hover:underline"
                 >
                   View all {results.length} test cases →
                 </button>
@@ -664,9 +664,9 @@ function RunDetailPanel({
 
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-slate-100 bg-slate-50/50 px-2.5 py-1.5">
-      <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="mt-0.5 truncate text-xs font-semibold text-slate-800">{value}</p>
+    <div className="rounded-md border border-gray-100 bg-gray-50/50 px-2.5 py-1.5">
+      <p className="text-[9px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
+      <p className="mt-0.5 truncate text-xs font-semibold text-gray-800">{value}</p>
     </div>
   );
 }
@@ -678,14 +678,14 @@ function ProgressRing({ pct }: { pct: number }) {
   return (
     <div className="relative h-16 w-16 shrink-0">
       <svg viewBox="0 0 64 64" className="h-16 w-16 -rotate-90">
-        <circle cx="32" cy="32" r={radius} fill="none" stroke="#e2e8f0" strokeWidth="6" />
+        <circle cx="32" cy="32" r={radius} fill="none" stroke="#E8EAEE" strokeWidth="6" />
         <circle
-          cx="32" cy="32" r={radius} fill="none" stroke="#1b59f8" strokeWidth="6"
+          cx="32" cy="32" r={radius} fill="none" stroke="#B71920" strokeWidth="6"
           strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
           className="transition-all"
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800">{pct}%</div>
+      <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-gray-800">{pct}%</div>
     </div>
   );
 }
@@ -748,22 +748,22 @@ function RunLifecycleStepper({ run }: { run: ExecutionRun }) {
     : stages.length - 1;
 
   return (
-    <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">
+    <div className="mt-3 flex items-center gap-2 rounded-lg border border-gray-200 bg-white p-3">
       {stages.map((s, i) => (
         <div key={s.label} className="flex flex-1 items-center gap-2">
           <div className="flex flex-col items-center gap-1 text-center" title={s.note}>
             <div
               className={cn(
                 "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
-                i < currentIndex ? "bg-emerald-500 text-white" : i === currentIndex ? "bg-[#1b59f8] text-white" : "bg-slate-100 text-slate-400",
+                i < currentIndex ? "bg-emerald-500 text-white" : i === currentIndex ? "bg-[#B71920] text-white" : "bg-gray-100 text-gray-400",
               )}
             >
               {i < currentIndex ? <Check className="h-3.5 w-3.5" /> : i + 1}
             </div>
-            <p className="whitespace-nowrap text-[10px] font-semibold text-slate-600">{s.label}</p>
-            <p className="text-[9px] text-slate-400">{s.at ? formatDate(s.at) : "—"}</p>
+            <p className="whitespace-nowrap text-[10px] font-semibold text-gray-600">{s.label}</p>
+            <p className="text-[9px] text-gray-400">{s.at ? formatDate(s.at) : "—"}</p>
           </div>
-          {i < stages.length - 1 && <div className="h-px flex-1 bg-slate-200" />}
+          {i < stages.length - 1 && <div className="h-px flex-1 bg-gray-200" />}
         </div>
       ))}
     </div>
@@ -787,10 +787,10 @@ function ResultsTable({
     );
   }
   return (
-    <div className="max-h-[320px] overflow-y-auto rounded-md border border-slate-200">
+    <div className="max-h-[320px] overflow-y-auto rounded-md border border-gray-200">
       <table className="w-full text-xs">
-        <thead className="sticky top-0 bg-slate-50">
-          <tr className="text-left text-[10px] uppercase tracking-wider text-slate-400">
+        <thead className="sticky top-0 bg-gray-50">
+          <tr className="text-left text-[10px] uppercase tracking-wider text-gray-400">
             <th className="px-3 py-2">Test</th>
             <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2 text-right">Duration</th>
@@ -803,11 +803,11 @@ function ResultsTable({
               key={r.id}
               onClick={() => onSelectResult(r.id)}
               className={cn(
-                "cursor-pointer border-t border-slate-50 hover:bg-slate-50/70",
-                selectedResultId === r.id && "bg-blue-50/60",
+                "cursor-pointer border-t border-gray-50 hover:bg-gray-50/70",
+                selectedResultId === r.id && "bg-app-brand-75/60",
               )}
             >
-              <td className="max-w-[220px] truncate px-3 py-2 font-medium text-slate-700">
+              <td className="max-w-[220px] truncate px-3 py-2 font-medium text-gray-700">
                 <span className="flex items-center gap-1.5">
                   <span className="truncate">{r.test_name}</span>
                   {r.test_case_id != null && (
@@ -818,7 +818,7 @@ function ResultsTable({
                         e.stopPropagation();
                         router.push(buildHref("/automation", { project: projectId, tc: String(r.test_case_id) }));
                       }}
-                      className="shrink-0 text-slate-300 hover:text-[#1b59f8]"
+                      className="shrink-0 text-gray-300 hover:text-[#B71920]"
                     >
                       <GitBranch className="h-3 w-3" />
                     </button>
@@ -826,10 +826,10 @@ function ResultsTable({
                 </span>
               </td>
               <td className="px-3 py-2"><ExecutionStatusBadge status={r.status} className="text-[10px]" /></td>
-              <td className="px-3 py-2 text-right tabular-nums text-slate-500">
+              <td className="px-3 py-2 text-right tabular-nums text-gray-500">
                 {r.duration_ms != null ? `${(r.duration_ms / 1000).toFixed(1)}s` : "—"}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-slate-400">{formatDate(r.updated_at)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-gray-400">{formatDate(r.updated_at)}</td>
             </tr>
           ))}
         </tbody>
@@ -855,7 +855,7 @@ function LogsPanel({ run }: { run: ExecutionRun }) {
     return <EmptyState icon={Clock} title="No logs yet" description="Run-level logs appear here once the worker starts." />;
   }
   return (
-    <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded-lg bg-slate-900 p-3 font-mono text-[11px] leading-relaxed text-slate-100">
+    <pre className="max-h-[400px] overflow-auto whitespace-pre-wrap rounded-lg bg-gray-900 p-3 font-mono text-[11px] leading-relaxed text-gray-100">
       {logs.join("\n")}
     </pre>
   );
@@ -924,7 +924,7 @@ function FailureDetailsPanel({
   if (!run) {
     return (
       <Card>
-        <CardContent className="flex h-full min-h-[400px] items-center justify-center p-6 text-xs text-slate-400">
+        <CardContent className="flex h-full min-h-[400px] items-center justify-center p-6 text-xs text-gray-400">
           Select a run to see failure details.
         </CardContent>
       </Card>
@@ -1022,7 +1022,7 @@ function FailureDetailsPanel({
     <Card className="flex flex-col">
       <CardContent className="flex flex-1 flex-col p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-800">Failure Details</h3>
+          <h3 className="text-sm font-semibold text-gray-800">Failure Details</h3>
           {failing.length > 0 && <Badge variant="destructive">{failing.length} failing</Badge>}
         </div>
 
@@ -1039,7 +1039,7 @@ function FailureDetailsPanel({
             <div className="mb-4 rounded-lg border border-red-100 bg-red-50/60 p-3">
               <div className="mb-1.5 flex items-center gap-2">
                 <ExecutionStatusBadge status={selected.status} />
-                <span className="truncate font-mono text-[11px] text-slate-500">{selected.test_name}</span>
+                <span className="truncate font-mono text-[11px] text-gray-500">{selected.test_name}</span>
                 {classification && (
                   <Badge
                     variant={classification.repairable ? "warning" : "secondary"}
@@ -1050,7 +1050,7 @@ function FailureDetailsPanel({
                   </Badge>
                 )}
               </div>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-gray-500">
                 Duration: {selected.duration_ms != null ? `${(selected.duration_ms / 1000).toFixed(1)}s` : "—"}
                 {" · "}Updated: {formatDate(selected.updated_at)}
               </p>
@@ -1077,19 +1077,19 @@ function FailureDetailsPanel({
             )}
 
             {selectedRepairOutcome && selectedRepairOutcome.attempts.length > 0 && (
-              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+              <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50/60 p-3">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-gray-700">
                   <Wrench className="h-3 w-3" />
                   Repair {selectedRepairOutcome.repaired ? "resolved it" : "didn't resolve it"} —{" "}
                   {selectedRepairOutcome.attempts.length} attempt{selectedRepairOutcome.attempts.length === 1 ? "" : "s"}
                 </p>
                 <ul className="space-y-1">
                   {selectedRepairOutcome.attempts.map((a) => (
-                    <li key={a.attempt} className="flex items-start gap-1.5 text-[11px] text-slate-600">
+                    <li key={a.attempt} className="flex items-start gap-1.5 text-[11px] text-gray-600">
                       {a.outcome === "passed" ? (
                         <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
                       ) : (
-                        <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                        <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
                       )}
                       <span>
                         <span className="font-mono">#{a.attempt}</span>{" "}
@@ -1104,13 +1104,13 @@ function FailureDetailsPanel({
 
             {failing.length > 1 && (
               <div className="mb-4 space-y-1">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Other failures</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Other failures</p>
                 {failing.filter((f) => f.id !== selected.id).slice(0, 4).map((f) => (
                   <button
                     key={f.id}
                     type="button"
                     onClick={() => onSelectResult(f.id)}
-                    className="block w-full truncate rounded-md px-2 py-1 text-left text-[11px] text-slate-600 hover:bg-slate-50"
+                    className="block w-full truncate rounded-md px-2 py-1 text-left text-[11px] text-gray-600 hover:bg-gray-50"
                   >
                     {f.test_name}
                   </button>
@@ -1119,7 +1119,7 @@ function FailureDetailsPanel({
             )}
 
             <div className="space-y-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Quick Actions</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Quick Actions</p>
 
               {primaryAction === "repair" && typeof singleScriptId === "number" && (
                 <QuickAction
@@ -1240,15 +1240,15 @@ function QuickAction({
   const className = cn(
     "flex w-full items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-medium transition",
     tone === "warn" && "border-red-200 bg-red-50 text-red-800",
-    tone === "primary" && "border-[#1b59f8] bg-[#1b59f8] text-white",
-    tone === "default" && "border-slate-200 bg-white text-slate-700",
+    tone === "primary" && "border-[#B71920] bg-[#B71920] text-white",
+    tone === "default" && "border-gray-200 bg-white text-gray-700",
     disabled
       ? "cursor-not-allowed opacity-40"
-      : tone === "warn" ? "hover:bg-red-100" : tone === "primary" ? "hover:bg-[#1447d1]" : "hover:bg-slate-50",
+      : tone === "warn" ? "hover:bg-red-100" : tone === "primary" ? "hover:bg-[#941216]" : "hover:bg-gray-50",
   );
   const iconClassName = cn(
     "h-3.5 w-3.5",
-    tone === "warn" ? "text-red-500" : tone === "primary" ? "text-white" : "text-slate-400",
+    tone === "warn" ? "text-red-500" : tone === "primary" ? "text-white" : "text-gray-400",
     spinning && "animate-spin",
   );
   if (href) {
@@ -1256,7 +1256,7 @@ function QuickAction({
       <a href={href} target="_blank" rel="noreferrer" className={className} title={title}>
         <Icon className={iconClassName} />
         {label}
-        <Download className="ml-auto h-3 w-3 text-slate-400" />
+        <Download className="ml-auto h-3 w-3 text-gray-400" />
       </a>
     );
   }

@@ -101,10 +101,10 @@ const RESOLUTION_ACTIONS = [
 
 function SourceRow({ item, primary }: { item: InheritedScopeItem; primary: string }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-b border-slate-50 py-1.5 last:border-0">
+    <div className="flex items-start justify-between gap-3 border-b border-gray-50 py-1.5 last:border-0">
       <div className="min-w-0">
-        <p className="truncate text-[11px] font-bold text-slate-800">{primary}</p>
-        <p className="truncate text-[9px] font-semibold text-slate-400">{item.source}</p>
+        <p className="truncate text-[11px] font-bold text-gray-800">{primary}</p>
+        <p className="truncate text-[9px] font-semibold text-gray-400">{item.source}</p>
       </div>
       <Badge variant="outline" className="shrink-0 text-[8px]">
         {item.source_entity}
@@ -216,8 +216,8 @@ export function AutomationSuiteDetail({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-xs font-bold text-slate-500">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+      <div className="flex items-center justify-center py-16 text-xs font-bold text-gray-500">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" />
         Loading suite...
       </div>
     );
@@ -242,19 +242,19 @@ export function AutomationSuiteDetail({
     <div className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-            <button type="button" onClick={backToList} className="hover:text-[#1b59f8]">
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+            <button type="button" onClick={backToList} className="hover:text-[#B71920]">
               Automation Studio
             </button>
-            <ChevronRight className="h-3 w-3 text-slate-300" />
-            <button type="button" onClick={backToList} className="hover:text-[#1b59f8]">
+            <ChevronRight className="h-3 w-3 text-gray-300" />
+            <button type="button" onClick={backToList} className="hover:text-[#B71920]">
               Automation Workspace
             </button>
-            <ChevronRight className="h-3 w-3 text-slate-300" />
-            <span className="truncate text-slate-800">{overview.name}</span>
+            <ChevronRight className="h-3 w-3 text-gray-300" />
+            <span className="truncate text-gray-800">{overview.name}</span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-bold text-slate-900">{overview.name}</h1>
+            <h1 className="text-xl font-bold text-gray-900">{overview.name}</h1>
             <SuiteStatusBadge status={overview.status} />
             {overview.default_environment ? (
               <Badge variant="outline" className="text-[9px]">
@@ -267,9 +267,9 @@ export function AutomationSuiteDetail({
             )}
           </div>
           {overview.description && (
-            <p className="mt-1 text-xs font-semibold text-slate-500">{overview.description}</p>
+            <p className="mt-1 text-xs font-semibold text-gray-500">{overview.description}</p>
           )}
-          <p className="mt-1 text-[10px] font-semibold text-slate-400">
+          <p className="mt-1 text-[10px] font-semibold text-gray-400">
             Last evaluated {formatDateTime(overview.last_evaluated_at)}
           </p>
         </div>
@@ -310,8 +310,8 @@ export function AutomationSuiteDetail({
       </header>
 
       {/* ── Approval workflow. Only the transition the suite is actually at is offered. ── */}
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5">
-        <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50/70 px-3 py-2.5">
+        <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">
           Approval
         </span>
         {overview.status === "READY_FOR_VALIDATION" || overview.status === "INHERITANCE_REVIEW_REQUIRED" ? (
@@ -367,7 +367,7 @@ export function AutomationSuiteDetail({
             >
               Reject
             </Button>
-            <span className="text-[10px] font-semibold text-slate-500">
+            <span className="text-[10px] font-semibold text-gray-500">
               The user who submitted it cannot also approve it.
             </span>
           </>
@@ -387,7 +387,7 @@ export function AutomationSuiteDetail({
           </Button>
         ) : FROZEN_STATUSES.includes(overview.status) ? (
           <>
-            <span className="text-[10px] font-semibold text-slate-500">
+            <span className="text-[10px] font-semibold text-gray-500">
               This version is frozen by its publication snapshot.
             </span>
             {overview.status !== "ARCHIVED" && (
@@ -408,7 +408,7 @@ export function AutomationSuiteDetail({
             )}
           </>
         ) : (
-          <span className="text-[10px] font-semibold text-slate-500">
+          <span className="text-[10px] font-semibold text-gray-500">
             Resolve the open critical findings to submit this suite for review.
           </span>
         )}
@@ -464,7 +464,7 @@ export function AutomationSuiteDetail({
       </div>
 
       {/* ── Tabs ── */}
-      <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200">
         {LIVE_TABS.map((t) => (
           <button
             key={t.key}
@@ -473,8 +473,8 @@ export function AutomationSuiteDetail({
             className={cn(
               "whitespace-nowrap border-b-2 px-2.5 py-2 text-[10px] font-bold transition",
               tab === t.key
-                ? "border-[#1b59f8] text-[#1b59f8]"
-                : "border-transparent text-slate-500 hover:text-slate-800",
+                ? "border-[#B71920] text-[#B71920]"
+                : "border-transparent text-gray-500 hover:text-gray-800",
             )}
           >
             {t.label}
@@ -524,13 +524,13 @@ export function AutomationSuiteDetail({
                 ["Last inheritance sync", formatDateTime(overview.last_inheritance_sync_at)],
               ].map(([label, value]) => (
                 <div key={String(label)} className="flex items-center justify-between gap-2">
-                  <dt className="text-slate-500">{label}</dt>
-                  <dd className="font-extrabold text-slate-900">{value}</dd>
+                  <dt className="text-gray-500">{label}</dt>
+                  <dd className="font-extrabold text-gray-900">{value}</dd>
                 </div>
               ))}
               <div className="flex items-center justify-between gap-2">
-                <dt className="text-slate-500">Validation</dt>
-                <dd className="text-slate-300" title={overview.unavailable.validation_summary}>
+                <dt className="text-gray-500">Validation</dt>
+                <dd className="text-gray-300" title={overview.unavailable.validation_summary}>
                   Not available
                 </dd>
               </div>
@@ -538,17 +538,17 @@ export function AutomationSuiteDetail({
           </Panel>
           <Panel title="Recent Activity">
             {activity.length === 0 ? (
-              <p className="py-6 text-center text-[10px] font-semibold text-slate-400">
+              <p className="py-6 text-center text-[10px] font-semibold text-gray-400">
                 No activity recorded yet.
               </p>
             ) : (
               <ul className="space-y-2">
                 {activity.slice(0, 12).map((entry) => (
-                  <li key={entry.id} className="border-b border-slate-50 pb-1.5 last:border-0">
-                    <p className="text-[10px] font-bold text-slate-800">
+                  <li key={entry.id} className="border-b border-gray-50 pb-1.5 last:border-0">
+                    <p className="text-[10px] font-bold text-gray-800">
                       {humanizeCode(entry.event_type)}
                     </p>
-                    <p className="text-[9px] font-semibold text-slate-400">
+                    <p className="text-[9px] font-semibold text-gray-400">
                       {formatDateTime(entry.created_at)}
                       {entry.reason ? ` · ${entry.reason}` : ""}
                     </p>
@@ -565,7 +565,7 @@ export function AutomationSuiteDetail({
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[10px]">
               <thead>
-                <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
+                <tr className="border-b border-gray-100 text-[9px] font-extrabold uppercase text-gray-400">
                   <th className="py-1.5">Test Case</th>
                   <th>Title</th>
                   <th>Approval</th>
@@ -579,33 +579,33 @@ export function AutomationSuiteDetail({
               </thead>
               <tbody>
                 {members.map((member) => (
-                  <tr key={member.id} className="border-b border-slate-50 hover:bg-slate-50">
-                    <td className="py-1.5 font-bold text-slate-800">
+                  <tr key={member.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-1.5 font-bold text-gray-800">
                       {member.test_case_reference ?? `TC-${member.test_case_id}`}
                     </td>
-                    <td className="max-w-[260px] truncate font-semibold text-slate-600">
+                    <td className="max-w-[260px] truncate font-semibold text-gray-600">
                       {member.title ?? "—"}
                       {member.source_reference && (
-                        <span className="ml-1 text-[9px] font-semibold text-slate-400">
+                        <span className="ml-1 text-[9px] font-semibold text-gray-400">
                           ({member.source_reference})
                         </span>
                       )}
                     </td>
-                    <td className="font-semibold text-slate-600">{member.test_case_status ?? "—"}</td>
-                    <td className="font-semibold text-slate-600">{member.execution_mode ?? "—"}</td>
-                    <td className="font-semibold text-slate-600">
+                    <td className="font-semibold text-gray-600">{member.test_case_status ?? "—"}</td>
+                    <td className="font-semibold text-gray-600">{member.execution_mode ?? "—"}</td>
+                    <td className="font-semibold text-gray-600">
                       {member.resolved_framework ?? (
-                        <span className="text-slate-300" title="No active script for this test case">
+                        <span className="text-gray-300" title="No active script for this test case">
                           —
                         </span>
                       )}
                     </td>
-                    <td className="font-semibold text-slate-600">
+                    <td className="font-semibold text-gray-600">
                       {member.resolved_environment ?? (
-                        <span className="text-slate-300">—</span>
+                        <span className="text-gray-300">—</span>
                       )}
                     </td>
-                    <td className="font-semibold text-slate-600">
+                    <td className="font-semibold text-gray-600">
                       {member.readiness_checks_total > 0
                         ? `${member.readiness_checks_passed}/${member.readiness_checks_total}`
                         : "—"}
@@ -625,7 +625,7 @@ export function AutomationSuiteDetail({
                           Workspace for this member on its IR Editor tab. */}
                       <a
                         href={`/automation?view=ir&member=${member.id}`}
-                        className="mr-2 text-[9px] font-bold text-[#1b59f8] hover:underline"
+                        className="mr-2 text-[9px] font-bold text-[#B71920] hover:underline"
                       >
                         Open asset
                       </a>
@@ -643,7 +643,7 @@ export function AutomationSuiteDetail({
                               "Test case excluded from this suite.",
                             )
                           }
-                          className="text-[9px] font-bold text-slate-500 hover:text-red-600 disabled:text-slate-300"
+                          className="text-[9px] font-bold text-gray-500 hover:text-red-600 disabled:text-gray-300"
                         >
                           Exclude
                         </button>
@@ -660,7 +660,7 @@ export function AutomationSuiteDetail({
                               "Test case included again.",
                             )
                           }
-                          className="text-[9px] font-bold text-slate-500 hover:text-[#1b59f8] disabled:text-slate-300"
+                          className="text-[9px] font-bold text-gray-500 hover:text-[#B71920] disabled:text-gray-300"
                         >
                           Include
                         </button>
@@ -674,7 +674,7 @@ export function AutomationSuiteDetail({
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-[9px] font-semibold text-slate-400">
+          <p className="mt-2 text-[9px] font-semibold text-gray-400">
             Test case metadata is owned by Test Management and is read-only here.
           </p>
         </Panel>
@@ -682,14 +682,14 @@ export function AutomationSuiteDetail({
 
       {tab === "inherited-scope" && scope && (
         <div className="space-y-3">
-          <p className="text-[10px] font-semibold text-slate-500">
+          <p className="text-[10px] font-semibold text-gray-500">
             Everything below is inherited from its authoritative source and cannot be edited here.
             Last synchronized {formatDateTime(scope.last_synchronized_at)}.
           </p>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Panel title={`Business Traceability (${scope.business_traceability.length})`}>
               {scope.business_traceability.length === 0 ? (
-                <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+                <p className="py-4 text-center text-[10px] font-semibold text-gray-400">
                   No test cases in scope.
                 </p>
               ) : (
@@ -706,7 +706,7 @@ export function AutomationSuiteDetail({
             </Panel>
             <Panel title={`Applications (${scope.applications.length})`}>
               {scope.applications.length === 0 ? (
-                <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+                <p className="py-4 text-center text-[10px] font-semibold text-gray-400">
                   No application resolved for any member.
                 </p>
               ) : (
@@ -723,7 +723,7 @@ export function AutomationSuiteDetail({
             </Panel>
             <Panel title={`Frameworks (${scope.frameworks.length})`}>
               {scope.frameworks.length === 0 ? (
-                <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+                <p className="py-4 text-center text-[10px] font-semibold text-gray-400">
                   No frameworks inherited — no active scripts in scope.
                 </p>
               ) : (
@@ -735,13 +735,13 @@ export function AutomationSuiteDetail({
                   />
                 ))
               )}
-              <p className="mt-1.5 text-[9px] font-semibold text-slate-400">
+              <p className="mt-1.5 text-[9px] font-semibold text-gray-400">
                 {scope.unavailable.framework_profiles}
               </p>
             </Panel>
             <Panel title={`Scripts (${scope.scripts.length})`}>
               {scope.scripts.length === 0 ? (
-                <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+                <p className="py-4 text-center text-[10px] font-semibold text-gray-400">
                   No automation scripts linked yet.
                 </p>
               ) : (
@@ -755,13 +755,13 @@ export function AutomationSuiteDetail({
                   />
                 ))
               )}
-              <p className="mt-1.5 text-[9px] font-semibold text-slate-400">
+              <p className="mt-1.5 text-[9px] font-semibold text-gray-400">
                 {scope.unavailable.automation_ir}
               </p>
             </Panel>
             <Panel title={`Environments (${scope.environments.length})`}>
               {scope.environments.length === 0 ? (
-                <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+                <p className="py-4 text-center text-[10px] font-semibold text-gray-400">
                   No environment set for this suite.
                 </p>
               ) : (
@@ -778,7 +778,7 @@ export function AutomationSuiteDetail({
             </Panel>
             <Panel title={`Test Data (${scope.test_data.length})`}>
               {scope.test_data.length === 0 ? (
-                <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+                <p className="py-4 text-center text-[10px] font-semibold text-gray-400">
                   No test data linked to these test cases.
                 </p>
               ) : (
@@ -795,10 +795,10 @@ export function AutomationSuiteDetail({
             </Panel>
           </div>
           <Panel title="Not Inherited">
-            <ul className="space-y-1 text-[10px] font-semibold text-slate-500">
+            <ul className="space-y-1 text-[10px] font-semibold text-gray-500">
               {Object.entries(scope.unavailable).map(([field, reason]) => (
                 <li key={field} className="flex gap-2">
-                  <span className="shrink-0 font-bold text-slate-700">{humanizeCode(field)}:</span>
+                  <span className="shrink-0 font-bold text-gray-700">{humanizeCode(field)}:</span>
                   <span>{reason}</span>
                 </li>
               ))}
@@ -813,7 +813,7 @@ export function AutomationSuiteDetail({
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[10px]">
                 <thead>
-                  <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
+                  <tr className="border-b border-gray-100 text-[9px] font-extrabold uppercase text-gray-400">
                     <th className="py-1.5">Finding</th>
                     <th>Kind</th>
                     <th>Severity</th>
@@ -824,10 +824,10 @@ export function AutomationSuiteDetail({
                 </thead>
                 <tbody>
                   {openGaps.map((gap) => (
-                    <tr key={gap.id} className="border-b border-slate-50 align-top">
-                      <td className="py-1.5 font-bold text-slate-800">
+                    <tr key={gap.id} className="border-b border-gray-50 align-top">
+                      <td className="py-1.5 font-bold text-gray-800">
                         {humanizeCode(gap.gap_type)}
-                        <span className="mt-0.5 block text-[9px] font-semibold text-slate-400">
+                        <span className="mt-0.5 block text-[9px] font-semibold text-gray-400">
                           {gap.scope === "suite"
                             ? "Across the suite"
                             : `TC-${gap.test_case_id ?? "?"}`}
@@ -844,11 +844,11 @@ export function AutomationSuiteDetail({
                       <td>
                         <SeverityBadge severity={gap.severity} />
                       </td>
-                      <td className="font-semibold text-slate-500">{humanizeCode(gap.stage)}</td>
-                      <td className="max-w-[320px] font-semibold text-slate-600">
+                      <td className="font-semibold text-gray-500">{humanizeCode(gap.stage)}</td>
+                      <td className="max-w-[320px] font-semibold text-gray-600">
                         {gap.reason}
                         {gap.remediation && (
-                          <span className="mt-0.5 block text-[9px] font-semibold text-slate-400">
+                          <span className="mt-0.5 block text-[9px] font-semibold text-gray-400">
                             {gap.remediation}
                           </span>
                         )}
@@ -870,7 +870,7 @@ export function AutomationSuiteDetail({
                                 "Finding resolved.",
                               );
                             }}
-                            className="h-7 rounded-md border border-slate-200 px-1.5 text-[9px] font-bold"
+                            className="h-7 rounded-md border border-gray-200 px-1.5 text-[9px] font-bold"
                           >
                             <option value="">Choose resolution...</option>
                             {RESOLUTION_ACTIONS.filter(
@@ -894,7 +894,7 @@ export function AutomationSuiteDetail({
                                 "Exception approved and recorded.",
                               );
                             }}
-                            className="flex items-center gap-1 text-[9px] font-bold text-amber-600 hover:text-amber-700 disabled:text-slate-300"
+                            className="flex items-center gap-1 text-[9px] font-bold text-amber-600 hover:text-amber-700 disabled:text-gray-300"
                           >
                             <ShieldCheck className="h-3 w-3" />
                             Approve exception
@@ -918,7 +918,7 @@ export function AutomationSuiteDetail({
             <Panel title={`Resolved and Waived (${adjudicated.length})`}>
               <table className="w-full text-left text-[10px]">
                 <thead>
-                  <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
+                  <tr className="border-b border-gray-100 text-[9px] font-extrabold uppercase text-gray-400">
                     <th className="py-1.5">Finding</th>
                     <th>Outcome</th>
                     <th>Decision</th>
@@ -928,8 +928,8 @@ export function AutomationSuiteDetail({
                 </thead>
                 <tbody>
                   {adjudicated.map((gap) => (
-                    <tr key={gap.id} className="border-b border-slate-50">
-                      <td className="py-1.5 font-bold text-slate-700">
+                    <tr key={gap.id} className="border-b border-gray-50">
+                      <td className="py-1.5 font-bold text-gray-700">
                         {humanizeCode(gap.gap_type)}
                       </td>
                       <td>
@@ -940,17 +940,17 @@ export function AutomationSuiteDetail({
                           {humanizeCode(gap.status)}
                         </Badge>
                       </td>
-                      <td className="font-semibold text-slate-500">
+                      <td className="font-semibold text-gray-500">
                         {gap.auto_closed
                           ? "Closed automatically — no longer detected"
                           : gap.resolution_action
                             ? humanizeCode(gap.resolution_action)
                             : "—"}
                       </td>
-                      <td className="max-w-[240px] font-semibold text-slate-500">
+                      <td className="max-w-[240px] font-semibold text-gray-500">
                         {gap.reviewer_notes ?? "—"}
                       </td>
-                      <td className="font-semibold text-slate-400">
+                      <td className="font-semibold text-gray-400">
                         {formatDateTime(gap.resolved_at)}
                       </td>
                     </tr>
@@ -960,7 +960,7 @@ export function AutomationSuiteDetail({
             </Panel>
           )}
 
-          <p className="text-[9px] font-semibold text-slate-400">
+          <p className="text-[9px] font-semibold text-gray-400">
             Duplicate test cases cannot occur — suite membership is unique per test case. Framework
             and application pairing is not validated because no pairing rules exist in this
             platform.
@@ -986,7 +986,7 @@ export function AutomationSuiteDetail({
                       `Suite split into groups by ${dimension}.`,
                     );
                   }}
-                  className="h-7 rounded-md border border-slate-200 px-1.5 text-[9px] font-bold"
+                  className="h-7 rounded-md border border-gray-200 px-1.5 text-[9px] font-bold"
                 >
                   <option value="">Auto-split by...</option>
                   {groupMeta.split_dimensions.map((d) => (
@@ -1006,7 +1006,7 @@ export function AutomationSuiteDetail({
                       "Execution group created.",
                     );
                   }}
-                  className="text-[9px] font-bold text-[#1b59f8] disabled:text-slate-300"
+                  className="text-[9px] font-bold text-[#B71920] disabled:text-gray-300"
                 >
                   + Add group
                 </button>
@@ -1016,7 +1016,7 @@ export function AutomationSuiteDetail({
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[10px]">
                 <thead>
-                  <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
+                  <tr className="border-b border-gray-100 text-[9px] font-extrabold uppercase text-gray-400">
                     <th className="py-1.5">#</th>
                     <th>Group</th>
                     <th>Framework</th>
@@ -1031,24 +1031,24 @@ export function AutomationSuiteDetail({
                     <tr
                       key={group.id ?? "ungrouped"}
                       className={cn(
-                        "border-b border-slate-50",
+                        "border-b border-gray-50",
                         group.id === null && "bg-amber-50/40",
                       )}
                     >
-                      <td className="py-1.5 font-semibold text-slate-400">
+                      <td className="py-1.5 font-semibold text-gray-400">
                         {group.id === null ? "—" : group.sequence}
                       </td>
-                      <td className="font-bold text-slate-800">
+                      <td className="font-bold text-gray-800">
                         {group.name}
                         {group.notes && (
-                          <span className="mt-0.5 block text-[9px] font-semibold text-slate-400">
+                          <span className="mt-0.5 block text-[9px] font-semibold text-gray-400">
                             {group.notes}
                           </span>
                         )}
                       </td>
-                      <td className="font-semibold text-slate-600">{group.framework ?? "—"}</td>
-                      <td className="font-semibold text-slate-600">{group.environment ?? "—"}</td>
-                      <td className="font-bold text-slate-700">{group.member_count}</td>
+                      <td className="font-semibold text-gray-600">{group.framework ?? "—"}</td>
+                      <td className="font-semibold text-gray-600">{group.environment ?? "—"}</td>
+                      <td className="font-bold text-gray-700">{group.member_count}</td>
                       <td>
                         <Badge variant="outline" className="text-[8px]">
                           {humanizeCode(group.status)}
@@ -1065,7 +1065,7 @@ export function AutomationSuiteDetail({
                                 "Execution group deleted.",
                               )
                             }
-                            className="text-slate-300 hover:text-red-500 disabled:text-slate-200"
+                            className="text-gray-300 hover:text-red-500 disabled:text-gray-200"
                             aria-label={`Delete ${group.name}`}
                           >
                             <Trash2 className="h-3 w-3" />
@@ -1086,10 +1086,10 @@ export function AutomationSuiteDetail({
           </Panel>
 
           <Panel title="Orchestration Policy">
-            <ul className="space-y-1 text-[10px] font-semibold text-slate-500">
+            <ul className="space-y-1 text-[10px] font-semibold text-gray-500">
               {Object.entries(groupMeta.unavailable).map(([field, reason]) => (
                 <li key={field} className="flex gap-2">
-                  <span className="shrink-0 font-bold text-slate-700">{humanizeCode(field)}:</span>
+                  <span className="shrink-0 font-bold text-gray-700">{humanizeCode(field)}:</span>
                   <span>{reason}</span>
                 </li>
               ))}
@@ -1104,7 +1104,7 @@ export function AutomationSuiteDetail({
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[10px]">
                 <thead>
-                  <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
+                  <tr className="border-b border-gray-100 text-[9px] font-extrabold uppercase text-gray-400">
                     <th className="py-1.5">Version</th>
                     <th>Status</th>
                     <th>Test Cases</th>
@@ -1118,9 +1118,9 @@ export function AutomationSuiteDetail({
                   {versions.map((v) => (
                     <tr
                       key={v.suite_id}
-                      className={cn("border-b border-slate-50", v.suite_id === suiteId && "bg-blue-50/40")}
+                      className={cn("border-b border-gray-50", v.suite_id === suiteId && "bg-app-brand-75/40")}
                     >
-                      <td className="py-1.5 font-bold text-slate-800">
+                      <td className="py-1.5 font-bold text-gray-800">
                         v{v.version}
                         {v.is_current && (
                           <Badge variant="info" className="ml-1.5 text-[8px]">
@@ -1131,18 +1131,18 @@ export function AutomationSuiteDetail({
                       <td>
                         <SuiteStatusBadge status={v.status} />
                       </td>
-                      <td className="font-semibold text-slate-600">{v.members_included}</td>
-                      <td className="font-semibold text-slate-500">{formatDateTime(v.published_at)}</td>
-                      <td className="font-mono text-[9px] font-semibold text-slate-500">
+                      <td className="font-semibold text-gray-600">{v.members_included}</td>
+                      <td className="font-semibold text-gray-500">{formatDateTime(v.published_at)}</td>
+                      <td className="font-mono text-[9px] font-semibold text-gray-500">
                         {v.snapshot_checksum ? (
                           <span title={v.snapshot_checksum}>{v.snapshot_checksum.slice(0, 12)}…</span>
                         ) : (
-                          <span className="text-slate-300" title="Only published versions have a snapshot">
+                          <span className="text-gray-300" title="Only published versions have a snapshot">
                             —
                           </span>
                         )}
                       </td>
-                      <td className="max-w-[200px] truncate font-semibold text-slate-500">
+                      <td className="max-w-[200px] truncate font-semibold text-gray-500">
                         {v.decision_reason ?? "—"}
                       </td>
                       <td className="text-right">
@@ -1155,7 +1155,7 @@ export function AutomationSuiteDetail({
                               params.set("suite", String(v.suite_id));
                               router.push(`/automation?${params.toString()}`);
                             }}
-                            className="text-[9px] font-bold text-[#1b59f8]"
+                            className="text-[9px] font-bold text-[#B71920]"
                           >
                             Open
                           </button>
@@ -1175,21 +1175,21 @@ export function AutomationSuiteDetail({
             {impact?.snapshot ? (
               <dl className="space-y-1.5 text-[10px] font-semibold">
                 <div className="flex items-center justify-between">
-                  <dt className="text-slate-500">Published version</dt>
-                  <dd className="font-extrabold text-slate-900">v{impact.snapshot.suite_version}</dd>
+                  <dt className="text-gray-500">Published version</dt>
+                  <dd className="font-extrabold text-gray-900">v{impact.snapshot.suite_version}</dd>
                 </div>
                 <div className="flex items-center justify-between">
-                  <dt className="text-slate-500">Frozen test cases</dt>
-                  <dd className="font-extrabold text-slate-900">{impact.snapshot.member_count}</dd>
+                  <dt className="text-gray-500">Frozen test cases</dt>
+                  <dd className="font-extrabold text-gray-900">{impact.snapshot.member_count}</dd>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <dt className="shrink-0 text-slate-500">Checksum</dt>
-                  <dd className="truncate font-mono text-[9px] text-slate-600">
+                  <dt className="shrink-0 text-gray-500">Checksum</dt>
+                  <dd className="truncate font-mono text-[9px] text-gray-600">
                     {impact.snapshot.checksum}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between">
-                  <dt className="text-slate-500">Impact review</dt>
+                  <dt className="text-gray-500">Impact review</dt>
                   <dd
                     className={cn(
                       "font-extrabold",
@@ -1203,15 +1203,15 @@ export function AutomationSuiteDetail({
                 </div>
               </dl>
             ) : (
-              <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+              <p className="py-4 text-center text-[10px] font-semibold text-gray-400">
                 {impact?.reason ?? "This version has not been published, so it has no snapshot."}
               </p>
             )}
             {impact?.changed_members && impact.changed_members.length > 0 && (
-              <ul className="mt-2 space-y-1 border-t border-slate-100 pt-2">
+              <ul className="mt-2 space-y-1 border-t border-gray-100 pt-2">
                 {impact.changed_members.map((c) => (
-                  <li key={c.member_id} className="text-[10px] font-semibold text-slate-600">
-                    <span className="font-bold text-slate-800">TC-{c.test_case_id}</span>{" "}
+                  <li key={c.member_id} className="text-[10px] font-semibold text-gray-600">
+                    <span className="font-bold text-gray-800">TC-{c.test_case_id}</span>{" "}
                     {c.reasons.join(" ")}
                   </li>
                 ))}
@@ -1225,14 +1225,14 @@ export function AutomationSuiteDetail({
         <div className="space-y-3">
           <Panel title="Suite Execution">
             {overview?.status !== "PUBLISHED" ? (
-              <p className="py-3 text-[10px] font-semibold text-slate-500">
+              <p className="py-3 text-[10px] font-semibold text-gray-500">
                 Only a published suite can be executed — a run is dispatched against
                 the immutable publication snapshot, not against live scope. This
                 suite is {overview?.status ?? "not loaded"}.
               </p>
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-2 py-1">
-                <p className="max-w-2xl text-[10px] font-semibold text-slate-600">
+                <p className="max-w-2xl text-[10px] font-semibold text-gray-600">
                   A run evaluates environment, application, data, framework and
                   worker readiness before dispatching anything. If a readiness axis
                   fails, the run is created and blocked with the reason rather than
@@ -1257,7 +1257,7 @@ export function AutomationSuiteDetail({
                       setLaunching(false);
                     }
                   }}
-                  className="rounded-md bg-[#1b59f8] px-3 py-1.5 text-[10px] font-bold text-white disabled:opacity-50"
+                  className="rounded-md bg-[#B71920] px-3 py-1.5 text-[10px] font-bold text-white disabled:opacity-50"
                 >
                   {launching ? "Starting…" : "Start execution"}
                 </button>
@@ -1269,11 +1269,11 @@ export function AutomationSuiteDetail({
             {runs.length === 0 ? (
               // EmptyRow is a table row; this list is not a table, so the plain
               // paragraph is the correct element here.
-              <p className="py-4 text-center text-[10px] font-semibold text-slate-400">
+              <p className="py-4 text-center text-[10px] font-semibold text-gray-400">
                 This suite has not been executed yet.
               </p>
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="divide-y divide-gray-100">
                 {runs.map((run) => (
                   <li key={run.id} className="flex items-center justify-between gap-3 py-2">
                     <div className="min-w-0">
@@ -1284,21 +1284,21 @@ export function AutomationSuiteDetail({
                             `/automation/executions/${run.id}/live?project=${projectId}`,
                           )
                         }
-                        className="text-[11px] font-bold text-[#1b59f8] hover:underline"
+                        className="text-[11px] font-bold text-[#B71920] hover:underline"
                       >
                         {run.execution_id}
                       </button>
-                      <p className="text-[9px] font-semibold text-slate-400">
+                      <p className="text-[9px] font-semibold text-gray-400">
                         {run.environment ?? "No environment"} ·{" "}
                         {run.started_at ? formatDateTime(run.started_at) : "not started"}
                         {run.execution_purpose ? ` · ${run.execution_purpose}` : ""}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 text-[9px] font-bold">
-                      <span className="text-slate-500">
+                      <span className="text-gray-500">
                         {run.passed}/{run.total_tests} passed
                       </span>
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-600">
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
                         {run.outcome ?? run.lifecycle_state ?? "—"}
                       </span>
                     </div>

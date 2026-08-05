@@ -135,16 +135,16 @@ function ActionLocators({ locatorEvidence }: { locatorEvidence: DiscoveryLocator
   if (!locatorEvidence?.candidates?.length) return null;
   return (
     <div className="mt-2">
-      <button onClick={() => setOpen((v) => !v)} className="text-[11px] font-bold text-[#1b59f8]">
+      <button onClick={() => setOpen((v) => !v)} className="text-[11px] font-bold text-[#B71920]">
         {open ? "Hide" : "Show"} locators ({locatorEvidence.candidates.length})
       </button>
       {open && (
-        <div className="mt-2 space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+        <div className="mt-2 space-y-1.5 rounded-lg border border-gray-200 bg-gray-50 p-2.5">
           {locatorEvidence.candidates.map((candidate, index) => (
             <div key={index} className="flex flex-wrap items-center gap-1.5 text-[11px]">
               <Badge variant="outline">{candidate.strategy}</Badge>
-              <code className="rounded bg-white px-1.5 py-0.5 font-mono text-slate-600">{candidate.locator}</code>
-              <span className="font-semibold text-slate-400">confidence {candidate.confidence}</span>
+              <code className="rounded bg-white px-1.5 py-0.5 font-mono text-gray-600">{candidate.locator}</code>
+              <span className="font-semibold text-gray-400">confidence {candidate.confidence}</span>
               <Badge variant={candidate.unique ? "success" : "warning"}>{candidate.unique ? "Unique" : "Ambiguous"}</Badge>
               {!candidate.validated && <Badge variant="outline">Unvalidated</Badge>}
             </div>
@@ -166,12 +166,12 @@ function ActionEvidence({ sessionId, actionId }: { sessionId: number; actionId: 
 
   return (
     <div className="mt-2">
-      <button onClick={() => setOpen((v) => !v)} className="text-[11px] font-bold text-[#1b59f8]">
+      <button onClick={() => setOpen((v) => !v)} className="text-[11px] font-bold text-[#B71920]">
         {open ? "Hide" : "Show"} captured evidence
       </button>
       {open && (
         <div className="mt-2 space-y-2">
-          {capturesQuery.isLoading && <p className="text-[11px] font-semibold text-slate-400">Loading…</p>}
+          {capturesQuery.isLoading && <p className="text-[11px] font-semibold text-gray-400">Loading…</p>}
           <div className="flex flex-wrap gap-1.5">
             {(capturesQuery.data ?? []).map((capture) => (
               <Button
@@ -187,11 +187,11 @@ function ActionEvidence({ sessionId, actionId }: { sessionId: number; actionId: 
               </Button>
             ))}
             {capturesQuery.data?.length === 0 && (
-              <p className="text-[11px] font-semibold text-slate-400">No evidence was captured for this step.</p>
+              <p className="text-[11px] font-semibold text-gray-400">No evidence was captured for this step.</p>
             )}
           </div>
           {viewingCaptureId !== null && (
-            <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] leading-5 text-slate-600">
+            <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-2.5 text-[11px] leading-5 text-gray-600">
               {contentQuery.isLoading ? "Loading…" : contentQuery.data || "No content."}
             </pre>
           )}
@@ -276,7 +276,7 @@ function NewSessionDrawer({
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={problems.length ? "warning" : "success"}>{problems.length ? "Incomplete" : "Ready to create"}</Badge>
-            <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50">
+            <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-50">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -284,7 +284,7 @@ function NewSessionDrawer({
 
         <DrawerBody>
           <section className="space-y-3">
-            <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Step 1 · Recording mode</h4>
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Step 1 · Recording mode</h4>
             <div className="space-y-2">
               {MODES.map((option) => (
                 <button
@@ -292,32 +292,32 @@ function NewSessionDrawer({
                   onClick={() => setMode(option.value)}
                   className={cn(
                     "flex w-full items-start gap-3 rounded-lg border p-3 text-left transition",
-                    mode === option.value ? "border-[#1b59f8] bg-blue-50/50" : "border-slate-200 hover:bg-slate-50",
+                    mode === option.value ? "border-[#B71920] bg-app-brand-75/50" : "border-gray-200 hover:bg-gray-50",
                   )}
                 >
                   <span className={cn(
                     "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2",
-                    mode === option.value ? "border-[#1b59f8]" : "border-slate-300",
+                    mode === option.value ? "border-[#B71920]" : "border-gray-300",
                   )}>
-                    {mode === option.value && <span className="h-2 w-2 rounded-full bg-[#1b59f8]" />}
+                    {mode === option.value && <span className="h-2 w-2 rounded-full bg-[#B71920]" />}
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-xs font-extrabold text-slate-900">{option.label}</span>
-                    <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-slate-500">{option.hint}</span>
+                    <span className="block text-xs font-extrabold text-gray-900">{option.label}</span>
+                    <span className="mt-0.5 block text-[11px] font-semibold leading-4 text-gray-500">{option.hint}</span>
                   </span>
                 </button>
               ))}
             </div>
           </section>
 
-          <section className="space-y-3 border-t border-slate-100 pt-4">
-            <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">
+          <section className="space-y-3 border-t border-gray-100 pt-4">
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">
               Step 2 · {needsTestCase ? "Test context" : "Session purpose"}
             </h4>
 
             {needsTestCase ? (
               <>
-                <p className="text-[11px] font-semibold leading-4 text-slate-500">
+                <p className="text-[11px] font-semibold leading-4 text-gray-500">
                   {modeSpec.label} replays an approved test case. Only cases that are approved <em>and</em> mapped to this
                   application can be recorded — every other case is listed with the exact reason it is blocked.
                 </p>
@@ -326,7 +326,7 @@ function NewSessionDrawer({
                     Select an application to see which test cases are eligible.
                   </p>
                 ) : eligibleQuery.isLoading ? (
-                  <p className="text-xs font-semibold text-slate-400">Loading eligible test cases…</p>
+                  <p className="text-xs font-semibold text-gray-400">Loading eligible test cases…</p>
                 ) : eligible.length === 0 ? (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
                     This project has no test cases yet. Generate and approve one in Test Design first.
@@ -335,15 +335,15 @@ function NewSessionDrawer({
                   <>
                     <div className="flex items-center justify-between gap-2">
                       <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                         <input
                           value={testCaseSearch}
                           onChange={(e) => setTestCaseSearch(e.target.value)}
                           placeholder="Search test cases…"
-                          className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100"
+                          className="h-9 w-full rounded-lg border border-gray-200 pl-9 pr-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100"
                         />
                       </div>
-                      <span className="shrink-0 text-[11px] font-bold text-slate-500">
+                      <span className="shrink-0 text-[11px] font-bold text-gray-500">
                         {eligibleCount} of {eligible.length} eligible
                       </span>
                     </div>
@@ -356,14 +356,14 @@ function NewSessionDrawer({
                           title={tc.blocking_reason ?? undefined}
                           className={cn(
                             "flex w-full items-start justify-between gap-3 rounded-lg border p-2.5 text-left transition",
-                            !tc.eligible && "cursor-not-allowed border-slate-100 bg-slate-50",
-                            tc.eligible && testCaseId === tc.test_case_id && "border-[#1b59f8] bg-blue-50/50",
-                            tc.eligible && testCaseId !== tc.test_case_id && "border-slate-200 hover:bg-slate-50",
+                            !tc.eligible && "cursor-not-allowed border-gray-100 bg-gray-50",
+                            tc.eligible && testCaseId === tc.test_case_id && "border-[#B71920] bg-app-brand-75/50",
+                            tc.eligible && testCaseId !== tc.test_case_id && "border-gray-200 hover:bg-gray-50",
                           )}
                         >
                           <span className="min-w-0">
-                            <span className="block font-mono text-[11px] font-extrabold text-[#1b59f8]">{tc.display_id}</span>
-                            <span className={cn("mt-0.5 block truncate text-xs font-bold", tc.eligible ? "text-slate-800" : "text-slate-400")}>
+                            <span className="block font-mono text-[11px] font-extrabold text-[#B71920]">{tc.display_id}</span>
+                            <span className={cn("mt-0.5 block truncate text-xs font-bold", tc.eligible ? "text-gray-800" : "text-gray-400")}>
                               {tc.title}
                             </span>
                             {!tc.eligible && tc.blocking_reason && (
@@ -376,7 +376,7 @@ function NewSessionDrawer({
                         </button>
                       ))}
                       {filteredCases.length === 0 && (
-                        <p className="py-4 text-center text-xs font-semibold text-slate-400">No test cases match that search.</p>
+                        <p className="py-4 text-center text-xs font-semibold text-gray-400">No test cases match that search.</p>
                       )}
                     </div>
                   </>
@@ -384,7 +384,7 @@ function NewSessionDrawer({
               </>
             ) : (
               <label className="block">
-                <span className="mb-1 block text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                <span className="mb-1 block text-[10px] font-extrabold uppercase tracking-wide text-gray-500">
                   What is this session for? *
                 </span>
                 <textarea
@@ -392,9 +392,9 @@ function NewSessionDrawer({
                   onChange={(e) => setPurpose(e.target.value)}
                   rows={4}
                   placeholder="e.g. Reverse-engineer the promo-code path through checkout so we can write cases against it."
-                  className="w-full rounded-lg border border-slate-200 p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-lg border border-gray-200 p-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100"
                 />
-                <span className="mt-1 block text-[11px] font-semibold text-slate-400">
+                <span className="mt-1 block text-[11px] font-semibold text-gray-400">
                   Free recording has no test case behind it, so this text is the only record of intent. It appears on the
                   session everywhere it is referenced.
                 </span>
@@ -402,9 +402,9 @@ function NewSessionDrawer({
             )}
           </section>
 
-          <section className="space-y-2 border-t border-slate-100 pt-4">
-            <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Step 3 · Review</h4>
-            <div className="rounded-lg border border-slate-200 p-3">
+          <section className="space-y-2 border-t border-gray-100 pt-4">
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Step 3 · Review</h4>
+            <div className="rounded-lg border border-gray-200 p-3">
               <div className="grid grid-cols-2 gap-4">
                 <InfoPair label="Application" value={applicationName || "Not selected"} />
                 <InfoPair label="Environment" value={environment || "Not selected"} />
@@ -417,7 +417,7 @@ function NewSessionDrawer({
                 />
               </div>
               {problems.length > 0 ? (
-                <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
+                <div className="mt-3 space-y-1.5 border-t border-gray-100 pt-3">
                   {problems.map((problem) => (
                     <p key={problem} className="flex items-start gap-1.5 text-[11px] font-semibold text-amber-800">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{problem}
@@ -425,7 +425,7 @@ function NewSessionDrawer({
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 flex items-center gap-1.5 border-t border-slate-100 pt-3 text-[11px] font-bold text-emerald-700">
+                <p className="mt-3 flex items-center gap-1.5 border-t border-gray-100 pt-3 text-[11px] font-bold text-emerald-700">
                   <ShieldCheck className="h-3.5 w-3.5" />
                   Creating the session does not start it. You will get a readiness check first.
                 </p>
@@ -786,35 +786,35 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
 
       <Notices error={error} notice={notice} onDismiss={() => { setError(""); setNotice(""); }} />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Application</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">Application</span>
           <select
             value={applicationId ?? ""}
             onChange={(e) => setParams({ application: e.target.value || null, session: null, environment: null })}
-            className="h-9 w-60 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            className="h-9 w-60 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
           >
             <option value="">Select application…</option>
             {applications.map((a) => <option key={a.id ?? a.key} value={a.id ?? ""}>{a.name}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Environment</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">Environment</span>
           <select
             value={environment}
             disabled={!application}
             onChange={(e) => setParam("environment", e.target.value || null)}
-            className="h-9 w-44 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+            className="h-9 w-44 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100 disabled:bg-gray-50 disabled:text-gray-400"
           >
             <option value="">{environmentOptions.length === 0 && application ? "None configured" : "Select environment…"}</option>
             {environmentOptions.map((env) => <option key={env} value={env}>{env}</option>)}
           </select>
         </label>
         {application && (
-          <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-            <span className="font-mono font-bold text-[#1b59f8]">APP-{application.id}</span>
+          <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-gray-500">
+            <span className="font-mono font-bold text-[#B71920]">APP-{application.id}</span>
             <span>{application.key}</span>
-            <a href={`/applications?view=model&project=${projectId}&application=${application.id}`} className="ml-2 inline-flex items-center gap-1 font-bold text-[#1b59f8]">
+            <a href={`/applications?view=model&project=${projectId}&application=${application.id}`} className="ml-2 inline-flex items-center gap-1 font-bold text-[#B71920]">
               <Layers3 className="h-3.5 w-3.5" /> Application Model <ExternalLink className="h-3 w-3" />
             </a>
           </div>
@@ -837,12 +837,12 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-64 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by session number, state, environment or purpose…"
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
               />
             </div>
             <FilterSelect
@@ -850,7 +850,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
               options={[{ value: "", label: "Mode: All" }, ...MODES.map((m) => ({ value: m.value, label: m.label }))]}
             />
             {(search || modeFilter || queueTab !== "all") && (
-              <button onClick={() => { setSearch(""); setModeFilter(""); setQueueTab("all"); }} className="text-xs font-bold text-[#1b59f8]">
+              <button onClick={() => { setSearch(""); setModeFilter(""); setQueueTab("all"); }} className="text-xs font-bold text-[#B71920]">
                 Clear Filters
               </button>
             )}
@@ -872,7 +872,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                   : <Button size="sm" variant="outline" onClick={() => { setSearch(""); setModeFilter(""); setQueueTab("all"); }}>Clear Filters</Button>}
               />
             ) : undefined}
-            footer={<span className="text-xs font-semibold text-slate-500">Showing {filteredSessions.length} of {sessions.length} sessions</span>}
+            footer={<span className="text-xs font-semibold text-gray-500">Showing {filteredSessions.length} of {sessions.length} sessions</span>}
           >
             {filteredSessions.map((row) => {
               const phase = sessionPhase(row.status);
@@ -884,17 +884,17 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                   selected={sessionIdParam === row.id}
                   onClick={() => { setParam("session", String(row.id)); setDrawerTab("next"); }}
                 >
-                  <span className="font-mono font-extrabold text-[#1b59f8]">#{row.id}</span>
-                  <span className="truncate font-semibold text-slate-600">{modeLabel}</span>
+                  <span className="font-mono font-extrabold text-[#B71920]">#{row.id}</span>
+                  <span className="truncate font-semibold text-gray-600">{modeLabel}</span>
                   <span className="flex items-center gap-1.5">
                     <Badge variant={STATE_BADGE[row.status] ?? "outline"} title={row.status}>{phase.label}</Badge>
                   </span>
-                  <span className="truncate font-semibold text-slate-600" title={row.purpose ?? undefined}>
+                  <span className="truncate font-semibold text-gray-600" title={row.purpose ?? undefined}>
                     {row.purpose || (row.test_case_id ? `Test case #${row.test_case_id}` : "—")}
                   </span>
-                  <span className="font-bold text-slate-700">{row.current_step_index}</span>
-                  <span className="font-semibold text-slate-500">{row.environment}</span>
-                  <span className="truncate font-semibold text-slate-500">
+                  <span className="font-bold text-gray-700">{row.current_step_index}</span>
+                  <span className="font-semibold text-gray-500">{row.environment}</span>
+                  <span className="truncate font-semibold text-gray-500">
                     {row.started_at ? new Date(row.started_at).toLocaleString() : "Not started"}
                   </span>
                 </ListRow>
@@ -920,28 +920,28 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
         <DrawerContent size="xl">
           {session ? (
             <div className="flex h-full flex-col">
-              <div className="border-b border-slate-100 p-5">
+              <div className="border-b border-gray-100 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-lg font-extrabold text-slate-950">Session #{session.id}</span>
+                    <span className="font-mono text-lg font-extrabold text-gray-950">Session #{session.id}</span>
                     <Badge variant={STATE_BADGE[session.status] ?? "outline"} title={session.status}>
                       {sessionPhase(session.status).label}
                     </Badge>
                     {manualControl && <Badge variant="info">Manual control</Badge>}
                   </div>
-                  <button onClick={() => setParam("session", null)} aria-label="Close" className="rounded-md p-1 text-slate-500 hover:bg-slate-50">
+                  <button onClick={() => setParam("session", null)} aria-label="Close" className="rounded-md p-1 text-gray-500 hover:bg-gray-50">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <h2 className="mt-4 text-base font-extrabold text-slate-950">
+                <h2 className="mt-4 text-base font-extrabold text-gray-950">
                   {MODES.find((m) => m.value === session.mode)?.label ?? session.mode}
                 </h2>
-                <p className="mt-2 text-xs font-semibold text-slate-500">
+                <p className="mt-2 text-xs font-semibold text-gray-500">
                   {session.environment}
                   {session.purpose
                     ? <> · {session.purpose}</>
                     : testCase
-                      ? <> · <span className="text-[#1b59f8]">{testCase.display_id}</span> {testCase.title}</>
+                      ? <> · <span className="text-[#B71920]">{testCase.display_id}</span> {testCase.title}</>
                       : session.test_case_id ? <> · test case #{session.test_case_id}</> : null}
                   {" · "}exact state <span className="font-mono">{session.status}</span>
                 </p>
@@ -949,7 +949,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
 
               <DrawerTabBar tabs={drawerTabs} active={drawerTab} onChange={setDrawerTab} />
 
-              <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 p-4">
+              <div className="flex-1 space-y-4 overflow-y-auto bg-gray-50/50 p-4">
                 {/* ── what's next ─────────────────────────────────── */}
                 {drawerTab === "next" && (
                   <>
@@ -965,9 +965,9 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                       }
                     >
                       {readinessQuery.isLoading ? (
-                        <p className="text-xs font-semibold text-slate-400">Evaluating…</p>
+                        <p className="text-xs font-semibold text-gray-400">Evaluating…</p>
                       ) : (readiness?.checks ?? []).length === 0 ? (
-                        <p className="text-xs font-semibold text-slate-400">No readiness checks returned for this session.</p>
+                        <p className="text-xs font-semibold text-gray-400">No readiness checks returned for this session.</p>
                       ) : (
                         <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
                           {(readiness?.checks ?? []).map((check) => (
@@ -983,7 +983,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                     </DrawerCard>
 
                     <DrawerCard title="All session controls" icon={Target}>
-                      <p className="mb-3 text-[11px] font-semibold leading-4 text-slate-500">
+                      <p className="mb-3 text-[11px] font-semibold leading-4 text-gray-500">
                         Only the transitions your session&apos;s current state allows are enabled. Hover a disabled one to
                         see why.
                       </p>
@@ -1059,7 +1059,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                   <>
                     <DrawerCard title="What this session found" icon={Layers3}>
                       {actions.length === 0 ? (
-                        <p className="text-xs font-semibold text-slate-500">
+                        <p className="text-xs font-semibold text-gray-500">
                           Nothing has been captured yet. Actions appear here as the recorder performs each step.
                         </p>
                       ) : (
@@ -1079,7 +1079,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                           ) : (
                             <div className="mt-3 flex flex-wrap gap-1.5">
                               {screens.map((screen) => (
-                                <span key={screen} className="rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[11px] font-bold text-slate-600">
+                                <span key={screen} className="rounded-md border border-gray-200 bg-white px-2 py-1 font-mono text-[11px] font-bold text-gray-600">
                                   {screen}
                                 </span>
                               ))}
@@ -1092,7 +1092,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                     {actions.map((action) => (
                       <DrawerCard key={action.id} title={`Step ${action.sequence} · ${action.action_family}`} icon={Target}>
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="min-w-0 flex-1 text-xs font-semibold text-slate-700">
+                          <p className="min-w-0 flex-1 text-xs font-semibold text-gray-700">
                             {action.target_semantic || "No description recorded."}
                           </p>
                           <Badge variant={action.inclusion_state === "included" ? "success" : "secondary"}>
@@ -1109,7 +1109,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                           </p>
                         )}
 
-                        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
                           {["included", "excluded"].map((state) => (
                             <Button
                               key={state}
@@ -1136,7 +1136,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                                   });
                                 }
                               }}
-                              className="h-7 flex-1 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold outline-none focus:ring-2 focus:ring-blue-100"
+                              className="h-7 flex-1 rounded-lg border border-gray-200 px-2 text-[11px] font-semibold outline-none focus:ring-2 focus:ring-app-brand-100"
                             />
                           )}
                         </div>
@@ -1163,7 +1163,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                       >
                         {currentStepQuery.data?.text ? (
                           <>
-                            <p className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs font-semibold text-slate-800">
+                            <p className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs font-semibold text-gray-800">
                               {currentStepQuery.data.text}
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
@@ -1177,31 +1177,31 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
 
                             {showModifyForm && (
                               <div className="mt-3 space-y-2 rounded-lg border border-violet-200 bg-white p-3">
-                                <p className="text-[11px] font-semibold text-slate-500">
+                                <p className="text-[11px] font-semibold text-gray-500">
                                   Replace the proposed step with the action you specify. The original stays in the audit trail.
                                 </p>
                                 <select
                                   value={freeActionFamily}
                                   onChange={(e) => setFreeActionFamily(e.target.value)}
-                                  className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-bold outline-none"
+                                  className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-bold outline-none"
                                 >
                                   {FREE_ACTION_FAMILIES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                                 </select>
                                 {freeActionFamily === "navigate" && (
                                   <input value={freeActionUrl} onChange={(e) => setFreeActionUrl(e.target.value)} placeholder="https://…"
-                                    className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none" />
+                                    className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none" />
                                 )}
                                 {(freeActionFamily === "click" || freeActionFamily === "input") && (
                                   <>
                                     <input value={freeActionTargetRef} onChange={(e) => setFreeActionTargetRef(e.target.value)} placeholder="Target ref from the snapshot below"
-                                      className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none" />
+                                      className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none" />
                                     <input value={freeActionTargetSemantic} onChange={(e) => setFreeActionTargetSemantic(e.target.value)} placeholder="Description (e.g. Login button)"
-                                      className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none" />
+                                      className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none" />
                                   </>
                                 )}
                                 {freeActionFamily === "input" && (
                                   <input value={freeActionInputText} onChange={(e) => setFreeActionInputText(e.target.value)} placeholder="Text to type"
-                                    className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none" />
+                                    className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none" />
                                 )}
                                 <Button size="sm" className="w-full" disabled={issueCommand.isPending} onClick={modifyNextAction}>
                                   Execute modified action
@@ -1209,12 +1209,12 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                               </div>
                             )}
 
-                            <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
+                            <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
                               <input
                                 value={skipReason}
                                 onChange={(e) => setSkipReason(e.target.value)}
                                 placeholder="Reason for skipping this step"
-                                className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100"
+                                className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100"
                               />
                               <Button
                                 size="sm" variant="outline" className="w-full"
@@ -1227,7 +1227,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                             </div>
                           </>
                         ) : (
-                          <p className="text-xs font-semibold text-slate-500">
+                          <p className="text-xs font-semibold text-gray-500">
                             No approved steps remain. Stop the session, then complete it.
                           </p>
                         )}
@@ -1254,53 +1254,53 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                             <select
                               value={freeActionFamily}
                               onChange={(e) => setFreeActionFamily(e.target.value)}
-                              className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-blue-100"
+                              className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-bold outline-none focus:ring-2 focus:ring-app-brand-100"
                             >
                               {FREE_ACTION_FAMILIES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                             </select>
                             {freeActionFamily === "navigate" && (
                               <input value={freeActionUrl} onChange={(e) => setFreeActionUrl(e.target.value)} placeholder="https://…"
-                                className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                                className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
                             )}
                             {(freeActionFamily === "click" || freeActionFamily === "input") && (
                               <>
                                 <input value={freeActionTargetRef} onChange={(e) => setFreeActionTargetRef(e.target.value)} placeholder="Target ref — copy one from the snapshot below"
-                                  className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                                  className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
                                 <input value={freeActionTargetSemantic} onChange={(e) => setFreeActionTargetSemantic(e.target.value)} placeholder="Description (e.g. Login button)"
-                                  className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                                  className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
                               </>
                             )}
                             {freeActionFamily === "read" && (
                               <input value={freeActionTargetSemantic} onChange={(e) => setFreeActionTargetSemantic(e.target.value)} placeholder="What did you observe? (optional)"
-                                className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                                className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
                             )}
                             {freeActionFamily === "input" && (
                               <input value={freeActionInputText} onChange={(e) => setFreeActionInputText(e.target.value)} placeholder="Text to type"
-                                className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                                className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
                             )}
                             <Button size="sm" className="w-full" disabled={recordAction.isPending} onClick={submitFreeAction}>
                               {recordAction.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
                               Record action
                             </Button>
                           </div>
-                          <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] font-semibold leading-4 text-slate-500">
+                          <p className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-2.5 text-[11px] font-semibold leading-4 text-gray-500">
                             Naming a field &quot;password&quot;, &quot;OTP&quot;, &quot;card&quot; and similar redacts the typed
                             value before it is ever stored. The real action still executes against the application.
                           </p>
                         </DrawerCard>
 
                         <DrawerCard title="Latest accessibility snapshot" icon={Search}>
-                          <p className="mb-2 text-[11px] font-semibold text-slate-500">
+                          <p className="mb-2 text-[11px] font-semibold text-gray-500">
                             Copy a ref from here into the target field above to act on that element.
                           </p>
-                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] leading-5 text-slate-600">
+                          <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-3 text-[11px] leading-5 text-gray-600">
                             {latestSnapshotExcerpt || "No snapshot captured yet — perform an action to capture one."}
                           </pre>
                         </DrawerCard>
                       </>
                     ) : !isAgentDriven && (
                       <DrawerCard title="Live control" icon={Play}>
-                        <p className="text-xs font-semibold leading-5 text-slate-500">
+                        <p className="text-xs font-semibold leading-5 text-gray-500">
                           {session.mode === "GUIDED_USER"
                             ? "Guided recording walks the approved test case on its own — there is nothing to drive by hand. Watch progress on the Evidence tab."
                             : session.status === "RECORDING"
@@ -1312,7 +1312,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
 
                     {session.status === "PAUSED" && (checkpointsQuery.data?.length ?? 0) > 0 && (
                       <DrawerCard title="Roll back to a checkpoint" icon={Flag}>
-                        <p className="mb-2 text-[11px] font-semibold leading-4 text-slate-500">
+                        <p className="mb-2 text-[11px] font-semibold leading-4 text-gray-500">
                           Rolling back marks every action after the chosen checkpoint as rolled back and resets the step
                           index. Nothing is deleted — the audit trail keeps both.
                         </p>
@@ -1320,7 +1320,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                           <select
                             value={rollbackCheckpointId}
                             onChange={(e) => setRollbackCheckpointId(e.target.value)}
-                            className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-bold outline-none"
+                            className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-bold outline-none"
                           >
                             <option value="">Select a checkpoint…</option>
                             {(checkpointsQuery.data ?? []).filter((cp) => cp.resumable).map((cp) => (
@@ -1331,7 +1331,7 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                             value={rollbackReason}
                             onChange={(e) => setRollbackReason(e.target.value)}
                             placeholder="Reason for rolling back"
-                            className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100"
+                            className="h-9 w-full rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100"
                           />
                           <Button
                             size="sm" variant="outline" className="w-full"
@@ -1353,22 +1353,22 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                 {/* ── checkpoints ─────────────────────────────────── */}
                 {drawerTab === "checkpoints" && (
                   <DrawerCard title="Checkpoints" icon={Flag}>
-                    <p className="mb-3 text-[11px] font-semibold leading-4 text-slate-500">
+                    <p className="mb-3 text-[11px] font-semibold leading-4 text-gray-500">
                       A checkpoint is a resumable point recorded automatically when the session pauses or stops, and
                       manually whenever you save one.
                     </p>
                     {(checkpointsQuery.data ?? []).length === 0 ? (
-                      <p className="text-xs font-semibold text-slate-400">No checkpoints recorded yet.</p>
+                      <p className="text-xs font-semibold text-gray-400">No checkpoints recorded yet.</p>
                     ) : (
                       <div className="space-y-2">
                         {(checkpointsQuery.data ?? []).map((cp) => (
-                          <div key={cp.id} className="rounded-lg border border-slate-200 p-3">
+                          <div key={cp.id} className="rounded-lg border border-gray-200 p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-xs font-extrabold text-slate-800">#{cp.sequence} · {cp.state_at_checkpoint}</span>
+                              <span className="text-xs font-extrabold text-gray-800">#{cp.sequence} · {cp.state_at_checkpoint}</span>
                               <Badge variant={cp.resumable ? "success" : "secondary"}>{cp.resumable ? "Resumable" : "Not resumable"}</Badge>
                             </div>
-                            <p className="mt-1 break-all font-mono text-[11px] font-semibold text-slate-500">{cp.sanitized_url ?? "—"}</p>
-                            <p className="mt-1 text-[11px] font-semibold text-slate-400">{new Date(cp.created_at).toLocaleString()}</p>
+                            <p className="mt-1 break-all font-mono text-[11px] font-semibold text-gray-500">{cp.sanitized_url ?? "—"}</p>
+                            <p className="mt-1 text-[11px] font-semibold text-gray-400">{new Date(cp.created_at).toLocaleString()}</p>
                           </div>
                         ))}
                       </div>
@@ -1379,24 +1379,24 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
                 {/* ── audit trail ─────────────────────────────────── */}
                 {drawerTab === "activity" && (
                   <DrawerCard title="Audit trail" icon={Activity}>
-                    <p className="mb-3 text-[11px] font-semibold leading-4 text-slate-500">
+                    <p className="mb-3 text-[11px] font-semibold leading-4 text-gray-500">
                       Every state change on this session, in order, with who or what caused it.
                     </p>
                     {(activityQuery.data ?? []).length === 0 ? (
-                      <p className="text-xs font-semibold text-slate-400">No activity recorded yet.</p>
+                      <p className="text-xs font-semibold text-gray-400">No activity recorded yet.</p>
                     ) : (
                       <div className="space-y-2">
                         {(activityQuery.data ?? []).map((event) => (
-                          <div key={event.id} className="rounded-lg border border-slate-200 p-3">
+                          <div key={event.id} className="rounded-lg border border-gray-200 p-3">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-[11px] font-bold text-slate-700">
+                              <span className="font-mono text-[11px] font-bold text-gray-700">
                                 {event.previous_state ?? "—"} → {event.new_state}
                               </span>
                               <Badge variant="outline">{event.actor_type}</Badge>
                               {event.command && <Badge variant="secondary">{event.command}</Badge>}
                             </div>
-                            <p className="mt-1 text-[11px] font-semibold text-slate-400">{new Date(event.occurred_at).toLocaleString()}</p>
-                            {event.reason && <p className="mt-1 text-[11px] font-semibold text-slate-600">{event.reason}</p>}
+                            <p className="mt-1 text-[11px] font-semibold text-gray-400">{new Date(event.occurred_at).toLocaleString()}</p>
+                            {event.reason && <p className="mt-1 text-[11px] font-semibold text-gray-600">{event.reason}</p>}
                           </div>
                         ))}
                       </div>
@@ -1406,8 +1406,8 @@ export function DiscoverySessionView({ projectId }: { projectId: number }) {
               </div>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-xs font-bold text-slate-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" /> Loading session…
+            <div className="flex h-full items-center justify-center text-xs font-bold text-gray-500">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" /> Loading session…
             </div>
           )}
         </DrawerContent>

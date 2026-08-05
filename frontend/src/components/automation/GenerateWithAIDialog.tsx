@@ -199,9 +199,9 @@ export function GenerateWithAIDialog({
             </Section>
 
             <Section title="Approved test cases" description={`${selected.size} of ${approvedTestCases.length} selected`}>
-              <div className="rounded-lg border border-slate-200">
-                <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
-                  <Search className="h-3.5 w-3.5 text-slate-400" />
+              <div className="rounded-lg border border-gray-200">
+                <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
+                  <Search className="h-3.5 w-3.5 text-gray-400" />
                   <input
                     type="search"
                     placeholder="Search test cases…"
@@ -221,7 +221,7 @@ export function GenerateWithAIDialog({
                     <button
                       type="button"
                       onClick={() => setSelected(new Set())}
-                      className="text-[11px] text-slate-500 hover:text-slate-800"
+                      className="text-[11px] text-gray-500 hover:text-gray-800"
                     >
                       Clear
                     </button>
@@ -229,7 +229,7 @@ export function GenerateWithAIDialog({
                 </div>
                 <div className="max-h-60 overflow-y-auto">
                   {filtered.length === 0 ? (
-                    <div className="px-4 py-6 text-center text-xs text-slate-400">
+                    <div className="px-4 py-6 text-center text-xs text-gray-400">
                       No approved test cases match your search.
                     </div>
                   ) : (
@@ -241,7 +241,7 @@ export function GenerateWithAIDialog({
                           type="button"
                           onClick={() => toggle(tc.id)}
                           className={cn(
-                            "flex w-full items-start gap-2 border-b border-slate-50 px-3 py-2 text-left text-xs transition hover:bg-slate-50",
+                            "flex w-full items-start gap-2 border-b border-gray-50 px-3 py-2 text-left text-xs transition hover:bg-gray-50",
                             checked && "bg-violet-50/50",
                           )}
                         >
@@ -253,10 +253,10 @@ export function GenerateWithAIDialog({
                           />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-[#1b59f8]">{tc.test_case_id}</span>
+                              <span className="font-mono text-[#B71920]">{tc.test_case_id}</span>
                               <Badge variant="secondary" className="text-[10px]">{tc.priority}</Badge>
                             </div>
-                            <p className="mt-0.5 truncate text-slate-700">{tc.title}</p>
+                            <p className="mt-0.5 truncate text-gray-700">{tc.title}</p>
                           </div>
                         </button>
                       );
@@ -272,12 +272,12 @@ export function GenerateWithAIDialog({
                 onChange={(e) => setContext(e.target.value)}
                 rows={3}
                 placeholder="e.g. Prepaid customer flow. Use telco staging endpoints. Validate balance via /accounts/{id}/balance."
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#B71920]"
               />
             </Section>
 
             <Section title="Validation options" description="Additive checks the AI will propose alongside the script.">
-              <label className="flex items-start gap-2 text-xs text-slate-700">
+              <label className="flex items-start gap-2 text-xs text-gray-700">
                 <input
                   type="checkbox"
                   checked={includeApiChecks}
@@ -355,8 +355,8 @@ function Section({
   return (
     <div>
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <p className="text-xs font-semibold text-slate-800">{title}</p>
-        {description && <p className="text-[11px] text-slate-400">{description}</p>}
+        <p className="text-xs font-semibold text-gray-800">{title}</p>
+        {description && <p className="text-[11px] text-gray-400">{description}</p>}
       </div>
       {children}
     </div>
@@ -382,11 +382,11 @@ function FrameworkChoice({
         "flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-xs transition",
         active
           ? "border-violet-300 bg-violet-50 text-violet-800"
-          : "border-slate-200 text-slate-700 hover:bg-slate-50",
+          : "border-gray-200 text-gray-700 hover:bg-gray-50",
       )}
     >
       <span className="font-semibold">{label}</span>
-      <span className="text-[10px] text-slate-500">{hint}</span>
+      <span className="text-[10px] text-gray-500">{hint}</span>
     </button>
   );
 }
@@ -408,7 +408,7 @@ function KindChoice({
         "rounded-lg border px-3 py-2 text-xs font-semibold transition",
         active
           ? "border-violet-300 bg-violet-50 text-violet-800"
-          : "border-slate-200 text-slate-700 hover:bg-slate-50",
+          : "border-gray-200 text-gray-700 hover:bg-gray-50",
       )}
     >
       {label}

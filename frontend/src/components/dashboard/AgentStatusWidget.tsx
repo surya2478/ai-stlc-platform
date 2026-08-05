@@ -19,7 +19,7 @@ const AGENTS = [
 
 const STATUS_CONFIG = {
   idle: { icon: Clock, color: "text-muted-foreground", dot: "bg-muted-foreground" },
-  running: { icon: Loader2, color: "text-blue-500", dot: "bg-blue-500" },
+  running: { icon: Loader2, color: "text-app-brand-500", dot: "bg-app-brand-500" },
   completed: { icon: CheckCircle2, color: "text-green-500", dot: "bg-green-500" },
   failed: { icon: XCircle, color: "text-red-500", dot: "bg-red-500" },
 };

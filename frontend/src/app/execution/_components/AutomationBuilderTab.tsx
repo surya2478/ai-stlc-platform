@@ -151,7 +151,7 @@ export function RunTriggerDialog({
         <DrawerHeader>
           <div>
             <DrawerTitle className="flex items-center gap-2">
-              <Play className="h-4 w-4 text-[#1b59f8]" /> Trigger automation run
+              <Play className="h-4 w-4 text-[#B71920]" /> Trigger automation run
             </DrawerTitle>
             <DrawerDescription>{target?.label}</DrawerDescription>
           </div>
@@ -165,13 +165,13 @@ export function RunTriggerDialog({
             </div>
           )}
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
               Environment
             </label>
             <select
               value={environment}
               onChange={(e) => setEnvironment(e.target.value)}
-              className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
             >
               {envOptions.map((env) => (
                 <option key={env} value={env}>{env}</option>
@@ -179,7 +179,7 @@ export function RunTriggerDialog({
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
               Timeout (seconds)
             </label>
             <input
@@ -188,10 +188,10 @@ export function RunTriggerDialog({
               max={3600}
               value={timeoutSeconds}
               onChange={(e) => setTimeoutSeconds(Number(e.target.value) || 600)}
-              className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
             />
           </div>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-gray-400">
             The run executes on the backend host via the local {target?.framework} runner and
             appears under Active Runs within a few seconds.
           </p>
@@ -359,7 +359,7 @@ export function RunAllEligibleDialog({
         <DrawerHeader>
           <div>
             <DrawerTitle className="flex items-center gap-2">
-              <PlayCircle className="h-4 w-4 text-[#1b59f8]" /> {title}
+              <PlayCircle className="h-4 w-4 text-[#B71920]" /> {title}
             </DrawerTitle>
             <DrawerDescription>
               Runs the selected scripts sequentially as one automation run. Progress updates live under Active Runs.
@@ -368,21 +368,21 @@ export function RunAllEligibleDialog({
         </DrawerHeader>
         <DrawerBody>
           {candidates.length === 0 ? (
-            <p className="rounded-md border border-dashed border-slate-200 px-3 py-6 text-center text-[11px] text-slate-400">
+            <p className="rounded-md border border-dashed border-gray-200 px-3 py-6 text-center text-[11px] text-gray-400">
               No eligible scripts to run — a test case needs an approved script (or a verified
               external mapping) before it can be included in a batch run.
             </p>
           ) : (
             <>
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   Run scope
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                   <select
                     value={scope}
                     onChange={(e) => setScope(e.target.value)}
-                    className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
                   >
                     <option value={ALL_ELIGIBLE_SCOPE}>All eligible ({candidates.length})</option>
                     {suites.map((s) => {
@@ -395,7 +395,7 @@ export function RunAllEligibleDialog({
                     })}
                   </select>
                   {suites.length === 0 && (
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-[11px] text-gray-400">
                       No suites tagged yet — assign a Test Suite to test cases from the Test Cases module.
                     </span>
                   )}
@@ -404,13 +404,13 @@ export function RunAllEligibleDialog({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                     Environment
                   </label>
                   <select
                     value={environment}
                     onChange={(e) => setEnvironment(e.target.value)}
-                    className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
                   >
                     {envOptions.map((env) => (
                       <option key={env} value={env}>{env}</option>
@@ -418,7 +418,7 @@ export function RunAllEligibleDialog({
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                     Timeout per script (seconds)
                   </label>
                   <input
@@ -427,13 +427,13 @@ export function RunAllEligibleDialog({
                     max={3600}
                     value={timeoutSeconds}
                     onChange={(e) => setTimeoutSeconds(Number(e.target.value) || 600)}
-                    className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   Run name
                 </label>
                 <input
@@ -441,7 +441,7 @@ export function RunAllEligibleDialog({
                   value={runName}
                   onChange={(e) => { setRunName(e.target.value); setRunNameTouched(true); }}
                   placeholder="e.g. Smoke_Regression_QA"
-                  className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-app-brand-100"
                 />
               </div>
 
@@ -449,34 +449,34 @@ export function RunAllEligibleDialog({
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1b59f8] hover:underline"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#B71920] hover:underline"
                 >
                   {allSelected ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
                   {allSelected ? "Deselect all" : "Select all"}
                 </button>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-gray-500">
                   {selected.size} of {scopedCandidates.length} selected
                 </span>
               </div>
 
-              <div className="mt-2 max-h-[280px] space-y-1 overflow-y-auto rounded-md border border-slate-200 p-1.5">
+              <div className="mt-2 max-h-[280px] space-y-1 overflow-y-auto rounded-md border border-gray-200 p-1.5">
                 {scopedCandidates.length === 0 ? (
-                  <p className="px-2 py-3 text-center text-[11px] text-slate-400">
+                  <p className="px-2 py-3 text-center text-[11px] text-gray-400">
                     No eligible scripts in this suite.
                   </p>
                 ) : (
                   scopedCandidates.map((c) => (
                     <label
                       key={c.key}
-                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-slate-50"
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-gray-50"
                     >
                       <input
                         type="checkbox"
                         checked={selected.has(c.scriptId)}
                         onChange={() => toggle(c.scriptId)}
-                        className="h-3.5 w-3.5 rounded border-slate-300 text-[#1b59f8] focus:ring-blue-100"
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-[#B71920] focus:ring-app-brand-100"
                       />
-                      <span className="min-w-0 flex-1 truncate text-slate-700">{c.label}</span>
+                      <span className="min-w-0 flex-1 truncate text-gray-700">{c.label}</span>
                       <Badge variant="info" className="shrink-0 text-[9px] capitalize">{c.framework}</Badge>
                     </label>
                   ))
@@ -684,7 +684,7 @@ export function AutomationBuilderTab({
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <SectionMark letter="A" />
-                <h3 className="text-sm font-semibold text-slate-800">Eligible Automation Test Cases</h3>
+                <h3 className="text-sm font-semibold text-gray-800">Eligible Automation Test Cases</h3>
               </div>
               <div className="flex items-center gap-2">
                 <RunnerStatusChip />
@@ -709,7 +709,7 @@ export function AutomationBuilderTab({
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-slate-100 text-left text-[10px] uppercase tracking-wider text-slate-400">
+                  <tr className="border-b border-gray-100 text-left text-[10px] uppercase tracking-wider text-gray-400">
                     <th className="py-2 pr-3">TC ID</th>
                     <th className="py-2 pr-3">Framework</th>
                     <th className="py-2 pr-3">Fit Score</th>
@@ -721,15 +721,15 @@ export function AutomationBuilderTab({
                 </thead>
                 <tbody>
                   {eligibleCandidates.length === 0 && !loading ? (
-                    <tr><td colSpan={7} className="py-6 text-center text-[11px] text-slate-400">No eligible candidates yet — generate a plan from the Automation module.</td></tr>
+                    <tr><td colSpan={7} className="py-6 text-center text-[11px] text-gray-400">No eligible candidates yet — generate a plan from the Automation module.</td></tr>
                   ) : (
                     eligibleCandidates.map((c) => {
                       const approval = approvalStatusBadge(c);
                       const stage = handoffBadge(c);
                       const canRun = Boolean(c.script_id) && !c.execution_blocked_reason;
                       return (
-                        <tr key={c.test_case_id} className="border-b border-slate-50 hover:bg-slate-50/50" title={c.title}>
-                          <td className="whitespace-nowrap py-2 pr-3 font-mono text-slate-700">{c.test_case_key}</td>
+                        <tr key={c.test_case_id} className="border-b border-gray-50 hover:bg-gray-50/50" title={c.title}>
+                          <td className="whitespace-nowrap py-2 pr-3 font-mono text-gray-700">{c.test_case_key}</td>
                           <td className="py-2 pr-3">
                             <Badge variant="info" className="text-[10px] capitalize">{c.recommended_framework}</Badge>
                           </td>
@@ -739,7 +739,7 @@ export function AutomationBuilderTab({
                               title={c.assessment_reasons.join("\n")}
                             >
                               {Math.round(c.assessment_score)}
-                              <span className="ml-1 text-[10px] font-medium uppercase text-slate-400">{c.assessment_band}</span>
+                              <span className="ml-1 text-[10px] font-medium uppercase text-gray-400">{c.assessment_band}</span>
                             </span>
                           </td>
                           <td className="py-2 pr-3">
@@ -754,7 +754,7 @@ export function AutomationBuilderTab({
                                 <ExecutionStatusBadge status={c.last_execution_status} className="text-[10px]" />
                               </span>
                             ) : (
-                              <span className="text-[10px] text-slate-300">never run</span>
+                              <span className="text-[10px] text-gray-300">never run</span>
                             )}
                           </td>
                           <td className="py-2 pr-3 text-right">
@@ -775,7 +775,7 @@ export function AutomationBuilderTab({
                               </Button>
                             ) : (
                               <span
-                                className="text-[10px] text-slate-300"
+                                className="text-[10px] text-gray-300"
                                 title={c.execution_blocked_reason ?? "Script must be generated and approved before it can run"}
                               >
                                 —
@@ -790,13 +790,13 @@ export function AutomationBuilderTab({
               </table>
             </div>
 
-            <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500">
+            <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500">
               <span>
                 {eligibleCandidates.length === 0
                   ? `0 of ${totalCandidates.toLocaleString()} entries`
                   : `Showing 1 to ${eligibleCandidates.length} of ${totalCandidates.toLocaleString()} entries`}
               </span>
-              <Link href={buildHref("/automation", { project: projectId })} className="inline-flex items-center gap-0.5 text-[#1b59f8] hover:underline">
+              <Link href={buildHref("/automation", { project: projectId })} className="inline-flex items-center gap-0.5 text-[#B71920] hover:underline">
                 View all eligible TCs <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -812,16 +812,16 @@ export function AutomationBuilderTab({
             <div className="mb-1 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <SectionMark letter="B" />
-                <h3 className="text-sm font-semibold text-slate-800">Script Readiness</h3>
+                <h3 className="text-sm font-semibold text-gray-800">Script Readiness</h3>
               </div>
               <Link
                 href={buildHref("/automation", { project: projectId })}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1b59f8] hover:underline"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#B71920] hover:underline"
               >
                 Open AI Automation Studio <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
-            <p className="mb-4 text-[11px] leading-relaxed text-slate-500">
+            <p className="mb-4 text-[11px] leading-relaxed text-gray-500">
               Generate, review, and approve Playwright / Pytest scripts in the Studio. Execution
               only runs scripts that are already approved there.
             </p>
@@ -833,10 +833,10 @@ export function AutomationBuilderTab({
               <ReadinessStat label="Rejected" value={scriptCounts.rejected} tone="red" />
             </div>
 
-            <div className="mt-auto flex items-center gap-4 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
+            <div className="mt-auto flex items-center gap-4 border-t border-gray-100 pt-3 text-[11px] text-gray-500">
               <span>{scriptCounts.playwright} Playwright</span>
               <span>{scriptCounts.pytest} Pytest</span>
-              <span className="ml-auto font-semibold text-slate-700">{scripts.length} total scripts</span>
+              <span className="ml-auto font-semibold text-gray-700">{scripts.length} total scripts</span>
             </div>
           </CardContent>
         </Card>
@@ -845,7 +845,7 @@ export function AutomationBuilderTab({
       {/* ── Execution Flow (horizontal) ───────────────────────────── */}
       <Card>
         <CardContent className="p-4">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Execution Flow</p>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Execution Flow</p>
           <ExecutionFlow
             steps={[
               { icon: ListChecks, label: "Approved TCs", tone: "blue", value: `${totalCandidates} eligible` },
@@ -864,10 +864,10 @@ export function AutomationBuilderTab({
         <CardContent className="p-4">
           <div className="mb-2 flex items-center gap-2">
             <SectionMark letter="C" />
-            <h3 className="text-sm font-semibold text-slate-800">External Automation Tools</h3>
+            <h3 className="text-sm font-semibold text-gray-800">External Automation Tools</h3>
           </div>
 
-          <div className="mb-4 border-b border-slate-200">
+          <div className="mb-4 border-b border-gray-200">
             <div className="flex items-center gap-4">
               {EXTERNAL_TOOLS.map((t) => (
                 <button
@@ -875,7 +875,7 @@ export function AutomationBuilderTab({
                   onClick={() => setActiveTool(t)}
                   className={cn(
                     "-mb-px border-b-2 pb-2 text-xs font-semibold transition-colors",
-                    activeTool === t ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500 hover:text-slate-700",
+                    activeTool === t ? "border-[#B71920] text-[#B71920]" : "border-transparent text-gray-500 hover:text-gray-700",
                   )}
                 >
                   {t}
@@ -910,16 +910,16 @@ export function AutomationBuilderTab({
                   <ReadOnlyValue value="On Demand" />
                 </FormField>
                 <FormField label="Credentials">
-                  <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
-                    <span className={cn("flex items-center gap-1.5 text-xs font-semibold", toolConnected ? "text-emerald-600" : "text-slate-500")}>
-                      <span className={cn("h-2 w-2 rounded-full", toolConnected ? "bg-emerald-500" : "bg-slate-300")} />
+                  <div className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-2.5 py-1.5">
+                    <span className={cn("flex items-center gap-1.5 text-xs font-semibold", toolConnected ? "text-emerald-600" : "text-gray-500")}>
+                      <span className={cn("h-2 w-2 rounded-full", toolConnected ? "bg-emerald-500" : "bg-gray-300")} />
                       {toolConnected ? "Connected" : "Not configured"}
                     </span>
-                    <ShieldCheck className="h-3.5 w-3.5 text-slate-300" />
+                    <ShieldCheck className="h-3.5 w-3.5 text-gray-300" />
                   </div>
                 </FormField>
                 <div className="col-span-2 flex items-center justify-between">
-                  <Link href={buildHref("/automation", { project: projectId })} className="inline-flex items-center gap-0.5 text-[11px] text-[#1b59f8] hover:underline">
+                  <Link href={buildHref("/automation", { project: projectId })} className="inline-flex items-center gap-0.5 text-[11px] text-[#B71920] hover:underline">
                     Edit credentials &amp; mappings <ArrowRight className="h-3 w-3" />
                   </Link>
                   <Button
@@ -936,8 +936,8 @@ export function AutomationBuilderTab({
             );
           })()}
 
-          <div className="mt-5 border-t border-slate-100 pt-4">
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Execution Flow</p>
+          <div className="mt-5 border-t border-gray-100 pt-4">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">Execution Flow</p>
             <ExternalFlow tool={activeTool} />
           </div>
         </CardContent>
@@ -952,7 +952,7 @@ export function AutomationBuilderTab({
 
 function SectionMark({ letter }: { letter: string }) {
   return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1b59f8] text-xs font-bold text-white shadow-sm">
+    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#B71920] text-xs font-bold text-white shadow-sm">
       {letter}
     </span>
   );
@@ -961,7 +961,7 @@ function SectionMark({ letter }: { letter: string }) {
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</label>
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</label>
       {children}
     </div>
   );
@@ -971,7 +971,7 @@ function ReadOnlyValue({ value, mono }: { value: string; mono?: boolean }) {
   return (
     <div
       className={cn(
-        "w-full truncate rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700",
+        "w-full truncate rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700",
         mono && "font-mono",
       )}
       title={value}
@@ -984,7 +984,7 @@ function ReadOnlyValue({ value, mono }: { value: string; mono?: boolean }) {
 const READINESS_TONE: Record<string, string> = {
   emerald: "bg-emerald-50 text-emerald-700 ring-emerald-100",
   orange: "bg-orange-50 text-orange-700 ring-orange-100",
-  slate: "bg-slate-50 text-slate-600 ring-slate-100",
+  slate: "bg-gray-50 text-gray-600 ring-gray-100",
   red: "bg-red-50 text-red-700 ring-red-100",
 };
 
@@ -999,11 +999,11 @@ function ReadinessStat({ label, value, tone }: { label: string; value: number; t
 
 function ExecutionFlow({ steps }: { steps: Array<{ icon: React.ComponentType<{ className?: string }>; label: string; tone: "blue" | "violet" | "orange" | "cyan" | "slate"; value?: string }> }) {
   const TONE_BG: Record<string, { bg: string; ring: string; icon: string }> = {
-    blue:   { bg: "bg-blue-50",    ring: "ring-blue-100",    icon: "text-[#1b59f8]" },
+    blue:   { bg: "bg-app-brand-75",    ring: "ring-app-brand-100",    icon: "text-[#B71920]" },
     violet: { bg: "bg-violet-50",  ring: "ring-violet-100",  icon: "text-violet-600" },
     orange: { bg: "bg-orange-50",  ring: "ring-orange-100",  icon: "text-orange-600" },
     cyan:   { bg: "bg-cyan-50",    ring: "ring-cyan-100",    icon: "text-cyan-600" },
-    slate:  { bg: "bg-slate-100",  ring: "ring-slate-200",   icon: "text-slate-600" },
+    slate:  { bg: "bg-gray-100",  ring: "ring-gray-200",   icon: "text-gray-600" },
   };
   return (
     <div className="flex items-start justify-between gap-1 overflow-x-auto pb-1">
@@ -1015,15 +1015,15 @@ function ExecutionFlow({ steps }: { steps: Array<{ icon: React.ComponentType<{ c
               <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl ring-1", t.bg, t.ring)}>
                 <s.icon className={cn("h-4 w-4", t.icon)} />
               </div>
-              <p className="mt-1.5 whitespace-pre-line text-[10px] font-semibold leading-tight text-slate-700">
+              <p className="mt-1.5 whitespace-pre-line text-[10px] font-semibold leading-tight text-gray-700">
                 {s.label}
               </p>
               {s.value != null && (
-                <p className="text-[10px] font-bold tabular-nums text-slate-900">{s.value}</p>
+                <p className="text-[10px] font-bold tabular-nums text-gray-900">{s.value}</p>
               )}
             </div>
             {i < steps.length - 1 && (
-              <div className="flex h-10 items-center text-slate-300">
+              <div className="flex h-10 items-center text-gray-300">
                 <ChevronRightIcon className="h-3.5 w-3.5" />
               </div>
             )}
@@ -1046,13 +1046,13 @@ function ExternalFlow({ tool }: { tool: ExternalTool }) {
       {steps.map((s, i) => (
         <div key={i} className="flex min-w-[80px] flex-1 items-start gap-1">
           <div className="flex min-w-[70px] flex-col items-center text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 ring-1 ring-blue-100">
-              <s.icon className="h-4 w-4 text-[#1b59f8]" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-app-brand-75 ring-1 ring-app-brand-100">
+              <s.icon className="h-4 w-4 text-[#B71920]" />
             </div>
-            <p className="mt-1.5 whitespace-pre-line text-[10px] font-semibold leading-tight text-slate-700">{s.label}</p>
+            <p className="mt-1.5 whitespace-pre-line text-[10px] font-semibold leading-tight text-gray-700">{s.label}</p>
           </div>
           {i < steps.length - 1 && (
-            <div className="flex h-10 items-center text-slate-300">
+            <div className="flex h-10 items-center text-gray-300">
               <ChevronRightIcon className="h-3.5 w-3.5" />
             </div>
           )}

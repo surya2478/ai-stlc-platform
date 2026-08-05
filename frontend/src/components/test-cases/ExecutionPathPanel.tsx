@@ -22,12 +22,12 @@ const STATE_STYLE: Record<
   ExecutionPathStep["state"],
   { icon: typeof Check; ring: string; text: string; label: string }
 > = {
-  DONE: { icon: Check, ring: "border-emerald-200 bg-emerald-50 text-emerald-600", text: "text-slate-700", label: "Done" },
-  BLOCKED: { icon: AlertTriangle, ring: "border-amber-300 bg-amber-100 text-amber-700", text: "text-slate-900", label: "Do this next" },
+  DONE: { icon: Check, ring: "border-emerald-200 bg-emerald-50 text-emerald-600", text: "text-gray-700", label: "Done" },
+  BLOCKED: { icon: AlertTriangle, ring: "border-amber-300 bg-amber-100 text-amber-700", text: "text-gray-900", label: "Do this next" },
   // Deliberately muted: a consequence of an earlier step is not something to
   // act on, and colouring it like a blocker is what turns a checklist into noise.
-  WAITING: { icon: CircleDot, ring: "border-slate-200 bg-slate-50 text-slate-300", text: "text-slate-400", label: "Waiting" },
-  UNKNOWN: { icon: HelpCircle, ring: "border-slate-300 bg-slate-100 text-slate-500", text: "text-slate-600", label: "Unknown" },
+  WAITING: { icon: CircleDot, ring: "border-gray-200 bg-gray-50 text-gray-300", text: "text-gray-400", label: "Waiting" },
+  UNKNOWN: { icon: HelpCircle, ring: "border-gray-300 bg-gray-100 text-gray-500", text: "text-gray-600", label: "Unknown" },
 };
 
 function Row({ step, isNext }: { step: ExecutionPathStep; isNext: boolean }) {
@@ -40,7 +40,7 @@ function Row({ step, isNext }: { step: ExecutionPathStep; isNext: boolean }) {
       </span>
       <span className="min-w-0 flex-1">
         <span className={cn("block text-xs font-bold", style.text)}>{step.label}</span>
-        <span className={cn("block text-[11px] font-semibold", step.state === "WAITING" ? "text-slate-400" : "text-slate-500")}>
+        <span className={cn("block text-[11px] font-semibold", step.state === "WAITING" ? "text-gray-400" : "text-gray-500")}>
           {step.detail}
         </span>
       </span>
@@ -90,7 +90,7 @@ export function ExecutionPathPanel({
 
   if (loading && !path) {
     return (
-      <div className={cn("flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-xs font-semibold text-slate-500", className)}>
+      <div className={cn("flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-4 text-xs font-semibold text-gray-500", className)}>
         <Loader2 className="h-4 w-4 animate-spin" />
         Checking what stands between this test case and a run…
       </div>
@@ -99,9 +99,9 @@ export function ExecutionPathPanel({
 
   if (error || !path) {
     return (
-      <div className={cn("rounded-xl border border-slate-200 bg-white p-4", className)}>
-        <p className="text-xs font-bold text-slate-700">Path to execution</p>
-        <p className="mt-1 text-[11px] font-semibold text-slate-500">
+      <div className={cn("rounded-xl border border-gray-200 bg-white p-4", className)}>
+        <p className="text-xs font-bold text-gray-700">Path to execution</p>
+        <p className="mt-1 text-[11px] font-semibold text-gray-500">
           {error || "Unavailable."} The steps are unknown, not clear — check the modules directly.
         </p>
       </div>
@@ -112,11 +112,11 @@ export function ExecutionPathPanel({
   const pct = path.steps_total ? Math.round((path.steps_done / path.steps_total) * 100) : 0;
 
   return (
-    <div className={cn("rounded-xl border bg-white p-4", path.ready_to_execute ? "border-emerald-200" : "border-slate-200", className)}>
+    <div className={cn("rounded-xl border bg-white p-4", path.ready_to_execute ? "border-emerald-200" : "border-gray-200", className)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-xs font-extrabold text-slate-800">Path to execution</p>
-          <p className="text-[11px] font-semibold text-slate-500">
+          <p className="text-xs font-extrabold text-gray-800">Path to execution</p>
+          <p className="text-[11px] font-semibold text-gray-500">
             {path.ready_to_execute
               ? "Every prerequisite is met."
               : path.next_action
@@ -125,21 +125,21 @@ export function ExecutionPathPanel({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-slate-600">{path.steps_done}/{path.steps_total}</span>
+          <span className="text-[11px] font-bold text-gray-600">{path.steps_done}/{path.steps_total}</span>
           <button
             onClick={load}
             disabled={loading}
             aria-label="Refresh path"
-            className="rounded-md border border-slate-200 p-1 text-slate-500 hover:bg-slate-50"
+            className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-50"
           >
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           </button>
         </div>
       </div>
 
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
         <div
-          className={cn("h-full rounded-full transition-all", path.ready_to_execute ? "bg-emerald-500" : "bg-[#1b59f8]")}
+          className={cn("h-full rounded-full transition-all", path.ready_to_execute ? "bg-emerald-500" : "bg-[#B71920]")}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -151,7 +151,7 @@ export function ExecutionPathPanel({
       </ul>
 
       {path.errors.length > 0 && (
-        <ul className="mt-2 border-t border-slate-100 pt-2">
+        <ul className="mt-2 border-t border-gray-100 pt-2">
           {path.errors.map((e) => (
             <li key={e} className="text-[10px] font-semibold text-amber-700">{e}</li>
           ))}
@@ -183,7 +183,7 @@ export function ExecutionPathList({
   className?: string;
 }) {
   if (!testCases.length) {
-    return <p className={cn("text-[11px] font-semibold text-slate-400", className)}>{emptyMessage}</p>;
+    return <p className={cn("text-[11px] font-semibold text-gray-400", className)}>{emptyMessage}</p>;
   }
   return (
     <ul className={cn("space-y-1", className)}>
@@ -218,26 +218,26 @@ function ExecutionPathRow({
   const pct = path?.steps_total ? Math.round((path.steps_done / path.steps_total) * 100) : 0;
 
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-slate-100 px-2.5 py-1.5">
-      <span className="w-20 shrink-0 truncate font-mono text-[11px] font-bold text-slate-700">{label}</span>
-      <span className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-slate-100">
+    <li className="flex items-center gap-3 rounded-lg border border-gray-100 px-2.5 py-1.5">
+      <span className="w-20 shrink-0 truncate font-mono text-[11px] font-bold text-gray-700">{label}</span>
+      <span className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-gray-100">
         <span
-          className={cn("block h-full rounded-full", path?.ready_to_execute ? "bg-emerald-500" : "bg-[#1b59f8]")}
+          className={cn("block h-full rounded-full", path?.ready_to_execute ? "bg-emerald-500" : "bg-[#B71920]")}
           style={{ width: `${pct}%` }}
         />
       </span>
-      <span className="w-9 shrink-0 text-[11px] font-bold text-slate-600">
+      <span className="w-9 shrink-0 text-[11px] font-bold text-gray-600">
         {path ? `${path.steps_done}/${path.steps_total}` : failed ? "—" : "…"}
       </span>
       <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">
         {failed ? (
-          <span className="text-slate-400">Path unavailable — check the modules directly.</span>
+          <span className="text-gray-400">Path unavailable — check the modules directly.</span>
         ) : !path ? (
-          <span className="text-slate-400">Checking…</span>
+          <span className="text-gray-400">Checking…</span>
         ) : path.ready_to_execute ? (
           <span className="text-emerald-700">Ready to execute</span>
         ) : (
-          <span className="text-slate-600">
+          <span className="text-gray-600">
             Next: <span className="font-bold text-amber-800">{path.next_action}</span>
           </span>
         )}

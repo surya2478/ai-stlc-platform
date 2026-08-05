@@ -25,32 +25,32 @@ import { cn } from "@/lib/utils";
 import type { Tone } from "./shared";
 
 const TONE_TILE: Record<Tone, string> = {
-  blue: "bg-blue-50 border-blue-100 text-blue-600",
+  blue: "bg-app-brand-75 border-app-brand-100 text-app-brand-600",
   emerald: "bg-emerald-50 border-emerald-100 text-emerald-600",
   red: "bg-red-50 border-red-100 text-red-600",
   purple: "bg-purple-50 border-purple-100 text-purple-600",
   amber: "bg-amber-50 border-amber-100 text-amber-600",
-  slate: "bg-slate-50 border-slate-100 text-slate-600",
+  slate: "bg-gray-50 border-gray-100 text-gray-600",
 };
 
 const TONE_TEXT: Record<Tone, string> = {
-  blue: "text-blue-700",
+  blue: "text-app-brand-700",
   emerald: "text-emerald-700",
   red: "text-red-700",
   purple: "text-purple-700",
   amber: "text-amber-700",
-  slate: "text-slate-700",
+  slate: "text-gray-700",
 };
 
 /* ── page chrome ─────────────────────────────────────────────────────── */
 
 export function Breadcrumb({ trail }: { trail: string[] }) {
   return (
-    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+    <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
       {trail.map((item, index) => (
         <span key={item} className="flex items-center gap-2">
-          {index > 0 && <ChevronRight className="h-3 w-3 text-slate-300" />}
-          <span className={index === trail.length - 1 ? "text-[#1b59f8]" : undefined}>{item}</span>
+          {index > 0 && <ChevronRight className="h-3 w-3 text-gray-300" />}
+          <span className={index === trail.length - 1 ? "text-[#B71920]" : undefined}>{item}</span>
         </span>
       ))}
     </div>
@@ -80,10 +80,10 @@ export function WorkspaceHeader({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-950">{title}</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight text-gray-950">{title}</h1>
             <Badge variant="purple">{badge}</Badge>
           </div>
-          <p className="mt-1 text-xs font-semibold text-slate-500">{description}</p>
+          <p className="mt-1 text-xs font-semibold text-gray-500">{description}</p>
         </div>
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -97,15 +97,15 @@ export function StatCard({
   title: string; value: string | number; subtitle: string; icon: typeof Info; tone: Tone;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="flex items-center gap-2.5">
         <div className={cn("flex h-8 w-8 items-center justify-center rounded-lg border", TONE_TILE[tone])}>
           <Icon className="h-4 w-4" />
         </div>
-        <p className="min-w-0 truncate text-xs font-bold text-slate-700">{title}</p>
+        <p className="min-w-0 truncate text-xs font-bold text-gray-700">{title}</p>
       </div>
-      <p className="mt-3 text-2xl font-extrabold leading-none text-slate-950">{value}</p>
-      <p className="mt-1.5 text-[11px] font-semibold text-slate-500">{subtitle}</p>
+      <p className="mt-3 text-2xl font-extrabold leading-none text-gray-950">{value}</p>
+      <p className="mt-1.5 text-[11px] font-semibold text-gray-500">{subtitle}</p>
     </div>
   );
 }
@@ -131,14 +131,14 @@ export function GuidanceCard({
   secondary?: ReactNode;
 }) {
   const skin = {
-    blue: "border-blue-200 bg-blue-50/60 text-blue-900",
+    blue: "border-app-brand-200 bg-app-brand-75/60 text-app-brand-900",
     amber: "border-amber-200 bg-amber-50/60 text-amber-900",
     emerald: "border-emerald-200 bg-emerald-50/60 text-emerald-900",
     red: "border-red-200 bg-red-50/60 text-red-900",
   }[tone];
   const Icon = tone === "amber" || tone === "red" ? AlertTriangle : tone === "emerald" ? CheckCircle2 : Info;
   const iconColor = {
-    blue: "text-blue-600", amber: "text-amber-600", emerald: "text-emerald-600", red: "text-red-600",
+    blue: "text-app-brand-600", amber: "text-amber-600", emerald: "text-emerald-600", red: "text-red-600",
   }[tone];
 
   return (
@@ -185,20 +185,20 @@ export function QueueTabs<T extends string>({
   onChange: (key: T) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-50 p-1">
+    <div className="flex flex-wrap items-center gap-1 rounded-lg bg-gray-50 p-1">
       {tabs.map((tab) => (
         <button
           key={tab.key}
           onClick={() => onChange(tab.key)}
           className={cn(
             "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition",
-            active === tab.key ? "bg-[#07142d] text-white" : "text-slate-600 hover:bg-white",
+            active === tab.key ? "bg-[#4D0507] text-white" : "text-gray-600 hover:bg-white",
           )}
         >
           {tab.label}
           <span className={cn(
             "rounded-full px-1.5 py-0.5 text-[10px]",
-            active === tab.key ? "bg-white/15 text-white" : "bg-slate-200 text-slate-500",
+            active === tab.key ? "bg-white/15 text-white" : "bg-gray-200 text-gray-500",
           )}>
             {counts[tab.key] ?? 0}
           </span>
@@ -221,7 +221,7 @@ export function FilterSelect({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       aria-label={label}
-      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+      className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-600 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
     >
       {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
@@ -240,23 +240,23 @@ export function ListShell({
   minWidth?: number;
 }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
       <div
-        className="grid border-b border-slate-200 bg-slate-50/70 px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-wide text-slate-500"
+        className="grid border-b border-gray-200 bg-gray-50/70 px-3 py-2.5 text-[10px] font-extrabold uppercase tracking-wide text-gray-500"
         style={{ gridTemplateColumns: gridTemplate, minWidth }}
       >
         {columns.map((column) => <span key={column}>{column}</span>)}
       </div>
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-xs font-bold text-slate-500">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" /> Loading…
+        <div className="flex items-center justify-center py-16 text-xs font-bold text-gray-500">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" /> Loading…
         </div>
       ) : empty ? (
         <div className="px-6 py-16 text-center">{empty}</div>
       ) : (
-        <div className="divide-y divide-slate-100" style={{ minWidth }}>{children}</div>
+        <div className="divide-y divide-gray-100" style={{ minWidth }}>{children}</div>
       )}
-      {footer && <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2.5">{footer}</div>}
+      {footer && <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2.5">{footer}</div>}
     </div>
   );
 }
@@ -274,8 +274,8 @@ export function ListRow({
       onClick={onClick}
       style={{ gridTemplateColumns: gridTemplate }}
       className={cn(
-        "grid w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] transition hover:bg-slate-50",
-        selected && "border-l-2 border-[#1b59f8] bg-blue-50/30",
+        "grid w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] transition hover:bg-gray-50",
+        selected && "border-l-2 border-[#B71920] bg-app-brand-75/30",
       )}
     >
       {children}
@@ -286,8 +286,8 @@ export function ListRow({
 export function EmptyState({ title, detail, action }: { title: string; detail: string; action?: ReactNode }) {
   return (
     <div className="mx-auto max-w-md">
-      <p className="text-sm font-bold text-slate-700">{title}</p>
-      <p className="mt-1.5 text-xs font-semibold leading-5 text-slate-500">{detail}</p>
+      <p className="text-sm font-bold text-gray-700">{title}</p>
+      <p className="mt-1.5 text-xs font-semibold leading-5 text-gray-500">{detail}</p>
       {action && <div className="mt-4 flex justify-center gap-2">{action}</div>}
     </div>
   );
@@ -311,7 +311,7 @@ export function DrawerTabBar<T extends string>({
   onChange: (key: T) => void;
 }) {
   return (
-    <div className="flex flex-wrap border-b border-slate-100 px-4">
+    <div className="flex flex-wrap border-b border-gray-100 px-4">
       {tabs.map((tab) => {
         const available = tab.available !== false;
         return (
@@ -322,9 +322,9 @@ export function DrawerTabBar<T extends string>({
             onClick={() => available && onChange(tab.key)}
             className={cn(
               "flex items-center gap-1 border-b-2 px-3 py-3 text-xs font-bold transition",
-              !available && "cursor-not-allowed border-transparent text-slate-300",
-              available && active === tab.key && "border-[#1b59f8] text-[#1b59f8]",
-              available && active !== tab.key && "border-transparent text-slate-600 hover:text-slate-900",
+              !available && "cursor-not-allowed border-transparent text-gray-300",
+              available && active === tab.key && "border-[#B71920] text-[#B71920]",
+              available && active !== tab.key && "border-transparent text-gray-600 hover:text-gray-900",
             )}
           >
             {!available && <Lock className="h-2.5 w-2.5" />}
@@ -345,11 +345,11 @@ export function DrawerCard({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {Icon && <Icon className="h-3.5 w-3.5 text-slate-400" />}
-          <h4 className="text-xs font-extrabold text-slate-800">{title}</h4>
+          {Icon && <Icon className="h-3.5 w-3.5 text-gray-400" />}
+          <h4 className="text-xs font-extrabold text-gray-800">{title}</h4>
         </div>
         {action}
       </div>
@@ -361,8 +361,8 @@ export function DrawerCard({
 export function InfoPair({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <div className="min-w-0">
-      <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className={cn("mt-1 break-words text-xs font-bold text-slate-800", mono && "font-mono")}>{value ?? "—"}</p>
+      <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className={cn("mt-1 break-words text-xs font-bold text-gray-800", mono && "font-mono")}>{value ?? "—"}</p>
     </div>
   );
 }
@@ -377,13 +377,13 @@ export function ChecklistRow({
   const icon = state === "pass" ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
     : state === "warning" ? <AlertTriangle className="h-4 w-4 text-amber-500" />
     : state === "blocked" ? <X className="h-4 w-4 text-red-500" />
-    : <Info className="h-4 w-4 text-slate-300" />;
+    : <Info className="h-4 w-4 text-gray-300" />;
   return (
     <div className="flex items-start gap-2.5 py-1.5">
       <span className="mt-0.5 shrink-0">{icon}</span>
       <div className="min-w-0">
-        <p className="text-xs font-bold text-slate-800">{label}</p>
-        <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-500">{detail}</p>
+        <p className="text-xs font-bold text-gray-800">{label}</p>
+        <p className="mt-0.5 text-[11px] font-semibold leading-4 text-gray-500">{detail}</p>
       </div>
     </div>
   );
@@ -444,14 +444,14 @@ export function ReasonDrawer({
             <DrawerTitle>{title}</DrawerTitle>
             <DrawerDescription>{description}</DrawerDescription>
           </div>
-          <button aria-label="Close" onClick={() => !busy && onCancel()} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50">
+          <button aria-label="Close" onClick={() => !busy && onCancel()} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-50">
             <X className="h-4 w-4" />
           </button>
         </DrawerHeader>
         <DrawerBody>
           <label className="block">
-            <span className="mb-1 block text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
-              {label} {required ? "*" : <span className="font-bold normal-case text-slate-400">(optional)</span>}
+            <span className="mb-1 block text-[10px] font-extrabold uppercase tracking-wide text-gray-500">
+              {label} {required ? "*" : <span className="font-bold normal-case text-gray-400">(optional)</span>}
             </span>
             <textarea
               autoFocus
@@ -462,7 +462,7 @@ export function ReasonDrawer({
               placeholder={placeholder}
               className={cn(
                 "w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none focus:ring-2",
-                showError ? "border-red-300 focus:ring-red-100" : "border-slate-200 focus:ring-blue-100",
+                showError ? "border-red-300 focus:ring-red-100" : "border-gray-200 focus:ring-app-brand-100",
               )}
             />
           </label>
@@ -471,7 +471,7 @@ export function ReasonDrawer({
               <AlertTriangle className="h-3.5 w-3.5" />{error}
             </p>
           ) : (
-            <p className="text-[11px] font-semibold text-slate-400">
+            <p className="text-[11px] font-semibold text-gray-400">
               This is recorded against your user and cannot be edited afterwards.
             </p>
           )}

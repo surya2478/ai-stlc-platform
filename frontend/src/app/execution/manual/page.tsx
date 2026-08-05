@@ -437,15 +437,15 @@ function ManualExecutionContent() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between gap-2 mb-3">
               <div>
-                <h3 className="text-sm font-semibold text-slate-800">1. Select Manual Test Cases</h3>
-                <p className="text-[11px] text-slate-400">{manualTcs.length} available · {selectedTcIds.size} selected</p>
+                <h3 className="text-sm font-semibold text-gray-800">1. Select Manual Test Cases</h3>
+                <p className="text-[11px] text-gray-400">{manualTcs.length} available · {selectedTcIds.size} selected</p>
               </div>
               <input
                 type="search"
                 placeholder="Search…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-40 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
+                className="w-40 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#B71920]"
               />
             </div>
             {manualSuites.length > 0 && (
@@ -453,7 +453,7 @@ function ManualExecutionContent() {
                 <select
                   value={suiteFilter}
                   onChange={(e) => setSuiteFilter(e.target.value)}
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
+                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-[#B71920]"
                 >
                   <option value="all">All suites</option>
                   {manualSuites.map((s) => (
@@ -464,7 +464,7 @@ function ManualExecutionContent() {
                   <button
                     type="button"
                     onClick={selectAllInSuite}
-                    className="text-[11px] font-semibold text-[#1b59f8] hover:underline"
+                    className="text-[11px] font-semibold text-[#B71920] hover:underline"
                   >
                     Select all {manualTcs.length} in this suite
                   </button>
@@ -472,14 +472,14 @@ function ManualExecutionContent() {
               </div>
             )}
             {loading ? (
-              <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-slate-100" />)}</div>
+              <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}</div>
             ) : manualTcs.length === 0 ? (
               <EmptyState icon={ClipboardList} title="No manual test cases" description="Set execution_mode='manual' on test cases to surface them here." />
             ) : (
               <div className="overflow-y-auto max-h-[460px] -mx-2">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-white">
-                    <tr className="text-left text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                    <tr className="text-left text-[10px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
                       <th className="py-2 px-2 w-6"></th>
                       <th className="py-2 px-2">TC ID</th>
                       <th className="py-2 px-2">Title</th>
@@ -493,17 +493,17 @@ function ManualExecutionContent() {
                       return (
                         <tr
                           key={tc.id}
-                          className={cn("border-b border-slate-50 cursor-pointer hover:bg-slate-50/50", checked && "bg-blue-50/40")}
+                          className={cn("border-b border-gray-50 cursor-pointer hover:bg-gray-50/50", checked && "bg-app-brand-75/40")}
                           onClick={() => {
                             const next = new Set(selectedTcIds);
                             if (next.has(tc.id)) next.delete(tc.id); else next.add(tc.id);
                             setSelectedTcIds(next);
                           }}
                         >
-                          <td className="py-2 px-2"><input type="checkbox" checked={checked} readOnly className="accent-[#1b59f8]" /></td>
-                          <td className="py-2 px-2 font-mono text-[#1b59f8] whitespace-nowrap">{tc.test_case_id}</td>
+                          <td className="py-2 px-2"><input type="checkbox" checked={checked} readOnly className="accent-[#B71920]" /></td>
+                          <td className="py-2 px-2 font-mono text-[#B71920] whitespace-nowrap">{tc.test_case_id}</td>
                           <td className="py-2 px-2 truncate max-w-[220px]" title={tc.title}>{tc.title}</td>
-                          <td className="py-2 px-2 text-slate-500">{tc.product ?? "—"}</td>
+                          <td className="py-2 px-2 text-gray-500">{tc.product ?? "—"}</td>
                           <td className="py-2 px-2"><Badge variant="secondary" className="text-[10px]">{tc.priority}</Badge></td>
                         </tr>
                       );
@@ -513,7 +513,7 @@ function ManualExecutionContent() {
               </div>
             )}
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-[11px] text-slate-500">{selectedTcIds.size} test case(s) selected · env {environment}</span>
+              <span className="text-[11px] text-gray-500">{selectedTcIds.size} test case(s) selected · env {environment}</span>
               <Button size="sm" onClick={() => setStartOpen(true)} disabled={selectedTcIds.size === 0 || starting} className="gap-1.5">
                 {starting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                 Start Manual Execution
@@ -527,16 +527,16 @@ function ManualExecutionContent() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between gap-2 mb-3">
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-slate-800 truncate">
+                <h3 className="text-sm font-semibold text-gray-800 truncate">
                   2. Execute &amp; Record Result
                 </h3>
-                <p className="text-[11px] text-slate-400 truncate">
+                <p className="text-[11px] text-gray-400 truncate">
                   {activeRunDetail ? `${activeRunDetail.run.execution_id} · ${activeRunDetail.run.suite_name ?? "—"}` : "Start or select a run"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 {autosaveMsg && (
-                  <span className={cn("text-[11px]", autosaveMsg === "Saved" ? "text-emerald-600" : "text-slate-400")}>
+                  <span className={cn("text-[11px]", autosaveMsg === "Saved" ? "text-emerald-600" : "text-gray-400")}>
                     {autosaveMsg === "Saved" ? <CheckCircle2 className="inline h-3.5 w-3.5 mr-0.5" /> : <Save className="inline h-3.5 w-3.5 mr-0.5" />}
                     {autosaveMsg}
                   </span>
@@ -550,14 +550,14 @@ function ManualExecutionContent() {
                         label: activeRunDetail.run.execution_id,
                       })
                     }
-                    className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800"
+                    className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-800"
                     title="Show the Requirement → Test Case → Run chain"
                   >
                     <Network className="h-3 w-3" /> Trace
                   </button>
                 )}
                 {activeRunId && (
-                  <button onClick={() => loadDetail(activeRunId)} className="text-[11px] text-[#1b59f8] hover:underline flex items-center gap-1">
+                  <button onClick={() => loadDetail(activeRunId)} className="text-[11px] text-[#B71920] hover:underline flex items-center gap-1">
                     <RefreshCw className="h-3 w-3" /> Refresh
                   </button>
                 )}
@@ -569,13 +569,13 @@ function ManualExecutionContent() {
             ) : (
               <div className="space-y-3">
                 {/* Progress + step nav */}
-                <div className="rounded-lg border border-slate-100 p-3">
+                <div className="rounded-lg border border-gray-100 p-3">
                   <div className="flex items-center justify-between text-[11px] mb-1">
-                    <span className="text-slate-500">Step progress</span>
-                    <span className="text-slate-700 font-semibold tabular-nums">{stepProgress}%</span>
+                    <span className="text-gray-500">Step progress</span>
+                    <span className="text-gray-700 font-semibold tabular-nums">{stepProgress}%</span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full bg-[#1b59f8]" style={{ width: `${stepProgress}%` }} />
+                  <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-full bg-[#B71920]" style={{ width: `${stepProgress}%` }} />
                   </div>
                 </div>
 
@@ -611,7 +611,7 @@ function ManualExecutionContent() {
                   >
                     <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Previous
                   </Button>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-gray-500">
                     Step {activeStepIndex + 1} of {flatSteps.length}
                   </span>
                   <Button
@@ -624,10 +624,10 @@ function ManualExecutionContent() {
                 </div>
 
                 {/* Complete bar */}
-                <div className="rounded-lg border border-slate-100 p-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="rounded-lg border border-gray-100 p-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <ExecutionStatusBadge status={activeRunDetail.run.status} />
-                    {runLocked && <span className="ml-2 text-[11px] text-slate-500">Run is locked — completed</span>}
+                    {runLocked && <span className="ml-2 text-[11px] text-gray-500">Run is locked — completed</span>}
                   </div>
                   {!runLocked && (
                     <Button size="sm" onClick={() => setCompleteOpen(true)} className="gap-1.5">
@@ -645,11 +645,11 @@ function ManualExecutionContent() {
       <Card>
         <CardContent className="p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-slate-800">Recent Manual Runs</h3>
+            <h3 className="text-sm font-semibold text-gray-800">Recent Manual Runs</h3>
             <div className="flex items-center gap-3">
               {totals.passed + totals.failed > 0 && (
                 <div className="flex items-center gap-2" title={`${totals.passed} passed / ${totals.failed} failed / ${totals.blocked} blocked steps`}>
-                  <div className="flex h-1.5 w-32 overflow-hidden rounded-full bg-slate-100">
+                  <div className="flex h-1.5 w-32 overflow-hidden rounded-full bg-gray-100">
                     {(() => {
                       const sum = Math.max(totals.passed + totals.failed + totals.blocked, 1);
                       return (
@@ -661,14 +661,14 @@ function ManualExecutionContent() {
                       );
                     })()}
                   </div>
-                  <span className="text-[10px] tabular-nums text-slate-400">
+                  <span className="text-[10px] tabular-nums text-gray-400">
                     {totals.passed}✓ {totals.failed}✕ {totals.blocked}⏸
                   </span>
                 </div>
               )}
               <Link
                 href={buildHref("/execution/dashboard", { project: projectId })}
-                className="inline-flex items-center gap-0.5 text-[11px] text-[#1b59f8] hover:underline"
+                className="inline-flex items-center gap-0.5 text-[11px] text-[#B71920] hover:underline"
               >
                 Full analytics <ArrowRight className="h-3 w-3" />
               </Link>
@@ -686,7 +686,7 @@ function ManualExecutionContent() {
                   onClick={() => setRunFilter(key)}
                   className={cn(
                     "rounded-md px-2 py-1 text-[11px] font-medium transition",
-                    runFilter === key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                    runFilter === key ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200",
                   )}
                 >
                   {label} ({runFilterCounts[key]})
@@ -702,7 +702,7 @@ function ManualExecutionContent() {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
                     <th className="py-2 pr-3">Run ID</th>
                     <th className="py-2 pr-3">Suite</th>
                     <th className="py-2 pr-3">Env</th>
@@ -714,17 +714,17 @@ function ManualExecutionContent() {
                 </thead>
                 <tbody>
                   {filteredManualRuns.slice(0, 10).map((r) => (
-                    <tr key={r.id} className={cn("border-b border-slate-50 hover:bg-slate-50/50", activeRunId === r.id && "bg-blue-50/30")}>
-                      <td className="py-2 pr-3 font-mono text-[#1b59f8]">{r.execution_id}</td>
-                      <td className="py-2 pr-3 max-w-[200px] truncate text-slate-700">{r.suite_name ?? "—"}</td>
-                      <td className="py-2 pr-3 text-slate-500">{r.environment ?? "—"}</td>
+                    <tr key={r.id} className={cn("border-b border-gray-50 hover:bg-gray-50/50", activeRunId === r.id && "bg-app-brand-75/30")}>
+                      <td className="py-2 pr-3 font-mono text-[#B71920]">{r.execution_id}</td>
+                      <td className="py-2 pr-3 max-w-[200px] truncate text-gray-700">{r.suite_name ?? "—"}</td>
+                      <td className="py-2 pr-3 text-gray-500">{r.environment ?? "—"}</td>
                       <td className="py-2 pr-3"><ExecutionStatusBadge status={r.status} /></td>
                       <td className="py-2 pr-3 text-right tabular-nums">
-                        <span className="text-emerald-600">{r.passed}</span><span className="text-slate-300 mx-1">/</span><span className="text-red-600">{r.failed}</span>
+                        <span className="text-emerald-600">{r.passed}</span><span className="text-gray-300 mx-1">/</span><span className="text-red-600">{r.failed}</span>
                       </td>
-                      <td className="py-2 pr-3 text-slate-500">{formatDate(r.started_at ?? r.created_at)}</td>
+                      <td className="py-2 pr-3 text-gray-500">{formatDate(r.started_at ?? r.created_at)}</td>
                       <td className="py-2 pr-3 text-right">
-                        <button onClick={() => setActiveRunId(r.id)} className="text-[11px] text-[#1b59f8] hover:underline">Open →</button>
+                        <button onClick={() => setActiveRunId(r.id)} className="text-[11px] text-[#B71920] hover:underline">Open →</button>
                       </td>
                     </tr>
                   ))}
@@ -791,9 +791,9 @@ function CompleteDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-xl bg-white shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className="px-5 py-3 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-900">Complete Manual Run</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">Review before publishing results to the dashboard</p>
+        <div className="px-5 py-3 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">Complete Manual Run</h3>
+          <p className="text-[11px] text-gray-500 mt-0.5">Review before publishing results to the dashboard</p>
         </div>
         <div className="p-5 space-y-3 text-xs">
           {validation.blockingFailures.length > 0 && (
@@ -818,7 +818,7 @@ function CompleteDialog({
             </p>
           )}
         </div>
-        <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-end gap-2">
+        <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-end gap-2">
           <Button size="sm" variant="outline" onClick={onClose}>Cancel</Button>
           <Button size="sm" onClick={onConfirm} disabled={!validation.canComplete || busy}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Publish & Lock Run"}
@@ -831,7 +831,7 @@ function CompleteDialog({
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="flex h-96 items-center justify-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Loading…</div>}>
+    <Suspense fallback={<div className="flex h-96 items-center justify-center text-gray-400"><Loader2 className="h-5 w-5 animate-spin mr-2" />Loading…</div>}>
       <ManualExecutionContent />
     </Suspense>
   );

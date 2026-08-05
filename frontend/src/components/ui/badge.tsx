@@ -7,12 +7,14 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 function Badge({ className, variant = "default", ...props }: BadgeProps) {
   const styles = {
-    default: "border-transparent bg-slate-900 text-slate-50",
-    secondary: "border-transparent bg-slate-100 text-slate-900",
+    default: "border-transparent bg-gray-900 text-gray-50",
+    secondary: "border-transparent bg-gray-100 text-gray-900",
     destructive: "border-red-200 bg-red-50 text-red-700",
-    outline: "text-slate-950 border-slate-200",
+    outline: "text-gray-950 border-gray-200",
     success: "border-emerald-200 bg-emerald-50 text-emerald-700",
     warning: "border-amber-200 bg-amber-50 text-amber-700",
+    // Stays blue while the brand moves to red: the reference keeps info at
+    // #2563EB precisely so an informational badge is not read as brand chrome.
     info: "border-blue-200 bg-blue-50 text-blue-700",
     purple: "border-violet-200 bg-violet-50 text-violet-700",
   };
@@ -20,7 +22,7 @@ function Badge({ className, variant = "default", ...props }: BadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2",
+        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-gray-950 focus:ring-offset-2",
         styles[variant],
         className
       )}

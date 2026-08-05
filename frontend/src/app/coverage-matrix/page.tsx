@@ -71,12 +71,12 @@ function CoverageMatrixContent() {
     <div className="space-y-6 select-none pb-8 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            <Table2 className="h-6 w-6 text-[#1b59f8]" />
+          <div className="rounded-xl bg-app-brand-75 border border-app-brand-100 p-2.5">
+            <Table2 className="h-6 w-6 text-[#B71920]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Coverage Matrix</h1>
-            <p className="text-xs text-slate-500 mt-1">
+            <h1 className="text-xl font-bold text-gray-900">Coverage Matrix</h1>
+            <p className="text-xs text-gray-500 mt-1">
               Requirement → Scenario → Test Case → Script → Execution → Defect rollup, one row per test case.
             </p>
           </div>
@@ -94,31 +94,31 @@ function CoverageMatrixContent() {
           { label: "Executed At Least Once", value: executed },
           { label: "With a Linked Defect", value: withDefects },
         ].map((stat) => (
-          <div key={stat.label} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-            <div className="text-xl font-bold text-slate-900">{stat.value}</div>
-            <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{stat.label}</div>
+          <div key={stat.label} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+            <div className="text-xl font-bold text-gray-900">{stat.value}</div>
+            <div className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-wider">{stat.label}</div>
           </div>
         ))}
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-16 text-slate-400 text-xs font-semibold">
-          <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mb-2" />
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 text-xs font-semibold">
+          <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mb-2" />
           Loading coverage matrix...
         </div>
       ) : rows.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-250">
-          <Table2 className="h-10 w-10 text-slate-300 mx-auto mb-2" />
-          <p className="text-xs text-slate-500 font-bold">No coverage matrix rows yet</p>
-          <p className="text-[10px] text-slate-400 font-semibold mt-1">
+        <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-250">
+          <Table2 className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+          <p className="text-xs text-gray-500 font-bold">No coverage matrix rows yet</p>
+          <p className="text-[10px] text-gray-400 font-semibold mt-1">
             Rows are seeded once a test case&apos;s scenario has been reviewed by the test_case_review agent.
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              <tr className="border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                 <th className="text-left px-4 py-2.5">Requirement</th>
                 <th className="text-left px-4 py-2.5">Scenario</th>
                 <th className="text-left px-4 py-2.5">Test Case</th>
@@ -129,19 +129,19 @@ function CoverageMatrixContent() {
                 <th className="text-left px-4 py-2.5">Defect</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-gray-50">
               {rows.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50/50">
-                  <td className="px-4 py-2.5 font-mono text-slate-500">
+                <tr key={row.id} className="hover:bg-gray-50/50">
+                  <td className="px-4 py-2.5 font-mono text-gray-500">
                     {row.requirement_id ? `REQ-${row.requirement_id}` : "—"}
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-slate-500">
+                  <td className="px-4 py-2.5 font-mono text-gray-500">
                     {row.scenario_id ? `TS-${row.scenario_id}` : "—"}
                   </td>
-                  <td className="px-4 py-2.5 font-mono font-bold text-slate-700">
+                  <td className="px-4 py-2.5 font-mono font-bold text-gray-700">
                     {row.test_case_id ? `TC-${row.test_case_id}` : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-slate-600">{row.test_type ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-gray-600">{row.test_type ?? "—"}</td>
                   <td className="px-4 py-2.5">
                     {row.case_class ? (
                       <Badge variant={caseClassVariant(row.case_class)} className="capitalize">{row.case_class}</Badge>
@@ -153,7 +153,7 @@ function CoverageMatrixContent() {
                         <ShieldCheck className="h-3.5 w-3.5" /> Linked
                       </span>
                     ) : (
-                      <span className="text-slate-400">Not linked</span>
+                      <span className="text-gray-400">Not linked</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">
@@ -162,7 +162,7 @@ function CoverageMatrixContent() {
                         {row.execution_status}
                       </Badge>
                     ) : (
-                      <span className="text-slate-400">Not run</span>
+                      <span className="text-gray-400">Not run</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">
@@ -171,7 +171,7 @@ function CoverageMatrixContent() {
                         <ShieldAlert className="h-3.5 w-3.5" /> Yes
                       </span>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-gray-400">—</span>
                     )}
                   </td>
                 </tr>
@@ -187,8 +187,8 @@ function CoverageMatrixContent() {
 export default function CoverageMatrixPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
-        <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
+      <div className="flex h-64 items-center justify-center text-gray-400 text-xs font-semibold">
+        <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mr-2" />
         Loading Coverage Matrix...
       </div>
     }>

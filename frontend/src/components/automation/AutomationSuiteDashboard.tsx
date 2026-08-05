@@ -67,7 +67,7 @@ const PAGE_SIZE = 10;
 function Trend({ points }: { points: { date: string; pass_rate: number | null }[] }) {
   const real = points.filter((p) => p.pass_rate !== null);
   if (real.length < 2) {
-    return <span className="text-[10px] font-semibold text-slate-400">Not enough completed runs</span>;
+    return <span className="text-[10px] font-semibold text-gray-400">Not enough completed runs</span>;
   }
   const values = points.map((p) => p.pass_rate ?? 0);
   const max = Math.max(...values, 100);
@@ -207,8 +207,8 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-xs font-bold text-slate-500">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+      <div className="flex items-center justify-center py-16 text-xs font-bold text-gray-500">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" />
         Loading Automation Workspace...
       </div>
     );
@@ -218,16 +218,16 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
     <div className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+          <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
             <span>Automation Studio</span>
-            <ChevronRight className="h-3 w-3 text-slate-300" />
-            <span className="text-slate-800">Automation Workspace</span>
+            <ChevronRight className="h-3 w-3 text-gray-300" />
+            <span className="text-gray-800">Automation Workspace</span>
             <Badge variant="purple" className="ml-1 text-[9px]">
               P1-S5 UI-018
             </Badge>
           </div>
-          <h1 className="mt-1 text-xl font-bold text-slate-900">Automation Workspace</h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500">
+          <h1 className="mt-1 text-xl font-bold text-gray-900">Automation Workspace</h1>
+          <p className="mt-1 text-xs font-semibold text-gray-500">
             Create and manage Automation Test Suites from approved test cases. Applications,
             frameworks, scripts and environments are inherited from their authoritative sources.
           </p>
@@ -307,7 +307,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
       </div>
 
       {metrics && (
-        <p className="text-[10px] font-semibold text-slate-400">
+        <p className="text-[10px] font-semibold text-gray-400">
           Success rate is project-wide: {metrics.unavailable["success_rate.scope"]} Suite counts
           exclude validation state because {metrics.unavailable["suites.validation_pending"]}
         </p>
@@ -321,32 +321,32 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
               <button
                 type="button"
                 onClick={openWizard}
-                className="flex items-start gap-2.5 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition hover:border-[#1b59f8] hover:bg-blue-50/40"
+                className="flex items-start gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-[#B71920] hover:bg-app-brand-75/40"
               >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-[#1b59f8]">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-app-brand-100 bg-app-brand-75 text-[#B71920]">
                   <Plus className="h-3.5 w-3.5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-xs font-bold text-slate-800">
+                  <span className="block truncate text-xs font-bold text-gray-800">
                     New Automation Test Suite
                   </span>
-                  <span className="block text-[10px] font-semibold text-slate-500">
+                  <span className="block text-[10px] font-semibold text-gray-500">
                     Create a suite from existing test cases
                   </span>
                 </span>
               </button>
               <a
                 href={`/test-data?project=${projectId}`}
-                className="flex items-start gap-2.5 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left transition hover:border-[#1b59f8] hover:bg-blue-50/40"
+                className="flex items-start gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left transition hover:border-[#B71920] hover:bg-app-brand-75/40"
               >
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600">
                   <Database className="h-3.5 w-3.5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-xs font-bold text-slate-800">
+                  <span className="block truncate text-xs font-bold text-gray-800">
                     Test Data Manager
                   </span>
-                  <span className="block text-[10px] font-semibold text-slate-500">
+                  <span className="block text-[10px] font-semibold text-gray-500">
                     Manage reusable and execution test data
                   </span>
                 </span>
@@ -375,7 +375,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
             action={
               <div className="flex items-center gap-2">
                 <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
                   <input
                     value={search}
                     onChange={(e) => {
@@ -383,7 +383,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                       setPage(1);
                     }}
                     placeholder="Search suites..."
-                    className="h-8 w-40 rounded-md border border-slate-200 pl-7 pr-2 text-xs font-semibold"
+                    className="h-8 w-40 rounded-md border border-gray-200 pl-7 pr-2 text-xs font-semibold"
                   />
                 </div>
                 <select
@@ -392,7 +392,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                     setStatusFilter(e.target.value);
                     setPage(1);
                   }}
-                  className="h-8 rounded-md border border-slate-200 px-2 text-xs font-semibold"
+                  className="h-8 rounded-md border border-gray-200 px-2 text-xs font-semibold"
                 >
                   {STATUS_FILTERS.map((f) => (
                     <option key={f.value} value={f.value}>
@@ -405,7 +405,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
           >
             <div className="overflow-x-auto">
               <div
-                className="grid min-w-[1200px] border-b border-slate-200 bg-slate-50/70 px-3 py-2 text-[9px] font-extrabold uppercase tracking-wide text-slate-500"
+                className="grid min-w-[1200px] border-b border-gray-200 bg-gray-50/70 px-3 py-2 text-[9px] font-extrabold uppercase tracking-wide text-gray-500"
                 style={{ gridTemplateColumns: SUITES_GRID }}
               >
                 <span>Suite Name</span>
@@ -418,26 +418,26 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                 <span>Updated</span>
                 <span>Actions</span>
               </div>
-              <div className="min-w-[1200px] divide-y divide-slate-100">
+              <div className="min-w-[1200px] divide-y divide-gray-100">
                 {suites.map((suite) => (
                   <button
                     key={suite.id}
                     type="button"
                     onClick={() => openSuite(suite.id)}
-                    className="grid w-full items-center px-3 py-2.5 text-left text-[10px] transition hover:bg-slate-50"
+                    className="grid w-full items-center px-3 py-2.5 text-left text-[10px] transition hover:bg-gray-50"
                     style={{ gridTemplateColumns: SUITES_GRID }}
                   >
                     <span className="min-w-0 pr-2">
                       <span className="flex items-center gap-1.5">
-                        <span className="min-w-0 truncate text-[11px] font-bold text-slate-900">
+                        <span className="min-w-0 truncate text-[11px] font-bold text-gray-900">
                           {suite.name}
                         </span>
-                        <span className="shrink-0 rounded bg-slate-100 px-1 py-0.5 text-[8px] font-extrabold text-slate-500">
+                        <span className="shrink-0 rounded bg-gray-100 px-1 py-0.5 text-[8px] font-extrabold text-gray-500">
                           v{suite.version}
                         </span>
                         {suite.is_current && (
                           <span
-                            className="shrink-0 rounded bg-blue-50 px-1 py-0.5 text-[8px] font-extrabold text-[#1b59f8]"
+                            className="shrink-0 rounded bg-app-brand-75 px-1 py-0.5 text-[8px] font-extrabold text-[#B71920]"
                             title="The current version of this suite"
                           >
                             CURRENT
@@ -445,27 +445,27 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                         )}
                       </span>
                       {suite.description && (
-                        <span className="block truncate text-[9px] font-semibold text-slate-400">
+                        <span className="block truncate text-[9px] font-semibold text-gray-400">
                           {suite.description}
                         </span>
                       )}
                     </span>
-                    <span className="font-bold text-slate-700">
+                    <span className="font-bold text-gray-700">
                       {suite.members_included}
                       {suite.members_manual_only > 0 && (
-                        <span className="font-semibold text-slate-400">
+                        <span className="font-semibold text-gray-400">
                           {" "}
                           +{suite.members_manual_only}m
                         </span>
                       )}
                     </span>
-                    <span className="truncate pr-2 font-semibold text-slate-500">
+                    <span className="truncate pr-2 font-semibold text-gray-500">
                       {suite.default_environment ?? "No environment set"}
                     </span>
-                    <span className="font-semibold text-slate-600">{suite.application_count}</span>
+                    <span className="font-semibold text-gray-600">{suite.application_count}</span>
                     <span className="flex flex-wrap gap-1 pr-2">
                       {suite.frameworks.length === 0 ? (
-                        <span className="font-semibold text-slate-300">None</span>
+                        <span className="font-semibold text-gray-300">None</span>
                       ) : (
                         suite.frameworks.map((f) => (
                           <Badge key={f} variant="outline" className="text-[8px]">
@@ -474,7 +474,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                         ))
                       )}
                     </span>
-                    <span className="font-semibold text-slate-600">
+                    <span className="font-semibold text-gray-600">
                       <span className="text-emerald-600">{suite.members_ready} ready</span>
                       {suite.members_blocked > 0 && (
                         <span className="text-red-600"> · {suite.members_blocked} blocked</span>
@@ -488,21 +488,21 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                         </span>
                       )}
                     </span>
-                    <span className="font-semibold text-slate-500">
+                    <span className="font-semibold text-gray-500">
                       {formatDateTime(suite.updated_at)}
                     </span>
-                    <span className="text-[10px] font-bold text-[#1b59f8]">Open</span>
+                    <span className="text-[10px] font-bold text-[#B71920]">Open</span>
                   </button>
                 ))}
                 {suites.length === 0 && (
                   <div className="px-4 py-10">
                     {search || statusFilter ? (
-                      <p className="text-center text-xs font-semibold text-slate-400">
+                      <p className="text-center text-xs font-semibold text-gray-400">
                         No suites match these filters.
                       </p>
                     ) : (
                       <>
-                        <p className="text-center text-xs font-semibold text-slate-500">
+                        <p className="text-center text-xs font-semibold text-gray-500">
                           No Automation Test Suites yet. Create one from approved test cases to get started.
                         </p>
                         {/* An empty state is exactly where "what do I do next"
@@ -510,7 +510,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                             six modules. Showing how close each approved test
                             case already is turns a dead end into a queue. */}
                         <div className="mx-auto mt-5 max-w-3xl">
-                          <p className="mb-2 text-[10px] font-extrabold uppercase tracking-wide text-slate-400">
+                          <p className="mb-2 text-[10px] font-extrabold uppercase tracking-wide text-gray-400">
                             Approved test cases and how close each is to running
                           </p>
                           <ExecutionPathList
@@ -525,7 +525,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                 )}
               </div>
             </div>
-            <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2.5 text-[10px] font-semibold text-slate-500">
+            <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2.5 text-[10px] font-semibold text-gray-500">
               <span>
                 Showing {suites.length} of {suitesTotal} suites
               </span>
@@ -534,7 +534,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                   type="button"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="rounded px-2 py-1 font-bold text-slate-600 disabled:text-slate-300"
+                  className="rounded px-2 py-1 font-bold text-gray-600 disabled:text-gray-300"
                 >
                   Previous
                 </button>
@@ -545,7 +545,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                   type="button"
                   disabled={page >= pages}
                   onClick={() => setPage((p) => Math.min(pages, p + 1))}
-                  className="rounded px-2 py-1 font-bold text-slate-600 disabled:text-slate-300"
+                  className="rounded px-2 py-1 font-bold text-gray-600 disabled:text-gray-300"
                 >
                   Next
                 </button>
@@ -558,7 +558,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-[10px]">
                 <thead>
-                  <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
+                  <tr className="border-b border-gray-100 text-[9px] font-extrabold uppercase text-gray-400">
                     <th className="py-1.5">Execution</th>
                     <th>Automation Test Suite</th>
                     <th>Environment</th>
@@ -570,27 +570,27 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                 </thead>
                 <tbody>
                   {executions.map((run) => (
-                    <tr key={run.id} className="border-b border-slate-50">
-                      <td className="py-1.5 font-bold text-slate-800">{run.execution_id}</td>
+                    <tr key={run.id} className="border-b border-gray-50">
+                      <td className="py-1.5 font-bold text-gray-800">{run.execution_id}</td>
                       <td
-                        className="font-semibold text-slate-600"
+                        className="font-semibold text-gray-600"
                         title={executionsUnavailable.suite_link_available}
                       >
                         {run.automation_test_suite ?? "—"}
                       </td>
-                      <td className="font-semibold text-slate-600">{run.environment ?? "—"}</td>
-                      <td className="font-semibold text-slate-600">{run.execution_type ?? "—"}</td>
-                      <td className="font-semibold text-slate-500">{formatDateTime(run.started_at)}</td>
-                      <td className="font-semibold text-slate-600">
+                      <td className="font-semibold text-gray-600">{run.environment ?? "—"}</td>
+                      <td className="font-semibold text-gray-600">{run.execution_type ?? "—"}</td>
+                      <td className="font-semibold text-gray-500">{formatDateTime(run.started_at)}</td>
+                      <td className="font-semibold text-gray-600">
                         {run.progress_pct === null ? (
-                          <span className="text-slate-300" title="This run reports no test count">
+                          <span className="text-gray-300" title="This run reports no test count">
                             —
                           </span>
                         ) : (
                           <span className="flex items-center gap-1.5">
-                            <span className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                            <span className="h-1.5 w-16 overflow-hidden rounded-full bg-gray-100">
                               <span
-                                className="block h-full rounded-full bg-[#1b59f8]"
+                                className="block h-full rounded-full bg-[#B71920]"
                                 style={{ width: `${run.progress_pct}%` }}
                               />
                             </span>
@@ -620,7 +620,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-[9px] font-semibold text-slate-400">
+            <p className="mt-2 text-[9px] font-semibold text-gray-400">
               Executions carry no link to an Automation Test Suite, so the suite column shows the
               run&apos;s own label and is not clickable.
             </p>
@@ -631,7 +631,7 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
         <div className="space-y-3">
           <Panel title="Success Rate Trend">
             {metrics && <Trend points={metrics.success_rate.trend} />}
-            <p className="mt-1 text-[10px] font-semibold text-slate-500">
+            <p className="mt-1 text-[10px] font-semibold text-gray-500">
               {metrics?.success_rate.pass_rate_7d === null
                 ? "No completed executions in the last 7 days"
                 : `${metrics?.success_rate.pass_rate_7d}% this week` +
@@ -644,34 +644,34 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
           <Panel title="Notifications">
             <ul className="space-y-1.5 text-[10px] font-semibold">
               <li className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-slate-600">
+                <span className="flex items-center gap-1.5 text-gray-600">
                   <Bell className="h-3 w-3 text-amber-500" />
                   Executions needing review
                 </span>
-                <span className="font-extrabold text-slate-900">
+                <span className="font-extrabold text-gray-900">
                   {metrics?.active_executions.review_required ?? 0}
                 </span>
               </li>
               <li className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-slate-600">
+                <span className="flex items-center gap-1.5 text-gray-600">
                   <Bell className="h-3 w-3 text-red-500" />
                   Suites with critical gaps
                 </span>
-                <span className="font-extrabold text-slate-900">
+                <span className="font-extrabold text-gray-900">
                   {suites.filter((s) => s.gaps_critical_open > 0).length}
                 </span>
               </li>
               <li className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 text-slate-600">
+                <span className="flex items-center gap-1.5 text-gray-600">
                   <Bell className="h-3 w-3 text-amber-500" />
                   Suites needing inheritance review
                 </span>
-                <span className="font-extrabold text-slate-900">
+                <span className="font-extrabold text-gray-900">
                   {suites.filter((s) => s.members_drifted > 0).length}
                 </span>
               </li>
             </ul>
-            <p className="mt-2 text-[9px] font-semibold text-slate-400">
+            <p className="mt-2 text-[9px] font-semibold text-gray-400">
               Environment-down alerts need an environment-health subsystem, which does not exist
               yet.
             </p>
@@ -680,33 +680,33 @@ export function AutomationSuiteDashboard({ projectId }: { projectId: number }) {
           <Panel title="Workspace Status">
             <dl className="space-y-1.5 text-[10px] font-semibold">
               <div className="flex items-center justify-between">
-                <dt className="text-slate-500">Agents connected</dt>
-                <dd className="font-extrabold text-slate-900">
+                <dt className="text-gray-500">Agents connected</dt>
+                <dd className="font-extrabold text-gray-900">
                   {footer ? `${footer.agents.connected} / ${footer.agents.total}` : "—"}
                 </dd>
               </div>
               <div className="flex items-center justify-between">
-                <dt className="text-slate-500">QA environment</dt>
-                <dd className="text-slate-300" title={footer?.unavailable.qa_environment}>
+                <dt className="text-gray-500">QA environment</dt>
+                <dd className="text-gray-300" title={footer?.unavailable.qa_environment}>
                   Not tracked
                 </dd>
               </div>
               <div className="flex items-center justify-between">
-                <dt className="text-slate-500">Storage</dt>
-                <dd className="text-slate-300" title={footer?.unavailable.storage_usage}>
+                <dt className="text-gray-500">Storage</dt>
+                <dd className="text-gray-300" title={footer?.unavailable.storage_usage}>
                   Not tracked
                 </dd>
               </div>
               <div className="flex items-center justify-between">
-                <dt className="text-slate-500">Server time</dt>
-                <dd className="font-semibold text-slate-700">
+                <dt className="text-gray-500">Server time</dt>
+                <dd className="font-semibold text-gray-700">
                   {formatDateTime(footer?.server_time)}
                 </dd>
               </div>
             </dl>
           </Panel>
 
-          <p className="px-1 text-[10px] font-semibold text-slate-400">{suitesDelta}</p>
+          <p className="px-1 text-[10px] font-semibold text-gray-400">{suitesDelta}</p>
         </div>
       </div>
     </div>

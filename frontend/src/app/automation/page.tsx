@@ -868,8 +868,8 @@ function AutomationContent() {
     {
       title: "Eligible for automation",
       icon: Wrench,
-      iconBg: "bg-blue-50 border-blue-100",
-      iconColor: "text-blue-500",
+      iconBg: "bg-app-brand-75 border-app-brand-100",
+      iconColor: "text-app-brand-500",
       value: total.toLocaleString(),
       sublabel: "Test cases",
       footer: "Approved & automation-eligible",
@@ -910,9 +910,9 @@ function AutomationContent() {
   if (searchParams.get("view") === "discovery") {
     const target = applicationsHref("discovery", selectedProject);
     return (
-      <div className="p-8 text-sm font-semibold text-slate-500">
+      <div className="p-8 text-sm font-semibold text-gray-500">
         Live Discovery Session has moved to Applications.{" "}
-        <Link href={target} className="font-bold text-[#1b59f8] underline">
+        <Link href={target} className="font-bold text-[#B71920] underline">
           Open it there
         </Link>
         .
@@ -922,7 +922,7 @@ function AutomationContent() {
 
   if (searchParams.get("view") === "workspace") {
     if (!selectedProject) {
-      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open Automation Workspace.</div>;
+      return <div className="p-8 text-sm font-semibold text-gray-400">Select a project to open Automation Workspace.</div>;
     }
     const suiteId = Number(searchParams.get("suite")) || null;
     return (
@@ -938,7 +938,7 @@ function AutomationContent() {
 
   if (searchParams.get("view") === "recorder") {
     if (!selectedProject) {
-      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to open the Live Recorder.</div>;
+      return <div className="p-8 text-sm font-semibold text-gray-400">Select a project to open the Live Recorder.</div>;
     }
     const recordingId = Number(searchParams.get("recording")) || null;
     return (
@@ -948,12 +948,12 @@ function AutomationContent() {
         ) : (
           <div className="space-y-6 animate-fade-in">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-                <Video className="h-6 w-6 text-[#1b59f8]" />
+              <div className="rounded-xl bg-app-brand-75 border border-app-brand-100 p-2.5">
+                <Video className="h-6 w-6 text-[#B71920]" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900">Live Recorder</h1>
-                <p className="text-xs text-slate-500 mt-1">
+                <h1 className="text-xl font-bold text-gray-900">Live Recorder</h1>
+                <p className="text-xs text-gray-500 mt-1">
                   Record real interactions against the mapped application for one Automation Test Suite member.
                 </p>
               </div>
@@ -982,7 +982,7 @@ function AutomationContent() {
       if (!memberId) {
         if (!selectedProject) {
           return (
-            <div className="p-8 text-sm font-semibold text-slate-400">
+            <div className="p-8 text-sm font-semibold text-gray-400">
               Select a project to see its automation assets.
             </div>
           );
@@ -1014,7 +1014,7 @@ function AutomationContent() {
 
   if (searchParams.get("view") === "workspace-new") {
     if (!selectedProject) {
-      return <div className="p-8 text-sm font-semibold text-slate-400">Select a project to create an Automation Test Suite.</div>;
+      return <div className="p-8 text-sm font-semibold text-gray-400">Select a project to create an Automation Test Suite.</div>;
     }
     return (
       <div className="min-h-full pb-8">
@@ -1028,12 +1028,12 @@ function AutomationContent() {
       {/* ── Title & Global Controls ────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            <Wrench className="h-6 w-6 text-[#1b59f8]" />
+          <div className="rounded-xl bg-app-brand-75 border border-app-brand-100 p-2.5">
+            <Wrench className="h-6 w-6 text-[#B71920]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">AI Automation Studio</h1>
-            <p className="text-xs text-slate-500 mt-1">Design. Generate. Review. Approve automation assets.</p>
+            <h1 className="text-xl font-bold text-gray-900">AI Automation Studio</h1>
+            <p className="text-xs text-gray-500 mt-1">Design. Generate. Review. Approve automation assets.</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -1042,7 +1042,7 @@ function AutomationContent() {
             size="sm"
             onClick={() => setConvertManualOpen(true)}
             disabled={!selectedProject}
-            className="gap-1.5 border-slate-200 text-slate-700 hover:bg-slate-50"
+            className="gap-1.5 border-gray-200 text-gray-700 hover:bg-gray-50"
           >
             Convert manual flow
           </Button>
@@ -1084,8 +1084,8 @@ function AutomationContent() {
             Run All Eligible ({runAllCandidates.length})
           </Button>
 
-          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
-            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-gray-200">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-gray-500", loading && "animate-spin")} />
           </Button>
         </div>
       </div>
@@ -1095,21 +1095,21 @@ function AutomationContent() {
         {metrics.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.title} className="border-slate-200 hover:-translate-y-0.5 transition-all">
+            <Card key={card.title} className="border-gray-200 hover:-translate-y-0.5 transition-all">
               <CardContent className="p-4 flex flex-col justify-between h-full space-y-3">
                 <div className="flex items-center gap-2">
                   <div className={cn("rounded-lg p-1.5 flex items-center justify-center shrink-0 border", card.iconBg)}>
                     <Icon className={cn("h-4 w-4", card.iconColor)} />
                   </div>
-                  <span className="text-xs font-bold text-slate-700 truncate">{card.title}</span>
+                  <span className="text-xs font-bold text-gray-700 truncate">{card.title}</span>
                 </div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-bold text-slate-900">{card.value}</span>
+                  <span className="text-xl font-bold text-gray-900">{card.value}</span>
                   {card.sublabel && (
-                    <span className="text-[10px] font-bold text-slate-400">{card.sublabel}</span>
+                    <span className="text-[10px] font-bold text-gray-400">{card.sublabel}</span>
                   )}
                 </div>
-                <div className="text-[10px] text-slate-400 font-semibold border-t border-slate-50 pt-2">
+                <div className="text-[10px] text-gray-400 font-semibold border-t border-gray-50 pt-2">
                   {card.footer}
                 </div>
               </CardContent>
@@ -1229,17 +1229,17 @@ function AutomationContent() {
             <>
               <DrawerHeader>
                 <div className="flex items-center gap-2">
-                  <Terminal className="h-5 w-5 text-[#1b59f8]" />
+                  <Terminal className="h-5 w-5 text-[#B71920]" />
                   <div className="min-w-0">
                     <DrawerTitle className="truncate">Automated Case: {selectedTestCase.test_case_id}</DrawerTitle>
                     <DrawerDescription className="truncate">{selectedTestCase.title}</DrawerDescription>
                   </div>
                 </div>
-                <button onClick={() => setDrawerOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+                <button onClick={() => setDrawerOpen(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-50"><X className="h-4 w-4" /></button>
               </DrawerHeader>
 
               {/* Action Buttons Hub inside Drawer */}
-              <div className="bg-slate-50 border-b border-slate-100 p-4 flex flex-wrap gap-2">
+              <div className="bg-gray-50 border-b border-gray-100 p-4 flex flex-wrap gap-2">
                 <Button
                   variant="default"
                   size="sm"
@@ -1258,7 +1258,7 @@ function AutomationContent() {
                     const m = mappingByTestCase.get(selectedTestCase.id);
                     if (m) handleSyncAutomation(m);
                   }}
-                  className="text-xs font-semibold h-8 border-slate-200 text-slate-600 bg-white"
+                  className="text-xs font-semibold h-8 border-gray-200 text-gray-600 bg-white"
                 >
                   <RefreshCw className={cn("h-3.5 w-3.5 mr-1", busyId === selectedTestCase.id && "animate-spin")} />
                   Sync Agent Result
@@ -1268,7 +1268,7 @@ function AutomationContent() {
                   size="sm"
                   disabled={busyId === selectedTestCase.id}
                   onClick={() => handleSyncJira(selectedTestCase)}
-                  className="text-xs font-semibold h-8 border-slate-200 text-slate-600 bg-white"
+                  className="text-xs font-semibold h-8 border-gray-200 text-gray-600 bg-white"
                 >
                   <ShieldCheck className="h-3.5 w-3.5 mr-1" />
                   Sync Jira QA Status
@@ -1276,12 +1276,12 @@ function AutomationContent() {
               </div>
 
               {/* Tab Selector */}
-              <div className="flex border-b border-slate-100 px-4 bg-white shrink-0">
+              <div className="flex border-b border-gray-100 px-4 bg-white shrink-0">
                 <button
                   onClick={() => setDrawerTab("mapping")}
                   className={cn(
                     "px-4 py-2.5 text-xs font-bold border-b-2 transition-colors",
-                    drawerTab === "mapping" ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500 hover:text-slate-900"
+                    drawerTab === "mapping" ? "border-[#B71920] text-[#B71920]" : "border-transparent text-gray-500 hover:text-gray-900"
                   )}
                 >
                   Mapping Configuration
@@ -1290,7 +1290,7 @@ function AutomationContent() {
                   onClick={() => setDrawerTab("history")}
                   className={cn(
                     "px-4 py-2.5 text-xs font-bold border-b-2 transition-colors",
-                    drawerTab === "history" ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-500 hover:text-slate-900"
+                    drawerTab === "history" ? "border-[#B71920] text-[#B71920]" : "border-transparent text-gray-500 hover:text-gray-900"
                   )}
                 >
                   Execution History
@@ -1301,47 +1301,47 @@ function AutomationContent() {
                 {drawerTab === "mapping" && (
                   <form onSubmit={handleSaveMapping} className="space-y-4">
                     <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External Tool Name</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External Tool Name</label>
                       <input
                         value={mappingForm.external_tool_name}
                         onChange={(e) => setMappingForm((f) => ({ ...f, external_tool_name: e.target.value }))}
-                        className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50"
+                        className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50"
                         placeholder="e.g. Playwright, Katalon, Pytest, Mock"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External Project ID</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External Project ID</label>
                       <input
                         value={mappingForm.external_project_id}
                         onChange={(e) => setMappingForm((f) => ({ ...f, external_project_id: e.target.value }))}
-                        className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50"
+                        className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50"
                         placeholder="e.g. BSS-ACTIVATIONS"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External Suite ID</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External Suite ID</label>
                       <input
                         value={mappingForm.external_suite_id}
                         onChange={(e) => setMappingForm((f) => ({ ...f, external_suite_id: e.target.value }))}
-                        className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50"
+                        className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50"
                         placeholder="e.g. REGRESSION-SIT"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External automated test case ID</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External automated test case ID</label>
                       <input
                         value={mappingForm.external_test_case_id}
                         onChange={(e) => setMappingForm((f) => ({ ...f, external_test_case_id: e.target.value }))}
-                        className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50 font-mono"
+                        className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50 font-mono"
                         placeholder="e.g. tc_activate_esim_01"
                       />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">External Script ID (Optional)</label>
+                      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">External Script ID (Optional)</label>
                       <input
                         value={mappingForm.external_script_id}
                         onChange={(e) => setMappingForm((f) => ({ ...f, external_script_id: e.target.value }))}
-                        className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50 font-mono"
+                        className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50 font-mono"
                         placeholder="e.g. scripts/activate_esim.py"
                       />
                     </div>
@@ -1364,20 +1364,20 @@ function AutomationContent() {
                 {drawerTab === "history" && (
                   <div className="space-y-4">
                     {historyLoading ? (
-                      <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-xs font-semibold">
-                        <Loader2 className="h-5 w-5 animate-spin text-[#1b59f8] mb-2" />
+                      <div className="flex flex-col items-center justify-center py-12 text-gray-400 text-xs font-semibold">
+                        <Loader2 className="h-5 w-5 animate-spin text-[#B71920] mb-2" />
                         Loading execution history logs...
                       </div>
                     ) : historyRows.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 font-semibold text-xs">
+                      <div className="text-center py-12 text-gray-400 font-semibold text-xs">
                         No automated runs recorded for this case.
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {historyRows.map((row) => (
-                          <div key={row.id} className="rounded-lg border border-slate-150 p-3 bg-slate-50/50 space-y-2.5">
+                          <div key={row.id} className="rounded-lg border border-gray-150 p-3 bg-gray-50/50 space-y-2.5">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="text-[10px] font-mono text-slate-400">{new Date(row.created_at).toLocaleString()}</span>
+                              <span className="text-[10px] font-mono text-gray-400">{new Date(row.created_at).toLocaleString()}</span>
                               <div className="flex gap-1.5">
                                 <Badge variant={getStatusVariant(row.automation_execution_status ?? row.status)}>
                                   {row.automation_execution_status ?? row.status}
@@ -1401,7 +1401,7 @@ function AutomationContent() {
                                   href={row.external_result_url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded px-2 py-1 text-[10px] font-bold"
+                                  className="inline-flex items-center gap-1 bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 rounded px-2 py-1 text-[10px] font-bold"
                                 >
                                   <ExternalLink className="h-3 w-3" />
                                   External Report
@@ -1412,7 +1412,7 @@ function AutomationContent() {
                                   href={row.log_url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded px-2 py-1 text-[10px] font-bold"
+                                  className="inline-flex items-center gap-1 bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 rounded px-2 py-1 text-[10px] font-bold"
                                 >
                                   <FileText className="h-3 w-3" />
                                   Evidence logs
@@ -1427,7 +1427,7 @@ function AutomationContent() {
                 )}
               </DrawerBody>
               <DrawerFooter>
-                <Button variant="outline" size="sm" onClick={() => setDrawerOpen(false)} className="w-full h-9 border-slate-200 bg-white">Close Detail</Button>
+                <Button variant="outline" size="sm" onClick={() => setDrawerOpen(false)} className="w-full h-9 border-gray-200 bg-white">Close Detail</Button>
               </DrawerFooter>
             </>
           )}
@@ -1435,12 +1435,12 @@ function AutomationContent() {
       </Drawer>
 
       {/* ── AI Generated Scripts Section ────────────────────────────────────────── */}
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <section className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <button
           onClick={() => setShowAiScripts(!showAiScripts)}
-          className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-slate-50/50 transition-colors"
+          className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-gray-50/50 transition-colors"
         >
-          <span className="inline-flex items-center gap-2 text-xs font-bold text-slate-800">
+          <span className="inline-flex items-center gap-2 text-xs font-bold text-gray-800">
             <Bot className="h-4.5 w-4.5 text-violet-600" />
             AI-Generated Automation Scripts Repository
           </span>
@@ -1449,22 +1449,22 @@ function AutomationContent() {
           </Badge>
         </button>
         {showAiScripts && (
-          <div className="border-t border-slate-200 p-5 bg-slate-50/30">
-            <p className="mb-4 text-xs text-slate-500 leading-relaxed font-semibold">
+          <div className="border-t border-gray-200 p-5 bg-gray-50/30">
+            <p className="mb-4 text-xs text-gray-500 leading-relaxed font-semibold">
               Draft generation stays here in Automation. Human review, repository metadata, and approval happen before the Execution module orchestrates a run.
             </p>
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {scripts.map((script) => (
-                <div key={script.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs">
+                <div key={script.id} className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[10px] font-bold text-[#1b59f8]">{script.script_id}</span>
+                        <span className="font-mono text-[10px] font-bold text-[#B71920]">{script.script_id}</span>
                         <Badge variant={script.framework === "playwright" ? "purple" : "info"}>{frameworkLabel(script.framework)}</Badge>
                         <Badge variant={getStatusVariant(script.status)}>{script.status}</Badge>
                       </div>
-                      <p className="mt-2 truncate font-semibold text-slate-700">{script.file_path || "Generated Script"}</p>
-                      <p className="mt-1 text-[10px] font-semibold text-slate-400">
+                      <p className="mt-2 truncate font-semibold text-gray-700">{script.file_path || "Generated Script"}</p>
+                      <p className="mt-1 text-[10px] font-semibold text-gray-400">
                         {scriptRepository(script).repository || "Repository pending"} • {scriptRepository(script).branch || "codex/automation-drafts"}
                       </p>
                     </div>
@@ -1492,7 +1492,7 @@ function AutomationContent() {
                 </div>
               ))}
               {scripts.length === 0 && (
-                <p className="text-xs text-slate-400 font-semibold text-center py-6">No AI-generated scripts found.</p>
+                <p className="text-xs text-gray-400 font-semibold text-center py-6">No AI-generated scripts found.</p>
               )}
             </div>
           </div>
@@ -1573,13 +1573,13 @@ function AutomationContent() {
 
 const SCRIPT_STATUS_COLORS: Record<string, string> = {
   ai_draft: "#8b5cf6",
-  draft: "#94a3b8",
+  draft: "#9CA3AF",
   in_review: "#0ea5e9",
   pending_approval: "#0ea5e9",
   approved: "#10b981",
   rejected: "#ef4444",
   executed: "#059669",
-  deprecated: "#cbd5e1",
+  deprecated: "#D1D5DB",
   blocked: "#f97316",
 };
 
@@ -1603,7 +1603,7 @@ function StudioInsightsRow({
       status,
       label: status.replace(/_/g, " "),
       count,
-      color: SCRIPT_STATUS_COLORS[status] ?? "#64748b",
+      color: SCRIPT_STATUS_COLORS[status] ?? "#6B7280",
     }));
   }, [scripts]);
 
@@ -1626,9 +1626,9 @@ function StudioInsightsRow({
 
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      <Card className="border-slate-200">
+      <Card className="border-gray-200">
         <CardContent className="p-4">
-          <p className="mb-3 text-xs font-bold text-slate-800">Scripts by status</p>
+          <p className="mb-3 text-xs font-bold text-gray-800">Scripts by status</p>
           <div className="flex items-center gap-4">
             <ResponsiveContainer width={110} height={110}>
               <PieChart>
@@ -1654,8 +1654,8 @@ function StudioInsightsRow({
               {distribution.map((d) => (
                 <li key={d.status} className="flex items-center gap-2 text-[11px]">
                   <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
-                  <span className="capitalize text-slate-600">{d.label}</span>
-                  <span className="ml-auto font-semibold tabular-nums text-slate-800">{d.count}</span>
+                  <span className="capitalize text-gray-600">{d.label}</span>
+                  <span className="ml-auto font-semibold tabular-nums text-gray-800">{d.count}</span>
                 </li>
               ))}
             </ul>
@@ -1663,32 +1663,32 @@ function StudioInsightsRow({
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200">
+      <Card className="border-gray-200">
         <CardContent className="p-4">
-          <p className="mb-3 text-xs font-bold text-slate-800">Sandbox run health</p>
+          <p className="mb-3 text-xs font-bold text-gray-800">Sandbox run health</p>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Runs</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{runStats.total}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Runs</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{runStats.total}</p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Pass rate</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Pass rate</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600">
                 {runStats.passRate !== null ? `${runStats.passRate}%` : "—"}
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Avg confidence</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Avg confidence</p>
               <p className="mt-1 text-2xl font-bold tabular-nums text-violet-600">
                 {runStats.avgConfidence !== null ? `${runStats.avgConfidence}%` : "—"}
               </p>
             </div>
           </div>
           {projectId && (
-            <div className="mt-3 border-t border-slate-50 pt-2 text-right">
+            <div className="mt-3 border-t border-gray-50 pt-2 text-right">
               <a
                 href={`/execution/dashboard?project=${projectId}`}
-                className="text-[11px] text-[#1b59f8] hover:underline"
+                className="text-[11px] text-[#B71920] hover:underline"
               >
                 Full analytics →
               </a>
@@ -1812,20 +1812,20 @@ function GroundingStrip({
       ? "border-emerald-200 bg-emerald-50/60"
       : state?.tone === "amber"
         ? "border-amber-200 bg-amber-50/60"
-        : "border-slate-200 bg-slate-50";
+        : "border-gray-200 bg-gray-50";
 
   return (
     <div className="space-y-2">
       {scopedApplicationName && (
-        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs">
-          <Boxes className="h-3.5 w-3.5 shrink-0 text-[#1b59f8]" />
-          <span className="font-semibold text-slate-700">
+        <div className="flex items-center gap-2 rounded-lg border border-app-brand-200 bg-app-brand-75/60 px-3 py-2 text-xs">
+          <Boxes className="h-3.5 w-3.5 shrink-0 text-[#B71920]" />
+          <span className="font-semibold text-gray-700">
             Showing only test cases mapped to <span className="font-bold">{scopedApplicationName}</span>.
           </span>
           <button
             type="button"
             onClick={onClearScope}
-            className="ml-auto font-bold text-[#1b59f8] hover:underline"
+            className="ml-auto font-bold text-[#B71920] hover:underline"
           >
             Show all applications
           </button>
@@ -1836,12 +1836,12 @@ function GroundingStrip({
           <Crosshair
             className={cn(
               "h-4 w-4 shrink-0",
-              state.tone === "emerald" ? "text-emerald-600" : state.tone === "amber" ? "text-amber-600" : "text-slate-400",
+              state.tone === "emerald" ? "text-emerald-600" : state.tone === "amber" ? "text-amber-600" : "text-gray-400",
             )}
           />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold text-slate-800">{state.title}</p>
-            <p className="mt-0.5 text-[11px] text-slate-600">{state.detail}</p>
+            <p className="text-xs font-bold text-gray-800">{state.title}</p>
+            <p className="mt-0.5 text-[11px] text-gray-600">{state.detail}</p>
           </div>
           {state.action}
         </div>
@@ -1875,42 +1875,42 @@ function ScriptRunsStrip({
   if (!script) return null;
 
   return (
-    <Card className="border-slate-200">
+    <Card className="border-gray-200">
       <CardContent className="p-4">
         <div className="mb-2 flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-800">
-            <History className="h-3.5 w-3.5 text-slate-400" />
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-800">
+            <History className="h-3.5 w-3.5 text-gray-400" />
             Recent runs — {script.script_id}
           </span>
           {projectId && (
             <a
               href={`/execution/automation?project=${projectId}&tab=history`}
-              className="text-[11px] text-[#1b59f8] hover:underline"
+              className="text-[11px] text-[#B71920] hover:underline"
             >
               All runs →
             </a>
           )}
         </div>
         {scriptRuns.length === 0 ? (
-          <p className="rounded border border-dashed border-slate-200 px-3 py-3 text-center text-[11px] text-slate-400">
+          <p className="rounded border border-dashed border-gray-200 px-3 py-3 text-center text-[11px] text-gray-400">
             No sandbox runs yet. Approve the script, then use “Run in sandbox”.
           </p>
         ) : (
-          <div className="divide-y divide-slate-50">
+          <div className="divide-y divide-gray-50">
             {scriptRuns.map((r) => (
               <button
                 key={r.id}
                 type="button"
                 onClick={() => onOpenRun(r)}
-                className="flex w-full items-center gap-3 py-2 text-left text-xs hover:bg-slate-50/60"
+                className="flex w-full items-center gap-3 py-2 text-left text-xs hover:bg-gray-50/60"
               >
-                <span className="w-24 shrink-0 font-mono text-[#1b59f8]">{r.execution_id}</span>
+                <span className="w-24 shrink-0 font-mono text-[#B71920]">{r.execution_id}</span>
                 <RunVerdictBadge run={r} />
-                <span className="text-slate-500">{r.environment ?? "—"}</span>
-                <span className="ml-auto tabular-nums text-slate-400">
+                <span className="text-gray-500">{r.environment ?? "—"}</span>
+                <span className="ml-auto tabular-nums text-gray-400">
                   {formatDate(r.started_at ?? r.created_at)}
                 </span>
-                <span className="w-16 text-right font-mono tabular-nums text-slate-400">
+                <span className="w-16 text-right font-mono tabular-nums text-gray-400">
                   {formatDuration(r.duration_seconds)}
                 </span>
               </button>
@@ -1942,8 +1942,8 @@ function scriptRepository(script: AutomationScript) {
 export default function AutomationPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
-        <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
+      <div className="flex h-64 items-center justify-center text-gray-400 text-xs font-semibold">
+        <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mr-2" />
         Loading AI Automation Studio...
       </div>
     }>

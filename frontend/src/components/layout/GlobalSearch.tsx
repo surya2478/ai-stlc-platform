@@ -196,26 +196,26 @@ export function GlobalSearch({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[12vh]" onClick={onClose}>
       <div
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="w-full max-w-xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 border-b border-slate-100 px-3.5 py-2.5">
-          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+        <div className="flex items-center gap-2 border-b border-gray-100 px-3.5 py-2.5">
+          <Search className="h-4 w-4 shrink-0 text-gray-400" />
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={projectId ? "Search requirements, test cases, defects, or jump to a page…" : "Jump to a page…"}
             aria-label="Search"
-            className="flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+            className="flex-1 bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
           />
-          {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
-          <kbd className="rounded border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold text-slate-400">ESC</kbd>
+          {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
+          <kbd className="rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-semibold text-gray-400">ESC</kbd>
         </div>
 
         <div className="max-h-[50vh] overflow-y-auto py-1">
           {hits.length === 0 ? (
-            <p className="px-4 py-8 text-center text-xs font-medium text-slate-400">
+            <p className="px-4 py-8 text-center text-xs font-medium text-gray-400">
               No matches for “{query.trim()}”.
             </p>
           ) : (
@@ -229,26 +229,26 @@ export function GlobalSearch({
                   onClick={() => go(hit)}
                   className={cn(
                     "flex w-full items-center gap-2.5 px-4 py-2 text-left transition-colors",
-                    index === activeIndex ? "bg-blue-50" : "hover:bg-slate-50",
+                    index === activeIndex ? "bg-app-brand-75" : "hover:bg-gray-50",
                   )}
                 >
-                  <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-slate-800">
-                      {hit.code && <span className="mr-1.5 font-mono text-[10px] text-[#1b59f8]">{hit.code}</span>}
+                    <p className="truncate text-xs font-semibold text-gray-800">
+                      {hit.code && <span className="mr-1.5 font-mono text-[10px] text-[#B71920]">{hit.code}</span>}
                       {hit.title}
                     </p>
                   </div>
-                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-slate-400">{hit.kind}</span>
-                  {index === activeIndex && <CornerDownLeft className="h-3 w-3 shrink-0 text-slate-400" />}
+                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-gray-400">{hit.kind}</span>
+                  {index === activeIndex && <CornerDownLeft className="h-3 w-3 shrink-0 text-gray-400" />}
                 </button>
               );
             })
           )}
         </div>
 
-        <div className="border-t border-slate-100 px-4 py-2">
-          <p className="text-[10px] font-medium text-slate-400">
+        <div className="border-t border-gray-100 px-4 py-2">
+          <p className="text-[10px] font-medium text-gray-400">
             {!projectId
               ? "Select a project to search its requirements, test cases and defects."
               : capped

@@ -45,20 +45,20 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ text, projectId }) => {
 
     // 2. Check for Headers
     if (line.startsWith("### ")) {
-      return <h4 key={idx} className="text-xs font-bold text-slate-800 mt-3 mb-1.5">{line.replace("### ", "")}</h4>;
+      return <h4 key={idx} className="text-xs font-bold text-gray-800 mt-3 mb-1.5">{line.replace("### ", "")}</h4>;
     }
     if (line.startsWith("## ")) {
-      return <h3 key={idx} className="text-sm font-bold text-slate-900 mt-4 mb-2">{line.replace("## ", "")}</h3>;
+      return <h3 key={idx} className="text-sm font-bold text-gray-900 mt-4 mb-2">{line.replace("## ", "")}</h3>;
     }
     if (line.startsWith("# ")) {
-      return <h2 key={idx} className="text-base font-bold text-slate-950 mt-5 mb-2.5">{line.replace("# ", "")}</h2>;
+      return <h2 key={idx} className="text-base font-bold text-gray-950 mt-5 mb-2.5">{line.replace("# ", "")}</h2>;
     }
 
     // 3. Check for Bullets
     if (line.trim().startsWith("•") || line.trim().startsWith("-") || line.trim().startsWith("*")) {
       const content = line.replace(/^[•\-*]\s*/, "");
       return (
-        <li key={idx} className="list-disc list-inside text-xs text-slate-600 ml-3.5 my-1 leading-relaxed">
+        <li key={idx} className="list-disc list-inside text-xs text-gray-600 ml-3.5 my-1 leading-relaxed">
           {renderInlineStyles(content, projectId)}
         </li>
       );
@@ -66,7 +66,7 @@ const MarkdownText: React.FC<MarkdownTextProps> = ({ text, projectId }) => {
 
     // 4. Regular Paragraph
     return (
-      <p key={idx} className="text-xs text-slate-600 leading-relaxed my-2">
+      <p key={idx} className="text-xs text-gray-600 leading-relaxed my-2">
         {renderInlineStyles(line, projectId)}
       </p>
     );
@@ -91,14 +91,14 @@ function renderInlineStyles(text: string, projectId: number | null) {
   parts = parts.flatMap((part) => {
     if (typeof part !== "string") return part;
     const splitParts = part.split(boldRegex);
-    return splitParts.map((sub, i) => (i % 2 === 1 ? <strong key={i} className="font-semibold text-slate-800">{sub}</strong> : sub));
+    return splitParts.map((sub, i) => (i % 2 === 1 ? <strong key={i} className="font-semibold text-gray-800">{sub}</strong> : sub));
   });
 
   // 2. Process Code
   parts = parts.flatMap((part) => {
     if (typeof part !== "string") return part;
     const splitParts = part.split(codeRegex);
-    return splitParts.map((sub, i) => (i % 2 === 1 ? <code key={i} className="bg-slate-100 text-slate-800 rounded px-1 py-0.5 text-[10px] font-mono">{sub}</code> : sub));
+    return splitParts.map((sub, i) => (i % 2 === 1 ? <code key={i} className="bg-gray-100 text-gray-800 rounded px-1 py-0.5 text-[10px] font-mono">{sub}</code> : sub));
   });
 
   // 3. Process Citations with Deep Links
@@ -123,7 +123,7 @@ function renderInlineStyles(text: string, projectId: number | null) {
           <a
             key={i}
             href={`${route}${projectParam}`}
-            className="text-[#1b59f8] hover:underline font-bold inline-flex items-center gap-0.5 select-all"
+            className="text-[#B71920] hover:underline font-bold inline-flex items-center gap-0.5 select-all"
           >
             {key}
           </a>
@@ -348,7 +348,7 @@ export const AssistantWidget: React.FC = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex items-center gap-3.5 rounded-full bg-gradient-to-r from-[#43c7df] via-[#56aceb] to-[#7485f3] hover:from-[#2fb4d0] hover:via-[#459de2] hover:to-[#6676e8] text-white px-5 py-3 shadow-2xl shadow-[#56aceb]/25 transition-all duration-300 transform hover:scale-105 active:scale-95 shrink-0 select-none border border-white/20"
+          className="fixed bottom-6 right-6 z-40 flex items-center gap-3.5 rounded-full bg-gradient-to-r from-[#43c7df] via-[#56aceb] to-[#F1A4A6] hover:from-[#2fb4d0] hover:via-[#459de2] hover:to-[#6676e8] text-white px-5 py-3 shadow-2xl shadow-[#56aceb]/25 transition-all duration-300 transform hover:scale-105 active:scale-95 shrink-0 select-none border border-white/20"
           aria-label="Open QAI Platform Assistant"
         >
           {/* AI Assistant Text */}
@@ -376,15 +376,15 @@ export const AssistantWidget: React.FC = () => {
           className={cn(
             "fixed z-50 bg-white shadow-2xl transition-all duration-300 flex flex-col focus:outline-none select-none",
             isWide 
-              ? "inset-y-0 right-0 h-full w-full sm:max-w-xl md:max-w-2xl border-l border-slate-100" 
-              : "bottom-6 right-6 w-[calc(100vw-32px)] sm:w-[380px] h-[580px] max-h-[calc(100vh-48px)] rounded-2xl border border-slate-200/80"
+              ? "inset-y-0 right-0 h-full w-full sm:max-w-xl md:max-w-2xl border-l border-gray-100" 
+              : "bottom-6 right-6 w-[calc(100vw-32px)] sm:w-[380px] h-[580px] max-h-[calc(100vh-48px)] rounded-2xl border border-gray-200/80"
           )}
           role="dialog"
           aria-labelledby="assistant-title"
         >
           {/* Drawer Header (Sales Advisor Help themed) */}
           <div className={cn(
-            "flex items-center justify-between border-b border-[#56aceb]/20 p-4 shrink-0 bg-gradient-to-r from-[#43c7df] via-[#56aceb] to-[#7485f3] text-white",
+            "flex items-center justify-between border-b border-[#56aceb]/20 p-4 shrink-0 bg-gradient-to-r from-[#43c7df] via-[#56aceb] to-[#F1A4A6] text-white",
             !isWide && "rounded-t-2xl"
           )}>
             <div className="flex items-center gap-3 min-w-0">
@@ -415,11 +415,11 @@ export const AssistantWidget: React.FC = () => {
                   <path d="M20,95 C20,75 35,70 50,70 C65,70 80,75 80,95 Z" fill="#56aceb" />
 
                   {/* Headset */}
-                  <path d="M28,43 C28,18 72,18 72,43" stroke="#e2e8f0" strokeWidth="4" fill="none" strokeLinecap="round" />
-                  <rect x="25" y="38" width="6" height="12" rx="3" fill="#e2e8f0" />
-                  <rect x="69" y="38" width="6" height="12" rx="3" fill="#e2e8f0" />
-                  <path d="M69,45 L58,58" stroke="#e2e8f0" strokeWidth="2.5" strokeLinecap="round" />
-                  <circle cx="58" cy="58" r="2.5" fill="#e2e8f0" />
+                  <path d="M28,43 C28,18 72,18 72,43" stroke="#E8EAEE" strokeWidth="4" fill="none" strokeLinecap="round" />
+                  <rect x="25" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
+                  <rect x="69" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
+                  <path d="M69,45 L58,58" stroke="#E8EAEE" strokeWidth="2.5" strokeLinecap="round" />
+                  <circle cx="58" cy="58" r="2.5" fill="#E8EAEE" />
                 </svg>
                 <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border border-white" />
               </div>
@@ -476,30 +476,30 @@ export const AssistantWidget: React.FC = () => {
           {/* Drawer Body - Scrollable chat thread */}
           <div 
             ref={scrollRef}
-            className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 scroll-smooth"
+            className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/30 scroll-smooth"
           >
             {/* Empty state suggestions */}
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center text-center py-10 px-4 space-y-4">
-                <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-[#43c7df] via-[#56aceb] to-[#7485f3] flex items-center justify-center shadow-lg shadow-[#56aceb]/25">
+                <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-[#43c7df] via-[#56aceb] to-[#F1A4A6] flex items-center justify-center shadow-lg shadow-[#56aceb]/25">
                   <MessageSquare className="h-6 w-6 text-white" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-xs font-bold text-slate-800">Ask QAI anything</h3>
-                  <p className="text-[10px] text-slate-400 max-w-xs leading-normal">
+                  <h3 className="text-xs font-bold text-gray-800">Ask QAI anything</h3>
+                  <p className="text-[10px] text-gray-400 max-w-xs leading-normal">
                     Ask questions about your STLC execution metrics, requirements review state, test case coverage, or platform workflows.
                   </p>
                 </div>
                 
                 <div className="w-full space-y-2.5 mt-4 px-2">
-                  <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest text-center">Suggested prompts for {activePageLabel}</p>
+                  <p className="text-[9px] font-extrabold text-gray-400 uppercase tracking-widest text-center">Suggested prompts for {activePageLabel}</p>
                   <div className="flex flex-col gap-2 w-full max-w-[320px] mx-auto">
                     {suggestions.map((s, idx) => (
                       <button
                         key={idx}
                         onClick={() => handleSendMessage(s)}
                         disabled={isLoading}
-                        className="w-full text-center text-[10px] bg-white border-2 border-black hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400 text-black rounded-full py-3.5 px-4 font-bold uppercase tracking-wider transition-all duration-200 shadow-sm"
+                        className="w-full text-center text-[10px] bg-white border-2 border-black hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-400 text-black rounded-full py-3.5 px-4 font-bold uppercase tracking-wider transition-all duration-200 shadow-sm"
                       >
                         {s}
                       </button>
@@ -550,11 +550,11 @@ export const AssistantWidget: React.FC = () => {
                           <path d="M20,95 C20,75 35,70 50,70 C65,70 80,75 80,95 Z" fill="#56aceb" />
 
                           {/* Headset */}
-                          <path d="M28,43 C28,18 72,18 72,43" stroke="#e2e8f0" strokeWidth="4" fill="none" strokeLinecap="round" />
-                          <rect x="25" y="38" width="6" height="12" rx="3" fill="#e2e8f0" />
-                          <rect x="69" y="38" width="6" height="12" rx="3" fill="#e2e8f0" />
-                          <path d="M69,45 L58,58" stroke="#e2e8f0" strokeWidth="2.5" strokeLinecap="round" />
-                          <circle cx="58" cy="58" r="2.5" fill="#e2e8f0" />
+                          <path d="M28,43 C28,18 72,18 72,43" stroke="#E8EAEE" strokeWidth="4" fill="none" strokeLinecap="round" />
+                          <rect x="25" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
+                          <rect x="69" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
+                          <path d="M69,45 L58,58" stroke="#E8EAEE" strokeWidth="2.5" strokeLinecap="round" />
+                          <circle cx="58" cy="58" r="2.5" fill="#E8EAEE" />
                         </svg>
                       </div>
                     )}
@@ -564,10 +564,10 @@ export const AssistantWidget: React.FC = () => {
                         className={cn(
                           "rounded-2xl px-3.5 py-2.5 text-xs shadow-xs leading-relaxed transition-all",
                           isUser 
-                            ? "bg-[#1b59f8] text-white rounded-tr-none font-medium"
+                            ? "bg-[#B71920] text-white rounded-tr-none font-medium"
                             : isSystem
                               ? "bg-red-50 text-red-700 border border-red-100 rounded-tl-none font-medium"
-                              : "bg-white text-slate-800 border border-slate-100 rounded-tl-none"
+                              : "bg-white text-gray-800 border border-gray-100 rounded-tl-none"
                         )}
                       >
                         {isUser ? (
@@ -579,9 +579,9 @@ export const AssistantWidget: React.FC = () => {
 
                       {/* Assistant footer & ratings */}
                       {!isUser && !isSystem && (
-                        <div className="flex items-center justify-between w-full mt-1.5 px-1 text-[9px] text-slate-400 select-none gap-2">
-                          <span className="inline-flex items-center gap-1 font-medium text-slate-300">
-                            <Shield className="h-3 w-3 text-slate-300" />
+                        <div className="flex items-center justify-between w-full mt-1.5 px-1 text-[9px] text-gray-400 select-none gap-2">
+                          <span className="inline-flex items-center gap-1 font-medium text-gray-300">
+                            <Shield className="h-3 w-3 text-gray-300" />
                             Project-scoped & role-aware
                           </span>
                           <div className="flex items-center gap-1.5 ml-auto">
@@ -589,8 +589,8 @@ export const AssistantWidget: React.FC = () => {
                               onClick={() => submitFeedback(m.id, "helpful")}
                               disabled={feedbackRatings[m.id] !== undefined}
                               className={cn(
-                                "p-0.5 rounded transition-colors hover:bg-slate-100",
-                                feedbackRatings[m.id] === "helpful" ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-50" : "text-slate-400"
+                                "p-0.5 rounded transition-colors hover:bg-gray-100",
+                                feedbackRatings[m.id] === "helpful" ? "text-emerald-600 bg-emerald-50 hover:bg-emerald-50" : "text-gray-400"
                               )}
                               title="Helpful"
                             >
@@ -600,8 +600,8 @@ export const AssistantWidget: React.FC = () => {
                               onClick={() => submitFeedback(m.id, "unhelpful")}
                               disabled={feedbackRatings[m.id] !== undefined}
                               className={cn(
-                                "p-0.5 rounded transition-colors hover:bg-slate-100",
-                                feedbackRatings[m.id] === "unhelpful" ? "text-rose-600 bg-rose-50 hover:bg-rose-50" : "text-slate-400"
+                                "p-0.5 rounded transition-colors hover:bg-gray-100",
+                                feedbackRatings[m.id] === "unhelpful" ? "text-rose-600 bg-rose-50 hover:bg-rose-50" : "text-gray-400"
                               )}
                               title="Not helpful"
                             >
@@ -646,16 +646,16 @@ export const AssistantWidget: React.FC = () => {
                       <path d="M20,95 C20,75 35,70 50,70 C65,70 80,75 80,95 Z" fill="#56aceb" />
 
                       {/* Headset */}
-                      <path d="M28,43 C28,18 72,18 72,43" stroke="#e2e8f0" strokeWidth="4" fill="none" strokeLinecap="round" />
-                      <rect x="25" y="38" width="6" height="12" rx="3" fill="#e2e8f0" />
-                      <rect x="69" y="38" width="6" height="12" rx="3" fill="#e2e8f0" />
-                      <path d="M69,45 L58,58" stroke="#e2e8f0" strokeWidth="2.5" strokeLinecap="round" />
-                      <circle cx="58" cy="58" r="2.5" fill="#e2e8f0" />
+                      <path d="M28,43 C28,18 72,18 72,43" stroke="#E8EAEE" strokeWidth="4" fill="none" strokeLinecap="round" />
+                      <rect x="25" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
+                      <rect x="69" y="38" width="6" height="12" rx="3" fill="#E8EAEE" />
+                      <path d="M69,45 L58,58" stroke="#E8EAEE" strokeWidth="2.5" strokeLinecap="round" />
+                      <circle cx="58" cy="58" r="2.5" fill="#E8EAEE" />
                     </svg>
                   </div>
-                  <div className="rounded-2xl rounded-tl-none bg-white border border-slate-100 px-4 py-3 shadow-xs flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 text-[#1b59f8] animate-spin" />
-                    <span className="text-[10px] font-medium text-slate-400">QAI is thinking...</span>
+                  <div className="rounded-2xl rounded-tl-none bg-white border border-gray-100 px-4 py-3 shadow-xs flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 text-[#B71920] animate-spin" />
+                    <span className="text-[10px] font-medium text-gray-400">QAI is thinking...</span>
                   </div>
                 </div>
               </div>
@@ -664,13 +664,13 @@ export const AssistantWidget: React.FC = () => {
 
           {/* Dynamic suggestion chips list when drawer has content (Vertically Stacked, Etisalat styled) */}
           {messages.length > 0 && suggestions.length > 0 && (
-            <div className="px-4 py-3 bg-slate-50 border-t border-slate-100/80 shrink-0 select-none flex flex-col gap-2">
+            <div className="px-4 py-3 bg-gray-50 border-t border-gray-100/80 shrink-0 select-none flex flex-col gap-2">
               {suggestions.slice(0, 2).map((s, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSendMessage(s)}
                   disabled={isLoading}
-                  className="w-full text-center text-[10px] bg-white border-2 border-black hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400 text-black rounded-full py-2.5 px-4 font-bold uppercase tracking-wider transition-all duration-200 shadow-sm"
+                  className="w-full text-center text-[10px] bg-white border-2 border-black hover:bg-gray-50 disabled:bg-gray-50 disabled:text-gray-400 text-black rounded-full py-2.5 px-4 font-bold uppercase tracking-wider transition-all duration-200 shadow-sm"
                 >
                   {s}
                 </button>
@@ -680,7 +680,7 @@ export const AssistantWidget: React.FC = () => {
 
           {/* Drawer Footer - Message Input */}
           <div className={cn(
-            "border-t border-slate-100 p-4 shrink-0 bg-white flex items-center gap-2",
+            "border-t border-gray-100 p-4 shrink-0 bg-white flex items-center gap-2",
             !isWide && "rounded-b-2xl"
           )}>
             <input
@@ -691,13 +691,13 @@ export const AssistantWidget: React.FC = () => {
                 if (e.key === "Enter") handleSendMessage(inputMsg);
               }}
               placeholder="Type your question about QAI..."
-              className="flex-1 rounded-xl border border-slate-200 hover:border-slate-300 focus:border-[#1b59f8] focus:ring-2 focus:ring-blue-100/30 text-xs px-3.5 py-2.5 focus:outline-none transition-all placeholder:text-slate-400"
+              className="flex-1 rounded-xl border border-gray-200 hover:border-gray-300 focus:border-[#B71920] focus:ring-2 focus:ring-app-brand-100/30 text-xs px-3.5 py-2.5 focus:outline-none transition-all placeholder:text-gray-400"
               disabled={isLoading}
             />
             <button
               onClick={() => handleSendMessage(inputMsg)}
               disabled={!inputMsg.trim() || isLoading}
-              className="h-9 w-9 flex items-center justify-center rounded-xl bg-[#1b59f8] hover:bg-blue-700 disabled:bg-slate-100 text-white disabled:text-slate-300 shadow-md transition-colors"
+              className="h-9 w-9 flex items-center justify-center rounded-xl bg-[#B71920] hover:bg-app-brand-700 disabled:bg-gray-100 text-white disabled:text-gray-300 shadow-md transition-colors"
             >
               <Send className="h-4 w-4" />
             </button>

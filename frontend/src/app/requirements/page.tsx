@@ -115,10 +115,10 @@ function ConfirmDeleteModal({
             <AlertTriangle className="h-5 w-5 text-red-500" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-sm text-slate-800">{title}</h2>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed font-semibold">{description}</p>
+            <h2 className="font-bold text-sm text-gray-800">{title}</h2>
+            <p className="text-xs text-gray-500 mt-1.5 leading-relaxed font-semibold">{description}</p>
           </div>
-          <button onClick={onCancel} className="rounded-md p-1 hover:bg-slate-50 text-slate-400 shrink-0">
+          <button onClick={onCancel} className="rounded-md p-1 hover:bg-gray-50 text-gray-400 shrink-0">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -128,7 +128,7 @@ function ConfirmDeleteModal({
           </div>
         )}
         <div className="flex gap-2 pt-1">
-          <Button onClick={onCancel} disabled={deleting} variant="outline" size="sm" className="flex-1 h-9 border-slate-200 text-slate-650 bg-white">
+          <Button onClick={onCancel} disabled={deleting} variant="outline" size="sm" className="flex-1 h-9 border-gray-200 text-gray-650 bg-white">
             Cancel
           </Button>
           <Button onClick={handleConfirm} disabled={deleting} variant="default" size="sm" className="flex-1 h-9 bg-rose-600 hover:bg-rose-700 font-semibold text-white">
@@ -281,12 +281,12 @@ function ClassificationSelect({ label, value, options, onChange }: {
   const offTaxonomy = Boolean(value) && !options.includes(value);
   return (
     <label className="space-y-1.5">
-      <span className="text-[10px] font-bold uppercase text-slate-500">{label}</span>
+      <span className="text-[10px] font-bold uppercase text-gray-500">{label}</span>
       <select
         aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200"
+        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200"
       >
         <option value="">—</option>
         {options.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -458,11 +458,11 @@ function reviewStatusBadgeVariant(status: ReviewStatus): "default" | "secondary"
 
 function CoverageBar({ linked, total, health }: { linked: number; total: number; health?: TraceabilityHealth }) {
   const pct = total > 0 ? Math.min(100, Math.round((linked / total) * 100)) : 0;
-  const color = health === "fully_traced" || pct === 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-slate-300";
+  const color = health === "fully_traced" || pct === 100 ? "bg-emerald-500" : pct > 0 ? "bg-amber-500" : "bg-gray-300";
   return (
     <div className="min-w-[74px]">
-      <div className="mb-1 text-[10px] font-bold text-slate-700">{linked} / {total}</div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+      <div className="mb-1 text-[10px] font-bold text-gray-700">{linked} / {total}</div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
         <div className={cn("h-full rounded-full", color)} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -2000,9 +2000,9 @@ function RequirementsContent() {
     const ready = analysisRows.filter((row) => row.status === "analyzed" && row.blockers.length === 0).length;
 
     return [
-      { title: "Total Requirements", icon: FileText, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: analysisRows.length.toLocaleString(), sublabel: "In analysis", footer: "Current analysis-stage records" },
+      { title: "Total Requirements", icon: FileText, iconBg: "bg-app-brand-75 border-app-brand-100", iconColor: "text-app-brand-500", value: analysisRows.length.toLocaleString(), sublabel: "In analysis", footer: "Current analysis-stage records" },
       { title: "Analysis Ready", icon: ShieldCheck, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: ready.toLocaleString(), sublabel: "Ready", footer: "No mandatory blockers" },
-      { title: "In Progress", icon: RefreshCw, iconBg: "bg-indigo-50 border-indigo-100", iconColor: "text-indigo-500", value: (count("queued") + count("analyzing")).toLocaleString(), sublabel: "Active", footer: "Queued or analyzing" },
+      { title: "In Progress", icon: RefreshCw, iconBg: "bg-app-brand-75 border-app-brand-100", iconColor: "text-app-brand-500", value: (count("queued") + count("analyzing")).toLocaleString(), sublabel: "Active", footer: "Queued or analyzing" },
       { title: "Ambiguity Detected", icon: AlertTriangle, iconBg: "bg-orange-50 border-orange-100", iconColor: "text-orange-500", value: needsAttention.toLocaleString(), sublabel: "Review", footer: "Needs clarification" },
       { title: "Missing Information", icon: CircleDot, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: missingInfo.toLocaleString(), sublabel: "Blocked", footer: "Details required" },
       { title: "Duplicates / Conflicts", icon: GitBranch, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: duplicatesAndConflicts.toLocaleString(), sublabel: "Review", footer: "Resolution required" },
@@ -2111,9 +2111,9 @@ function RequirementsContent() {
     const pct = (value: number) => total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "0.0%";
 
     return [
-      { title: "Total Requirements", icon: FileText, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: total.toLocaleString(), sublabel: "100%", footer: "100% of analyzed" },
+      { title: "Total Requirements", icon: FileText, iconBg: "bg-app-brand-75 border-app-brand-100", iconColor: "text-app-brand-500", value: total.toLocaleString(), sublabel: "100%", footer: "100% of analyzed" },
       { title: "Fully Traced", icon: ShieldCheck, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: fully.toLocaleString(), sublabel: pct(fully), footer: `${pct(fully)} fully traced` },
-      { title: "Partial Trace", icon: Link2, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: partial.toLocaleString(), sublabel: pct(partial), footer: `${pct(partial)} partial` },
+      { title: "Partial Trace", icon: Link2, iconBg: "bg-app-brand-75 border-app-brand-100", iconColor: "text-app-brand-500", value: partial.toLocaleString(), sublabel: pct(partial), footer: `${pct(partial)} partial` },
       { title: "Missing Scenarios", icon: AlertTriangle, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: missingScenario.toLocaleString(), sublabel: pct(missingScenario), footer: `${pct(missingScenario)} missing` },
       { title: "Missing Test Cases", icon: Braces, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: missingCases.toLocaleString(), sublabel: pct(missingCases), footer: `${pct(missingCases)} missing` },
       { title: "Broken / Stale Links", icon: XCircle, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: broken.toLocaleString(), sublabel: pct(broken), footer: `${pct(broken)} need attention` },
@@ -2247,7 +2247,7 @@ function RequirementsContent() {
     const rejectedBlocked = count("rejected") + count("blocked");
     const pct = (value: number) => total > 0 ? `${((value / total) * 100).toFixed(1)}%` : "0.0%";
     return [
-      { title: "Total for Review", icon: FileText, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: total.toLocaleString(), sublabel: "Review", footer: "100% of analyzed reqs" },
+      { title: "Total for Review", icon: FileText, iconBg: "bg-app-brand-75 border-app-brand-100", iconColor: "text-app-brand-500", value: total.toLocaleString(), sublabel: "Review", footer: "100% of analyzed reqs" },
       { title: "Ready for Approval", icon: ShieldCheck, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: ready.toLocaleString(), sublabel: pct(ready), footer: `${pct(ready)} ready` },
       { title: "Pending Review", icon: Clock, iconBg: "bg-amber-50 border-amber-100", iconColor: "text-amber-500", value: pending.toLocaleString(), sublabel: pct(pending), footer: `${pct(pending)} pending` },
       { title: "Changes Requested", icon: AlertTriangle, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: changes.toLocaleString(), sublabel: pct(changes), footer: `${pct(changes)} need updates` },
@@ -2269,7 +2269,7 @@ function RequirementsContent() {
     const blocked = intakeSources.filter((source) => source.status === "blocked").length;
 
     return [
-      { title: "Total Sources", icon: Layers3, iconBg: "bg-blue-50 border-blue-100", iconColor: "text-blue-500", value: intakeSources.length.toLocaleString(), sublabel: "Sources", footer: "All governed intake records" },
+      { title: "Total Sources", icon: Layers3, iconBg: "bg-app-brand-75 border-app-brand-100", iconColor: "text-app-brand-500", value: intakeSources.length.toLocaleString(), sublabel: "Sources", footer: "All governed intake records" },
       { title: "Ready for Analysis", icon: CheckCircle, iconBg: "bg-emerald-50 border-emerald-100", iconColor: "text-emerald-500", value: ready.toLocaleString(), sublabel: "Ready", footer: "Validated with extracted content" },
       { title: "Processing", icon: RefreshCw, iconBg: "bg-purple-50 border-purple-100", iconColor: "text-purple-500", value: processing.toLocaleString(), sublabel: "Active", footer: "AI intake jobs in progress" },
       { title: "Blocked", icon: AlertTriangle, iconBg: "bg-red-50 border-red-100", iconColor: "text-red-500", value: blocked.toLocaleString(), sublabel: "Sources", footer: "Validation or processing issues" },
@@ -2285,12 +2285,12 @@ function RequirementsContent() {
       {/* ── Title & Global Controls ────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            {workspaceView === "traceability" ? <Link2 className="h-6 w-6 text-[#1b59f8]" /> : workspaceView === "review" ? <ShieldCheck className="h-6 w-6 text-[#1b59f8]" /> : <FileText className="h-6 w-6 text-[#1b59f8]" />}
+          <div className="rounded-xl bg-app-brand-75 border border-app-brand-100 p-2.5">
+            {workspaceView === "traceability" ? <Link2 className="h-6 w-6 text-[#B71920]" /> : workspaceView === "review" ? <ShieldCheck className="h-6 w-6 text-[#B71920]" /> : <FileText className="h-6 w-6 text-[#B71920]" />}
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">{workspaceView === "review" ? "Requirement Review & Approval" : workspaceView === "traceability" ? "Requirement Traceability" : workspaceView === "analysis" ? "Requirement Analysis" : "Requirements Workspace"}</h1>
-            <p className="text-xs text-slate-500 mt-1">
+            <h1 className="text-xl font-bold text-gray-900">{workspaceView === "review" ? "Requirement Review & Approval" : workspaceView === "traceability" ? "Requirement Traceability" : workspaceView === "analysis" ? "Requirement Analysis" : "Requirements Workspace"}</h1>
+            <p className="text-xs text-gray-500 mt-1">
               {workspaceView === "review"
                 ? "Final review and approval before requirements move to test design and execution."
                 : workspaceView === "traceability"
@@ -2302,8 +2302,8 @@ function RequirementsContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-slate-200">
-            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          <Button variant="outline" size="sm" onClick={loadData} className="h-8 w-8 p-0 border-gray-200">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-gray-500", loading && "animate-spin")} />
           </Button>
 
           {/* GAP-5: Export dropdown */}
@@ -2313,7 +2313,7 @@ function RequirementsContent() {
               size="sm"
               disabled={!selectedProject || requirements.length === 0 || exportBusy}
               onClick={() => setShowExportMenu((v) => !v)}
-              className="h-8 px-3 border-slate-200 text-slate-600 bg-white font-semibold text-xs"
+              className="h-8 px-3 border-gray-200 text-gray-600 bg-white font-semibold text-xs"
             >
               {exportBusy ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
@@ -2321,21 +2321,21 @@ function RequirementsContent() {
                 <Download className="h-3.5 w-3.5 mr-1" />
               )}
               Export
-              <ChevronDown className="h-3 w-3 ml-1 text-slate-400" />
+              <ChevronDown className="h-3 w-3 ml-1 text-gray-400" />
             </Button>
             {showExportMenu && (
               <div
-                className="absolute right-0 top-full mt-1 z-50 w-52 rounded-xl border border-slate-200 bg-white shadow-lg py-1 animate-in fade-in zoom-in-95 duration-100"
+                className="absolute right-0 top-full mt-1 z-50 w-52 rounded-xl border border-gray-200 bg-white shadow-lg py-1 animate-in fade-in zoom-in-95 duration-100"
                 onMouseLeave={() => setShowExportMenu(false)}
               >
                 {EXPORT_MENU_OPTIONS.map(([type, label, desc]) => (
                   <button
                     key={type}
                     onClick={() => handleExport(type)}
-                    className="w-full text-left px-3 py-2.5 hover:bg-slate-50 transition-colors group"
+                    className="w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors group"
                   >
-                    <span className="block text-xs font-bold text-slate-800 group-hover:text-[#1b59f8]">{label}</span>
-                    <span className="block text-[10px] text-slate-400 mt-0.5">{desc}</span>
+                    <span className="block text-xs font-bold text-gray-800 group-hover:text-[#B71920]">{label}</span>
+                    <span className="block text-[10px] text-gray-400 mt-0.5">{desc}</span>
                   </button>
                 ))}
               </div>
@@ -2357,12 +2357,12 @@ function RequirementsContent() {
 
       {selectedProject && (
         <>
-          <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-1 rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm">
             <button
               onClick={() => handleWorkspaceViewChange("intake")}
               className={cn(
                 "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
-                workspaceView === "intake" ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900"
+                workspaceView === "intake" ? "bg-[#B71920] text-white" : "text-gray-500 hover:text-gray-900"
               )}
             >
               Requirement Intake <span className="ml-1 text-[9px] opacity-75">UI-006</span>
@@ -2371,7 +2371,7 @@ function RequirementsContent() {
               onClick={() => handleWorkspaceViewChange("analysis")}
               className={cn(
                 "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
-                workspaceView === "analysis" ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900"
+                workspaceView === "analysis" ? "bg-[#B71920] text-white" : "text-gray-500 hover:text-gray-900"
               )}
             >
               Requirement Analysis <span className="ml-1 text-[9px] opacity-75">UI-007</span>
@@ -2380,7 +2380,7 @@ function RequirementsContent() {
               onClick={() => handleWorkspaceViewChange("traceability")}
               className={cn(
                 "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
-                workspaceView === "traceability" ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900"
+                workspaceView === "traceability" ? "bg-[#B71920] text-white" : "text-gray-500 hover:text-gray-900"
               )}
             >
               Traceability <span className="ml-1 text-[9px] opacity-75">UI-008</span>
@@ -2389,17 +2389,17 @@ function RequirementsContent() {
               onClick={() => handleWorkspaceViewChange("review")}
               className={cn(
                 "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
-                workspaceView === "review" ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900"
+                workspaceView === "review" ? "bg-[#B71920] text-white" : "text-gray-500 hover:text-gray-900"
               )}
             >
               Review & Approval <span className="ml-1 text-[9px] opacity-75">UI-009</span>
             </button>
             {["Requirement Analysis · UI-007", "Traceability · UI-008", "Review & Approval · UI-009"].map((view) => (
-              <button key={view} disabled title="Available after its visual design gate is approved" className={cn("cursor-not-allowed rounded-lg px-4 py-2 text-xs font-bold text-slate-400", (view.startsWith("Requirement Analysis") || view.startsWith("Traceability") || view.startsWith("Review")) && "hidden")}>
+              <button key={view} disabled title="Available after its visual design gate is approved" className={cn("cursor-not-allowed rounded-lg px-4 py-2 text-xs font-bold text-gray-400", (view.startsWith("Requirement Analysis") || view.startsWith("Traceability") || view.startsWith("Review")) && "hidden")}>
                 {view}
               </button>
             ))}
-            <Badge variant="outline" className="ml-auto border-blue-100 bg-blue-50 text-blue-600">Phase 1 · P1-S2</Badge>
+            <Badge variant="outline" className="ml-auto border-app-brand-100 bg-app-brand-75 text-app-brand-600">Phase 1 · P1-S2</Badge>
           </div>
 
           {/* ── Status Counts Cards ─────────────────────────────────────────────────── */}
@@ -2407,21 +2407,21 @@ function RequirementsContent() {
             {(workspaceView === "review" ? reviewStats : workspaceView === "traceability" ? traceabilityStats : workspaceView === "analysis" ? analysisStats : stats).map((card) => {
               const Icon = card.icon;
               return (
-                <Card key={card.title} className="border-slate-200 hover:-translate-y-0.5 transition-all">
+                <Card key={card.title} className="border-gray-200 hover:-translate-y-0.5 transition-all">
                   <CardContent className={cn("flex h-full flex-col justify-between", workspaceView !== "intake" ? "space-y-2 p-3" : "space-y-3 p-4")}>
                     <div className="flex items-center gap-2">
                       <div className={cn("flex shrink-0 items-center justify-center rounded-lg border", workspaceView !== "intake" ? "p-1" : "p-1.5", card.iconBg)}>
                         <Icon className={cn(workspaceView !== "intake" ? "h-3.5 w-3.5" : "h-4 w-4", card.iconColor)} />
                       </div>
-                      <span className={cn("truncate font-bold text-slate-700", workspaceView !== "intake" ? "text-[11px]" : "text-xs")}>{card.title}</span>
+                      <span className={cn("truncate font-bold text-gray-700", workspaceView !== "intake" ? "text-[11px]" : "text-xs")}>{card.title}</span>
                     </div>
                     <div className="flex items-baseline gap-1.5">
-                      <span className={cn("font-bold text-slate-900", workspaceView !== "intake" ? "text-lg" : "text-xl")}>{card.value}</span>
+                      <span className={cn("font-bold text-gray-900", workspaceView !== "intake" ? "text-lg" : "text-xl")}>{card.value}</span>
                       {card.sublabel && (
-                        <span className="text-[10px] font-bold text-slate-400">{card.sublabel}</span>
+                        <span className="text-[10px] font-bold text-gray-400">{card.sublabel}</span>
                       )}
                     </div>
-                    <div className={cn("border-t border-slate-50 text-[10px] font-semibold text-slate-400", workspaceView !== "intake" ? "pt-1" : "pt-2")}>
+                    <div className={cn("border-t border-gray-50 text-[10px] font-semibold text-gray-400", workspaceView !== "intake" ? "pt-1" : "pt-2")}>
                       {card.footer}
                     </div>
                   </CardContent>
@@ -2435,13 +2435,13 @@ function RequirementsContent() {
             <div className={cn(
               "flex items-center gap-3 rounded-xl border px-4 py-3 text-xs font-semibold",
               agentRunning
-                ? "border-blue-200 bg-blue-50 text-blue-700 animate-pulse"
+                ? "border-app-brand-200 bg-app-brand-75 text-app-brand-700 animate-pulse"
                 : agentError
                 ? "border-red-200 bg-red-50 text-red-700"
                 : "border-emerald-200 bg-emerald-50 text-emerald-700"
             )}>
               {agentRunning ? (
-                <Loader2 className="h-4 w-4 animate-spin text-[#1b59f8] shrink-0" />
+                <Loader2 className="h-4 w-4 animate-spin text-[#B71920] shrink-0" />
               ) : agentError ? (
                 <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
               ) : (
@@ -2449,7 +2449,7 @@ function RequirementsContent() {
               )}
               <span className="flex-1">{agentError ?? agentStatus}</span>
               {!agentRunning && (
-                <button onClick={() => { setAgentStatus(""); setAgentError(null); }} className="text-slate-400 hover:text-slate-700">
+                <button onClick={() => { setAgentStatus(""); setAgentError(null); }} className="text-gray-400 hover:text-gray-700">
                   <XCircle className="h-4.5 w-4.5" />
                 </button>
               )}
@@ -2459,9 +2459,9 @@ function RequirementsContent() {
           {/* ── Sub Navigation Tabs ────────────────────────────────────────────────── */}
           {workspaceView === "review" && (
             <div className="space-y-4">
-              <Card className="border-slate-200 shadow-sm">
+              <Card className="border-gray-200 shadow-sm">
                 <CardContent className="p-3">
-                  <h2 className="mb-3 text-xs font-bold text-slate-900">Approval Readiness Overview</h2>
+                  <h2 className="mb-3 text-xs font-bold text-gray-900">Approval Readiness Overview</h2>
                   <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                     {([
                       ["Analysis Complete", `${reviewRows.length ? Math.round((reviewRows.filter((row) => row.analysisStatus === "analyzed").length / reviewRows.length) * 100) : 0}%`, CheckCircle, "text-emerald-600"],
@@ -2474,20 +2474,20 @@ function RequirementsContent() {
                       <div key={label} className="flex items-start gap-2">
                         <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", tone)} />
                         <div>
-                          <div className="text-[11px] font-bold text-slate-700">{label}</div>
-                          <div className="mt-1 text-xs font-bold text-slate-900">{value}</div>
+                          <div className="text-[11px] font-bold text-gray-700">{label}</div>
+                          <div className="mt-1 text-xs font-bold text-gray-900">{value}</div>
                         </div>
                       </div>
                     ))}
                   </div>
-                  <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-2 text-[11px] font-semibold text-blue-700">
+                  <div className="mt-3 flex items-center justify-between rounded-lg border border-app-brand-100 bg-app-brand-75/40 px-3 py-2 text-[11px] font-semibold text-app-brand-700">
                     <span>Requirements must pass all readiness checks to be eligible for approval.</span>
                     <button onClick={() => setShowReadinessRules((value) => !value)} className="font-bold">
                       {showReadinessRules ? "Hide readiness rules" : "View readiness rules"} <ChevronRight className={cn("inline h-3 w-3 transition-transform", showReadinessRules && "rotate-90")} />
                     </button>
                   </div>
                   {showReadinessRules && (
-                    <div className="mt-2 grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[10px] font-semibold text-slate-600 md:grid-cols-2">
+                    <div className="mt-2 grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-[10px] font-semibold text-gray-600 md:grid-cols-2">
                       <span>• Requirement analysis must pass without unresolved missing information.</span>
                       <span>• Duplicate candidates and classification gaps must be resolved.</span>
                       <span>• Application/system mapping and traceability validation are mandatory.</span>
@@ -2498,7 +2498,7 @@ function RequirementsContent() {
               </Card>
 
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                <div className="flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
                   {([
                     ["all", "All"],
                     ["ready", "Ready"],
@@ -2513,11 +2513,11 @@ function RequirementsContent() {
                       onClick={() => setReviewFilter(status)}
                       className={cn(
                         "rounded-lg px-3 py-1.5 text-[11px] font-bold transition-colors",
-                        reviewFilter === status ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900",
+                        reviewFilter === status ? "bg-[#B71920] text-white" : "text-gray-500 hover:bg-gray-50 hover:text-gray-900",
                       )}
                     >
                       {label}
-                      <span className={cn("ml-1 rounded-full px-1.5 py-0.5 text-[9px]", reviewFilter === status ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600")}>{status === "all" ? reviewRows.length : reviewRows.filter((row) => row.reviewStatus === status).length}</span>
+                      <span className={cn("ml-1 rounded-full px-1.5 py-0.5 text-[9px]", reviewFilter === status ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600")}>{status === "all" ? reviewRows.length : reviewRows.filter((row) => row.reviewStatus === status).length}</span>
                     </button>
                   ))}
                 </div>
@@ -2526,96 +2526,96 @@ function RequirementsContent() {
                 </Button>
               </div>
 
-              <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
+              <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input value={reviewSearch} onChange={(event) => setReviewSearch(event.target.value)} placeholder="Search by REQ ID, PPM ID, title, owner..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input value={reviewSearch} onChange={(event) => setReviewSearch(event.target.value)} placeholder="Search by REQ ID, PPM ID, title, owner..." className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-xs font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" />
                 </div>
-                <select aria-label="Review Status" value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value as ReviewStatus | "all")} className="h-9 min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-500">
+                <select aria-label="Review Status" value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value as ReviewStatus | "all")} className="h-9 min-w-[140px] rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-500">
                   <option value="all">All review statuses</option>
                   <option value="ready">Ready</option><option value="pending">Pending</option><option value="changes_requested">Changes Requested</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="blocked">Blocked</option>
                 </select>
-                <select aria-label="Domain" value={reviewDomainFilter} onChange={(event) => setReviewDomainFilter(event.target.value)} className="h-9 min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-500">
+                <select aria-label="Domain" value={reviewDomainFilter} onChange={(event) => setReviewDomainFilter(event.target.value)} className="h-9 min-w-[120px] rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-500">
                   <option value="all">All domains</option>
                   {reviewDomains.map((domain) => <option key={domain} value={domain}>{domain}</option>)}
                 </select>
-                <select aria-label="Owner" value={reviewOwnerFilter} onChange={(event) => setReviewOwnerFilter(event.target.value)} className="h-9 min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-500">
+                <select aria-label="Owner" value={reviewOwnerFilter} onChange={(event) => setReviewOwnerFilter(event.target.value)} className="h-9 min-w-[120px] rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-500">
                   <option value="all">All owners</option>
                   {reviewOwners.map((owner) => <option key={owner} value={owner}>{owner}</option>)}
                 </select>
-                <select aria-label="Reviewer" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} className="h-9 min-w-[130px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-500">
+                <select aria-label="Reviewer" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} className="h-9 min-w-[130px] rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-500">
                   <option value="all">All reviewers</option>
                   {reviewReviewers.map((reviewer) => <option key={reviewer} value={reviewer}>{reviewer}</option>)}
                 </select>
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
                 <table className="min-w-[1220px] w-full border-collapse text-left text-xs">
-                  <thead className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <thead className="border-b border-gray-200 bg-gray-50/70 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                     <tr>
                       <th className="px-3 py-2.5">Req ID</th><th className="px-3 py-2.5">PPM ID</th><th className="px-3 py-2.5">Title</th><th className="px-3 py-2.5">Analysis Status</th><th className="px-3 py-2.5">Traceability Health</th><th className="px-3 py-2.5">Review Status</th><th className="px-3 py-2.5">Assigned Reviewer</th><th className="px-3 py-2.5">SLA / Age</th><th className="px-3 py-2.5">Updated At</th><th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                  <tbody className="divide-y divide-gray-100 font-medium text-gray-600">
                     {filteredReviewRows.map((row) => (
-                      <tr key={row.requirement.id} onClick={() => { handleOpenReqDetail(row.requirement); setDrawerTab("details"); }} className="cursor-pointer transition-colors hover:bg-slate-50/70">
-                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#1b59f8]">{row.requirement.requirement_id}</td>
-                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-slate-600">{row.ppmId}</td>
-                        <td className="max-w-[260px] px-3 py-3 font-bold text-slate-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
+                      <tr key={row.requirement.id} onClick={() => { handleOpenReqDetail(row.requirement); setDrawerTab("details"); }} className="cursor-pointer transition-colors hover:bg-gray-50/70">
+                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#B71920]">{row.requirement.requirement_id}</td>
+                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-gray-600">{row.ppmId}</td>
+                        <td className="max-w-[260px] px-3 py-3 font-bold text-gray-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
                         <td className="px-3 py-3"><Badge variant={analysisBadgeVariant(row.analysisStatus)}>{analysisLabel(row.analysisStatus)}</Badge></td>
-                        <td className="px-3 py-3"><div className="min-w-[100px]"><div className="mb-1 flex justify-between text-[10px] font-bold"><span>{traceHealthLabel(row.traceabilityHealth)}</span><span>{row.traceabilityScore}/100</span></div><div className="h-1.5 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full rounded-full", row.traceabilityScore >= 80 ? "bg-emerald-500" : row.traceabilityScore >= 50 ? "bg-amber-500" : "bg-red-500")} style={{ width: `${row.traceabilityScore}%` }} /></div></div></td>
+                        <td className="px-3 py-3"><div className="min-w-[100px]"><div className="mb-1 flex justify-between text-[10px] font-bold"><span>{traceHealthLabel(row.traceabilityHealth)}</span><span>{row.traceabilityScore}/100</span></div><div className="h-1.5 overflow-hidden rounded-full bg-gray-100"><div className={cn("h-full rounded-full", row.traceabilityScore >= 80 ? "bg-emerald-500" : row.traceabilityScore >= 50 ? "bg-amber-500" : "bg-red-500")} style={{ width: `${row.traceabilityScore}%` }} /></div></div></td>
                         <td className="px-3 py-3"><Badge variant={reviewStatusBadgeVariant(row.reviewStatus)}>{reviewStatusLabel(row.reviewStatus)}</Badge></td>
                         <td className="px-3 py-3"><span className="inline-flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">{row.reviewer.slice(0, 2).toUpperCase()}</span>{row.reviewer}</span></td>
-                        <td className={cn("px-3 py-3 font-bold", row.slaStatus === "overdue" ? "text-red-600" : row.slaStatus === "at_risk" ? "text-amber-600" : row.slaStatus === "on_track" ? "text-emerald-600" : "text-slate-400")}>{row.slaAge}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
+                        <td className={cn("px-3 py-3 font-bold", row.slaStatus === "overdue" ? "text-red-600" : row.slaStatus === "at_risk" ? "text-amber-600" : row.slaStatus === "on_track" ? "text-emerald-600" : "text-gray-400")}>{row.slaAge}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-gray-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
                         <td className="px-3 py-3 text-right"><Button variant="outline" size="sm" className="h-7 px-2 text-[10px] font-bold">...</Button></td>
                       </tr>
                     ))}
                     {filteredReviewRows.length === 0 && (
-                      <tr><td colSpan={10} className="px-4 py-8 text-center text-xs font-semibold text-slate-400">No requirements match the selected review filters.</td></tr>
+                      <tr><td colSpan={10} className="px-4 py-8 text-center text-xs font-semibold text-gray-400">No requirements match the selected review filters.</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
 
               <div className="grid gap-3 xl:grid-cols-3">
-                <Card className="border-slate-200 shadow-sm">
+                <Card className="border-gray-200 shadow-sm">
                   <CardContent className="p-3">
-                    <h3 className="mb-2 text-xs font-bold text-slate-900">Review Workload</h3>
+                    <h3 className="mb-2 text-xs font-bold text-gray-900">Review Workload</h3>
                     <div className="flex items-center gap-4">
                       <div
                         className="flex h-24 w-24 items-center justify-center rounded-full p-3"
-                        style={{ background: `conic-gradient(#2563eb 0 ${reviewRows.length ? Math.round((reviewRows.filter((row) => !["approved", "rejected"].includes(row.reviewStatus)).length / reviewRows.length) * 100) : 0}%, #e2e8f0 0 100%)` }}
+                        style={{ background: `conic-gradient(#2563eb 0 ${reviewRows.length ? Math.round((reviewRows.filter((row) => !["approved", "rejected"].includes(row.reviewStatus)).length / reviewRows.length) * 100) : 0}%, #E8EAEE 0 100%)` }}
                       >
                         <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
-                          <span className="text-xl font-bold text-slate-900">{reviewRows.filter((row) => !["approved", "rejected"].includes(row.reviewStatus)).length}</span>
-                          <span className="text-[9px] font-bold text-slate-400">Open reviews</span>
+                          <span className="text-xl font-bold text-gray-900">{reviewRows.filter((row) => !["approved", "rejected"].includes(row.reviewStatus)).length}</span>
+                          <span className="text-[9px] font-bold text-gray-400">Open reviews</span>
                         </div>
                       </div>
-                      <div className="flex-1 space-y-1.5 text-[11px] font-semibold text-slate-600">
+                      <div className="flex-1 space-y-1.5 text-[11px] font-semibold text-gray-600">
                         {reviewerWorkload.map(({ name, count }) => <div key={name} className="flex justify-between"><span>{name}</span><span>{count}</span></div>)}
-                        {reviewerWorkload.length === 0 && <div className="text-slate-400">No open reviewer assignments.</div>}
+                        {reviewerWorkload.length === 0 && <div className="text-gray-400">No open reviewer assignments.</div>}
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="border-slate-200 shadow-sm">
+                <Card className="border-gray-200 shadow-sm">
                   <CardContent className="p-3">
-                    <h3 className="mb-2 text-xs font-bold text-slate-900">Review SLA Status</h3>
-                    <div className="space-y-3 text-[11px] font-semibold text-slate-600">
-                      {reviewSlaStats.map(({ label, count, color, percentage }) => <div key={label}><div className="mb-1 flex justify-between"><span>{label}</span><span>{count}</span></div><div className="h-1.5 rounded-full bg-slate-100"><div className={cn("h-full rounded-full", color)} style={{ width: `${percentage}%` }} /></div></div>)}
+                    <h3 className="mb-2 text-xs font-bold text-gray-900">Review SLA Status</h3>
+                    <div className="space-y-3 text-[11px] font-semibold text-gray-600">
+                      {reviewSlaStats.map(({ label, count, color, percentage }) => <div key={label}><div className="mb-1 flex justify-between"><span>{label}</span><span>{count}</span></div><div className="h-1.5 rounded-full bg-gray-100"><div className={cn("h-full rounded-full", color)} style={{ width: `${percentage}%` }} /></div></div>)}
                       {reviewRows.some((row) => row.slaStatus === "unassigned" && !["approved", "rejected"].includes(row.reviewStatus)) && (
-                        <div className="flex justify-between text-slate-400"><span>Due date not assigned</span><span>{reviewRows.filter((row) => row.slaStatus === "unassigned" && !["approved", "rejected"].includes(row.reviewStatus)).length}</span></div>
+                        <div className="flex justify-between text-gray-400"><span>Due date not assigned</span><span>{reviewRows.filter((row) => row.slaStatus === "unassigned" && !["approved", "rejected"].includes(row.reviewStatus)).length}</span></div>
                       )}
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="border-slate-200 shadow-sm">
+                <Card className="border-gray-200 shadow-sm">
                   <CardContent className="p-3">
-                    <h3 className="mb-2 text-xs font-bold text-slate-900">Recent Review Activity</h3>
-                    <div className="space-y-2 text-[11px] font-semibold text-slate-600">
-                      {recentReviewActivity.map((activity) => <div key={activity.id} className="flex justify-between gap-2"><span className="truncate">{activity.text}</span><span className="shrink-0 text-slate-400">{activity.when}</span></div>)}
-                      {recentReviewActivity.length === 0 && <div className="text-slate-400">No requirement governance activity recorded.</div>}
+                    <h3 className="mb-2 text-xs font-bold text-gray-900">Recent Review Activity</h3>
+                    <div className="space-y-2 text-[11px] font-semibold text-gray-600">
+                      {recentReviewActivity.map((activity) => <div key={activity.id} className="flex justify-between gap-2"><span className="truncate">{activity.text}</span><span className="shrink-0 text-gray-400">{activity.when}</span></div>)}
+                      {recentReviewActivity.length === 0 && <div className="text-gray-400">No requirement governance activity recorded.</div>}
                     </div>
                   </CardContent>
                 </Card>
@@ -2625,18 +2625,18 @@ function RequirementsContent() {
 
           {workspaceView === "traceability" && (
             <div className="space-y-4">
-              <Card className="border-slate-200 shadow-sm">
+              <Card className="border-gray-200 shadow-sm">
                 <CardContent className="p-3">
                   <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
                     <div>
-                      <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-900">Traceability Health Distribution</h2>
-                      <div className="flex h-2 overflow-hidden rounded-full bg-slate-100">
+                      <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-900">Traceability Health Distribution</h2>
+                      <div className="flex h-2 overflow-hidden rounded-full bg-gray-100">
                         {([
                           ["fully_traced", "bg-emerald-500"],
                           ["partial_trace", "bg-amber-500"],
                           ["missing_links", "bg-orange-500"],
                           ["broken_stale", "bg-red-500"],
-                          ["not_traced", "bg-slate-400"],
+                          ["not_traced", "bg-gray-400"],
                         ] as const).map(([health, color]) => {
                           const count = traceabilityRows.filter((row) => row.health === health).length;
                           const pct = traceabilityRows.length ? Math.max(2, Math.round((count / traceabilityRows.length) * 100)) : 0;
@@ -2649,26 +2649,26 @@ function RequirementsContent() {
                           ["partial_trace", "Partial Trace", "bg-amber-500"],
                           ["missing_links", "Missing Links", "bg-orange-500"],
                           ["broken_stale", "Broken / Stale", "bg-red-500"],
-                          ["not_traced", "Not Traced", "bg-slate-400"],
+                          ["not_traced", "Not Traced", "bg-gray-400"],
                         ] as const).map(([health, label, dot]) => {
                           const count = traceabilityRows.filter((row) => row.health === health).length;
                           const pct = traceabilityRows.length ? ((count / traceabilityRows.length) * 100).toFixed(1) : "0.0";
                           return (
-                            <div key={health} className="text-[11px] font-semibold text-slate-600">
+                            <div key={health} className="text-[11px] font-semibold text-gray-600">
                               <div className="flex items-center gap-2"><span className={cn("h-2 w-2 rounded-full", dot)} />{label}</div>
-                              <div className="mt-1 pl-4 text-slate-500">{count} ({pct}%)</div>
+                              <div className="mt-1 pl-4 text-gray-500">{count} ({pct}%)</div>
                             </div>
                           );
                         })}
                       </div>
                     </div>
-                    <div className="border-t border-slate-100 pt-3 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
-                      <div className="text-[11px] font-semibold text-slate-500">Coverage Progress</div>
-                      <div className="mt-2 text-2xl font-bold text-slate-900">
+                    <div className="border-t border-gray-100 pt-3 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+                      <div className="text-[11px] font-semibold text-gray-500">Coverage Progress</div>
+                      <div className="mt-2 text-2xl font-bold text-gray-900">
                         {traceabilityRows.length ? Math.round((traceabilityRows.filter((row) => row.health === "fully_traced").length / traceabilityRows.length) * 100) : 0}%
                       </div>
-                      <div className="mt-1 text-[10px] font-semibold text-slate-400">Overall Traceability Score</div>
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <div className="mt-1 text-[10px] font-semibold text-gray-400">Overall Traceability Score</div>
+                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-100">
                         <div className="h-full rounded-full bg-emerald-500" style={{ width: `${traceabilityRows.length ? Math.round((traceabilityRows.filter((row) => row.health === "fully_traced").length / traceabilityRows.length) * 100) : 0}%` }} />
                       </div>
                     </div>
@@ -2677,7 +2677,7 @@ function RequirementsContent() {
               </Card>
 
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                <div className="flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
                   {([
                     ["all", "All Requirements"],
                     ["fully_traced", "Fully Traced"],
@@ -2688,10 +2688,10 @@ function RequirementsContent() {
                     <button
                       key={health}
                       onClick={() => setTraceabilityFilter(health)}
-                      className={cn("rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all", traceabilityFilter === health ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900")}
+                      className={cn("rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all", traceabilityFilter === health ? "bg-gray-900 text-white" : "text-gray-500 hover:text-gray-900")}
                     >
                       {label}
-                      <span className="ml-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-600">
+                      <span className="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-600">
                         {health === "all" ? traceabilityRows.length : traceabilityRows.filter((row) => row.health === health).length}
                       </span>
                     </button>
@@ -2707,22 +2707,22 @@ function RequirementsContent() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
+              <div className="flex flex-col gap-2 rounded-xl border border-gray-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input value={traceabilitySearch} onChange={(event) => setTraceabilitySearch(event.target.value)} placeholder="Search by REQ ID, title, PPM ID, source..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input value={traceabilitySearch} onChange={(event) => setTraceabilitySearch(event.target.value)} placeholder="Search by REQ ID, title, PPM ID, source..." className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-xs font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" />
                 </div>
                 {["Domain", "Journey", "Application", "Traceability Health", "More Filters"].map((label) => (
-                  <button key={label} className="flex h-9 min-w-[130px] items-center justify-between rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-500">
+                  <button key={label} className="flex h-9 min-w-[130px] items-center justify-between rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-500">
                     {label}<ChevronDown className="h-3.5 w-3.5" />
                   </button>
                 ))}
                 <Button variant="outline" size="sm" className="h-9 bg-white text-xs font-bold"><Filter className="mr-1 h-3.5 w-3.5" />Filters</Button>
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
                 <table className="min-w-[1320px] w-full border-collapse text-left text-xs">
-                  <thead className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <thead className="border-b border-gray-200 bg-gray-50/70 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                     <tr>
                       <th className="px-3 py-2.5">Req ID</th>
                       <th className="px-3 py-2.5">PPM ID</th>
@@ -2738,11 +2738,11 @@ function RequirementsContent() {
                       <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                  <tbody className="divide-y divide-gray-100 font-medium text-gray-600">
                     {matrixLoading ? (
-                      <tr><td colSpan={12} className="px-4 py-16 text-center font-semibold text-slate-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#1b59f8]" />Loading traceability matrix...</td></tr>
+                      <tr><td colSpan={12} className="px-4 py-16 text-center font-semibold text-gray-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#B71920]" />Loading traceability matrix...</td></tr>
                     ) : filteredTraceabilityRows.length === 0 ? (
-                      <tr><td colSpan={12} className="px-4 py-16 text-center font-semibold text-slate-400">No traceability rows match the current filters.</td></tr>
+                      <tr><td colSpan={12} className="px-4 py-16 text-center font-semibold text-gray-400">No traceability rows match the current filters.</td></tr>
                     ) : filteredTraceabilityRows.map((row) => (
                       <tr
                         key={row.requirement.id}
@@ -2751,11 +2751,11 @@ function RequirementsContent() {
                           setDrawerTab("traceability");
                           handleLoadTraceChain(row.requirement);
                         }}
-                        className={cn("cursor-pointer transition-colors hover:bg-slate-50/70", row.requirement.id === selectedReq?.id && "bg-[#1b59f8]/5 outline outline-1 outline-[#1b59f8]/60")}
+                        className={cn("cursor-pointer transition-colors hover:bg-gray-50/70", row.requirement.id === selectedReq?.id && "bg-[#B71920]/5 outline outline-1 outline-[#B71920]/60")}
                       >
-                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#1b59f8]">{row.requirement.requirement_id}</td>
-                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-slate-600">{row.ppmId}</td>
-                        <td className="max-w-[260px] px-3 py-3 font-bold text-slate-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
+                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#B71920]">{row.requirement.requirement_id}</td>
+                        <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-gray-600">{row.ppmId}</td>
+                        <td className="max-w-[260px] px-3 py-3 font-bold text-gray-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
                         <td className="px-3 py-3"><Badge variant={analysisBadgeVariant(row.analysisStatus)}>{analysisLabel(row.analysisStatus)}</Badge></td>
                         <td className="px-3 py-3"><CoverageBar linked={row.scenarioLinked} total={row.scenarioTotal} health={row.health} /></td>
                         <td className="px-3 py-3"><CoverageBar linked={row.testCaseLinked} total={row.testCaseTotal} health={row.health} /></td>
@@ -2763,13 +2763,13 @@ function RequirementsContent() {
                         <td className="px-3 py-3"><CoverageBar linked={row.evidenceLinked} total={row.evidenceTotal} health={row.health} /></td>
                         <td className="px-3 py-3"><span className={cn("inline-flex items-center gap-1 font-bold", row.defectCount > 0 ? "text-red-600" : "text-emerald-600")}><span className="h-2 w-2 rounded-full bg-current" />{row.defectCount}</span></td>
                         <td className="px-3 py-3"><Badge variant={traceHealthBadgeVariant(row.health)}>{traceHealthLabel(row.health)}</Badge></td>
-                        <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.updatedAt ? new Date(row.updatedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-gray-500">{row.updatedAt ? new Date(row.updatedAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
                         <td className="px-3 py-3 text-right"><Button variant="outline" size="sm" className="h-7 px-2 text-[10px] font-bold">...</Button></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-[11px] font-semibold text-slate-500">
+                <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-[11px] font-semibold text-gray-500">
                   <span>Showing 1 to {Math.min(filteredTraceabilityRows.length, traceabilityRows.length)} of {traceabilityRows.length} requirements</span>
                   <div className="flex items-center gap-1"><Button variant="outline" size="sm" className="h-7 w-7 p-0 bg-white">1</Button><span className="px-2">2</span><span className="px-2">3</span><span className="px-2">...</span></div>
                 </div>
@@ -2779,12 +2779,12 @@ function RequirementsContent() {
 
           {workspaceView === "analysis" && (
             <div className="space-y-4">
-              <Card className="overflow-hidden border-slate-200 shadow-sm">
+              <Card className="overflow-hidden border-gray-200 shadow-sm">
                 <CardContent className="p-3">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-xs font-bold uppercase tracking-wide text-slate-900">Analysis Workflow</h2>
-                      <p className="mt-0.5 text-[10px] font-semibold text-slate-400">Grounded analysis from intake-ready requirements through clarification and traceability readiness</p>
+                      <h2 className="text-xs font-bold uppercase tracking-wide text-gray-900">Analysis Workflow</h2>
+                      <p className="mt-0.5 text-[10px] font-semibold text-gray-400">Grounded analysis from intake-ready requirements through clarification and traceability readiness</p>
                     </div>
                     <Button variant="ai" size="sm" disabled={agentRunning || analysisRows.length === 0} onClick={() => runQualityAgent(analysisRows.map((row) => row.requirement.id))} className="h-9 gap-2 px-3 text-xs font-bold">
                       <Sparkles className="h-4 w-4" />Run Analysis
@@ -2793,7 +2793,7 @@ function RequirementsContent() {
                   <div className="grid gap-1.5 md:grid-cols-3 xl:grid-cols-6">
                     {([
                       ["Intake Ready", analysisRows.length, "bg-emerald-50 border-emerald-100 text-emerald-600", FileText],
-                      ["Analyzing", analysisRows.filter((row) => row.status === "queued" || row.status === "analyzing").length, "bg-blue-50 border-blue-100 text-blue-600", RefreshCw],
+                      ["Analyzing", analysisRows.filter((row) => row.status === "queued" || row.status === "analyzing").length, "bg-app-brand-75 border-app-brand-100 text-app-brand-600", RefreshCw],
                       ["Clarification / Revision", analysisRows.filter((row) => row.status === "needs_clarification" || row.status === "needs_revision").length, "bg-amber-50 border-amber-100 text-amber-600", AlertTriangle],
                       ["Analyzed", analysisRows.filter((row) => row.status === "analyzed").length, "bg-purple-50 border-purple-100 text-purple-600", CheckCircle],
                       ["Ready for Traceability", analysisRows.filter((row) => row.status === "analyzed" && row.blockers.length === 0).length, "bg-cyan-50 border-cyan-100 text-cyan-600", ShieldCheck],
@@ -2805,36 +2805,36 @@ function RequirementsContent() {
                             <StepIcon className="h-3.5 w-3.5" />
                           </div>
                           <div className="min-w-0">
-                            <div className="truncate text-[10px] font-bold text-slate-700">{label}</div>
-                            <div className="text-[11px] font-bold text-slate-900">{value}</div>
+                            <div className="truncate text-[10px] font-bold text-gray-700">{label}</div>
+                            <div className="text-[11px] font-bold text-gray-900">{value}</div>
                           </div>
                         </div>
-                        {index < items.length - 1 && <div className="hidden h-px w-6 border-t border-dashed border-slate-300 xl:block" />}
+                        {index < items.length - 1 && <div className="hidden h-px w-6 border-t border-dashed border-gray-300 xl:block" />}
                       </div>
                     ))}
                   </div>
                 </CardContent>
               </Card>
 
-              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
+              <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm xl:flex-row xl:items-center">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                  <input value={analysisSearch} onChange={(event) => setAnalysisSearch(event.target.value)} placeholder="Search by requirement ID, PPM ID, title, source..." className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                  <input value={analysisSearch} onChange={(event) => setAnalysisSearch(event.target.value)} placeholder="Search by requirement ID, PPM ID, title, source..." className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-xs font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {(["all", "not_analyzed", "needs_clarification", "needs_revision", "analyzed", "blocked", "stale_source"] as const).map((status) => (
-                    <button key={status} onClick={() => setAnalysisFilter(status)} className={cn("rounded-lg px-3 py-2 text-[10px] font-bold transition-all", analysisFilter === status ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-500 hover:text-slate-900")}>
+                    <button key={status} onClick={() => setAnalysisFilter(status)} className={cn("rounded-lg px-3 py-2 text-[10px] font-bold transition-all", analysisFilter === status ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-500 hover:text-gray-900")}>
                       {status === "all" ? "All" : analysisLabel(status)}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
                 <table className="min-w-[1180px] w-full border-collapse text-left text-xs">
-                  <thead className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <thead className="border-b border-gray-200 bg-gray-50/70 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                     <tr>
-                      <th className="w-8 px-3 py-2.5"><input type="checkbox" className="rounded border-slate-300" aria-label="Select all requirements" /></th>
+                      <th className="w-8 px-3 py-2.5"><input type="checkbox" className="rounded border-gray-300" aria-label="Select all requirements" /></th>
                       <th className="px-3 py-2.5">Req ID</th>
                       <th className="px-3 py-2.5">PPM ID</th>
                       <th className="px-3 py-2.5">Title</th>
@@ -2849,30 +2849,30 @@ function RequirementsContent() {
                       <th className="px-3 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                  <tbody className="divide-y divide-gray-100 font-medium text-gray-600">
                     {loading ? (
-                      <tr><td colSpan={13} className="px-4 py-16 text-center font-semibold text-slate-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#1b59f8]" />Loading requirement analysis...</td></tr>
+                      <tr><td colSpan={13} className="px-4 py-16 text-center font-semibold text-gray-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#B71920]" />Loading requirement analysis...</td></tr>
                     ) : filteredAnalysisRows.length === 0 ? (
-                      <tr><td colSpan={13} className="px-4 py-16 text-center font-semibold text-slate-400">No requirements match the current analysis filter.</td></tr>
+                      <tr><td colSpan={13} className="px-4 py-16 text-center font-semibold text-gray-400">No requirements match the current analysis filter.</td></tr>
                     ) : filteredAnalysisRows.map((row) => {
                       const isReadyForTraceability = row.status === "analyzed" && row.blockers.length === 0;
                       return (
-                        <tr key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="cursor-pointer transition-colors hover:bg-slate-50/70">
-                          <td className="px-3 py-3"><input type="checkbox" className="rounded border-slate-300" aria-label={`Select ${row.requirement.requirement_id}`} onClick={(event) => event.stopPropagation()} /></td>
-                          <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#1b59f8]">{row.requirement.requirement_id}</td>
-                          <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-slate-700">{row.ppmId}</td>
-                          <td className="max-w-[260px] px-3 py-3 font-bold text-slate-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
+                        <tr key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="cursor-pointer transition-colors hover:bg-gray-50/70">
+                          <td className="px-3 py-3"><input type="checkbox" className="rounded border-gray-300" aria-label={`Select ${row.requirement.requirement_id}`} onClick={(event) => event.stopPropagation()} /></td>
+                          <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-[#B71920]">{row.requirement.requirement_id}</td>
+                          <td className="whitespace-nowrap px-3 py-3 font-mono text-[11px] font-bold text-gray-700">{row.ppmId}</td>
+                          <td className="max-w-[260px] px-3 py-3 font-bold text-gray-800"><div className="line-clamp-2">{row.requirement.title}</div></td>
                           <td className="px-3 py-3"><Badge variant="outline" className="max-w-[150px] truncate">{row.sourceLabel}</Badge></td>
                           <td className="min-w-[160px] px-3 py-3">
                             <Badge variant={analysisBadgeVariant(row.status)}>{analysisLabel(row.status)}</Badge>
-                            <div className="mt-1 flex items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full rounded-full", row.status === "analyzed" ? "bg-emerald-500" : row.status === "needs_clarification" ? "bg-amber-500" : row.status === "blocked" || row.status === "failed" ? "bg-red-500" : "bg-blue-500")} style={{ width: `${row.progress}%` }} /></div><span className="text-[10px] font-bold text-slate-400">{row.progress}%</span></div>
+                            <div className="mt-1 flex items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100"><div className={cn("h-full rounded-full", row.status === "analyzed" ? "bg-emerald-500" : row.status === "needs_clarification" ? "bg-amber-500" : row.status === "blocked" || row.status === "failed" ? "bg-red-500" : "bg-app-brand-500")} style={{ width: `${row.progress}%` }} /></div><span className="text-[10px] font-bold text-gray-400">{row.progress}%</span></div>
                           </td>
-                          <td className="px-3 py-3">{row.qualityScore === null ? <span className="text-slate-400">-</span> : <span className={cn("rounded-full border px-2 py-1 text-[10px] font-bold", row.qualityScore >= 80 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : row.qualityScore >= 50 ? "border-amber-200 bg-amber-50 text-amber-700" : "border-red-200 bg-red-50 text-red-700")}>{row.qualityScore}/100</span>}</td>
-                          <td className="px-3 py-3"><span className={cn("font-bold", row.ambiguityCount ? "text-red-600" : "text-slate-400")}>{row.ambiguityCount}</span></td>
-                          <td className="px-3 py-3"><span className={cn("font-bold", row.missingInfoCount ? "text-red-600" : "text-slate-400")}>{row.missingInfoCount}</span></td>
-                          <td className="px-3 py-3"><span className={cn("font-bold", row.duplicateCount ? "text-amber-600" : "text-slate-400")}>{row.duplicateCount}</span></td>
+                          <td className="px-3 py-3">{row.qualityScore === null ? <span className="text-gray-400">-</span> : <span className={cn("rounded-full border px-2 py-1 text-[10px] font-bold", row.qualityScore >= 80 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : row.qualityScore >= 50 ? "border-amber-200 bg-amber-50 text-amber-700" : "border-red-200 bg-red-50 text-red-700")}>{row.qualityScore}/100</span>}</td>
+                          <td className="px-3 py-3"><span className={cn("font-bold", row.ambiguityCount ? "text-red-600" : "text-gray-400")}>{row.ambiguityCount}</span></td>
+                          <td className="px-3 py-3"><span className={cn("font-bold", row.missingInfoCount ? "text-red-600" : "text-gray-400")}>{row.missingInfoCount}</span></td>
+                          <td className="px-3 py-3"><span className={cn("font-bold", row.duplicateCount ? "text-amber-600" : "text-gray-400")}>{row.duplicateCount}</span></td>
                           <td className="px-3 py-3"><Badge variant={riskBadgeVariant(row.riskLevel)}>{row.riskLevel}</Badge></td>
-                          <td className="whitespace-nowrap px-3 py-3 text-slate-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
+                          <td className="whitespace-nowrap px-3 py-3 text-gray-500">{row.requirement.updated_at ? new Date(row.requirement.updated_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</td>
                           <td className="px-3 py-3 text-right" onClick={(event) => event.stopPropagation()}><Button size="sm" variant={isReadyForTraceability ? "default" : "outline"} disabled={transitioning} onClick={() => isReadyForTraceability ? handleRequirementTransition(row.requirement, "send_to_traceability", "traceability") : handleOpenReqDetail(row.requirement)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={!isReadyForTraceability ? "Open the requirement to review and resolve its blockers" : "All analysis gates passed; send to Traceability"}>{isReadyForTraceability ? "Send to Traceability" : "Review"}</Button></td>
                         </tr>
                       );
@@ -2882,32 +2882,32 @@ function RequirementsContent() {
               </div>
 
               <div className="grid gap-3 xl:grid-cols-3">
-                <Card className="border-slate-200 shadow-sm">
+                <Card className="border-gray-200 shadow-sm">
                   <CardContent className="p-3">
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-slate-900">Analysis Quality Overview</h3>
-                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "quality" ? null : "quality")} className="text-[10px] font-bold text-[#1b59f8]">{analysisOverviewDetail === "quality" ? "Hide details" : "View details"}</button>
+                      <h3 className="text-xs font-bold text-gray-900">Analysis Quality Overview</h3>
+                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "quality" ? null : "quality")} className="text-[10px] font-bold text-[#B71920]">{analysisOverviewDetail === "quality" ? "Hide details" : "View details"}</button>
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-emerald-500 via-amber-400 to-purple-400 p-2">
                         <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
-                          <span className="text-xl font-bold text-slate-900">{analysisQualityAverage ?? "—"}</span>
-                          <span className="text-[9px] font-bold text-slate-400">/100</span>
+                          <span className="text-xl font-bold text-gray-900">{analysisQualityAverage ?? "—"}</span>
+                          <span className="text-[9px] font-bold text-gray-400">/100</span>
                         </div>
                       </div>
-                      <div className="min-w-0 flex-1 space-y-2 text-[11px] font-semibold text-slate-600">
+                      <div className="min-w-0 flex-1 space-y-2 text-[11px] font-semibold text-gray-600">
                         <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />High Quality</span><span>{scoredAnalysisRows.filter((row) => (row.qualityScore as number) >= 80).length}</span></div>
                         <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-amber-500" />Medium Quality</span><span>{scoredAnalysisRows.filter((row) => (row.qualityScore as number) >= 50 && (row.qualityScore as number) < 80).length}</span></div>
                         <div className="flex justify-between gap-3"><span><span className="mr-2 inline-block h-2 w-2 rounded-full bg-red-500" />Low Quality</span><span>{scoredAnalysisRows.filter((row) => (row.qualityScore as number) < 50).length}</span></div>
-                        <div className="flex justify-between gap-3 text-slate-400"><span>Not scored</span><span>{analysisRows.length - scoredAnalysisRows.length}</span></div>
+                        <div className="flex justify-between gap-3 text-gray-400"><span>Not scored</span><span>{analysisRows.length - scoredAnalysisRows.length}</span></div>
                       </div>
                     </div>
                     {analysisOverviewDetail === "quality" && (
-                      <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto border-t border-slate-100 pt-3 text-[10px] font-semibold text-slate-600">
+                      <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto border-t border-gray-100 pt-3 text-[10px] font-semibold text-gray-600">
                         {analysisRows.map((row) => (
-                          <button key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-50">
-                            <span className="min-w-0 truncate"><span className="mr-2 font-mono font-bold text-[#1b59f8]">{row.requirement.requirement_id}</span>{row.requirement.title}</span>
-                            <span className="shrink-0 font-bold text-slate-800">{row.qualityScore === null ? "Not scored" : `${row.qualityScore}/100`}</span>
+                          <button key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-gray-50">
+                            <span className="min-w-0 truncate"><span className="mr-2 font-mono font-bold text-[#B71920]">{row.requirement.requirement_id}</span>{row.requirement.title}</span>
+                            <span className="shrink-0 font-bold text-gray-800">{row.qualityScore === null ? "Not scored" : `${row.qualityScore}/100`}</span>
                           </button>
                         ))}
                       </div>
@@ -2915,58 +2915,58 @@ function RequirementsContent() {
                   </CardContent>
                 </Card>
 
-                <Card className="border-slate-200 shadow-sm">
+                <Card className="border-gray-200 shadow-sm">
                   <CardContent className="p-3">
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-slate-900">Top Issues</h3>
-                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "issues" ? null : "issues")} className="text-[10px] font-bold text-[#1b59f8]">{analysisOverviewDetail === "issues" ? "Hide all" : "View all"}</button>
+                      <h3 className="text-xs font-bold text-gray-900">Top Issues</h3>
+                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "issues" ? null : "issues")} className="text-[10px] font-bold text-[#B71920]">{analysisOverviewDetail === "issues" ? "Hide all" : "View all"}</button>
                     </div>
-                    <div className="space-y-2 text-[11px] font-semibold text-slate-600">
-                      <div className="flex justify-between gap-3"><span className="truncate">Missing Acceptance Criteria</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => !row.requirement.acceptance_criteria?.length).length}</span></div>
-                      <div className="flex justify-between gap-3"><span className="truncate">Unclear Business Rules</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => !row.requirement.business_rules?.length).length}</span></div>
-                      <div className="flex justify-between gap-3"><span className="truncate">Ambiguous Data Definitions</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => row.ambiguityCount > 0).length}</span></div>
-                      <div className="flex justify-between gap-3"><span className="truncate">Incomplete Taxonomy</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => !row.taxonomyReady).length}</span></div>
-                      <div className="flex justify-between gap-3"><span className="truncate">Conflicting Requirements</span><span className="font-bold text-slate-900">{analysisRows.filter((row) => row.conflictCount > 0 || row.duplicateCount > 0).length}</span></div>
+                    <div className="space-y-2 text-[11px] font-semibold text-gray-600">
+                      <div className="flex justify-between gap-3"><span className="truncate">Missing Acceptance Criteria</span><span className="font-bold text-gray-900">{analysisRows.filter((row) => !row.requirement.acceptance_criteria?.length).length}</span></div>
+                      <div className="flex justify-between gap-3"><span className="truncate">Unclear Business Rules</span><span className="font-bold text-gray-900">{analysisRows.filter((row) => !row.requirement.business_rules?.length).length}</span></div>
+                      <div className="flex justify-between gap-3"><span className="truncate">Ambiguous Data Definitions</span><span className="font-bold text-gray-900">{analysisRows.filter((row) => row.ambiguityCount > 0).length}</span></div>
+                      <div className="flex justify-between gap-3"><span className="truncate">Incomplete Taxonomy</span><span className="font-bold text-gray-900">{analysisRows.filter((row) => !row.taxonomyReady).length}</span></div>
+                      <div className="flex justify-between gap-3"><span className="truncate">Conflicting Requirements</span><span className="font-bold text-gray-900">{analysisRows.filter((row) => row.conflictCount > 0 || row.duplicateCount > 0).length}</span></div>
                     </div>
                     {analysisOverviewDetail === "issues" && (
-                      <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto border-t border-slate-100 pt-3 text-[10px] font-semibold text-slate-600">
+                      <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto border-t border-gray-100 pt-3 text-[10px] font-semibold text-gray-600">
                         {analysisRowsWithIssues.map((row) => (
-                          <button key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="block w-full rounded-md px-2 py-1.5 text-left hover:bg-slate-50">
-                            <div className="truncate font-bold text-slate-800">{row.requirement.requirement_id} · {row.requirement.title}</div>
-                            <div className="mt-0.5 truncate text-slate-400">{row.blockers.join(" · ")}</div>
+                          <button key={row.requirement.id} onClick={() => handleOpenReqDetail(row.requirement)} className="block w-full rounded-md px-2 py-1.5 text-left hover:bg-gray-50">
+                            <div className="truncate font-bold text-gray-800">{row.requirement.requirement_id} · {row.requirement.title}</div>
+                            <div className="mt-0.5 truncate text-gray-400">{row.blockers.join(" · ")}</div>
                           </button>
                         ))}
-                        {analysisRowsWithIssues.length === 0 && <div className="text-slate-400">No analysis issues are currently recorded.</div>}
+                        {analysisRowsWithIssues.length === 0 && <div className="text-gray-400">No analysis issues are currently recorded.</div>}
                       </div>
                     )}
                   </CardContent>
                 </Card>
 
-                <Card className="border-slate-200 shadow-sm">
+                <Card className="border-gray-200 shadow-sm">
                   <CardContent className="p-3">
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-slate-900">Domains Distribution</h3>
-                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "domains" ? null : "domains")} className="text-[10px] font-bold text-[#1b59f8]">{analysisOverviewDetail === "domains" ? "Hide details" : "View details"}</button>
+                      <h3 className="text-xs font-bold text-gray-900">Domains Distribution</h3>
+                      <button onClick={() => setAnalysisOverviewDetail((value) => value === "domains" ? null : "domains")} className="text-[10px] font-bold text-[#B71920]">{analysisOverviewDetail === "domains" ? "Hide details" : "View details"}</button>
                     </div>
                     <div className="flex items-center gap-4">
-                      <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-3" style={{ background: `conic-gradient(#2563eb 0 ${analysisRows.length ? Math.round((classifiedAnalysisCount / analysisRows.length) * 100) : 0}%, #94a3b8 0 100%)` }}>
+                      <div className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full p-3" style={{ background: `conic-gradient(#2563eb 0 ${analysisRows.length ? Math.round((classifiedAnalysisCount / analysisRows.length) * 100) : 0}%, #9CA3AF 0 100%)` }}>
                         <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
-                          <span className="text-lg font-bold text-slate-900">{analysisRows.length}</span>
-                          <span className="text-[9px] font-bold text-slate-400">Total</span>
+                          <span className="text-lg font-bold text-gray-900">{analysisRows.length}</span>
+                          <span className="text-[9px] font-bold text-gray-400">Total</span>
                         </div>
                       </div>
-                      <div className="min-w-0 flex-1 space-y-2 text-[11px] font-semibold text-slate-600">
+                      <div className="min-w-0 flex-1 space-y-2 text-[11px] font-semibold text-gray-600">
                         {analysisDomainDistribution.slice(0, 5).map(([domain, count]) => (
-                          <div key={domain} className="flex justify-between gap-3"><span className="truncate">{domain}</span><span className="font-bold text-slate-900">{count}</span></div>
+                          <div key={domain} className="flex justify-between gap-3"><span className="truncate">{domain}</span><span className="font-bold text-gray-900">{count}</span></div>
                         ))}
                       </div>
                     </div>
                     {analysisOverviewDetail === "domains" && (
-                      <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3 text-[10px] font-semibold text-slate-600">
+                      <div className="mt-3 space-y-1.5 border-t border-gray-100 pt-3 text-[10px] font-semibold text-gray-600">
                         {analysisDomainDistribution.map(([domain, count]) => (
                           <div key={domain} className="flex items-center justify-between gap-3">
                             <span className="truncate">{domain}</span>
-                            <span className="font-bold text-slate-800">{count} ({analysisRows.length ? ((count / analysisRows.length) * 100).toFixed(1) : "0.0"}%)</span>
+                            <span className="font-bold text-gray-800">{count} ({analysisRows.length ? ((count / analysisRows.length) * 100).toFixed(1) : "0.0"}%)</span>
                           </div>
                         ))}
                       </div>
@@ -2977,37 +2977,37 @@ function RequirementsContent() {
             </div>
           )}
 
-          <Card className={cn("overflow-hidden border-slate-200 shadow-sm", workspaceView !== "intake" && "hidden")}>
-            <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <Card className={cn("overflow-hidden border-gray-200 shadow-sm", workspaceView !== "intake" && "hidden")}>
+            <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <div className="flex items-center gap-2">
-                  <Layers3 className="h-4 w-4 text-[#1b59f8]" />
-                  <h2 className="text-sm font-bold text-slate-900">Intake Source Queue</h2>
+                  <Layers3 className="h-4 w-4 text-[#B71920]" />
+                  <h2 className="text-sm font-bold text-gray-900">Intake Source Queue</h2>
                   <Badge variant="info">{intakeSources.length}</Badge>
                 </div>
-                <p className="mt-1 text-[10px] font-semibold text-slate-400">Validation, processing ownership, provenance and the next governed action for every source</p>
+                <p className="mt-1 text-[10px] font-semibold text-gray-400">Validation, processing ownership, provenance and the next governed action for every source</p>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse text-left text-xs">
-                <thead className="border-b border-slate-200 bg-slate-50/70 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <thead className="border-b border-gray-200 bg-gray-50/70 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                   <tr>
                     <th className="px-4 py-2.5">Source</th><th className="px-4 py-2.5">Type</th><th className="px-4 py-2.5">Owner</th><th className="px-4 py-2.5">Intake Status</th><th className="px-4 py-2.5">Progress</th><th className="px-4 py-2.5">Extracted</th><th className="px-4 py-2.5">Validation</th><th className="px-4 py-2.5 text-right">Next Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
+                <tbody className="divide-y divide-gray-100 font-medium text-gray-600">
                   {loading ? (
-                    <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#1b59f8]" />Loading intake sources...</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400"><Loader2 className="mr-2 inline h-4 w-4 animate-spin text-[#B71920]" />Loading intake sources...</td></tr>
                   ) : intakeSources.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">No sources yet. Add a document, URL, repository, Jira source, pasted text or API specification.</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">No sources yet. Add a document, URL, repository, Jira source, pasted text or API specification.</td></tr>
                   ) : intakeSources.map((source) => (
-                    <tr key={source.id} onClick={() => setSelectedSource(source)} className="cursor-pointer transition-colors hover:bg-slate-50/70">
-                      <td className="max-w-[240px] truncate px-4 py-3 font-bold text-slate-800">{source.name}</td>
+                    <tr key={source.id} onClick={() => setSelectedSource(source)} className="cursor-pointer transition-colors hover:bg-gray-50/70">
+                      <td className="max-w-[240px] truncate px-4 py-3 font-bold text-gray-800">{source.name}</td>
                       <td className="px-4 py-3"><Badge variant="outline">{source.sourceType}</Badge></td>
                       <td className="whitespace-nowrap px-4 py-3">{source.owner}</td>
                       <td className="px-4 py-3"><Badge variant={source.status === "blocked" ? "destructive" : source.status === "processing" ? "purple" : source.status === "completed" ? "success" : "info"} className="capitalize">{source.status}</Badge></td>
-                      <td className="min-w-[130px] px-4 py-3"><div className="flex items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full rounded-full", source.status === "blocked" ? "bg-red-500" : source.status === "processing" ? "bg-purple-500" : "bg-emerald-500")} style={{ width: `${source.progress}%` }} /></div><span className="text-[10px] font-bold text-slate-500">{source.progress}%</span></div></td>
-                      <td className="px-4 py-3 font-bold text-slate-800">{source.extractedCount}</td>
+                      <td className="min-w-[130px] px-4 py-3"><div className="flex items-center gap-2"><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100"><div className={cn("h-full rounded-full", source.status === "blocked" ? "bg-red-500" : source.status === "processing" ? "bg-purple-500" : "bg-emerald-500")} style={{ width: `${source.progress}%` }} /></div><span className="text-[10px] font-bold text-gray-500">{source.progress}%</span></div></td>
+                      <td className="px-4 py-3 font-bold text-gray-800">{source.extractedCount}</td>
                       <td className="px-4 py-3">{source.validationIssues.length ? <span className="font-semibold text-red-600">{source.validationIssues.length} issue{source.validationIssues.length > 1 ? "s" : ""}</span> : <span className="font-semibold text-emerald-600">Passed</span>}</td>
                       <td className="px-4 py-3 text-right" onClick={(event) => event.stopPropagation()}>
                         <Button size="sm" variant={source.nextAction === "Run AI Intake" || source.nextAction === "Retry" ? "default" : "outline"} disabled={agentRunning || transitioning || source.nextAction === "Processing" || (source.nextAction === "Send to Analysis" && (source.validationIssues.length > 0 || source.requirementIds.length === 0))} onClick={() => source.documentId && (source.nextAction === "Run AI Intake" || source.nextAction === "Retry") ? runIntakeAgent(source.documentId) : source.nextAction === "Send to Analysis" ? sendSourceToAnalysis(source) : setSelectedSource(source)} className="h-7 whitespace-nowrap px-2.5 text-[10px] font-bold" title={source.validationIssues.length ? "Resolve validation blockers before continuing" : undefined}>
@@ -3021,7 +3021,7 @@ function RequirementsContent() {
             </div>
           </Card>
 
-          <div className={cn("flex flex-wrap gap-1 rounded-xl border border-slate-200 bg-white p-1 w-fit", workspaceView !== "intake" && "hidden")}>
+          <div className={cn("flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 w-fit", workspaceView !== "intake" && "hidden")}>
             {(["requirements", "documents", "url", "github", "jira", "paste"] as const).map((t) => (
               <button
                 key={t}
@@ -3031,8 +3031,8 @@ function RequirementsContent() {
                   t === "requirements"
                     ? "bg-gradient-to-r from-cyan-500 to-violet-500 text-white shadow-sm hover:opacity-95"
                     : tab === t
-                      ? "bg-slate-900 text-slate-50 shadow-sm"
-                      : "text-slate-500 hover:text-slate-900",
+                      ? "bg-gray-900 text-gray-50 shadow-sm"
+                      : "text-gray-500 hover:text-gray-900",
                   tab === t && t === "requirements" && "ring-2 ring-violet-200 ring-offset-1"
                 )}
               >
@@ -3047,10 +3047,10 @@ function RequirementsContent() {
                   <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[9px] font-bold text-white">{requirements.length}</span>
                 )}
                 {t === "documents" && documents.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{documents.length}</span>
+                  <span className="ml-1.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{documents.length}</span>
                 )}
                 {t === "jira" && jiraConnections.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-700">{jiraConnections.length}</span>
+                  <span className="ml-1.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] font-bold text-gray-700">{jiraConnections.length}</span>
                 )}
               </button>
             ))}
@@ -3061,7 +3061,7 @@ function RequirementsContent() {
             <div className="space-y-4">
               {/* Filter Buttons & AI Action */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex flex-wrap gap-1.5 rounded-lg border border-slate-200 bg-white p-1">
+                <div className="flex flex-wrap gap-1.5 rounded-lg border border-gray-200 bg-white p-1">
                   {["all", "draft"].map((s) => (
                     <button
                       key={s}
@@ -3069,8 +3069,8 @@ function RequirementsContent() {
                       className={cn(
                         "rounded-md px-3 py-1 text-xs font-semibold capitalize transition-all",
                         filterStatus === s
-                          ? "bg-slate-900 text-slate-50 shadow-sm"
-                          : "text-slate-500 hover:text-slate-900"
+                          ? "bg-gray-900 text-gray-50 shadow-sm"
+                          : "text-gray-500 hover:text-gray-900"
                       )}
                     >
                       {s === "all" ? "All Status" : s.replace(/_/g, " ")}
@@ -3081,9 +3081,9 @@ function RequirementsContent() {
               </div>
 
               {/* Requirements Table */}
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
                 <table className="min-w-full text-left border-collapse text-xs select-none">
-                  <thead className="bg-slate-50/70 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <thead className="bg-gray-50/70 border-b border-gray-200 text-[10px] font-bold uppercase tracking-wider text-gray-400">
                     <tr>
                       <th className="px-4 py-2.5">Req ID</th>
                       <th className="px-4 py-2.5">Title</th>
@@ -3097,17 +3097,17 @@ function RequirementsContent() {
                       <th className="px-4 py-2.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
+                  <tbody className="divide-y divide-gray-100 text-gray-600 font-medium">
                     {loading ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-16 text-center text-slate-400 font-semibold">
-                          <Loader2 className="inline mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+                        <td colSpan={10} className="px-4 py-16 text-center text-gray-400 font-semibold">
+                          <Loader2 className="inline mr-2 h-4 w-4 animate-spin text-[#B71920]" />
                           Loading requirements library...
                         </td>
                       </tr>
                     ) : filteredRequirements.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="px-4 py-16 text-center text-slate-400 font-semibold">
+                        <td colSpan={10} className="px-4 py-16 text-center text-gray-400 font-semibold">
                           No requirements found matching selection.
                         </td>
                       </tr>
@@ -3124,12 +3124,12 @@ function RequirementsContent() {
                             key={req.id}
                             onClick={() => handleOpenReqDetail(req)}
                             className={cn(
-                              "hover:bg-slate-50/50 cursor-pointer transition-colors group",
-                              isSelected && "bg-[#1b59f8]/5"
+                              "hover:bg-gray-50/50 cursor-pointer transition-colors group",
+                              isSelected && "bg-[#B71920]/5"
                             )}
                           >
-                            <td className="px-4 py-2.5 font-mono text-[11px] font-bold text-[#1b59f8]">{req.requirement_id}</td>
-                            <td className="px-4 py-2.5 font-bold text-slate-800 text-xs truncate max-w-sm">{req.title}</td>
+                            <td className="px-4 py-2.5 font-mono text-[11px] font-bold text-[#B71920]">{req.requirement_id}</td>
+                            <td className="px-4 py-2.5 font-bold text-gray-800 text-xs truncate max-w-sm">{req.title}</td>
                             <td className="px-4 py-2.5">
                               <Badge variant={getStatusVariant(req.status)} className="capitalize">
                                 {req.status.replace(/_/g, " ")}
@@ -3144,13 +3144,13 @@ function RequirementsContent() {
                               {quality ? (
                                 <QualityBadge score={quality.overall_score} verdict={quality.verdict} />
                               ) : (
-                                <span className="text-slate-400 font-semibold">-</span>
+                                <span className="text-gray-400 font-semibold">-</span>
                               )}
                             </td>
-                            <td className="px-4 py-2.5 text-slate-700 font-semibold whitespace-nowrap">
+                            <td className="px-4 py-2.5 text-gray-700 font-semibold whitespace-nowrap">
                               {resolveUser(req.created_by)}
                             </td>
-                            <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">
+                            <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
                               {req.created_at
                                 ? new Date(req.created_at).toLocaleString("en-US", {
                                     year: "numeric",
@@ -3161,10 +3161,10 @@ function RequirementsContent() {
                                   })
                                 : "-"}
                             </td>
-                            <td className="px-4 py-2.5 text-slate-700 font-semibold whitespace-nowrap">
+                            <td className="px-4 py-2.5 text-gray-700 font-semibold whitespace-nowrap">
                               {resolveUser(req.updated_by)}
                             </td>
-                            <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">
+                            <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">
                               {req.updated_at
                                 ? new Date(req.updated_at).toLocaleString("en-US", {
                                     year: "numeric",
@@ -3178,7 +3178,7 @@ function RequirementsContent() {
                             <td className="px-4 py-2.5 text-right flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => setDeletingReq(req)}
-                                className="rounded-md p-1.5 text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600 transition-all shrink-0"
+                                className="rounded-md p-1.5 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-600 transition-all shrink-0"
                                 title="Delete requirement"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -3187,10 +3187,10 @@ function RequirementsContent() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => handleOpenReqDetail(req)}
-                                className="h-7 px-3 text-xs border-slate-200 bg-white"
+                                className="h-7 px-3 text-xs border-gray-200 bg-white"
                               >
                                 Details
-                                <ChevronRight className="h-3 w-3 text-slate-400" />
+                                <ChevronRight className="h-3 w-3 text-gray-400" />
                               </Button>
                             </td>
                           </tr>
@@ -3212,7 +3212,7 @@ function RequirementsContent() {
                 onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f); }}
                 className={cn(
                   "relative rounded-2xl border-2 border-dashed p-10 text-center transition-all cursor-pointer bg-white",
-                  dragOver ? "border-[#1b59f8] bg-[#1b59f8]/5 shadow-sm" : "border-slate-250 hover:border-slate-350"
+                  dragOver ? "border-[#B71920] bg-[#B71920]/5 shadow-sm" : "border-gray-250 hover:border-gray-350"
                 )}
               >
                 <input id="file-upload" type="file" className="sr-only"
@@ -3220,23 +3220,23 @@ function RequirementsContent() {
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); }} />
                 <label htmlFor="file-upload" className="cursor-pointer">
                   {uploading ? (
-                    <Loader2 className="mx-auto h-9 w-9 animate-spin text-[#1b59f8] mb-3 shrink-0" />
+                    <Loader2 className="mx-auto h-9 w-9 animate-spin text-[#B71920] mb-3 shrink-0" />
                   ) : (
-                    <Upload className="mx-auto h-9 w-9 text-slate-400 mb-3" />
+                    <Upload className="mx-auto h-9 w-9 text-gray-400 mb-3" />
                   )}
-                  <p className="font-bold text-xs text-slate-700">{uploading ? "Uploading and extracting text evidence..." : "Drop QA documentation or UI screenshots here, or click to browse files"}</p>
-                  <p className="text-[10px] text-slate-400 font-semibold mt-1">PDF, DOCX, TXT, MD, CSV, XLSX · UI screenshots: PNG, JPG, WebP · up to 25 MB</p>
+                  <p className="font-bold text-xs text-gray-700">{uploading ? "Uploading and extracting text evidence..." : "Drop QA documentation or UI screenshots here, or click to browse files"}</p>
+                  <p className="text-[10px] text-gray-400 font-semibold mt-1">PDF, DOCX, TXT, MD, CSV, XLSX · UI screenshots: PNG, JPG, WebP · up to 25 MB</p>
                 </label>
               </div>
 
               {documents.length > 0 ? (
-                <div className="rounded-xl border divide-y overflow-hidden bg-white shadow-sm border-slate-200">
+                <div className="rounded-xl border divide-y overflow-hidden bg-white shadow-sm border-gray-200">
                   {documents.map((doc) => (
-                    <div key={doc.id} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50/50 group">
-                      <FileText className="h-5 w-5 text-blue-500 shrink-0" />
+                    <div key={doc.id} className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50/50 group">
+                      <FileText className="h-5 w-5 text-app-brand-500 shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-slate-800 truncate">{doc.original_filename}</p>
-                        <p className="text-[10px] text-slate-400 font-bold">
+                        <p className="text-xs font-bold text-gray-800 truncate">{doc.original_filename}</p>
+                        <p className="text-[10px] text-gray-400 font-bold">
                           {doc.file_type.toUpperCase()} · {(doc.file_size_bytes / 1024).toFixed(0)} KB
                           {doc.page_count ? ` · ${doc.page_count} pages` : ""}
                         </p>
@@ -3258,12 +3258,12 @@ function RequirementsContent() {
                         <span className="text-[10px] text-rose-500 font-bold">Extraction failed — check backend logs</span>
                       )}
                       {doc.status === "uploaded" && (
-                        <span className="text-[10px] text-slate-400 font-bold animate-pulse">Processing document text...</span>
+                        <span className="text-[10px] text-gray-400 font-bold animate-pulse">Processing document text...</span>
                       )}
                       
                       <button
                         onClick={() => setDeletingDoc(doc)}
-                        className="rounded-md p-1.5 text-slate-405 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-650 transition-all shrink-0"
+                        className="rounded-md p-1.5 text-gray-405 opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-650 transition-all shrink-0"
                         title="Delete document"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -3272,7 +3272,7 @@ function RequirementsContent() {
                   ))}
                 </div>
               ) : !uploading ? (
-                <p className="text-center text-xs text-slate-400 font-bold py-8 border border-dashed rounded-xl bg-white">No documents uploaded yet.</p>
+                <p className="text-center text-xs text-gray-400 font-bold py-8 border border-dashed rounded-xl bg-white">No documents uploaded yet.</p>
               ) : null}
             </div>
           )}
@@ -3280,12 +3280,12 @@ function RequirementsContent() {
           {/* ── URL Input Tab (GAP-2) ─────────────────────────────────────────────── */}
           {workspaceView === "intake" && tab === "url" && (
             <div className="space-y-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
                 <div className="flex items-center gap-2">
-                  <Globe className="h-5 w-5 text-[#1b59f8]" />
+                  <Globe className="h-5 w-5 text-[#B71920]" />
                   <div>
-                    <h4 className="text-xs font-bold text-slate-800">Analyze Portal URL</h4>
-                    <p className="text-[10px] text-slate-400 font-semibold">Render a live page, detect forms, fields, validations and user journeys, and generate requirements automatically</p>
+                    <h4 className="text-xs font-bold text-gray-800">Analyze Portal URL</h4>
+                    <p className="text-[10px] text-gray-400 font-semibold">Render a live page, detect forms, fields, validations and user journeys, and generate requirements automatically</p>
                   </div>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -3294,12 +3294,12 @@ function RequirementsContent() {
                     value={portalUrl}
                     onChange={(e) => setPortalUrl(e.target.value)}
                     placeholder="https://portal.example.com/login"
-                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-app-brand-300"
                   />
                   <select
                     value={urlCrawlDepth}
                     onChange={(e) => setUrlCrawlDepth(Number(e.target.value))}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-app-brand-300"
                   >
                     <option value={0}>Single page</option>
                     <option value={1}>+ linked pages (depth 1)</option>
@@ -3315,7 +3315,7 @@ function RequirementsContent() {
                     <Bot className="h-3.5 w-3.5 mr-1" />Analyze URL
                   </Button>
                 </div>
-                <p className="text-[10px] text-slate-400 font-semibold">Public/reachable pages only · same-origin crawling · max 5 pages · internal/private addresses are blocked unless the host is explicitly allowed</p>
+                <p className="text-[10px] text-gray-400 font-semibold">Public/reachable pages only · same-origin crawling · max 5 pages · internal/private addresses are blocked unless the host is explicitly allowed</p>
                 {/* Registering an application is a prerequisite here and nowhere
                     says so: the derivation step resolves navigation targets
                     against the project's configured base URLs, so with an empty
@@ -3341,27 +3341,27 @@ function RequirementsContent() {
               {(() => {
                 const urlReqs = requirements.filter((r) => r.source === "portal_url");
                 return urlReqs.length > 0 ? (
-                  <div className="rounded-xl border divide-y overflow-hidden bg-white shadow-sm border-slate-200">
-                    <div className="px-4 py-2.5 bg-slate-50/60">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Requirements generated from URLs ({urlReqs.length})</p>
+                  <div className="rounded-xl border divide-y overflow-hidden bg-white shadow-sm border-gray-200">
+                    <div className="px-4 py-2.5 bg-gray-50/60">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Requirements generated from URLs ({urlReqs.length})</p>
                     </div>
                     {urlReqs.map((req) => (
-                      <div key={req.id} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50/50 cursor-pointer" onClick={() => handleOpenReqDetail(req)}>
-                        <Globe className="h-4 w-4 text-[#1b59f8] shrink-0" />
+                      <div key={req.id} className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50/50 cursor-pointer" onClick={() => handleOpenReqDetail(req)}>
+                        <Globe className="h-4 w-4 text-[#B71920] shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-slate-800 truncate">{req.title}</p>
-                          <p className="text-[10px] text-slate-400 font-bold truncate">
+                          <p className="text-xs font-bold text-gray-800 truncate">{req.title}</p>
+                          <p className="text-[10px] text-gray-400 font-bold truncate">
                             {req.requirement_id}
                             {(req.metadata_ as Record<string, any> | undefined)?.source_url ? ` · ${(req.metadata_ as Record<string, any>).source_url}` : ""}
                           </p>
                         </div>
                         <Badge variant={getStatusVariant(req.status)} className="capitalize">{req.status.replace(/_/g, " ")}</Badge>
-                        <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-center text-xs text-slate-400 font-bold py-8 border border-dashed rounded-xl bg-white">No URL-based requirements yet. Analyze a portal URL above to generate them.</p>
+                  <p className="text-center text-xs text-gray-400 font-bold py-8 border border-dashed rounded-xl bg-white">No URL-based requirements yet. Analyze a portal URL above to generate them.</p>
                 );
               })()}
             </div>
@@ -3372,14 +3372,14 @@ function RequirementsContent() {
             <div className="space-y-5">
 
               {/* ── Section 1: GitHub Repository ─────────────────────────────────── */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="rounded-lg bg-slate-900 p-2 shrink-0">
+                  <div className="rounded-lg bg-gray-900 p-2 shrink-0">
                     <GitBranch className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-800">GitHub Repository</h4>
-                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                    <h4 className="text-xs font-bold text-gray-800">GitHub Repository</h4>
+                    <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
                       Clone a public or private GitHub repo and parse Python / JS / TS source files to auto-generate requirements
                     </p>
                   </div>
@@ -3387,45 +3387,45 @@ function RequirementsContent() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 border-t pt-4">
                   <div className="md:col-span-2 flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Repository URL <span className="text-red-400">*</span></label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Repository URL <span className="text-red-400">*</span></label>
                     <input
                       type="url"
                       value={githubUrl}
                       onChange={(e) => setGithubUrl(e.target.value)}
                       placeholder="https://github.com/org/repo"
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-app-brand-300"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Branch</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Branch</label>
                     <input
                       value={githubBranch}
                       onChange={(e) => setGithubBranch(e.target.value)}
                       placeholder="main"
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-app-brand-300"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Personal Access Token <span className="text-slate-300 font-normal">(private repos)</span>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      Personal Access Token <span className="text-gray-300 font-normal">(private repos)</span>
                     </label>
                     <input
                       type="password"
                       value={githubToken}
                       onChange={(e) => setGithubToken(e.target.value)}
                       placeholder="ghp_••••••••••••••••"
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-app-brand-300"
                     />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Languages to scan</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Languages to scan</label>
                     <input
                       value={repoLanguages}
                       onChange={(e) => setRepoLanguages(e.target.value)}
                       placeholder="python, javascript, typescript"
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-app-brand-300"
                     />
-                    <p className="text-[10px] text-slate-400">Comma-separated — python, javascript, typescript, java, go</p>
+                    <p className="text-[10px] text-gray-400">Comma-separated — python, javascript, typescript, java, go</p>
                   </div>
                 </div>
 
@@ -3441,20 +3441,20 @@ function RequirementsContent() {
                     : <><GitBranch className="h-3.5 w-3.5 mr-1.5" />Analyse GitHub Repo</>
                   }
                 </Button>
-                <p className="text-[10px] text-slate-400 font-semibold">
+                <p className="text-[10px] text-gray-400 font-semibold">
                   Public repos cloned directly · Private repos require a PAT with repo read scope · Repo size limit 500 MB
                 </p>
               </div>
 
               {/* ── Section 2: Local Repository ───────────────────────────────────── */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
                 <div className="flex items-center gap-2">
                   <div className="rounded-lg bg-violet-600 p-2 shrink-0">
                     <BarChart2 className="h-4 w-4 text-white" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-800">Local Project Repository</h4>
-                    <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                    <h4 className="text-xs font-bold text-gray-800">Local Project Repository</h4>
+                    <p className="text-[10px] text-gray-400 font-semibold mt-0.5">
                       Point to a local directory on the server and extract requirements from Python / JS / TS source files
                     </p>
                   </div>
@@ -3462,22 +3462,22 @@ function RequirementsContent() {
 
                 <div className="border-t pt-4 space-y-3">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Local Repository Path <span className="text-red-400">*</span></label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Local Repository Path <span className="text-red-400">*</span></label>
                     <input
                       value={localRepoPath}
                       onChange={(e) => setLocalRepoPath(e.target.value)}
                       placeholder="/home/user/projects/my-service  or  C:\Projects\my-service"
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-app-brand-300"
                     />
-                    <p className="text-[10px] text-slate-400">Absolute path accessible to the backend server · Symlinks supported</p>
+                    <p className="text-[10px] text-gray-400">Absolute path accessible to the backend server · Symlinks supported</p>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Languages to scan</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Languages to scan</label>
                     <input
                       value={repoLanguages}
                       onChange={(e) => setRepoLanguages(e.target.value)}
                       placeholder="python, javascript, typescript"
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-app-brand-300"
                     />
                   </div>
                 </div>
@@ -3494,7 +3494,7 @@ function RequirementsContent() {
                     : <><BarChart2 className="h-3.5 w-3.5 mr-1.5" />Analyse Local Repo</>
                   }
                 </Button>
-                <p className="text-[10px] text-slate-400 font-semibold">
+                <p className="text-[10px] text-gray-400 font-semibold">
                   Reads only — no files are modified · Hidden directories (.git, node_modules, __pycache__) are skipped
                 </p>
               </div>
@@ -3503,33 +3503,33 @@ function RequirementsContent() {
               {(() => {
                 const codeReqs = requirements.filter((r) => r.source === "github_repo" || r.source === "local_repo");
                 return codeReqs.length > 0 ? (
-                  <div className="rounded-xl border divide-y overflow-hidden bg-white shadow-sm border-slate-200">
-                    <div className="px-4 py-2.5 bg-slate-50/60 flex items-center justify-between">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <div className="rounded-xl border divide-y overflow-hidden bg-white shadow-sm border-gray-200">
+                    <div className="px-4 py-2.5 bg-gray-50/60 flex items-center justify-between">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                         Requirements generated from code ({codeReqs.length})
                       </p>
                     </div>
                     {codeReqs.map((req) => {
                       const meta = req.metadata_ as Record<string, any> | undefined;
                       return (
-                        <div key={req.id} className="flex items-center gap-4 px-4 py-3 hover:bg-slate-50/50 cursor-pointer" onClick={() => handleOpenReqDetail(req)}>
-                          <GitBranch className="h-4 w-4 text-slate-500 shrink-0" />
+                        <div key={req.id} className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50/50 cursor-pointer" onClick={() => handleOpenReqDetail(req)}>
+                          <GitBranch className="h-4 w-4 text-gray-500 shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-800 truncate">{req.title}</p>
-                            <p className="text-[10px] text-slate-400 font-bold truncate">
+                            <p className="text-xs font-bold text-gray-800 truncate">{req.title}</p>
+                            <p className="text-[10px] text-gray-400 font-bold truncate">
                               {req.requirement_id}
                               {meta?.repo_url ? ` · ${meta.repo_url}` : ""}
                               {meta?.file_path ? ` · ${meta.file_path}` : ""}
                             </p>
                           </div>
                           <Badge variant={getStatusVariant(req.status)} className="capitalize">{req.status.replace(/_/g, " ")}</Badge>
-                          <ChevronRight className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                         </div>
                       );
                     })}
                   </div>
                 ) : (
-                  <p className="text-center text-xs text-slate-400 font-bold py-8 border border-dashed rounded-xl bg-white">
+                  <p className="text-center text-xs text-gray-400 font-bold py-8 border border-dashed rounded-xl bg-white">
                     No code-based requirements yet. Connect a GitHub repo or local path above to generate them.
                   </p>
                 );
@@ -3539,17 +3539,17 @@ function RequirementsContent() {
 
           {/* ── Jira Tab ──────────────────────────────────────────────────────────── */}
           {workspaceView === "intake" && tab === "paste" && (
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-gray-200 shadow-sm">
               <CardContent className="space-y-5 p-5">
                 <div className="flex items-start gap-3">
-                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-2.5"><ClipboardPaste className="h-5 w-5 text-[#1b59f8]" /></div>
-                  <div><h3 className="text-sm font-bold text-slate-900">Add Missing Requirement</h3><p className="mt-1 text-[10px] font-semibold text-slate-400">Capture meeting notes, emails or specification text as a governed intake source.</p></div>
+                  <div className="rounded-xl border border-app-brand-100 bg-app-brand-75 p-2.5"><ClipboardPaste className="h-5 w-5 text-[#B71920]" /></div>
+                  <div><h3 className="text-sm font-bold text-gray-900">Add Missing Requirement</h3><p className="mt-1 text-[10px] font-semibold text-gray-400">Capture meeting notes, emails or specification text as a governed intake source.</p></div>
                 </div>
                 <div className="grid gap-4">
-                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source title</label><input value={pasteTitle} onChange={(event) => setPasteTitle(event.target.value)} placeholder="e.g. Billing change workshop notes" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" /></div>
-                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source content</label><textarea value={pasteText} onChange={(event) => setPasteText(event.target.value)} placeholder="Paste the original source text here. Provenance is retained as Pasted Text." rows={10} className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200" /></div>
+                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Source title</label><input value={pasteTitle} onChange={(event) => setPasteTitle(event.target.value)} placeholder="e.g. Billing change workshop notes" className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-app-brand-200" /></div>
+                  <div className="space-y-1.5"><label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Source content</label><textarea value={pasteText} onChange={(event) => setPasteText(event.target.value)} placeholder="Paste the original source text here. Provenance is retained as Pasted Text." rows={10} className="w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium leading-relaxed text-gray-800 focus:outline-none focus:ring-2 focus:ring-app-brand-200" /></div>
                 </div>
-                <div className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2"><span className="text-[10px] font-semibold text-amber-700">Validation gate: both title and source content are mandatory.</span><Button size="sm" disabled={manualIntakeBusy || !pasteTitle.trim() || !pasteText.trim()} onClick={() => handleManualIntake()} className="h-8 bg-[#1b59f8] text-xs text-white hover:bg-blue-700">{manualIntakeBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1 h-3.5 w-3.5" />}Add to Intake</Button></div>
+                <div className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2"><span className="text-[10px] font-semibold text-amber-700">Validation gate: both title and source content are mandatory.</span><Button size="sm" disabled={manualIntakeBusy || !pasteTitle.trim() || !pasteText.trim()} onClick={() => handleManualIntake()} className="h-8 bg-[#B71920] text-xs text-white hover:bg-app-brand-700">{manualIntakeBusy ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1 h-3.5 w-3.5" />}Add to Intake</Button></div>
               </CardContent>
             </Card>
           )}
@@ -3566,20 +3566,20 @@ function RequirementsContent() {
                   {jiraError ? <AlertTriangle className="h-4.5 w-4.5 shrink-0 mt-0.5 text-red-500" /> : <CheckCircle className="h-4.5 w-4.5 shrink-0 mt-0.5 text-emerald-500" />}
                   <span className="flex-1 leading-relaxed">{jiraError || jiraMessage}</span>
                   <button onClick={() => { setJiraError(null); setJiraMessage(null); }} className="opacity-60 hover:opacity-100">
-                    <XCircle className="h-4 w-4 text-slate-400" />
+                    <XCircle className="h-4 w-4 text-gray-400" />
                   </button>
                 </div>
               )}
 
               {/* Connection configuration card */}
-              <Card className="border-slate-200 bg-white">
+              <Card className="border-gray-200 bg-white">
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-2">
-                      <Plug className="h-5 w-5 text-[#1b59f8]" />
+                      <Plug className="h-5 w-5 text-[#B71920]" />
                       <div>
-                        <h3 className="text-xs font-bold text-slate-800">Jira Sync Configuration</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Link local project space to Atlassian Jira Agile project boards</p>
+                        <h3 className="text-xs font-bold text-gray-800">Jira Sync Configuration</h3>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Link local project space to Atlassian Jira Agile project boards</p>
                       </div>
                     </div>
                     <Button
@@ -3590,7 +3590,7 @@ function RequirementsContent() {
                       }}
                       variant="outline"
                       size="sm"
-                      className="h-8 text-xs border-slate-200 font-semibold text-slate-650"
+                      className="h-8 text-xs border-gray-200 font-semibold text-gray-650"
                       disabled={jiraBusy}
                     >
                       <Plus className="h-3.5 w-3.5 mr-1" />
@@ -3602,20 +3602,20 @@ function RequirementsContent() {
                     <form onSubmit={(e) => { e.preventDefault(); handleCreateJiraConnection(); }} className="border-t pt-4 space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jira Host URL</label>
-                          <input value={jiraConnectionForm.jira_base_url} onChange={(e) => setJiraConnectionForm((f) => ({ ...f, jira_base_url: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="https://your-domain.atlassian.net" />
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jira Host URL</label>
+                          <input value={jiraConnectionForm.jira_base_url} onChange={(e) => setJiraConnectionForm((f) => ({ ...f, jira_base_url: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="https://your-domain.atlassian.net" />
                         </div>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jira Login Email</label>
-                          <input value={jiraConnectionForm.jira_email} onChange={(e) => setJiraConnectionForm((f) => ({ ...f, jira_email: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="amit.sharma@company.com" />
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jira Login Email</label>
+                          <input value={jiraConnectionForm.jira_email} onChange={(e) => setJiraConnectionForm((f) => ({ ...f, jira_email: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="amit.sharma@company.com" />
                         </div>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jira API Token</label>
-                          <input type="password" value={jiraConnectionForm.jira_api_token} onChange={(e) => setJiraConnectionForm((f) => ({ ...f, jira_api_token: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder={editingJiraConnectionId ? "••••••••••••" : "Atlassian API key"} />
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jira API Token</label>
+                          <input type="password" value={jiraConnectionForm.jira_api_token} onChange={(e) => setJiraConnectionForm((f) => ({ ...f, jira_api_token: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder={editingJiraConnectionId ? "••••••••••••" : "Atlassian API key"} />
                         </div>
                         <div className="flex flex-col gap-1">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jira Project Key</label>
-                          <input value={jiraConnectionForm.jira_project_key} onChange={(e) => setJiraConnectionForm((f) => ({ ...f, jira_project_key: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50 font-mono uppercase" placeholder="e.g. STLC" />
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jira Project Key</label>
+                          <input value={jiraConnectionForm.jira_project_key} onChange={(e) => setJiraConnectionForm((f) => ({ ...f, jira_project_key: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50 font-mono uppercase" placeholder="e.g. STLC" />
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -3623,7 +3623,7 @@ function RequirementsContent() {
                           {jiraBusy && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
                           Save Jira Details
                         </Button>
-                        <Button type="button" onClick={() => { setShowJiraConnectionForm(false); setEditingJiraConnectionId(null); }} size="sm" variant="outline" className="text-xs font-semibold h-8.5 border-slate-200 text-slate-600 bg-white">
+                        <Button type="button" onClick={() => { setShowJiraConnectionForm(false); setEditingJiraConnectionId(null); }} size="sm" variant="outline" className="text-xs font-semibold h-8.5 border-gray-200 text-gray-600 bg-white">
                           Cancel
                         </Button>
                       </div>
@@ -3631,22 +3631,22 @@ function RequirementsContent() {
                   )}
 
                   {!showJiraConnectionForm && jiraConnections.length > 0 && (
-                    <div className="border-t pt-4 flex items-center justify-between gap-4 flex-wrap bg-slate-50/50 p-3 rounded-lg border border-slate-150">
+                    <div className="border-t pt-4 flex items-center justify-between gap-4 flex-wrap bg-gray-50/50 p-3 rounded-lg border border-gray-150">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-bold text-slate-800">{selectedJiraConnectionRecord?.jira_project_key} Project Link</span>
+                          <span className="text-xs font-bold text-gray-800">{selectedJiraConnectionRecord?.jira_project_key} Project Link</span>
                           <Badge variant={getStatusVariant(selectedJiraConnectionRecord?.is_active ? "connected" : "disconnected")}>
                             {selectedJiraConnectionRecord?.is_active ? "Connected" : "Inactive"}
                           </Badge>
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-1 font-semibold truncate">{selectedJiraConnectionRecord?.jira_base_url} ({selectedJiraConnectionRecord?.jira_email})</p>
+                        <p className="text-[10px] text-gray-400 mt-1 font-semibold truncate">{selectedJiraConnectionRecord?.jira_base_url} ({selectedJiraConnectionRecord?.jira_email})</p>
                       </div>
 
                       <div className="flex gap-2 shrink-0">
-                        <Button onClick={handleTestJiraConnection} disabled={jiraBusy} size="sm" variant="outline" className="h-8 text-xs border-slate-200 text-slate-650 bg-white font-bold">
+                        <Button onClick={handleTestJiraConnection} disabled={jiraBusy} size="sm" variant="outline" className="h-8 text-xs border-gray-200 text-gray-650 bg-white font-bold">
                           Test Link
                         </Button>
-                        <Button onClick={handleEditJiraConnection} disabled={jiraBusy} size="sm" variant="outline" className="h-8 text-xs border-slate-200 text-slate-650 bg-white font-bold">
+                        <Button onClick={handleEditJiraConnection} disabled={jiraBusy} size="sm" variant="outline" className="h-8 text-xs border-gray-200 text-gray-650 bg-white font-bold">
                           Edit
                         </Button>
                         <Button onClick={handleDeleteJiraConnection} disabled={jiraBusy} size="sm" variant="outline" className="h-8 text-xs border-red-200 hover:bg-rose-50 text-red-600 bg-white font-bold">
@@ -3660,31 +3660,31 @@ function RequirementsContent() {
 
               {/* Jira Fetch & Import Hub */}
               {selectedJiraConnection && (
-                <Card className="border-slate-200 bg-white">
+                <Card className="border-gray-200 bg-white">
                   <CardContent className="p-5 space-y-4">
                     <div className="flex items-center gap-2">
-                      <Search className="h-5 w-5 text-indigo-500" />
+                      <Search className="h-5 w-5 text-app-brand-500" />
                       <div>
-                        <h3 className="text-xs font-bold text-slate-800">Fetch Jira Stories</h3>
-                        <p className="text-[10px] text-slate-400 mt-0.5">Filter issue backlogs from Jira and import them as local specs</p>
+                        <h3 className="text-xs font-bold text-gray-800">Fetch Jira Stories</h3>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Filter issue backlogs from Jira and import them as local specs</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-4">
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Issue Types CSV</label>
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Issue Types CSV</label>
                         <div className="flex gap-1.5 items-center">
-                          <input value={jiraFilters.issue_types} onChange={(e) => setJiraFilters((f) => ({ ...f, issue_types: e.target.value }))} className="flex-1 rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="Story, Epic" />
-                          <Button type="button" size="sm" variant="outline" onClick={() => setJiraFilters((f) => ({ ...f, issue_types: jiraStoryTypePreset }))} className="h-8 text-[9px] border-slate-200 text-slate-550 shrink-0 font-bold bg-white">Preset</Button>
+                          <input value={jiraFilters.issue_types} onChange={(e) => setJiraFilters((f) => ({ ...f, issue_types: e.target.value }))} className="flex-1 rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="Story, Epic" />
+                          <Button type="button" size="sm" variant="outline" onClick={() => setJiraFilters((f) => ({ ...f, issue_types: jiraStoryTypePreset }))} className="h-8 text-[9px] border-gray-200 text-gray-550 shrink-0 font-bold bg-white">Preset</Button>
                         </div>
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jira Statuses CSV</label>
-                        <input value={jiraFilters.statuses} onChange={(e) => setJiraFilters((f) => ({ ...f, statuses: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="e.g. In Progress, Done" />
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jira Statuses CSV</label>
+                        <input value={jiraFilters.statuses} onChange={(e) => setJiraFilters((f) => ({ ...f, statuses: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="e.g. In Progress, Done" />
                       </div>
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Jira JQL Query Override</label>
-                        <input value={jiraFilters.jql} onChange={(e) => setJiraFilters((f) => ({ ...f, jql: e.target.value }))} className="rounded-lg border border-slate-200 p-2 text-xs font-semibold bg-slate-50" placeholder="project = STLC AND type = Story" />
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Jira JQL Query Override</label>
+                        <input value={jiraFilters.jql} onChange={(e) => setJiraFilters((f) => ({ ...f, jql: e.target.value }))} className="rounded-lg border border-gray-200 p-2 text-xs font-semibold bg-gray-50" placeholder="project = STLC AND type = Story" />
                       </div>
                     </div>
 
@@ -3693,14 +3693,14 @@ function RequirementsContent() {
                         {jiraBusy && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1 text-white" />}
                         Fetch Backlog
                       </Button>
-                      <Button onClick={handleImportJiraRequirements} disabled={jiraBusy} size="sm" variant="outline" className="text-xs font-semibold h-8.5 border-slate-200 text-slate-655 bg-white font-bold">
+                      <Button onClick={handleImportJiraRequirements} disabled={jiraBusy} size="sm" variant="outline" className="text-xs font-semibold h-8.5 border-gray-200 text-gray-655 bg-white font-bold">
                         {selectedJiraKeys.size > 0
                           ? `Import ${selectedJiraKeys.size} Selected`
                           : "Import as Requirements"}
                       </Button>
                     </div>
                     {jiraIssuesPage && jiraIssuesPage.items.length > 0 && selectedJiraKeys.size === 0 && (
-                      <p className="text-[10px] font-semibold text-slate-400 -mt-2">
+                      <p className="text-[10px] font-semibold text-gray-400 -mt-2">
                         Nothing ticked — importing will bring in every issue matching the filters above
                         {jiraIssuesPage.total > jiraIssuesPage.items.length ? ` (${jiraIssuesPage.total} in total, not just the ${jiraIssuesPage.items.length} shown)` : ""}.
                       </p>
@@ -3710,17 +3710,17 @@ function RequirementsContent() {
                     {jiraIssuesPage && jiraIssuesPage.items.length > 0 && (
                       <div className="border-t pt-4 space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block">
                             Jira Backlog Matches ({jiraIssuesPage.total})
                             {selectedJiraKeys.size > 0 && (
-                              <span className="ml-1.5 normal-case text-[#1b59f8]">· {selectedJiraKeys.size} selected</span>
+                              <span className="ml-1.5 normal-case text-[#B71920]">· {selectedJiraKeys.size} selected</span>
                             )}
                           </label>
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => setSelectedJiraKeys(new Set(jiraIssuesPage.items.map((i) => i.key)))}
-                              className="text-[10px] font-bold text-[#1b59f8] hover:underline"
+                              className="text-[10px] font-bold text-[#B71920] hover:underline"
                             >
                               Select all {jiraIssuesPage.items.length} shown
                             </button>
@@ -3728,14 +3728,14 @@ function RequirementsContent() {
                               <button
                                 type="button"
                                 onClick={() => setSelectedJiraKeys(new Set())}
-                                className="text-[10px] font-bold text-slate-500 hover:underline"
+                                className="text-[10px] font-bold text-gray-500 hover:underline"
                               >
                                 Clear
                               </button>
                             )}
                           </div>
                         </div>
-                        <div className="rounded-lg border border-slate-150 divide-y divide-slate-100 overflow-hidden bg-slate-50/20 max-h-60 overflow-y-auto pr-1">
+                        <div className="rounded-lg border border-gray-150 divide-y divide-gray-100 overflow-hidden bg-gray-50/20 max-h-60 overflow-y-auto pr-1">
                           {jiraIssuesPage.items.map((issue) => {
                             const picked = selectedJiraKeys.has(issue.key);
                             return (
@@ -3744,7 +3744,7 @@ function RequirementsContent() {
                                 onClick={() => toggleJiraKey(issue.key)}
                                 className={cn(
                                   "p-3 text-xs flex items-start gap-3 cursor-pointer transition-colors",
-                                  picked ? "bg-blue-50/60" : "bg-white hover:bg-slate-50/70",
+                                  picked ? "bg-app-brand-75/60" : "bg-white hover:bg-gray-50/70",
                                 )}
                               >
                                 <input
@@ -3752,15 +3752,15 @@ function RequirementsContent() {
                                   checked={picked}
                                   readOnly
                                   aria-label={`Select ${issue.key}`}
-                                  className="mt-0.5 shrink-0 accent-[#1b59f8]"
+                                  className="mt-0.5 shrink-0 accent-[#B71920]"
                                 />
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="font-mono font-bold text-[#1b59f8]">{issue.key}</span>
+                                    <span className="font-mono font-bold text-[#B71920]">{issue.key}</span>
                                     <Badge variant="outline" className="py-0 px-2 text-[9px] capitalize">{issue.issue_type}</Badge>
                                     <Badge variant={getStatusVariant(issue.status)} className="py-0 px-2 text-[9px] capitalize">{issue.status}</Badge>
                                   </div>
-                                  <p className="font-bold text-slate-800 mt-1 truncate">{issue.summary}</p>
+                                  <p className="font-bold text-gray-800 mt-1 truncate">{issue.summary}</p>
                                 </div>
                               </div>
                             );
@@ -3792,8 +3792,8 @@ function RequirementsContent() {
               </DrawerHeader>
               <DrawerBody>
                 <div className="space-y-5">
-                  <section className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
-                    <h4 className="mb-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Validation blockers</h4>
+                  <section className="rounded-xl border border-gray-200 bg-gray-50/40 p-4">
+                    <h4 className="mb-3 text-[10px] font-bold uppercase tracking-wider text-gray-400">Validation blockers</h4>
                     {selectedSource.validationIssues.length ? (
                       <ul className="space-y-2">{selectedSource.validationIssues.map((issue) => <li key={issue} className="flex items-start gap-2 text-xs font-semibold text-red-700"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{issue}</li>)}</ul>
                     ) : (
@@ -3802,28 +3802,28 @@ function RequirementsContent() {
                   </section>
 
                   <section className="space-y-3">
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source provenance</h4>
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Source provenance</h4>
                     <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div className="rounded-lg border border-slate-200 p-3"><span className="block text-[9px] font-bold uppercase text-slate-400">Type</span><span className="mt-1 block font-bold text-slate-800">{selectedSource.sourceType}</span></div>
-                      <div className="rounded-lg border border-slate-200 p-3"><span className="block text-[9px] font-bold uppercase text-slate-400">Owner</span><span className="mt-1 block font-bold text-slate-800">{selectedSource.owner}</span></div>
-                      <div className="col-span-2 rounded-lg border border-slate-200 p-3"><span className="block text-[9px] font-bold uppercase text-slate-400">Origin</span><span className="mt-1 block font-semibold text-slate-700">{selectedSource.provenance}</span></div>
+                      <div className="rounded-lg border border-gray-200 p-3"><span className="block text-[9px] font-bold uppercase text-gray-400">Type</span><span className="mt-1 block font-bold text-gray-800">{selectedSource.sourceType}</span></div>
+                      <div className="rounded-lg border border-gray-200 p-3"><span className="block text-[9px] font-bold uppercase text-gray-400">Owner</span><span className="mt-1 block font-bold text-gray-800">{selectedSource.owner}</span></div>
+                      <div className="col-span-2 rounded-lg border border-gray-200 p-3"><span className="block text-[9px] font-bold uppercase text-gray-400">Origin</span><span className="mt-1 block font-semibold text-gray-700">{selectedSource.provenance}</span></div>
                     </div>
                   </section>
 
                   <section className="rounded-xl border border-purple-100 bg-purple-50/30 p-4">
-                    <div className="mb-3 flex items-center gap-2"><Bot className="h-4 w-4 text-purple-600" /><h4 className="text-xs font-bold text-slate-800">AI intake job details</h4></div>
+                    <div className="mb-3 flex items-center gap-2"><Bot className="h-4 w-4 text-purple-600" /><h4 className="text-xs font-bold text-gray-800">AI intake job details</h4></div>
                     <dl className="space-y-2 text-xs">
-                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Progress</dt><dd className="font-bold text-slate-800">{selectedSource.progress}%</dd></div>
-                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Requirements extracted</dt><dd className="font-bold text-slate-800">{selectedSource.extractedCount}</dd></div>
-                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Model</dt><dd className="text-right font-bold text-slate-800">Resolved by governed runtime policy</dd></div>
-                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Prompt version</dt><dd className="font-bold text-slate-800">Captured with agent run</dd></div>
-                      <div className="flex justify-between gap-4"><dt className="font-semibold text-slate-500">Tool version</dt><dd className="font-bold text-slate-800">Captured with agent run</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-gray-500">Progress</dt><dd className="font-bold text-gray-800">{selectedSource.progress}%</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-gray-500">Requirements extracted</dt><dd className="font-bold text-gray-800">{selectedSource.extractedCount}</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-gray-500">Model</dt><dd className="text-right font-bold text-gray-800">Resolved by governed runtime policy</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-gray-500">Prompt version</dt><dd className="font-bold text-gray-800">Captured with agent run</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="font-semibold text-gray-500">Tool version</dt><dd className="font-bold text-gray-800">Captured with agent run</dd></div>
                     </dl>
                   </section>
 
                   <section className="space-y-3">
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Recent audit activity</h4>
-                    <div className="flex items-start gap-3 rounded-lg border border-slate-200 p-3"><Clock className="mt-0.5 h-4 w-4 text-slate-400" /><div><p className="text-xs font-bold text-slate-800">Source registered in requirement intake</p><p className="mt-1 text-[10px] font-semibold text-slate-400">{selectedSource.createdAt ? new Date(selectedSource.createdAt).toLocaleString() : "Timestamp retained by source system"}</p></div></div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Recent audit activity</h4>
+                    <div className="flex items-start gap-3 rounded-lg border border-gray-200 p-3"><Clock className="mt-0.5 h-4 w-4 text-gray-400" /><div><p className="text-xs font-bold text-gray-800">Source registered in requirement intake</p><p className="mt-1 text-[10px] font-semibold text-gray-400">{selectedSource.createdAt ? new Date(selectedSource.createdAt).toLocaleString() : "Timestamp retained by source system"}</p></div></div>
                   </section>
                 </div>
               </DrawerBody>
@@ -3831,11 +3831,11 @@ function RequirementsContent() {
                 <div className="flex w-full gap-2">
                   <Button variant="outline" size="sm" onClick={() => setSelectedSource(null)} className="h-9 flex-1 bg-white">Close</Button>
                   {selectedSource.documentId && (selectedSource.nextAction === "Run AI Intake" || selectedSource.nextAction === "Retry") ? (
-                    <Button size="sm" disabled={agentRunning} onClick={() => { runIntakeAgent(selectedSource.documentId!); setSelectedSource(null); }} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">{selectedSource.nextAction}</Button>
+                    <Button size="sm" disabled={agentRunning} onClick={() => { runIntakeAgent(selectedSource.documentId!); setSelectedSource(null); }} className="h-9 flex-1 bg-[#B71920] text-white hover:bg-app-brand-700">{selectedSource.nextAction}</Button>
                   ) : selectedSource.nextAction === "Send to Analysis" ? (
-                    <Button size="sm" disabled={transitioning || selectedSource.validationIssues.length > 0 || selectedSource.requirementIds.length === 0} onClick={() => sendSourceToAnalysis(selectedSource)} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">Send to Analysis</Button>
+                    <Button size="sm" disabled={transitioning || selectedSource.validationIssues.length > 0 || selectedSource.requirementIds.length === 0} onClick={() => sendSourceToAnalysis(selectedSource)} className="h-9 flex-1 bg-[#B71920] text-white hover:bg-app-brand-700">Send to Analysis</Button>
                   ) : (
-                    <Button size="sm" onClick={() => { const downstream = requirements.find((requirement) => requirement.source_document_id === selectedSource.documentId || selectedSource.requirementIds.includes(requirement.id)); setSelectedSource(null); handleWorkspaceViewChange(downstream ? getRequirementWorkflowStage(downstream) : "analysis"); }} className="h-9 flex-1 bg-[#1b59f8] text-white hover:bg-blue-700">View Downstream</Button>
+                    <Button size="sm" onClick={() => { const downstream = requirements.find((requirement) => requirement.source_document_id === selectedSource.documentId || selectedSource.requirementIds.includes(requirement.id)); setSelectedSource(null); handleWorkspaceViewChange(downstream ? getRequirementWorkflowStage(downstream) : "analysis"); }} className="h-9 flex-1 bg-[#B71920] text-white hover:bg-app-brand-700">View Downstream</Button>
                   )}
                 </div>
               </DrawerFooter>
@@ -3850,14 +3850,14 @@ function RequirementsContent() {
             <>
               <DrawerHeader>
                 <div className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-[#1b59f8]" />
+                  <FileText className="h-5 w-5 text-[#B71920]" />
                   <div className="min-w-0">
                     <DrawerTitle className="truncate">Requirement: {selectedReq.requirement_id}</DrawerTitle>
                     <DrawerDescription className="truncate">{selectedReq.title}</DrawerDescription>
                   </div>
                 </div>
                 <div className="ml-auto mr-2 hidden items-center gap-2 md:flex">
-                  <Badge variant="outline" className="border-blue-100 bg-blue-50 text-blue-600">PPM ID: {selectedProjectPpmId}</Badge>
+                  <Badge variant="outline" className="border-app-brand-100 bg-app-brand-75 text-app-brand-600">PPM ID: {selectedProjectPpmId}</Badge>
                   {workspaceView === "analysis" && (
                     <Badge variant={analysisBadgeVariant(analysisRows.find((row) => row.requirement.id === selectedReq.id)?.status || "not_analyzed")}>
                       {analysisLabel(analysisRows.find((row) => row.requirement.id === selectedReq.id)?.status || "not_analyzed")}
@@ -3874,12 +3874,12 @@ function RequirementsContent() {
                     </Badge>
                   )}
                 </div>
-                <button onClick={() => setSelectedReq(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+                <button onClick={() => setSelectedReq(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-50"><X className="h-4 w-4" /></button>
               </DrawerHeader>
 
               <DrawerBody className="space-y-5">
                 {/* GAP-5: Drawer tab navigation */}
-                <div className="flex gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1 w-fit">
+                <div className="flex gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1 w-fit">
                   {((workspaceView === "traceability" ? ["traceability", "details"] : ["details", "traceability"]) as Array<"details" | "traceability">).map((t) => (
                     <button
                       key={t}
@@ -3892,8 +3892,8 @@ function RequirementsContent() {
                       className={cn(
                         "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold capitalize transition-all",
                         drawerTab === t
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800"
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-800"
                       )}
                     >
                       {t === "details" ? <FileText className="h-3 w-3" /> : <GitBranch className="h-3 w-3" />}
@@ -3906,15 +3906,15 @@ function RequirementsContent() {
                   ))}
                   {workspaceView === "review" && (
                     <>
-                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">Analysis</button>
-                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">History</button>
-                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">Activity</button>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-gray-400">Analysis</button>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-gray-400">History</button>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-gray-400">Activity</button>
                     </>
                   )}
                   {workspaceView === "traceability" && (
                     <>
-                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">Gaps & Issues</button>
-                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-slate-400">Activity</button>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-gray-400">Gaps & Issues</button>
+                      <button disabled className="rounded-md px-3 py-1.5 text-xs font-bold text-gray-400">Activity</button>
                     </>
                   )}
                 </div>
@@ -3923,8 +3923,8 @@ function RequirementsContent() {
                 {drawerTab === "traceability" && (
                   <div className="space-y-4">
                     {traceLoading && (
-                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 py-8 justify-center">
-                        <Loader2 className="h-4 w-4 animate-spin text-[#1b59f8]" />
+                      <div className="flex items-center gap-2 text-xs font-semibold text-gray-400 py-8 justify-center">
+                        <Loader2 className="h-4 w-4 animate-spin text-[#B71920]" />
                         Loading traceability chain…
                       </div>
                     )}
@@ -3942,7 +3942,7 @@ function RequirementsContent() {
                           {
                             title: "Source / Evidence",
                             icon: FileText,
-                            tone: "bg-blue-50 border-blue-100 text-blue-600",
+                            tone: "bg-app-brand-75 border-app-brand-100 text-app-brand-600",
                             badge: "Linked",
                             lines: [
                               selectedReq.jira_issue_key || selectedReq.source || "Source evidence registered",
@@ -3989,7 +3989,7 @@ function RequirementsContent() {
                           {
                             title: "Execution & Evidence",
                             icon: ShieldCheck,
-                            tone: "bg-blue-50 border-blue-100 text-blue-600",
+                            tone: "bg-app-brand-75 border-app-brand-100 text-app-brand-600",
                             badge: `${traceChain.execution_results.length} linked`,
                             lines: traceChain.execution_results.length
                               ? traceChain.execution_results.slice(0, 2).map((item) => `${item.test_name}  ${item.status}`)
@@ -4008,18 +4008,18 @@ function RequirementsContent() {
                           const Icon = node.icon;
                           return (
                             <div key={node.title} className="relative pl-8">
-                              {index < nodes.length - 1 && <div className="absolute left-[13px] top-9 h-[calc(100%-12px)] border-l border-dashed border-blue-200" />}
+                              {index < nodes.length - 1 && <div className="absolute left-[13px] top-9 h-[calc(100%-12px)] border-l border-dashed border-app-brand-200" />}
                               <div className={cn("absolute left-0 top-3 flex h-7 w-7 items-center justify-center rounded-lg border", node.tone)}>
                                 <Icon className="h-3.5 w-3.5" />
                               </div>
-                              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                              <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
                                 <div className="mb-2 flex items-center justify-between gap-2">
-                                  <h4 className="text-xs font-bold text-slate-800">{node.title}</h4>
+                                  <h4 className="text-xs font-bold text-gray-800">{node.title}</h4>
                                   <Badge variant="outline" className="text-[9px]">{node.badge}</Badge>
                                 </div>
                                 <div className="space-y-1">
                                   {node.lines.map((line, lineIndex) => (
-                                    <div key={`${node.title}-${lineIndex}`} className="truncate text-[11px] font-semibold text-slate-600">{line}</div>
+                                    <div key={`${node.title}-${lineIndex}`} className="truncate text-[11px] font-semibold text-gray-600">{line}</div>
                                   ))}
                                 </div>
                               </div>
@@ -4029,7 +4029,7 @@ function RequirementsContent() {
                         <div className="grid grid-cols-2 gap-2 pt-2">
                           <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Generate Missing Items</Button>
                           <Button variant="outline" size="sm" className="h-8 bg-white text-[10px] font-bold">Link Existing</Button>
-                          <Button size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_to_review", "review")} className="col-span-2 h-8 bg-[#1b59f8] text-[10px] font-bold text-white hover:bg-blue-700">Send to Review & Approval</Button>
+                          <Button size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_to_review", "review")} className="col-span-2 h-8 bg-[#B71920] text-[10px] font-bold text-white hover:bg-app-brand-700">Send to Review & Approval</Button>
                         </div>
                       </div>
                     )}
@@ -4039,14 +4039,14 @@ function RequirementsContent() {
                         {/* Summary badges */}
                         <div className="grid grid-cols-4 gap-2">
                           {([
-                            ["Scenarios", traceChain.summary.scenario_count, "text-indigo-600", "bg-indigo-50 border-indigo-100"],
-                            ["Test Cases", traceChain.summary.test_case_count, "text-blue-600", "bg-blue-50 border-blue-100"],
+                            ["Scenarios", traceChain.summary.scenario_count, "text-app-brand-600", "bg-app-brand-75 border-app-brand-100"],
+                            ["Test Cases", traceChain.summary.test_case_count, "text-app-brand-600", "bg-app-brand-75 border-app-brand-100"],
                             ["Executions", traceChain.summary.execution_count, "text-emerald-600", "bg-emerald-50 border-emerald-100"],
                             ["Defects", traceChain.summary.defect_count, "text-red-600", "bg-red-50 border-red-100"],
                           ] as const).map(([label, count, textCls, bgCls]) => (
                             <div key={label} className={cn("rounded-lg border p-2.5 text-center", bgCls)}>
                               <div className={cn("text-xl font-bold", textCls)}>{count}</div>
-                              <div className="text-[9px] font-bold text-slate-400 uppercase mt-0.5">{label}</div>
+                              <div className="text-[9px] font-bold text-gray-400 uppercase mt-0.5">{label}</div>
                             </div>
                           ))}
                         </div>
@@ -4062,14 +4062,14 @@ function RequirementsContent() {
                         {/* Scenarios */}
                         {traceChain.scenarios.length > 0 && (
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Test Scenarios ({traceChain.scenarios.length})</label>
-                            <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden bg-white">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Test Scenarios ({traceChain.scenarios.length})</label>
+                            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden bg-white">
                               {traceChain.scenarios.map((s) => (
                                 <div key={s.id} className="flex items-center gap-3 px-3 py-2">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                                  <div className="w-1.5 h-1.5 rounded-full bg-app-brand-500 shrink-0" />
                                   <div className="flex-1 min-w-0">
-                                    <span className="font-mono text-[10px] text-indigo-600 font-bold">{s.scenario_id}</span>
-                                    <span className="text-xs text-slate-700 font-semibold ml-2 truncate">{s.title}</span>
+                                    <span className="font-mono text-[10px] text-app-brand-600 font-bold">{s.scenario_id}</span>
+                                    <span className="text-xs text-gray-700 font-semibold ml-2 truncate">{s.title}</span>
                                   </div>
                                   <Badge variant="outline" className="text-[9px] capitalize shrink-0">{s.scenario_type}</Badge>
                                   <Badge variant={getStatusVariant(s.status)} className="text-[9px] shrink-0">{s.status}</Badge>
@@ -4082,14 +4082,14 @@ function RequirementsContent() {
                         {/* Test Cases */}
                         {traceChain.test_cases.length > 0 && (
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Test Cases ({traceChain.test_cases.length})</label>
-                            <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden bg-white">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Test Cases ({traceChain.test_cases.length})</label>
+                            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden bg-white">
                               {traceChain.test_cases.map((tc) => (
                                 <div key={tc.id} className="flex items-center gap-3 px-3 py-2">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
+                                  <div className="w-1.5 h-1.5 rounded-full bg-app-brand-500 shrink-0" />
                                   <div className="flex-1 min-w-0">
-                                    <span className="font-mono text-[10px] text-[#1b59f8] font-bold">{tc.test_case_id}</span>
-                                    <span className="text-xs text-slate-700 font-semibold ml-2 truncate">{tc.title}</span>
+                                    <span className="font-mono text-[10px] text-[#B71920] font-bold">{tc.test_case_id}</span>
+                                    <span className="text-xs text-gray-700 font-semibold ml-2 truncate">{tc.title}</span>
                                   </div>
                                   {tc.jira_issue_key && (
                                     <Badge variant="info" className="text-[9px] shrink-0">{tc.jira_issue_key}</Badge>
@@ -4107,20 +4107,20 @@ function RequirementsContent() {
                         {/* Execution Results */}
                         {traceChain.execution_results.length > 0 && (
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Execution Results ({traceChain.execution_results.length})</label>
-                            <div className="rounded-lg border border-slate-200 divide-y divide-slate-100 overflow-hidden bg-white max-h-44 overflow-y-auto">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Execution Results ({traceChain.execution_results.length})</label>
+                            <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden bg-white max-h-44 overflow-y-auto">
                               {traceChain.execution_results.map((er) => (
                                 <div key={er.id} className="flex items-center gap-3 px-3 py-2">
                                   <div className={cn(
                                     "w-1.5 h-1.5 rounded-full shrink-0",
-                                    er.status === "passed" ? "bg-emerald-400" : er.status === "failed" ? "bg-red-400" : "bg-slate-300"
+                                    er.status === "passed" ? "bg-emerald-400" : er.status === "failed" ? "bg-red-400" : "bg-gray-300"
                                   )} />
                                   <div className="flex-1 min-w-0">
-                                    <span className="text-xs text-slate-700 font-semibold truncate">{er.test_name}</span>
+                                    <span className="text-xs text-gray-700 font-semibold truncate">{er.test_name}</span>
                                   </div>
                                   <Badge variant={er.status === "passed" ? "success" : er.status === "failed" ? "destructive" : "outline"} className="text-[9px] shrink-0 capitalize">{er.status}</Badge>
                                   {er.created_at && (
-                                    <span className="text-[9px] text-slate-400 shrink-0">{new Date(er.created_at).toLocaleDateString()}</span>
+                                    <span className="text-[9px] text-gray-400 shrink-0">{new Date(er.created_at).toLocaleDateString()}</span>
                                   )}
                                 </div>
                               ))}
@@ -4131,14 +4131,14 @@ function RequirementsContent() {
                         {/* Defects */}
                         {traceChain.defects.length > 0 && (
                           <div className="space-y-1.5">
-                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Defects ({traceChain.defects.length})</label>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Defects ({traceChain.defects.length})</label>
                             <div className="rounded-lg border border-red-100 divide-y divide-red-50 overflow-hidden bg-red-50/30">
                               {traceChain.defects.map((d) => (
                                 <div key={d.id} className="flex items-center gap-3 px-3 py-2">
                                   <div className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
                                   <div className="flex-1 min-w-0">
                                     <span className="font-mono text-[10px] text-red-600 font-bold">{d.defect_id}</span>
-                                    <span className="text-xs text-slate-700 font-semibold ml-2 truncate">{d.summary}</span>
+                                    <span className="text-xs text-gray-700 font-semibold ml-2 truncate">{d.summary}</span>
                                   </div>
                                   <Badge variant="destructive" className="text-[9px] shrink-0 capitalize">{d.severity}</Badge>
                                   <Badge variant={getStatusVariant(d.status)} className="text-[9px] shrink-0">{d.status}</Badge>
@@ -4150,7 +4150,7 @@ function RequirementsContent() {
 
                         {/* Nothing linked at all */}
                         {traceChain.scenarios.length === 0 && traceChain.test_cases.length === 0 && (
-                          <p className="text-center text-xs text-slate-400 font-semibold py-8 border border-dashed rounded-xl bg-white">
+                          <p className="text-center text-xs text-gray-400 font-semibold py-8 border border-dashed rounded-xl bg-white">
                             No traceability artifacts linked to this requirement yet.
                           </p>
                         )}
@@ -4180,52 +4180,52 @@ function RequirementsContent() {
                   ] as const;
                   return (
                     <div className="space-y-3 text-xs">
-                      <section className="rounded-xl border border-slate-200 bg-white p-3">
-                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-800"><ShieldCheck className="h-3.5 w-3.5 text-[#1b59f8]" />Readiness Summary</h4>
-                        <p className="mb-3 text-[11px] font-semibold text-slate-600">{row?.readyForApproval ? "All checks passed. This requirement is ready for approval." : "Some checks require attention before approval."}</p>
+                      <section className="rounded-xl border border-gray-200 bg-white p-3">
+                        <h4 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-gray-800"><ShieldCheck className="h-3.5 w-3.5 text-[#B71920]" />Readiness Summary</h4>
+                        <p className="mb-3 text-[11px] font-semibold text-gray-600">{row?.readyForApproval ? "All checks passed. This requirement is ready for approval." : "Some checks require attention before approval."}</p>
                         <div className="space-y-2">
                           {readinessItems.map(([label, value, passed]) => (
                             <div key={label} className="flex items-center justify-between gap-3 text-[11px] font-semibold">
-                              <span className="flex items-center gap-2 text-slate-600">{passed ? <CheckCircle className="h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}{label}</span>
-                              <span className="font-bold text-slate-700">{value}</span>
+                              <span className="flex items-center gap-2 text-gray-600">{passed ? <CheckCircle className="h-3.5 w-3.5 text-emerald-500" /> : <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}{label}</span>
+                              <span className="font-bold text-gray-700">{value}</span>
                             </div>
                           ))}
                         </div>
                       </section>
 
-                      <section className="rounded-xl border border-slate-200 bg-white p-3">
-                        <h4 className="mb-3 text-xs font-bold text-slate-800">Approval Recommendation</h4>
+                      <section className="rounded-xl border border-gray-200 bg-white p-3">
+                        <h4 className="mb-3 text-xs font-bold text-gray-800">Approval Recommendation</h4>
                         <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold">
-                          <div><div className="text-[9px] font-bold text-slate-400">AI Recommendation</div><Badge variant={row?.readyForApproval ? "success" : "warning"} className="mt-1">{row?.readyForApproval ? "Approve" : "Review"}</Badge></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">AI Confidence</div><Badge variant="purple" className="mt-1">{qualityScore === null ? "Not recorded" : `${qualityScore}%`}</Badge></div>
+                          <div><div className="text-[9px] font-bold text-gray-400">AI Recommendation</div><Badge variant={row?.readyForApproval ? "success" : "warning"} className="mt-1">{row?.readyForApproval ? "Approve" : "Review"}</Badge></div>
+                          <div><div className="text-[9px] font-bold text-gray-400">AI Confidence</div><Badge variant="purple" className="mt-1">{qualityScore === null ? "Not recorded" : `${qualityScore}%`}</Badge></div>
                         </div>
-                        <p className="mt-2 text-[11px] font-semibold text-slate-600">{row?.readyForApproval ? "The requirement meets all quality and governance criteria." : row?.blockers[0] || "Reviewer attention required."}</p>
+                        <p className="mt-2 text-[11px] font-semibold text-gray-600">{row?.readyForApproval ? "The requirement meets all quality and governance criteria." : row?.blockers[0] || "Reviewer attention required."}</p>
                       </section>
 
-                      <section className="rounded-xl border border-slate-200 bg-white p-3">
-                        <h4 className="mb-3 text-xs font-bold text-slate-800">Reviewer Information</h4>
-                        <div className="grid grid-cols-2 gap-3 text-[11px] font-semibold text-slate-600">
+                      <section className="rounded-xl border border-gray-200 bg-white p-3">
+                        <h4 className="mb-3 text-xs font-bold text-gray-800">Reviewer Information</h4>
+                        <div className="grid grid-cols-2 gap-3 text-[11px] font-semibold text-gray-600">
                           <div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-700">{(row?.reviewer || "NA").slice(0, 2).toUpperCase()}</span><span>{row?.reviewer}</span></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">Role</div><div className="font-bold text-slate-700">{reviewerRole}</div></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">Assigned On</div><div className="font-bold text-slate-700">{assignedAt ? new Date(assignedAt).toLocaleString("en-US", { month: "short", day: "numeric" }) : "Not recorded"}</div></div>
-                          <div><div className="text-[9px] font-bold text-slate-400">SLA / Due In</div><div className={cn("font-bold", row?.slaStatus === "overdue" ? "text-red-600" : row?.slaStatus === "at_risk" ? "text-amber-600" : row?.slaStatus === "on_track" ? "text-emerald-600" : "text-slate-400")}>{row?.slaAge}</div></div>
+                          <div><div className="text-[9px] font-bold text-gray-400">Role</div><div className="font-bold text-gray-700">{reviewerRole}</div></div>
+                          <div><div className="text-[9px] font-bold text-gray-400">Assigned On</div><div className="font-bold text-gray-700">{assignedAt ? new Date(assignedAt).toLocaleString("en-US", { month: "short", day: "numeric" }) : "Not recorded"}</div></div>
+                          <div><div className="text-[9px] font-bold text-gray-400">SLA / Due In</div><div className={cn("font-bold", row?.slaStatus === "overdue" ? "text-red-600" : row?.slaStatus === "at_risk" ? "text-amber-600" : row?.slaStatus === "on_track" ? "text-emerald-600" : "text-gray-400")}>{row?.slaAge}</div></div>
                         </div>
                       </section>
 
-                      <section className="rounded-xl border border-slate-200 bg-white p-3">
-                        <h4 className="mb-3 text-xs font-bold text-slate-800">Approval History</h4>
-                        <div className="space-y-2 text-[11px] font-semibold text-slate-600">
+                      <section className="rounded-xl border border-gray-200 bg-white p-3">
+                        <h4 className="mb-3 text-xs font-bold text-gray-800">Approval History</h4>
+                        <div className="space-y-2 text-[11px] font-semibold text-gray-600">
                           {selectedApprovalActions.length ? selectedApprovalActions.slice(0, 5).map((entry) => (
                             <div key={entry.id} className="flex items-center justify-between gap-3">
-                              <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#1b59f8]" />{reviewActionLabel(entry.action_type)} by {resolveUser(entry.user_id)}</span>
-                              <span className="text-slate-400">{formatRelativeTime(entry.created_at)}</span>
+                              <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-[#B71920]" />{reviewActionLabel(entry.action_type)} by {resolveUser(entry.user_id)}</span>
+                              <span className="text-gray-400">{formatRelativeTime(entry.created_at)}</span>
                             </div>
-                          )) : <div className="text-slate-400">No audited approval or workflow history is recorded.</div>}
+                          )) : <div className="text-gray-400">No audited approval or workflow history is recorded.</div>}
                         </div>
                       </section>
 
-                      {!['approved', 'rejected'].includes(selectedReq.status) && <section className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-                        <h4 className="text-xs font-bold text-slate-800">Review Actions</h4>
+                      {!['approved', 'rejected'].includes(selectedReq.status) && <section className="space-y-2 rounded-xl border border-gray-200 bg-white p-3">
+                        <h4 className="text-xs font-bold text-gray-800">Review Actions</h4>
                         <Button size="sm" disabled={!row?.readyForApproval || reviewLoading} onClick={() => handleApprove("approve")} className="h-8 w-full bg-emerald-600 text-[10px] font-bold text-white hover:bg-emerald-700">Approve Requirement</Button>
                         <Button variant="outline" size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_back_to_analysis", "analysis")} className="h-8 w-full border-amber-200 bg-white text-[10px] font-bold text-amber-700">Request Changes</Button>
                         <Button variant="outline" size="sm" disabled={reviewLoading} onClick={() => handleApprove("reject")} className="h-8 w-full border-red-200 bg-white text-[10px] font-bold text-red-600">Reject Requirement</Button>
@@ -4233,7 +4233,7 @@ function RequirementsContent() {
                           <Button variant="outline" size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_back_to_analysis", "analysis")} className="h-8 bg-white text-[10px] font-bold">Send Back to Analysis</Button>
                           <Button variant="outline" size="sm" disabled={transitioning} onClick={() => handleRequirementTransition(selectedReq, "send_back_to_traceability", "traceability")} className="h-8 bg-white text-[10px] font-bold">Send Back to Traceability</Button>
                         </div>
-                        <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-center text-[10px] font-semibold text-blue-700">All actions are audited and immutable.</div>
+                        <div className="rounded-lg border border-app-brand-100 bg-app-brand-75 px-3 py-2 text-center text-[10px] font-semibold text-app-brand-700">All actions are audited and immutable.</div>
                       </section>}
                     </div>
                   );
@@ -4330,25 +4330,25 @@ function RequirementsContent() {
                       : null;
                   return (
                     <div className="space-y-3 text-xs">
-                      <section className="border-b border-slate-100 pb-3">
+                      <section className="border-b border-gray-100 pb-3">
                         <div className="mb-2 flex items-center justify-between gap-2">
-                          <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><ShieldCheck className="h-3.5 w-3.5 text-[#1b59f8]" />Grounded Summary</h4>
+                          <h4 className="flex items-center gap-1.5 text-xs font-bold text-gray-800"><ShieldCheck className="h-3.5 w-3.5 text-[#B71920]" />Grounded Summary</h4>
                           <Badge variant={row?.qualityScore === null ? "outline" : "warning"} className="text-[9px]">Quality score {row?.qualityScore === null || row?.qualityScore === undefined ? "Not recorded" : `${row.qualityScore}/100`}</Badge>
                         </div>
-                        <p className="text-[11px] font-semibold leading-relaxed text-slate-600">{selectedReq.summary || selectedReq.title}</p>
-                        <button onClick={() => openAnalysisDialog("content")} className="mt-2 text-[10px] font-bold text-[#1b59f8]">Edit summary, rules & risks</button>
+                        <p className="text-[11px] font-semibold leading-relaxed text-gray-600">{selectedReq.summary || selectedReq.title}</p>
+                        <button onClick={() => openAnalysisDialog("content")} className="mt-2 text-[10px] font-bold text-[#B71920]">Edit summary, rules & risks</button>
                       </section>
 
-                      <section className="rounded-xl border border-blue-200 bg-blue-50/70 p-3">
+                      <section className="rounded-xl border border-app-brand-200 bg-app-brand-75/70 p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <h4 className="text-xs font-bold text-blue-950">How to pass quality analysis</h4>
-                            <p className="mt-1 text-[10px] font-semibold leading-relaxed text-blue-800">Reach at least <strong>70/100</strong> overall and <strong>3/5 Scenario Readiness</strong>. Saving changes makes the old score stale; Re-run Analysis calculates the new result.</p>
+                            <h4 className="text-xs font-bold text-app-brand-950">How to pass quality analysis</h4>
+                            <p className="mt-1 text-[10px] font-semibold leading-relaxed text-app-brand-800">Reach at least <strong>70/100</strong> overall and <strong>3/5 Scenario Readiness</strong>. Saving changes makes the old score stale; Re-run Analysis calculates the new result.</p>
                           </div>
                           <div className="shrink-0 text-right">
-                            <div className="text-lg font-extrabold text-blue-950">{row?.qualityScore ?? "—"}/100</div>
-                            <div className="text-[9px] font-bold text-blue-700">Readiness {Number.isFinite(scenarioReadiness) ? `${scenarioReadiness.toFixed(1)}/5` : "—"}</div>
-                            {scoreDelta !== null && <div className={cn("text-[9px] font-bold", scoreDelta > 0 ? "text-emerald-700" : scoreDelta < 0 ? "text-red-700" : "text-slate-500")}>{scoreDelta > 0 ? "+" : ""}{scoreDelta} since prior run</div>}
+                            <div className="text-lg font-extrabold text-app-brand-950">{row?.qualityScore ?? "—"}/100</div>
+                            <div className="text-[9px] font-bold text-app-brand-700">Readiness {Number.isFinite(scenarioReadiness) ? `${scenarioReadiness.toFixed(1)}/5` : "—"}</div>
+                            {scoreDelta !== null && <div className={cn("text-[9px] font-bold", scoreDelta > 0 ? "text-emerald-700" : scoreDelta < 0 ? "text-red-700" : "text-gray-500")}>{scoreDelta > 0 ? "+" : ""}{scoreDelta} since prior run</div>}
                           </div>
                         </div>
                         {isQualityStale && <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[10px] font-bold text-amber-800">This score is from before the latest edits and cannot be used to pass. Re-run Analysis.</div>}
@@ -4359,14 +4359,14 @@ function RequirementsContent() {
                             actually holding the requirement back. The weights are
                             shown because they decide how much a fix is worth. */}
                         {qualityDimensions.length > 0 && (
-                          <div className="mt-3 rounded-lg border border-blue-100 bg-white p-2">
-                            <div className="mb-1.5 text-[9px] font-bold uppercase text-blue-700">Score breakdown</div>
+                          <div className="mt-3 rounded-lg border border-app-brand-100 bg-white p-2">
+                            <div className="mb-1.5 text-[9px] font-bold uppercase text-app-brand-700">Score breakdown</div>
                             <ul className="space-y-1">
                               {qualityDimensions.map((dim) => (
                                 <li key={dim.key} className="flex items-center justify-between gap-2 text-[10px]">
                                   <span className="flex min-w-0 items-center gap-1.5">
-                                    <span className="truncate font-semibold text-slate-700">{dim.label}</span>
-                                    <span className="shrink-0 text-[9px] font-bold text-slate-400">×{dim.weight.toFixed(2)}</span>
+                                    <span className="truncate font-semibold text-gray-700">{dim.label}</span>
+                                    <span className="shrink-0 text-[9px] font-bold text-gray-400">×{dim.weight.toFixed(2)}</span>
                                     {dim.gating && (
                                       <span className="shrink-0 rounded bg-amber-100 px-1 text-[8px] font-bold uppercase text-amber-800" title="This dimension has its own pass gate, independent of the overall score">
                                         gate
@@ -4374,7 +4374,7 @@ function RequirementsContent() {
                                     )}
                                   </span>
                                   <span className="flex shrink-0 items-center gap-1.5">
-                                    <span className={cn("font-bold", dim.value != null && dim.value <= 2 ? "text-red-600" : dim.value != null && dim.value < 3.5 ? "text-amber-600" : "text-slate-700")}>
+                                    <span className={cn("font-bold", dim.value != null && dim.value <= 2 ? "text-red-600" : dim.value != null && dim.value < 3.5 ? "text-amber-600" : "text-gray-700")}>
                                       {dim.value == null ? "—" : dim.value.toFixed(1)}/5
                                     </span>
                                     {dim.delta != null && dim.delta !== 0 && (
@@ -4386,7 +4386,7 @@ function RequirementsContent() {
                                 </li>
                               ))}
                             </ul>
-                            <p className="mt-1.5 text-[9px] font-semibold leading-snug text-slate-500">
+                            <p className="mt-1.5 text-[9px] font-semibold leading-snug text-gray-500">
                               Weights sum to 1. A one-point move on a 0.20 dimension is worth 4 points of 100, so
                               small swings between runs are expected — the agent scores in whole points.
                             </p>
@@ -4394,45 +4394,45 @@ function RequirementsContent() {
                         )}
                         <div className="mt-3 space-y-2">
                           {improvementActions.map((action) => (
-                            <button key={action.label} type="button" onClick={() => openAnalysisDialog(action.dialog)} className="flex w-full items-start justify-between gap-3 rounded-lg border border-blue-100 bg-white p-2 text-left transition hover:border-blue-300">
-                              <span><span className="block text-[10px] font-bold text-blue-900">{action.label}</span><span className="mt-0.5 block text-[9px] font-semibold leading-snug text-slate-600">{action.detail}</span></span>
-                              <ChevronRight className="mt-1 h-3.5 w-3.5 shrink-0 text-blue-500" />
+                            <button key={action.label} type="button" onClick={() => openAnalysisDialog(action.dialog)} className="flex w-full items-start justify-between gap-3 rounded-lg border border-app-brand-100 bg-white p-2 text-left transition hover:border-app-brand-300">
+                              <span><span className="block text-[10px] font-bold text-app-brand-900">{action.label}</span><span className="mt-0.5 block text-[9px] font-semibold leading-snug text-gray-600">{action.detail}</span></span>
+                              <ChevronRight className="mt-1 h-3.5 w-3.5 shrink-0 text-app-brand-500" />
                             </button>
                           ))}
                         </div>
                       </section>
 
-                      <section className="border-b border-slate-100 pb-3">
+                      <section className="border-b border-gray-100 pb-3">
                         <div className="mb-2 flex items-center justify-between">
-                          <h4 className="text-xs font-bold text-slate-800">Acceptance Criteria ({acceptanceCriteria.length})</h4>
-                          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                          <h4 className="text-xs font-bold text-gray-800">Acceptance Criteria ({acceptanceCriteria.length})</h4>
+                          <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
                         </div>
                         <ul className="space-y-1.5">
                           {acceptanceCriteria.slice(0, 4).map((criterion, index) => (
-                            <li key={`${criterion}-${index}`} className="flex items-start gap-1.5 text-[11px] font-semibold text-slate-600">
+                            <li key={`${criterion}-${index}`} className="flex items-start gap-1.5 text-[11px] font-semibold text-gray-600">
                               <CheckCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
                               <span className="leading-snug">{criterion}</span>
                             </li>
                           ))}
-                          {acceptanceCriteria.length === 0 && <li className="text-[10px] font-semibold text-slate-400">No acceptance criteria are recorded.</li>}
+                          {acceptanceCriteria.length === 0 && <li className="text-[10px] font-semibold text-gray-400">No acceptance criteria are recorded.</li>}
                         </ul>
-                        <button onClick={() => openAnalysisDialog("acceptance")} className="mt-2 text-[10px] font-bold text-[#1b59f8]">+ Add / Edit</button>
+                        <button onClick={() => openAnalysisDialog("acceptance")} className="mt-2 text-[10px] font-bold text-[#B71920]">+ Add / Edit</button>
                       </section>
 
-                      <section className="border-b border-slate-100 pb-3">
+                      <section className="border-b border-gray-100 pb-3">
                         <div className="mb-2 flex items-center justify-between">
-                          <h4 className="text-xs font-bold text-slate-800">Issues Detected</h4>
-                          <button onClick={() => openAnalysisDialog("issues")} className="text-[10px] font-bold text-[#1b59f8]">View all</button>
+                          <h4 className="text-xs font-bold text-gray-800">Issues Detected</h4>
+                          <button onClick={() => openAnalysisDialog("issues")} className="text-[10px] font-bold text-[#B71920]">View all</button>
                         </div>
                         <div className="grid grid-cols-4 gap-1.5">
                           {([
-                            ["Findings", findings.length, "bg-slate-50 border-slate-100 text-slate-800"],
+                            ["Findings", findings.length, "bg-gray-50 border-gray-100 text-gray-800"],
                             ["Missing Info", row?.missingInfoCount ?? 0, "bg-red-50 border-red-100 text-red-700"],
                             ["Duplicates", row?.duplicateCount ?? 0, "bg-amber-50 border-amber-100 text-amber-700"],
-                            ["Conflicts", row?.conflictCount ?? 0, "bg-blue-50 border-blue-100 text-blue-700"],
+                            ["Conflicts", row?.conflictCount ?? 0, "bg-app-brand-75 border-app-brand-100 text-app-brand-700"],
                           ] as const).map(([label, count, tone]) => (
-                            <button key={label} type="button" onClick={() => openAnalysisDialog("issues")} className={cn("rounded-lg border p-2 text-left transition hover:ring-2 hover:ring-blue-200", tone)} aria-label={`View ${label}`}>
-                              <div className="truncate text-[9px] font-bold text-slate-500">{label}</div>
+                            <button key={label} type="button" onClick={() => openAnalysisDialog("issues")} className={cn("rounded-lg border p-2 text-left transition hover:ring-2 hover:ring-app-brand-200", tone)} aria-label={`View ${label}`}>
+                              <div className="truncate text-[9px] font-bold text-gray-500">{label}</div>
                               <div className="mt-1 text-lg font-bold">{count}</div>
                             </button>
                           ))}
@@ -4448,17 +4448,17 @@ function RequirementsContent() {
                                 </li>
                               ))}
                             </ul>
-                            <button onClick={() => openAnalysisDialog("issues")} className="mt-1.5 text-[10px] font-bold text-[#1b59f8]">
+                            <button onClick={() => openAnalysisDialog("issues")} className="mt-1.5 text-[10px] font-bold text-[#B71920]">
                               Resolve missing information
                             </button>
                           </div>
                         )}
                       </section>
 
-                      <section className="border-b border-slate-100 pb-3">
+                      <section className="border-b border-gray-100 pb-3">
                         <div className="mb-2 flex items-center justify-between">
-                          <h4 className="text-xs font-bold text-slate-800">Classification</h4>
-                          <button onClick={() => openAnalysisDialog("classification")} className="text-[10px] font-bold text-[#1b59f8]">Edit</button>
+                          <h4 className="text-xs font-bold text-gray-800">Classification</h4>
+                          <button onClick={() => openAnalysisDialog("classification")} className="text-[10px] font-bold text-[#B71920]">Edit</button>
                         </div>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                           {([
@@ -4470,38 +4470,38 @@ function RequirementsContent() {
                             ["Risk Level", selectedReq.risk_level || "Not assessed"],
                           ] as const).map(([label, value]) => (
                             <div key={label}>
-                              <div className="text-[9px] font-bold text-slate-400">{label}</div>
-                              <div className="mt-0.5 font-bold text-slate-700">{value}</div>
+                              <div className="text-[9px] font-bold text-gray-400">{label}</div>
+                              <div className="mt-0.5 font-bold text-gray-700">{value}</div>
                             </div>
                           ))}
                         </div>
                       </section>
 
-                      <section className="border-b border-slate-100 pb-3">
+                      <section className="border-b border-gray-100 pb-3">
                         <div className="mb-2 flex items-center justify-between">
-                          <h4 className="text-xs font-bold text-slate-800">Impacted Systems</h4>
-                          <button onClick={() => openAnalysisDialog("systems")} className="text-[10px] font-bold text-[#1b59f8]">View all</button>
+                          <h4 className="text-xs font-bold text-gray-800">Impacted Systems</h4>
+                          <button onClick={() => openAnalysisDialog("systems")} className="text-[10px] font-bold text-[#B71920]">View all</button>
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {impactedSystems.slice(0, 4).map((system) => (
                             <Badge key={system} variant="outline" className="text-[9px]">{system}</Badge>
                           ))}
-                          {impactedSystems.length === 0 && <span className="text-[10px] font-semibold text-slate-400">No impacted systems recorded.</span>}
-                          {impactedSystems.length > 4 && <span className="text-[10px] font-bold text-[#1b59f8]">+{impactedSystems.length - 4} more</span>}
+                          {impactedSystems.length === 0 && <span className="text-[10px] font-semibold text-gray-400">No impacted systems recorded.</span>}
+                          {impactedSystems.length > 4 && <span className="text-[10px] font-bold text-[#B71920]">+{impactedSystems.length - 4} more</span>}
                         </div>
                       </section>
 
-                      <section className="border-b border-slate-100 pb-3">
-                        <h4 className="mb-2 text-xs font-bold text-slate-800">AI Analysis Details</h4>
+                      <section className="border-b border-gray-100 pb-3">
+                        <h4 className="mb-2 text-xs font-bold text-gray-800">AI Analysis Details</h4>
                         {qualityReviewsLoading ? (
-                          <div className="text-[10px] font-semibold text-slate-400"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />Loading persisted quality review…</div>
+                          <div className="text-[10px] font-semibold text-gray-400"><Loader2 className="mr-1 inline h-3 w-3 animate-spin" />Loading persisted quality review…</div>
                         ) : latestQualityReview ? (
                           <>
                             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
-                              <div><div className="text-[9px] font-bold text-slate-400">Model</div><div className="font-bold text-slate-700">{String(qualityMeta?.model || "Not recorded")}</div></div>
-                              <div><div className="text-[9px] font-bold text-slate-400">Prompt Version</div><div className="font-bold text-slate-700">{String(qualityMeta?.prompt_version || "Not recorded")}</div></div>
-                              <div><div className="text-[9px] font-bold text-slate-400">Agent Run</div><div className="font-bold text-slate-700">{latestQualityReview.agent_run_id ? `#${latestQualityReview.agent_run_id}` : "Not recorded"}</div></div>
-                              <div><div className="text-[9px] font-bold text-slate-400">Analyzed At</div><div className="font-bold text-slate-700">{latestQualityReview.created_at ? new Date(latestQualityReview.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Not recorded"}</div></div>
+                              <div><div className="text-[9px] font-bold text-gray-400">Model</div><div className="font-bold text-gray-700">{String(qualityMeta?.model || "Not recorded")}</div></div>
+                              <div><div className="text-[9px] font-bold text-gray-400">Prompt Version</div><div className="font-bold text-gray-700">{String(qualityMeta?.prompt_version || "Not recorded")}</div></div>
+                              <div><div className="text-[9px] font-bold text-gray-400">Agent Run</div><div className="font-bold text-gray-700">{latestQualityReview.agent_run_id ? `#${latestQualityReview.agent_run_id}` : "Not recorded"}</div></div>
+                              <div><div className="text-[9px] font-bold text-gray-400">Analyzed At</div><div className="font-bold text-gray-700">{latestQualityReview.created_at ? new Date(latestQualityReview.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Not recorded"}</div></div>
                             </div>
                             <div className="mt-3 grid grid-cols-2 gap-2">
                               {([
@@ -4513,9 +4513,9 @@ function RequirementsContent() {
                                 ["Interface readiness", latestQualityReview.interface_readiness_score, "Not applicable"],
                                 ["Domain completeness", latestQualityReview.telecom_domain_completeness, "Not recorded"],
                               ] as const).map(([label, value, emptyLabel]) => (
-                                <div key={label} className="rounded-lg border border-slate-100 bg-slate-50 p-2">
-                                  <div className="text-[9px] font-bold text-slate-400">{label}</div>
-                                  <div className="mt-0.5 font-bold text-slate-700">{value === null || value === undefined ? emptyLabel : Number(value).toFixed(1)}</div>
+                                <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+                                  <div className="text-[9px] font-bold text-gray-400">{label}</div>
+                                  <div className="mt-0.5 font-bold text-gray-700">{value === null || value === undefined ? emptyLabel : Number(value).toFixed(1)}</div>
                                 </div>
                               ))}
                             </div>
@@ -4535,19 +4535,19 @@ function RequirementsContent() {
                                 </ul>
                               </div>
                             )}
-                            {selectedQualityReviews.length > 1 && <div className="mt-2 text-[9px] font-semibold text-slate-400">{selectedQualityReviews.length} persisted review runs; latest shown.</div>}
+                            {selectedQualityReviews.length > 1 && <div className="mt-2 text-[9px] font-semibold text-gray-400">{selectedQualityReviews.length} persisted review runs; latest shown.</div>}
                           </>
-                        ) : <div className="text-[10px] font-semibold text-slate-400">No persisted quality-review run is available for this requirement.</div>}
+                        ) : <div className="text-[10px] font-semibold text-gray-400">No persisted quality-review run is available for this requirement.</div>}
                       </section>
 
-                      <section ref={analysisActionsRef} className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                        <h4 className="text-xs font-bold text-slate-800">Actions</h4>
+                      <section ref={analysisActionsRef} className="space-y-2 rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+                        <h4 className="text-xs font-bold text-gray-800">Actions</h4>
                         {taxonomyWaiver && (
-                          <div className="rounded-lg border border-slate-200 bg-white p-2.5">
-                            <div className="text-[10px] font-bold text-slate-700">
+                          <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+                            <div className="text-[10px] font-bold text-gray-700">
                               Taxonomy recorded as not applicable
                             </div>
-                            <p className="mt-0.5 text-[10px] font-semibold leading-snug text-slate-500">
+                            <p className="mt-0.5 text-[10px] font-semibold leading-snug text-gray-500">
                               {taxonomyWaiver.reason}
                             </p>
                             <button
@@ -4566,7 +4566,7 @@ function RequirementsContent() {
                                   setTaxonomyWaiverBusy(false);
                                 }
                               }}
-                              className="mt-1 text-[10px] font-bold text-[#1b59f8] disabled:opacity-50"
+                              className="mt-1 text-[10px] font-bold text-[#B71920] disabled:opacity-50"
                             >
                               Taxonomy does apply — restore the requirement
                             </button>
@@ -4575,13 +4575,13 @@ function RequirementsContent() {
                         {advisoryGaps.length > 0 && (
                           // Shown, never gating. The agent judged a tester can
                           // still write a meaningful case without these.
-                          <div className="rounded-lg border border-slate-200 bg-white p-2.5">
-                            <div className="text-[10px] font-bold text-slate-600">
+                          <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+                            <div className="text-[10px] font-bold text-gray-600">
                               Open questions that are not blocking ({advisoryGaps.length})
                             </div>
                             <ul className="mt-1 space-y-0.5">
                               {advisoryGaps.map((gap: MissingInfoItem) => (
-                                <li key={gap.item} className="text-[10px] font-semibold leading-snug text-slate-500">
+                                <li key={gap.item} className="text-[10px] font-semibold leading-snug text-gray-500">
                                   • {gap.item}
                                 </li>
                               ))}
@@ -4708,7 +4708,7 @@ function RequirementsContent() {
                         </div>
                         <Button size="sm" disabled={transitioning || !traceabilityReady} onClick={() => handleRequirementTransition(selectedReq, "send_to_traceability", "traceability")} className={cn(
                           "h-8 w-full text-[10px] font-bold text-white",
-                          traceabilityReady ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-300",
+                          traceabilityReady ? "bg-emerald-600 hover:bg-emerald-700" : "bg-gray-300",
                         )}>Send to Traceability</Button>
                       </section>
                     </div>
@@ -4719,52 +4719,52 @@ function RequirementsContent() {
                   <div className="space-y-5">
 
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status:</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Status:</span>
                   <Badge variant={getStatusVariant(selectedReq.status)} className="capitalize">{selectedReq.status.replace(/_/g, " ")}</Badge>
                 </div>
 
                 {selectedReq.summary && (
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Description</label>
-                    <p className="text-xs text-slate-700 leading-relaxed font-semibold bg-slate-50 border rounded-lg p-3">{selectedReq.summary}</p>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Description</label>
+                    <p className="text-xs text-gray-700 leading-relaxed font-semibold bg-gray-50 border rounded-lg p-3">{selectedReq.summary}</p>
                   </div>
                 )}
 
                 {/* Test Environment + Generation Notes — drives AI scenario/test-case
                     generation style (see scenario_agent.py / test_case_agent.py). Styled to
                     stand out so testers notice it before generating test cases. */}
-                <div className="relative overflow-hidden rounded-xl border-2 border-[#1b59f8]/25 bg-gradient-to-br from-blue-50 via-indigo-50/50 to-white p-4 pt-5 space-y-3 shadow-sm ring-1 ring-[#1b59f8]/10">
-                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#1b59f8] via-indigo-500 to-violet-500" />
+                <div className="relative overflow-hidden rounded-xl border-2 border-[#B71920]/25 bg-gradient-to-br from-app-brand-75 via-app-brand-75/50 to-white p-4 pt-5 space-y-3 shadow-sm ring-1 ring-[#B71920]/10">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#B71920] via-app-brand-500 to-violet-500" />
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-[#1b59f8]/10 border border-[#1b59f8]/20 shrink-0">
-                      <Bot className="h-4 w-4 text-[#1b59f8]" />
+                    <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-[#B71920]/10 border border-[#B71920]/20 shrink-0">
+                      <Bot className="h-4 w-4 text-[#B71920]" />
                     </div>
-                    <h4 className="text-xs font-bold text-slate-800">AI Test Case Generation Context</h4>
+                    <h4 className="text-xs font-bold text-gray-800">AI Test Case Generation Context</h4>
                     <Badge variant="info" className="ml-auto text-[9px] font-bold tracking-wide shrink-0">AI-POWERED</Badge>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Test Environment</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Test Environment</label>
                     <select
                       value={genEnvDraft}
                       onChange={(e) => { setGenEnvDraft(e.target.value); setGenContextSaved(false); }}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#B71920]"
                     >
                       {["SIT", "QA", "UAT", "Regression", "Production Smoke Test"].map((env) => (
                         <option key={env} value={env}>{env}</option>
                       ))}
                     </select>
-                    <p className="text-[10px] text-slate-400 font-medium">Tailors the depth/style of AI-generated scenarios &amp; test cases for this requirement.</p>
+                    <p className="text-[10px] text-gray-400 font-medium">Tailors the depth/style of AI-generated scenarios &amp; test cases for this requirement.</p>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Generation Notes</label>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Generation Notes</label>
                     <textarea
                       value={genNotesDraft}
                       onChange={(e) => { setGenNotesDraft(e.target.value); setGenContextSaved(false); }}
                       placeholder="Optional instructions or emphasis for the AI to consider when generating test cases for this requirement (e.g. focus areas, known edge cases, data constraints)…"
                       rows={3}
-                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] resize-none"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#B71920] resize-none"
                     />
                   </div>
 
@@ -4803,30 +4803,30 @@ function RequirementsContent() {
                       <div className="flex items-center justify-between border-b pb-2.5 border-violet-100/50">
                         <div className="flex items-center gap-2">
                           <Star className="h-4.5 w-4.5 text-violet-500 fill-violet-400" />
-                          <h4 className="text-xs font-bold text-slate-800">AI Requirement Quality Score</h4>
+                          <h4 className="text-xs font-bold text-gray-800">AI Requirement Quality Score</h4>
                         </div>
                         <QualityBadge score={quality.overall_score} verdict={quality.verdict} />
                       </div>
 
                       <div className="grid grid-cols-3 gap-3 mb-2 text-center text-xs font-semibold">
                         <div className="bg-white border rounded-lg p-2">
-                          <div className="text-lg font-bold text-slate-850">{(quality.completeness_score) ?? "?"}</div>
-                          <div className="text-[9px] text-slate-400 font-bold uppercase">Completeness</div>
+                          <div className="text-lg font-bold text-gray-850">{(quality.completeness_score) ?? "?"}</div>
+                          <div className="text-[9px] text-gray-400 font-bold uppercase">Completeness</div>
                         </div>
                         <div className="bg-white border rounded-lg p-2">
-                          <div className="text-lg font-bold text-slate-850">{(quality.clarity_score) ?? "?"}</div>
-                          <div className="text-[9px] text-slate-400 font-bold uppercase">Clarity</div>
+                          <div className="text-lg font-bold text-gray-850">{(quality.clarity_score) ?? "?"}</div>
+                          <div className="text-[9px] text-gray-400 font-bold uppercase">Clarity</div>
                         </div>
                         <div className="bg-white border rounded-lg p-2">
-                          <div className="text-lg font-bold text-slate-850">{(quality.testability_score) ?? "?"}</div>
-                          <div className="text-[9px] text-slate-400 font-bold uppercase">Testability</div>
+                          <div className="text-lg font-bold text-gray-850">{(quality.testability_score) ?? "?"}</div>
+                          <div className="text-[9px] text-gray-400 font-bold uppercase">Testability</div>
                         </div>
                       </div>
 
                       {quality.issues?.length > 0 && (
                         <div className="space-y-1">
                           <label className="text-[9px] font-extrabold uppercase tracking-wider text-rose-500 block">Quality Issues Detected</label>
-                          <ul className="text-xs space-y-1 font-semibold text-slate-650 bg-white rounded-lg p-3 border">
+                          <ul className="text-xs space-y-1 font-semibold text-gray-650 bg-white rounded-lg p-3 border">
                             {quality.issues.map((issue: string, i: number) => (
                               <li key={i} className="flex items-start gap-1.5"><span className="text-rose-500 font-bold select-none">•</span>{issue}</li>
                             ))}
@@ -4836,10 +4836,10 @@ function RequirementsContent() {
 
                       {quality.suggestions?.length > 0 && (
                         <div className="space-y-1">
-                          <label className="text-[9px] font-extrabold uppercase tracking-wider text-indigo-500 block">AI Suggestions</label>
-                          <ul className="text-xs space-y-1 font-semibold text-slate-650 bg-white rounded-lg p-3 border">
+                          <label className="text-[9px] font-extrabold uppercase tracking-wider text-app-brand-500 block">AI Suggestions</label>
+                          <ul className="text-xs space-y-1 font-semibold text-gray-650 bg-white rounded-lg p-3 border">
                             {quality.suggestions.map((s: string, i: number) => (
-                              <li key={i} className="flex items-start gap-1.5"><span className="text-indigo-400 font-bold select-none">→</span>{s}</li>
+                              <li key={i} className="flex items-start gap-1.5"><span className="text-app-brand-500 font-bold select-none">→</span>{s}</li>
                             ))}
                           </ul>
                         </div>
@@ -4857,27 +4857,27 @@ function RequirementsContent() {
                       <div className="flex items-center justify-between border-b pb-2.5 border-emerald-100/50">
                         <div className="flex items-center gap-2">
                           <Bot className="h-4.5 w-4.5 text-emerald-500" />
-                          <h4 className="text-xs font-bold text-slate-800">UI Screenshot Analysis{ui.screen_name ? `: ${ui.screen_name}` : ""}</h4>
+                          <h4 className="text-xs font-bold text-gray-800">UI Screenshot Analysis{ui.screen_name ? `: ${ui.screen_name}` : ""}</h4>
                         </div>
                         <Badge variant="success">Vision AI</Badge>
                       </div>
 
                       {ui.screen_purpose && (
-                        <p className="text-xs text-slate-700 leading-relaxed font-semibold bg-white border rounded-lg p-3">{ui.screen_purpose}</p>
+                        <p className="text-xs text-gray-700 leading-relaxed font-semibold bg-white border rounded-lg p-3">{ui.screen_purpose}</p>
                       )}
 
                       <div className="grid grid-cols-3 gap-3 text-center text-xs font-semibold">
                         <div className="bg-white border rounded-lg p-2">
-                          <div className="text-lg font-bold text-slate-850">{(ui.fields ?? []).length}</div>
-                          <div className="text-[9px] text-slate-400 font-bold uppercase">Fields</div>
+                          <div className="text-lg font-bold text-gray-850">{(ui.fields ?? []).length}</div>
+                          <div className="text-[9px] text-gray-400 font-bold uppercase">Fields</div>
                         </div>
                         <div className="bg-white border rounded-lg p-2">
-                          <div className="text-lg font-bold text-slate-850">{(ui.buttons ?? []).length}</div>
-                          <div className="text-[9px] text-slate-400 font-bold uppercase">Buttons</div>
+                          <div className="text-lg font-bold text-gray-850">{(ui.buttons ?? []).length}</div>
+                          <div className="text-[9px] text-gray-400 font-bold uppercase">Buttons</div>
                         </div>
                         <div className="bg-white border rounded-lg p-2">
-                          <div className="text-lg font-bold text-slate-850">{(ui.user_flows ?? []).length}</div>
-                          <div className="text-[9px] text-slate-400 font-bold uppercase">User Flows</div>
+                          <div className="text-lg font-bold text-gray-850">{(ui.user_flows ?? []).length}</div>
+                          <div className="text-[9px] text-gray-400 font-bold uppercase">User Flows</div>
                         </div>
                       </div>
 
@@ -4889,7 +4889,7 @@ function RequirementsContent() {
                             </Badge>
                           ))}
                           {(ui.fields ?? []).length > 12 && (
-                            <span className="text-[10px] text-slate-400 font-bold">+{(ui.fields ?? []).length - 12} more</span>
+                            <span className="text-[10px] text-gray-400 font-bold">+{(ui.fields ?? []).length - 12} more</span>
                           )}
                         </div>
                       )}
@@ -4902,7 +4902,7 @@ function RequirementsContent() {
                         items && items.length > 0 ? (
                           <div key={label} className="space-y-1">
                             <label className="text-[9px] font-extrabold uppercase tracking-wider text-emerald-600 block">{label}</label>
-                            <ul className="text-xs space-y-1 font-semibold text-slate-650 bg-white rounded-lg p-3 border">
+                            <ul className="text-xs space-y-1 font-semibold text-gray-650 bg-white rounded-lg p-3 border">
                               {items.slice(0, 8).map((item, i) => (
                                 <li key={i} className="flex items-start gap-1.5"><span className="text-emerald-500 font-bold select-none">•</span>{renderInsightItem(item)}</li>
                               ))}
@@ -4916,8 +4916,8 @@ function RequirementsContent() {
 
                 {/* GAP-4d: Coverage insights sub-panel */}
                 {coverageLoading ? (
-                  <div className="border rounded-xl bg-slate-50/30 p-4 flex items-center gap-2 text-xs font-semibold text-slate-400">
-                    <Loader2 className="h-4 w-4 animate-spin text-[#1b59f8]" />
+                  <div className="border rounded-xl bg-gray-50/30 p-4 flex items-center gap-2 text-xs font-semibold text-gray-400">
+                    <Loader2 className="h-4 w-4 animate-spin text-[#B71920]" />
                     Loading coverage insights...
                   </div>
                 ) : coverage ? (
@@ -4925,7 +4925,7 @@ function RequirementsContent() {
                     <div className="flex items-center justify-between border-b pb-2.5 border-sky-100/50">
                       <div className="flex items-center gap-2">
                         <ShieldCheck className="h-4.5 w-4.5 text-sky-500" />
-                        <h4 className="text-xs font-bold text-slate-800">Test Coverage Insights</h4>
+                        <h4 className="text-xs font-bold text-gray-800">Test Coverage Insights</h4>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant={coverage.priority_band === "P1" ? "destructive" : coverage.priority_band === "P2" ? "warning" : "info"}>
@@ -4939,16 +4939,16 @@ function RequirementsContent() {
 
                     <div className="grid grid-cols-3 gap-3 text-center text-xs font-semibold">
                       <div className="bg-white border rounded-lg p-2">
-                        <div className="text-lg font-bold text-slate-850">{coverage.scenario_count}</div>
-                        <div className="text-[9px] text-slate-400 font-bold uppercase">Scenarios</div>
+                        <div className="text-lg font-bold text-gray-850">{coverage.scenario_count}</div>
+                        <div className="text-[9px] text-gray-400 font-bold uppercase">Scenarios</div>
                       </div>
                       <div className="bg-white border rounded-lg p-2">
-                        <div className="text-lg font-bold text-slate-850">{coverage.test_case_count}</div>
-                        <div className="text-[9px] text-slate-400 font-bold uppercase">Test Cases</div>
+                        <div className="text-lg font-bold text-gray-850">{coverage.test_case_count}</div>
+                        <div className="text-[9px] text-gray-400 font-bold uppercase">Test Cases</div>
                       </div>
                       <div className="bg-white border rounded-lg p-2">
-                        <div className="text-lg font-bold text-slate-850">{coverage.automation_candidates}</div>
-                        <div className="text-[9px] text-slate-400 font-bold uppercase">Automatable</div>
+                        <div className="text-lg font-bold text-gray-850">{coverage.automation_candidates}</div>
+                        <div className="text-[9px] text-gray-400 font-bold uppercase">Automatable</div>
                       </div>
                     </div>
 
@@ -4958,7 +4958,7 @@ function RequirementsContent() {
                           <Badge key={c} variant="success" className="capitalize">{c} ✓</Badge>
                         ))}
                         {coverage.missing_categories.map((c) => (
-                          <Badge key={c} variant="outline" className="capitalize text-slate-400">{c} missing</Badge>
+                          <Badge key={c} variant="outline" className="capitalize text-gray-400">{c} missing</Badge>
                         ))}
                       </div>
                     )}
@@ -4966,7 +4966,7 @@ function RequirementsContent() {
                     {coverage.gaps.length > 0 && (
                       <div className="space-y-1">
                         <label className="text-[9px] font-extrabold uppercase tracking-wider text-amber-600 block">Coverage Gaps Detected</label>
-                        <ul className="text-xs space-y-1 font-semibold text-slate-650 bg-white rounded-lg p-3 border">
+                        <ul className="text-xs space-y-1 font-semibold text-gray-650 bg-white rounded-lg p-3 border">
                           {coverage.gaps.map((gap, i) => (
                             <li key={i} className="flex items-start gap-1.5"><span className="text-amber-500 font-bold select-none">!</span>{gap}</li>
                           ))}
@@ -4988,11 +4988,11 @@ function RequirementsContent() {
                   ["Missing Specs / Info", asTextList(selectedReq.missing_information)]
                 ] as const).map(([label, array]) => array && array.length > 0 ? (
                   <div key={label} className="space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</label>
-                    <ul className="text-xs space-y-1.5 font-semibold text-slate-700 bg-slate-50/50 border rounded-lg p-3.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</label>
+                    <ul className="text-xs space-y-1.5 font-semibold text-gray-700 bg-gray-50/50 border rounded-lg p-3.5">
                       {array.map((item, i) => (
                         <li key={i} className="flex items-start gap-2">
-                          <span className="text-blue-500 font-bold select-none mt-0.5">•</span>
+                          <span className="text-app-brand-500 font-bold select-none mt-0.5">•</span>
                           <span className="leading-relaxed">{item}</span>
                         </li>
                       ))}
@@ -5000,8 +5000,8 @@ function RequirementsContent() {
                   </div>
                 ) : null)}
 
-                  <div className="border-t border-slate-100 pt-4 space-y-1.5">
-                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                  <div className="border-t border-gray-100 pt-4 space-y-1.5">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       Audit Trail
                     </label>
@@ -5022,25 +5022,25 @@ function RequirementsContent() {
                   const stage = getRequirementWorkflowStage(selectedReq);
                   const intakeBlockers = requirementIntakeTransitionBlockers(selectedReq);
                   if (workspaceView !== "intake") {
-                    return <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="w-full h-9 bg-white border-slate-200">Close detail</Button>;
+                    return <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="w-full h-9 bg-white border-gray-200">Close detail</Button>;
                   }
                   if (stage !== "intake") {
                     const destinationLabel = stage === "analysis" ? "Requirement Analysis" : stage === "traceability" ? "Traceability" : "Review & Approval";
                     return (
                       <div className="w-full space-y-3">
-                        <div className="rounded-xl border border-blue-200 bg-blue-50 p-3">
+                        <div className="rounded-xl border border-app-brand-200 bg-app-brand-75 p-3">
                           <div className="flex items-start gap-2">
-                            <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                            <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-app-brand-600" />
                             <div>
-                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Next action</div>
-                              <div className="mt-1 text-xs font-bold text-slate-900">Continue in {destinationLabel}</div>
-                              <p className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-600">This requirement has already completed intake. Open its current workspace to perform the next governed actions.</p>
+                              <div className="text-[9px] font-extrabold uppercase tracking-wider text-gray-500">Next action</div>
+                              <div className="mt-1 text-xs font-bold text-gray-900">Continue in {destinationLabel}</div>
+                              <p className="mt-1 text-[10px] font-semibold leading-relaxed text-gray-600">This requirement has already completed intake. Open its current workspace to perform the next governed actions.</p>
                             </div>
                           </div>
                         </div>
                         <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="h-9 flex-1 bg-white border-slate-200">Close</Button>
-                          <Button size="sm" onClick={() => { setSelectedReq(null); handleWorkspaceViewChange(stage); }} className="h-9 flex-[1.5] bg-[#1b59f8] text-white hover:bg-blue-700">
+                          <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="h-9 flex-1 bg-white border-gray-200">Close</Button>
+                          <Button size="sm" onClick={() => { setSelectedReq(null); handleWorkspaceViewChange(stage); }} className="h-9 flex-[1.5] bg-[#B71920] text-white hover:bg-app-brand-700">
                             <ArrowRight className="mr-1.5 h-3.5 w-3.5" />
                             Open {destinationLabel}
                           </Button>
@@ -5050,13 +5050,13 @@ function RequirementsContent() {
                   }
                   return (
                     <div className="w-full space-y-3">
-                      <div className={cn("rounded-xl border p-3", intakeBlockers.length ? "border-amber-200 bg-amber-50" : "border-blue-200 bg-blue-50")}>
+                      <div className={cn("rounded-xl border p-3", intakeBlockers.length ? "border-amber-200 bg-amber-50" : "border-app-brand-200 bg-app-brand-75")}>
                         <div className="flex items-start gap-2">
-                          {intakeBlockers.length ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /> : <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />}
+                          {intakeBlockers.length ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /> : <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-app-brand-600" />}
                           <div>
-                            <div className="text-[9px] font-extrabold uppercase tracking-wider text-slate-500">Next step</div>
-                            <div className="mt-1 text-xs font-bold text-slate-900">Requirement Analysis</div>
-                            <p className="mt-1 text-[10px] font-semibold leading-relaxed text-slate-600">
+                            <div className="text-[9px] font-extrabold uppercase tracking-wider text-gray-500">Next step</div>
+                            <div className="mt-1 text-xs font-bold text-gray-900">Requirement Analysis</div>
+                            <p className="mt-1 text-[10px] font-semibold leading-relaxed text-gray-600">
                               {intakeBlockers.length
                                 ? "Complete the intake items below before sending this requirement for quality analysis."
                                 : "Intake validation is complete. Send this requirement to Requirement Analysis for quality scoring, ambiguity review, and classification."}
@@ -5066,8 +5066,8 @@ function RequirementsContent() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="h-9 flex-1 bg-white border-slate-200">Close</Button>
-                        <Button size="sm" disabled={transitioning || intakeBlockers.length > 0} onClick={() => handleRequirementTransition(selectedReq, "send_to_analysis", "analysis")} className="h-9 flex-[1.5] bg-[#1b59f8] text-white hover:bg-blue-700">
+                        <Button variant="outline" size="sm" onClick={() => setSelectedReq(null)} className="h-9 flex-1 bg-white border-gray-200">Close</Button>
+                        <Button size="sm" disabled={transitioning || intakeBlockers.length > 0} onClick={() => handleRequirementTransition(selectedReq, "send_to_analysis", "analysis")} className="h-9 flex-[1.5] bg-[#B71920] text-white hover:bg-app-brand-700">
                           {transitioning ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ArrowRight className="mr-1.5 h-3.5 w-3.5" />}
                           Send to Requirement Analysis
                         </Button>
@@ -5099,29 +5099,29 @@ function RequirementsContent() {
           : analysisDialog === "systems" ? "Edit Impacted Systems"
           : "Request Clarification";
         return (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" style={{ zIndex: 60 }} role="dialog" aria-modal="true" aria-label={dialogTitle} onClick={() => { if (!analysisDialogSaving) { setAnalysisDialogError(null); setAnalysisDialog(null); } }}>
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-950/40 p-4 backdrop-blur-sm" style={{ zIndex: 60 }} role="dialog" aria-modal="true" aria-label={dialogTitle} onClick={() => { if (!analysisDialogSaving) { setAnalysisDialogError(null); setAnalysisDialog(null); } }}>
             <form
-              className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-2xl"
               onClick={(event) => event.stopPropagation()}
               onSubmit={(event) => {
                 event.preventDefault();
                 void saveAnalysisDialog();
               }}
             >
-              <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4">
-                <div><h3 className="text-sm font-bold text-slate-900">{dialogTitle}</h3><p className="mt-1 text-[11px] font-semibold text-slate-500">{selectedReq.requirement_id} · {selectedReq.title}</p></div>
-                <button type="button" aria-label="Close dialog" onClick={() => { setAnalysisDialogError(null); setAnalysisDialog(null); }} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+              <div className="flex items-start justify-between border-b border-gray-100 px-5 py-4">
+                <div><h3 className="text-sm font-bold text-gray-900">{dialogTitle}</h3><p className="mt-1 text-[11px] font-semibold text-gray-500">{selectedReq.requirement_id} · {selectedReq.title}</p></div>
+                <button type="button" aria-label="Close dialog" onClick={() => { setAnalysisDialogError(null); setAnalysisDialog(null); }} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-50"><X className="h-4 w-4" /></button>
               </div>
               <div className="max-h-[65vh] space-y-4 overflow-y-auto px-5 py-4 text-xs">
                 {analysisDialog === "content" && <>
-                  <p className="font-semibold text-slate-600">Describe the requirement precisely. Include the actor, trigger, expected business outcome, constraints, and measurable scope.</p>
-                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Requirement summary</span><textarea aria-label="Requirement summary" value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} rows={6} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="When [trigger], the system shall [behavior] for [actor] so that [business outcome]..." /></label>
-                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Business rules - one per line</span><textarea aria-label="Business rules" value={businessRulesDraft} onChange={(event) => setBusinessRulesDraft(event.target.value)} rows={5} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Billing changes take effect on the next billing cycle." /></label>
-                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Risks and constraints - one per line</span><textarea aria-label="Risks and constraints" value={risksDraft} onChange={(event) => setRisksDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Proration must not create duplicate charges." /></label>
+                  <p className="font-semibold text-gray-600">Describe the requirement precisely. Include the actor, trigger, expected business outcome, constraints, and measurable scope.</p>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-gray-500">Requirement summary</span><textarea aria-label="Requirement summary" value={summaryDraft} onChange={(event) => setSummaryDraft(event.target.value)} rows={6} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder="When [trigger], the system shall [behavior] for [actor] so that [business outcome]..." /></label>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-gray-500">Business rules - one per line</span><textarea aria-label="Business rules" value={businessRulesDraft} onChange={(event) => setBusinessRulesDraft(event.target.value)} rows={5} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder="Billing changes take effect on the next billing cycle." /></label>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-gray-500">Risks and constraints - one per line</span><textarea aria-label="Risks and constraints" value={risksDraft} onChange={(event) => setRisksDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder="Proration must not create duplicate charges." /></label>
                 </>}
                 {analysisDialog === "acceptance" && <>
-                  <p className="font-semibold text-slate-600">Enter one independently testable acceptance criterion per line.</p>
-                  <textarea aria-label="Acceptance criteria" value={criteriaDraft} onChange={(event) => setCriteriaDraft(event.target.value)} rows={10} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="The system shall..." />
+                  <p className="font-semibold text-gray-600">Enter one independently testable acceptance criterion per line.</p>
+                  <textarea aria-label="Acceptance criteria" value={criteriaDraft} onChange={(event) => setCriteriaDraft(event.target.value)} rows={10} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder="The system shall..." />
                 </>}
                 {analysisDialog === "issues" && <>
                   <div className="grid grid-cols-4 gap-2">
@@ -5129,7 +5129,7 @@ function RequirementsContent() {
                         every gap — so a requirement with one blocking and one
                         advisory item read "1" above a list of two. The tile now
                         says which number it is. */}
-                    {[["Blocking", analysisRow?.missingInfoCount || 0, `${missingInfoAdvisoryCount} advisory gap(s) are listed but do not block`], ["Findings", asTextList(selectedQualityReviews[0]?.ambiguities).length || asTextList(qualityMeta?.findings).length, "Ambiguities and conflicts raised by quality analysis"], ["Duplicates", analysisRow?.duplicateCount || 0, ""], ["Conflicts", analysisRow?.conflictCount || 0, ""]].map(([label, value, hint]) => <div key={String(label)} title={String(hint || "")} className="rounded-lg border border-slate-200 bg-slate-50 p-2"><div className="text-[9px] font-bold uppercase text-slate-400">{label}</div><div className="mt-1 text-lg font-bold text-slate-800">{value}</div></div>)}
+                    {[["Blocking", analysisRow?.missingInfoCount || 0, `${missingInfoAdvisoryCount} advisory gap(s) are listed but do not block`], ["Findings", asTextList(selectedQualityReviews[0]?.ambiguities).length || asTextList(qualityMeta?.findings).length, "Ambiguities and conflicts raised by quality analysis"], ["Duplicates", analysisRow?.duplicateCount || 0, ""], ["Conflicts", analysisRow?.conflictCount || 0, ""]].map(([label, value, hint]) => <div key={String(label)} title={String(hint || "")} className="rounded-lg border border-gray-200 bg-gray-50 p-2"><div className="text-[9px] font-bold uppercase text-gray-400">{label}</div><div className="mt-1 text-lg font-bold text-gray-800">{value}</div></div>)}
                   </div>
                   {(asTextList(qualityMeta?.ambiguities).length > 0 || asTextList(qualityMeta?.conflicts).length > 0) && <div className="rounded-lg border border-amber-100 bg-amber-50 p-3"><div className="mb-1 text-[10px] font-bold uppercase text-amber-700">Other findings</div>{[...asTextList(qualityMeta?.ambiguities), ...asTextList(qualityMeta?.conflicts)].map((item) => <div key={item} className="mt-1 font-semibold text-amber-800">• {item}</div>)}</div>}
                   {missingInfoItems.length > 0 && (
@@ -5152,8 +5152,8 @@ function RequirementsContent() {
                       </ul>
                     </div>
                   )}
-                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-slate-500">Outstanding missing information - one item per line</label><textarea aria-label="Outstanding missing information" value={missingInfoDraft} onChange={(event) => { setMissingInfoDraft(event.target.value); setMarkMissingResolved(false); }} rows={5} className="w-full rounded-xl border border-red-200 bg-red-50/30 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-red-100" placeholder="No missing information remains" /></div>
-                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-slate-500">{selectedReq.readiness_status === "needs_clarification" ? "Clarification supplied" : "Resolution or supplied details"}</label><textarea aria-label="Resolution details" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder={selectedReq.readiness_status === "needs_clarification" ? "Enter the answer/details provided by the requirement owner and where they were verified..." : "Describe the information supplied and where it was verified..."} /></div>
+                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-gray-500">Outstanding missing information - one item per line</label><textarea aria-label="Outstanding missing information" value={missingInfoDraft} onChange={(event) => { setMissingInfoDraft(event.target.value); setMarkMissingResolved(false); }} rows={5} className="w-full rounded-xl border border-red-200 bg-red-50/30 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-red-100" placeholder="No missing information remains" /></div>
+                  <div><label className="mb-1.5 block text-[10px] font-bold uppercase text-gray-500">{selectedReq.readiness_status === "needs_clarification" ? "Clarification supplied" : "Resolution or supplied details"}</label><textarea aria-label="Resolution details" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder={selectedReq.readiness_status === "needs_clarification" ? "Enter the answer/details provided by the requirement owner and where they were verified..." : "Describe the information supplied and where it was verified..."} /></div>
                   {selectedReq.readiness_status === "needs_clarification" ? <div className="rounded-lg border border-amber-100 bg-amber-50 p-2 text-[10px] font-semibold text-amber-800">Submitting this answer resolves the clarification gate and returns the requirement to Analysis Pending. Select Re-run Analysis afterward to validate it.</div> : <label className="flex items-start gap-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 font-semibold text-emerald-800"><input aria-label="Mark missing information resolved" type="checkbox" checked={markMissingResolved} onChange={(event) => setMarkMissingResolved(event.target.checked)} className="mt-0.5" /><span>Mark all listed missing-information findings as resolved. Resolution details are required and retained in reviewer notes.</span></label>}
                 </>}
                 {analysisDialog === "classification" && <div className="grid grid-cols-2 gap-3">
@@ -5165,14 +5165,14 @@ function RequirementsContent() {
                   <ClassificationSelect label="Risk Level" value={classificationDraft.riskLevel} options={RISK_LEVEL_OPTIONS} onChange={(value) => setClassificationDraft((current) => ({ ...current, riskLevel: value }))} />
                 </div>}
                 {analysisDialog === "systems" && <>
-                  <p className="font-semibold text-slate-600">Record systems, interfaces, and APIs separately so the reviewer can assess integration readiness.</p>
-                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Impacted systems - one per line</span><textarea aria-label="Impacted systems" value={systemsDraft} onChange={(event) => setSystemsDraft(event.target.value)} rows={5} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Billing Platform&#10;CRM" /></label>
-                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Interfaces - one per line</span><textarea aria-label="Impacted interfaces" value={interfacesDraft} onChange={(event) => setInterfacesDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="CRM to Billing customer update interface" /></label>
-                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">APIs / protocols - one per line</span><textarea aria-label="APIs and protocols" value={apisDraft} onChange={(event) => setApisDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="PATCH /customers/{id}/billing-profile (REST)" /></label>
+                  <p className="font-semibold text-gray-600">Record systems, interfaces, and APIs separately so the reviewer can assess integration readiness.</p>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-gray-500">Impacted systems - one per line</span><textarea aria-label="Impacted systems" value={systemsDraft} onChange={(event) => setSystemsDraft(event.target.value)} rows={5} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder="Billing Platform&#10;CRM" /></label>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-gray-500">Interfaces - one per line</span><textarea aria-label="Impacted interfaces" value={interfacesDraft} onChange={(event) => setInterfacesDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder="CRM to Billing customer update interface" /></label>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-gray-500">APIs / protocols - one per line</span><textarea aria-label="APIs and protocols" value={apisDraft} onChange={(event) => setApisDraft(event.target.value)} rows={4} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder="PATCH /customers/{id}/billing-profile (REST)" /></label>
                 </>}
                 {analysisDialog === "clarification" && <>
-                  <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 font-semibold text-blue-800">This records an audited clarification request and keeps the requirement in Analysis with “Needs Clarification” status. It does not send an external email or Jira message.</div>
-                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-slate-500">Clarification required</span><textarea aria-label="Clarification required" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={7} className="w-full rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-200" placeholder="Explain exactly what information is required, who should provide it, and why analysis cannot proceed..." /></label>
+                  <div className="rounded-lg border border-app-brand-100 bg-app-brand-75 p-3 font-semibold text-app-brand-800">This records an audited clarification request and keeps the requirement in Analysis with “Needs Clarification” status. It does not send an external email or Jira message.</div>
+                  <label className="space-y-1.5"><span className="text-[10px] font-bold uppercase text-gray-500">Clarification required</span><textarea aria-label="Clarification required" value={resolutionDraft} onChange={(event) => setResolutionDraft(event.target.value)} rows={7} className="w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-app-brand-200" placeholder="Explain exactly what information is required, who should provide it, and why analysis cannot proceed..." /></label>
                 </>}
               </div>
               {analysisDialogError && (
@@ -5180,12 +5180,12 @@ function RequirementsContent() {
                   {analysisDialogError}
                 </div>
               )}
-              <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-4">
+              <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-4">
                 <button
                   type="button"
                   disabled={analysisDialogSaving}
                   onClick={() => { setAnalysisDialogError(null); setAnalysisDialog(null); }}
-                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-all hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-medium text-gray-700 transition-all hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -5204,7 +5204,7 @@ function RequirementsContent() {
                     event.preventDefault();
                     void saveAnalysisDialog();
                   }}
-                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#1b59f8] px-3 text-xs font-medium text-white shadow-sm transition-all hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#B71920] px-3 text-xs font-medium text-white shadow-sm transition-all hover:bg-app-brand-700 disabled:pointer-events-none disabled:opacity-50"
                 >
                   {analysisDialogSaving && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
                   {analysisDialog === "clarification" ? "Submit Request" : "Save Changes"}
@@ -5239,8 +5239,8 @@ function RequirementsContent() {
 export default function RequirementsPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
-        <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
+      <div className="flex h-64 items-center justify-center text-gray-400 text-xs font-semibold">
+        <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mr-2" />
         Loading Requirements...
       </div>
     }>

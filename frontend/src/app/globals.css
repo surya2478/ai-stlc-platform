@@ -4,58 +4,93 @@
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 222.2 84% 4.9%;
+    /* Surfaces and text are the reference's exact values, expressed as HSL
+       because the shadcn tokens below are consumed as hsl(var(--x)):
+       #F8F9FB canvas, #FFFFFF card, #F4F5F7 muted, #E8EAEE border,
+       #1F2937 primary text, #6B7280 secondary text. */
+    --background: 220 27.3% 97.8%;
+    --foreground: 215 27.9% 16.9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 215 27.9% 16.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --popover-foreground: 215 27.9% 16.9%;
+    /* Brand 600 #B71920 — the interactive colour, and the focus ring. */
+    --primary: 357.3 76% 40.8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15.8% 96.3%;
+    --secondary-foreground: 215 27.9% 16.9%;
+    --muted: 220 15.8% 96.3%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --accent: 356.7 81.8% 95.7%;
+    --accent-foreground: 358.9 83.5% 26.1%;
+    /* #DC2626 — deliberately kept distinct from the brand. In a QA tool red
+       means "failed", so failure states stay at the brighter red-600 while
+       brand chrome sits deeper at #941216/#B71920. */
+    --destructive: 0 72.2% 50.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 92.2%;
+    --input: 220 15% 92.2%;
+    --ring: 357.3 76% 40.8%;
     --radius: 0.5rem;
 
-    /* Custom Design Tokens */
-    --sidebar-bg: #091225;
-    --sidebar-border: #13223f;
-    --sidebar-fg: #94a3b8;
-    --sidebar-hover-bg: #13223f;
-    --sidebar-active-bg: #1e293b;
+    /* Brand ramp — the reference palette, verbatim. */
+    --brand-950: #4d0507;
+    --brand-900: #65080a;
+    --brand-800: #7a0b0d;
+    --brand-700: #941216;
+    --brand-600: #b71920;
+    --brand-500: #d52b31;
+    --brand-300: #f1a4a6;
+    --brand-200: #f6d4d5;
+    --brand-100: #fdebec;
+    --brand-75: #fff5f5;
+    --brand-50: #fff8f8;
+
+    /* Sidebar — a dark red command centre rather than a flat fill. */
+    --sidebar-bg: #65080a;
+    --sidebar-gradient: linear-gradient(180deg, #7a0b0d 0%, #65080a 50%, #4d0507 100%);
+    --sidebar-border: rgba(255, 255, 255, 0.08);
+    --sidebar-fg: rgba(255, 255, 255, 0.62);
+    --sidebar-hover-bg: rgba(255, 255, 255, 0.08);
+    --sidebar-active-bg: #b71920;
     --sidebar-active-fg: #ffffff;
-    --primary-blue: #1b59f8;
+    --sidebar-shadow: 2px 0 16px -8px rgba(77, 5, 7, 0.35);
+
+    /* Kept from the old theme: these mark AI-generated surfaces, which is a
+       different axis from brand and reads clearly against red. */
     --ai-cyan: #06b6d4;
     --ai-violet: #8b5cf6;
   }
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    /* Derived, not copied — the reference is light-only. Surfaces are a
+       red-black rather than a neutral black so the brand hue carries through,
+       and the accent lifts to brand-500 because 600 is too dark to read here. */
+    --background: 355 38% 6%;
+    --foreground: 0 33% 95%;
+    --card: 353 41% 9%;
+    --card-foreground: 0 33% 95%;
+    --popover: 353 41% 9%;
+    --popover-foreground: 0 33% 95%;
+    --primary: 358 67% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 357 33% 12%;
+    --secondary-foreground: 0 33% 95%;
+    --muted: 357 33% 12%;
+    --muted-foreground: 357 14% 68%;
+    --accent: 357 33% 12%;
+    --accent-foreground: 0 33% 95%;
+    --destructive: 0 72.2% 50.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 356 32% 17%;
+    --input: 356 32% 17%;
+    --ring: 358 67% 50%;
+
+    --sidebar-bg: #2e0304;
+    --sidebar-gradient: linear-gradient(180deg, #4d0507 0%, #3a0405 50%, #2e0304 100%);
+    --sidebar-border: rgba(255, 255, 255, 0.06);
+    --sidebar-fg: rgba(255, 255, 255, 0.56);
+    --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
+    --sidebar-active-bg: #941216;
   }
 }
 
@@ -81,10 +116,23 @@
 
 .bg-sidebar {
   background-color: var(--sidebar-bg);
+  background-image: var(--sidebar-gradient);
+  box-shadow: var(--sidebar-shadow);
 }
 
 .border-sidebar {
   border-color: var(--sidebar-border);
+}
+
+/* Focus ring — the reference's, applied globally rather than per component. */
+:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: rgba(183, 25, 32, 0.18);
 }
 
 @keyframes ai-processing-slide {

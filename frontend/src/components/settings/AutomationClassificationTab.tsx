@@ -122,7 +122,7 @@ function list(value: string) {
 }
 
 function FieldLabel({ children }: { children: ReactNode }) {
-  return <label className="mb-1 block text-xs font-bold text-slate-700">{children}</label>;
+  return <label className="mb-1 block text-xs font-bold text-gray-700">{children}</label>;
 }
 
 export function AutomationClassificationTab({ projectId }: { projectId: number }) {
@@ -240,7 +240,7 @@ export function AutomationClassificationTab({ projectId }: { projectId: number }
   }
 
   if (loading) {
-    return <div className="flex h-64 items-center justify-center text-sm font-semibold text-slate-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-[#1b59f8]" />Loading classification policy...</div>;
+    return <div className="flex h-64 items-center justify-center text-sm font-semibold text-gray-500"><Loader2 className="mr-2 h-5 w-5 animate-spin text-[#B71920]" />Loading classification policy...</div>;
   }
 
   const route = rules.routing_rules[0] || FALLBACK_RULES.routing_rules[0];
@@ -248,13 +248,13 @@ export function AutomationClassificationTab({ projectId }: { projectId: number }
 
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#1b59f8]"><ShieldCheck className="h-5 w-5" /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-app-brand-75 text-[#B71920]"><ShieldCheck className="h-5 w-5" /></span>
             <div>
-              <h2 className="text-lg font-black text-slate-900">Automation Classification Policy</h2>
-              <p className="mt-1 text-sm text-slate-500">Mandatory for every project. No environment feature flags are required.</p>
+              <h2 className="text-lg font-black text-gray-900">Automation Classification Policy</h2>
+              <p className="mt-1 text-sm text-gray-500">Mandatory for every project. No environment feature flags are required.</p>
             </div>
           </div>
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
@@ -269,12 +269,12 @@ export function AutomationClassificationTab({ projectId }: { projectId: number }
         )}
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-black text-slate-900">Decision threshold</h3>
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h3 className="text-sm font-black text-gray-900">Decision threshold</h3>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div>
             <FieldLabel>Policy name</FieldLabel>
-            <input value={name} onChange={(event) => setName(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" />
+            <input value={name} onChange={(event) => setName(event.target.value)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm" />
           </div>
           <div>
             <FieldLabel>Minimum automation-value score (0–100)</FieldLabel>
@@ -287,17 +287,17 @@ export function AutomationClassificationTab({ projectId }: { projectId: number }
                 ...current,
                 candidate_rules: { ...current.candidate_rules, minimum_automation_value_score: Number(event.target.value) },
               }))}
-              className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+              className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
             />
           </div>
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-black text-slate-900">Automation not possible</h3>
-            <p className="mt-1 text-xs text-slate-500">Any matching condition becomes a clear deterministic blocker. Matching checks the test-case title, objective, steps, expected result, preconditions, BDD, and test data.</p>
+            <h3 className="text-sm font-black text-gray-900">Automation not possible</h3>
+            <p className="mt-1 text-xs text-gray-500">Any matching condition becomes a clear deterministic blocker. Matching checks the test-case title, objective, steps, expected result, preconditions, BDD, and test data.</p>
           </div>
           <Button type="button" variant="outline" onClick={addManualCondition} className="h-9 gap-2 text-xs font-bold">
             <Plus className="h-4 w-4" />Add Condition
@@ -305,15 +305,15 @@ export function AutomationClassificationTab({ projectId }: { projectId: number }
         </div>
         <div className="mt-4 space-y-3">
           {rules.manual_only_conditions.map((condition, index) => (
-            <div key={condition.code} className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+            <div key={condition.code} className="rounded-lg border border-gray-200 bg-gray-50/60 p-4">
               <div className="grid gap-3 md:grid-cols-[220px_1fr_auto]">
                 <div>
                   <FieldLabel>Condition name</FieldLabel>
-                  <input value={condition.label} onChange={(event) => updateManualCondition(index, { label: event.target.value })} className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs" />
+                  <input value={condition.label} onChange={(event) => updateManualCondition(index, { label: event.target.value })} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs" />
                 </div>
                 <div>
                   <FieldLabel>Matching words or phrases</FieldLabel>
-                  <input value={condition.keywords.join(", ")} onChange={(event) => updateManualCondition(index, { keywords: list(event.target.value) })} placeholder="Example: captcha, recaptcha" className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs" />
+                  <input value={condition.keywords.join(", ")} onChange={(event) => updateManualCondition(index, { keywords: list(event.target.value) })} placeholder="Example: captcha, recaptcha" className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs" />
                 </div>
                 <button type="button" aria-label={`Remove ${condition.label}`} onClick={() => removeManualCondition(index)} className="mt-5 flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 hover:bg-red-50">
                   <Trash2 className="h-4 w-4" />
@@ -321,24 +321,24 @@ export function AutomationClassificationTab({ projectId }: { projectId: number }
               </div>
               <div className="mt-3">
                 <FieldLabel>Message shown to the user</FieldLabel>
-                <input value={condition.reason} onChange={(event) => updateManualCondition(index, { reason: event.target.value })} className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs" />
+                <input value={condition.reason} onChange={(event) => updateManualCondition(index, { reason: event.target.value })} className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs" />
               </div>
             </div>
           ))}
           {!rules.manual_only_conditions.length && (
-            <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-xs font-semibold text-slate-400">No manual-only conditions configured.</div>
+            <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-xs font-semibold text-gray-400">No manual-only conditions configured.</div>
           )}
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-black text-slate-900">Classification criteria</h3>
-        <p className="mt-1 text-xs text-slate-500">Choose whether each finding blocks automation, makes it conditional, or is ignored.</p>
-        <div className="mt-4 divide-y divide-slate-100">
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h3 className="text-sm font-black text-gray-900">Classification criteria</h3>
+        <p className="mt-1 text-xs text-gray-500">Choose whether each finding blocks automation, makes it conditional, or is ignored.</p>
+        <div className="mt-4 divide-y divide-gray-100">
           {CHECKS.map(([key, label, help]) => (
             <div key={key} className="grid gap-3 py-3 md:grid-cols-[1fr_180px] md:items-center">
-              <div><p className="text-xs font-bold text-slate-800">{label}</p><p className="mt-1 text-[11px] text-slate-500">{help}</p></div>
-              <select value={modeFor(key)} onChange={(event) => setMode(key, event.target.value as RuleMode)} className="h-9 rounded-lg border border-slate-200 px-2 text-xs font-semibold">
+              <div><p className="text-xs font-bold text-gray-800">{label}</p><p className="mt-1 text-[11px] text-gray-500">{help}</p></div>
+              <select value={modeFor(key)} onChange={(event) => setMode(key, event.target.value as RuleMode)} className="h-9 rounded-lg border border-gray-200 px-2 text-xs font-semibold">
                 <option value="block">Block automation</option>
                 <option value="conditional">Conditional / warning</option>
                 <option value="ignore">Ignore</option>
@@ -348,35 +348,35 @@ export function AutomationClassificationTab({ projectId }: { projectId: number }
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-black text-slate-900">Routing, validators and evidence</h3>
-        <p className="mt-1 text-xs text-slate-500">Use registered capability keys. Separate multiple values with commas.</p>
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h3 className="text-sm font-black text-gray-900">Routing, validators and evidence</h3>
+        <p className="mt-1 text-xs text-gray-500">Use registered capability keys. Separate multiple values with commas.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div><FieldLabel>Primary adapter</FieldLabel><input value={route.primary_adapter || ""} onChange={(event) => setRules((current) => ({ ...current, routing_rules: [{ ...route, primary_adapter: event.target.value }] }))} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" /></div>
-          <div><FieldLabel>Supporting adapters</FieldLabel><input value={(route.supporting_adapters || []).join(", ")} onChange={(event) => setRules((current) => ({ ...current, routing_rules: [{ ...route, supporting_adapters: list(event.target.value) }] }))} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" /></div>
-          <div><FieldLabel>Mandatory validators</FieldLabel><input value={(validators.required || []).join(", ")} onChange={(event) => setRules((current) => ({ ...current, external_validation_rules: [{ ...validators, required: list(event.target.value) }] }))} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" /></div>
-          <div><FieldLabel>Optional validators</FieldLabel><input value={(validators.optional || []).join(", ")} onChange={(event) => setRules((current) => ({ ...current, external_validation_rules: [{ ...validators, optional: list(event.target.value) }] }))} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" /></div>
-          <div className="md:col-span-2"><FieldLabel>Required evidence</FieldLabel><input value={rules.evidence_rules.web_e2e.mandatory.join(", ")} onChange={(event) => setRules((current) => ({ ...current, evidence_rules: { web_e2e: { mandatory: list(event.target.value) } } }))} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" /></div>
+          <div><FieldLabel>Primary adapter</FieldLabel><input value={route.primary_adapter || ""} onChange={(event) => setRules((current) => ({ ...current, routing_rules: [{ ...route, primary_adapter: event.target.value }] }))} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm" /></div>
+          <div><FieldLabel>Supporting adapters</FieldLabel><input value={(route.supporting_adapters || []).join(", ")} onChange={(event) => setRules((current) => ({ ...current, routing_rules: [{ ...route, supporting_adapters: list(event.target.value) }] }))} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm" /></div>
+          <div><FieldLabel>Mandatory validators</FieldLabel><input value={(validators.required || []).join(", ")} onChange={(event) => setRules((current) => ({ ...current, external_validation_rules: [{ ...validators, required: list(event.target.value) }] }))} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm" /></div>
+          <div><FieldLabel>Optional validators</FieldLabel><input value={(validators.optional || []).join(", ")} onChange={(event) => setRules((current) => ({ ...current, external_validation_rules: [{ ...validators, optional: list(event.target.value) }] }))} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm" /></div>
+          <div className="md:col-span-2"><FieldLabel>Required evidence</FieldLabel><input value={rules.evidence_rules.web_e2e.mandatory.join(", ")} onChange={(event) => setRules((current) => ({ ...current, evidence_rules: { web_e2e: { mandatory: list(event.target.value) } } }))} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm" /></div>
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-black text-slate-900">Scoring weights</h3>
-        <p className="mt-1 text-xs text-slate-500">Weights are normalized automatically; totals do not need to equal 100.</p>
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h3 className="text-sm font-black text-gray-900">Scoring weights</h3>
+        <p className="mt-1 text-xs text-gray-500">Weights are normalized automatically; totals do not need to equal 100.</p>
         <div className="mt-4 grid gap-6 lg:grid-cols-2">
           <div>
-            <p className="mb-3 text-xs font-extrabold text-slate-700">Automation value · total {automationWeightTotal}</p>
-            <div className="space-y-2">{AUTOMATION_WEIGHTS.map(([key, label]) => <div key={key} className="flex items-center justify-between gap-3"><label className="text-xs text-slate-600">{label}</label><input type="number" min={0} max={100} value={rules.scoring_weights.automation_value[key]} onChange={(event) => setWeight("automation_value", key, Number(event.target.value))} className="h-8 w-20 rounded border border-slate-200 px-2 text-xs" /></div>)}</div>
+            <p className="mb-3 text-xs font-extrabold text-gray-700">Automation value · total {automationWeightTotal}</p>
+            <div className="space-y-2">{AUTOMATION_WEIGHTS.map(([key, label]) => <div key={key} className="flex items-center justify-between gap-3"><label className="text-xs text-gray-600">{label}</label><input type="number" min={0} max={100} value={rules.scoring_weights.automation_value[key]} onChange={(event) => setWeight("automation_value", key, Number(event.target.value))} className="h-8 w-20 rounded border border-gray-200 px-2 text-xs" /></div>)}</div>
           </div>
           <div>
-            <p className="mb-3 text-xs font-extrabold text-slate-700">Complexity · total {complexityWeightTotal}</p>
-            <div className="space-y-2">{COMPLEXITY_WEIGHTS.map(([key, label]) => <div key={key} className="flex items-center justify-between gap-3"><label className="text-xs text-slate-600">{label}</label><input type="number" min={0} max={100} value={rules.scoring_weights.complexity[key]} onChange={(event) => setWeight("complexity", key, Number(event.target.value))} className="h-8 w-20 rounded border border-slate-200 px-2 text-xs" /></div>)}</div>
+            <p className="mb-3 text-xs font-extrabold text-gray-700">Complexity · total {complexityWeightTotal}</p>
+            <div className="space-y-2">{COMPLEXITY_WEIGHTS.map(([key, label]) => <div key={key} className="flex items-center justify-between gap-3"><label className="text-xs text-gray-600">{label}</label><input type="number" min={0} max={100} value={rules.scoring_weights.complexity[key]} onChange={(event) => setWeight("complexity", key, Number(event.target.value))} className="h-8 w-20 rounded border border-gray-200 px-2 text-xs" /></div>)}</div>
           </div>
         </div>
       </section>
 
       <div className="flex justify-end">
-        <Button onClick={() => void save()} disabled={saving || !name.trim()} className="gap-2 bg-[#1b59f8] text-white">
+        <Button onClick={() => void save()} disabled={saving || !name.trim()} className="gap-2 bg-[#B71920] text-white">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Save &amp; Publish New Version
         </Button>

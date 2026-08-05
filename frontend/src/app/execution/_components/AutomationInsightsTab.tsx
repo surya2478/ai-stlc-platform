@@ -170,17 +170,17 @@ export function AutomationInsightsTab({
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
           <CardContent className="p-4">
-            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
               <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> Automation coverage
             </div>
-            <p className="text-3xl font-bold tabular-nums text-slate-900">
+            <p className="text-3xl font-bold tabular-nums text-gray-900">
               {coverage.pct !== null ? `${coverage.pct}%` : "—"}
             </p>
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-[11px] text-gray-500">
               {coverage.approved} approved script{coverage.approved === 1 ? "" : "s"} covering{" "}
               {coverage.eligible} eligible test case{coverage.eligible === 1 ? "" : "s"}
             </p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
               <div className="h-full bg-emerald-500" style={{ width: `${coverage.pct ?? 0}%` }} />
             </div>
           </CardContent>
@@ -188,24 +188,24 @@ export function AutomationInsightsTab({
 
         <Card>
           <CardContent className="p-4">
-            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-              <TrendingUp className="h-3.5 w-3.5 text-[#1b59f8]" /> Pass-rate trend ({TREND_DAYS}d)
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+              <TrendingUp className="h-3.5 w-3.5 text-[#B71920]" /> Pass-rate trend ({TREND_DAYS}d)
             </div>
             {trend.length < 2 ? (
-              <p className="flex h-24 items-center justify-center text-[11px] text-slate-400">
+              <p className="flex h-24 items-center justify-center text-[11px] text-gray-400">
                 Not enough recent runs to draw a trend.
               </p>
             ) : (
               <ResponsiveContainer width="100%" height={96}>
                 <LineChart data={trend} margin={{ left: -28, right: 4, top: 6, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F4F5F7" />
+                  <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
                   <Tooltip
                     formatter={(value: number) => [`${value}%`, "Pass rate"]}
                     contentStyle={{ fontSize: 11, borderRadius: 8 }}
                   />
-                  <Line type="monotone" dataKey="passRate" stroke="#1b59f8" strokeWidth={2} dot={{ r: 2 }} />
+                  <Line type="monotone" dataKey="passRate" stroke="#B71920" strokeWidth={2} dot={{ r: 2 }} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -214,12 +214,12 @@ export function AutomationInsightsTab({
 
         <Card>
           <CardContent className="p-4">
-            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
               <Radar className="h-3.5 w-3.5 text-orange-500" /> Flaky tests
-              {flakyQuery.isLoading && <span className="text-[10px] font-normal text-slate-400">scanning…</span>}
+              {flakyQuery.isLoading && <span className="text-[10px] font-normal text-gray-400">scanning…</span>}
             </div>
             {flakyTests.length === 0 ? (
-              <p className="flex h-24 items-center justify-center text-[11px] text-slate-400">
+              <p className="flex h-24 items-center justify-center text-[11px] text-gray-400">
                 {flakyQuery.isLoading
                   ? "Checking recent execution history…"
                   : "No pass/fail alternation detected in recent history."}
@@ -229,7 +229,7 @@ export function AutomationInsightsTab({
                 {flakyTests.slice(0, 4).map((f) => (
                   <li key={f.testCaseKey} className="flex items-center gap-2 text-[11px]" title={f.title}>
                     <Badge variant="warning" className="shrink-0 text-[9px]">flaky</Badge>
-                    <span className="truncate font-mono text-slate-700">{f.testCaseKey}</span>
+                    <span className="truncate font-mono text-gray-700">{f.testCaseKey}</span>
                     <span className="ml-auto flex shrink-0 gap-0.5">
                       {f.sequence.map((s, i) => (
                         <span
@@ -251,23 +251,23 @@ export function AutomationInsightsTab({
         <Card className="lg:col-span-8">
           <CardContent className="p-4">
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-800">Execution Results</h3>
+              <h3 className="text-sm font-semibold text-gray-800">Execution Results</h3>
             </div>
 
             <div className="mb-4 grid grid-cols-4 gap-2">
-              <ResultStat label="Total Runs" value={totals.total} colorClass="text-slate-900" />
+              <ResultStat label="Total Runs" value={totals.total} colorClass="text-gray-900" />
               <ResultStat label="Passed" value={totals.passed} suffix={`${totals.passedPct}%`} colorClass="text-emerald-600" />
               <ResultStat label="Failed" value={totals.failed} suffix={`${totals.failedPct}%`} colorClass="text-red-600" />
               <ResultStat label="In Progress" value={totals.inProgress} suffix={`${totals.inProgressPct}%`} colorClass="text-amber-600" />
             </div>
 
             {runs.length === 0 ? (
-              <p className="rounded border border-dashed border-slate-200 px-3 py-4 text-center text-[11px] text-slate-400">No automation runs yet</p>
+              <p className="rounded border border-dashed border-gray-200 px-3 py-4 text-center text-[11px] text-gray-400">No automation runs yet</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="border-b border-slate-100 text-left text-[10px] uppercase tracking-wider text-slate-400">
+                    <tr className="border-b border-gray-100 text-left text-[10px] uppercase tracking-wider text-gray-400">
                       <th className="py-2 pr-3">Run ID</th>
                       <th className="py-2 pr-3">Script Name</th>
                       <th className="py-2 pr-3">Status</th>
@@ -279,14 +279,14 @@ export function AutomationInsightsTab({
                     {runs.slice(0, 8).map((r) => (
                       <tr
                         key={r.id}
-                        className="cursor-pointer border-b border-slate-50 hover:bg-slate-50/60"
+                        className="cursor-pointer border-b border-gray-50 hover:bg-gray-50/60"
                         onClick={() => setSelectedRun(r)}
                       >
-                        <td className="whitespace-nowrap py-2.5 pr-3 font-mono text-[#1b59f8]">{r.execution_id}</td>
-                        <td className="max-w-[200px] truncate py-2.5 pr-3 text-slate-700">{r.suite_name ?? "—"}</td>
+                        <td className="whitespace-nowrap py-2.5 pr-3 font-mono text-[#B71920]">{r.execution_id}</td>
+                        <td className="max-w-[200px] truncate py-2.5 pr-3 text-gray-700">{r.suite_name ?? "—"}</td>
                         <td className="py-2.5 pr-3"><RunVerdictBadge run={r} /></td>
-                        <td className="whitespace-nowrap py-2.5 pr-3 text-slate-500">{formatDate(r.started_at ?? r.created_at)}</td>
-                        <td className="py-2.5 pr-3 text-right font-mono tabular-nums text-slate-500">
+                        <td className="whitespace-nowrap py-2.5 pr-3 text-gray-500">{formatDate(r.started_at ?? r.created_at)}</td>
+                        <td className="py-2.5 pr-3 text-right font-mono tabular-nums text-gray-500">
                           {formatDuration(r.duration_seconds)}
                         </td>
                       </tr>
@@ -297,7 +297,7 @@ export function AutomationInsightsTab({
             )}
 
             <div className="mt-2 text-right">
-              <Link href={buildHref("/execution/dashboard", { project: projectId })} className="inline-flex items-center gap-0.5 text-[11px] text-[#1b59f8] hover:underline">
+              <Link href={buildHref("/execution/dashboard", { project: projectId })} className="inline-flex items-center gap-0.5 text-[11px] text-[#B71920] hover:underline">
                 Full analytics <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -306,18 +306,18 @@ export function AutomationInsightsTab({
 
         {/* Right column: AI Insight + Sync Summary */}
         <div className="space-y-4 lg:col-span-4">
-          <Card className="border-violet-100 bg-gradient-to-br from-violet-50 to-blue-50">
+          <Card className="border-violet-100 bg-gradient-to-br from-violet-50 to-app-brand-75">
             <CardContent className="p-4">
               <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-violet-700">
                 <Sparkles className="h-3.5 w-3.5" /> AI Insight
               </div>
-              <p className="text-[11px] leading-relaxed text-slate-700">{aiInsight}</p>
+              <p className="text-[11px] leading-relaxed text-gray-700">{aiInsight}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="p-4">
-              <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+              <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
                 <RefreshCw className="h-3.5 w-3.5" /> Sync Summary
               </div>
               {(() => {
@@ -338,8 +338,8 @@ export function AutomationInsightsTab({
               })()}
               <SyncRow label="Synced Runs (Today)" value={totals.executedToday.toLocaleString()} ok={totals.executedToday > 0} />
               <SyncRow label="Defects Raised (Today)" value={defectsToday.toLocaleString()} ok={defectsToday === 0} />
-              <div className="mt-2 border-t border-slate-100 pt-2 text-right">
-                <Link href={buildHref("/defects", { project: projectId })} className="inline-flex items-center gap-0.5 text-[10px] text-[#1b59f8] hover:underline">
+              <div className="mt-2 border-t border-gray-100 pt-2 text-right">
+                <Link href={buildHref("/defects", { project: projectId })} className="inline-flex items-center gap-0.5 text-[10px] text-[#B71920] hover:underline">
                   View sync details <ArrowRight className="h-3 w-3" />
                 </Link>
               </div>
@@ -361,9 +361,9 @@ export function AutomationInsightsTab({
 function ResultStat({ label, value, suffix, colorClass }: { label: string; value: number; suffix?: string; colorClass: string }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
       <p className={cn("mt-1 text-xl font-bold tabular-nums", colorClass)}>{value}</p>
-      {suffix && <p className="text-[10px] tabular-nums text-slate-500">{suffix}</p>}
+      {suffix && <p className="text-[10px] tabular-nums text-gray-500">{suffix}</p>}
     </div>
   );
 }
@@ -371,10 +371,10 @@ function ResultStat({ label, value, suffix, colorClass }: { label: string; value
 function SyncRow({ label, value, ok }: { label: string; value: React.ReactNode; ok?: boolean }) {
   return (
     <div className="flex items-center justify-between py-1 text-[11px]">
-      <span className="text-slate-500">{label}</span>
+      <span className="text-gray-500">{label}</span>
       <span className="flex items-center gap-1.5">
-        <span className="font-medium text-slate-700">{value}</span>
-        <span className={cn("h-1.5 w-1.5 rounded-full", ok ? "bg-emerald-500" : "bg-slate-300")} />
+        <span className="font-medium text-gray-700">{value}</span>
+        <span className={cn("h-1.5 w-1.5 rounded-full", ok ? "bg-emerald-500" : "bg-gray-300")} />
       </span>
     </div>
   );

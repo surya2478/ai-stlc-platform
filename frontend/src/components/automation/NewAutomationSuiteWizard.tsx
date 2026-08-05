@@ -65,17 +65,17 @@ function SummaryRow({
 }) {
   const missing = value === null;
   return (
-    <div className="flex items-start justify-between gap-2 border-b border-slate-50 py-1.5 last:border-0">
+    <div className="flex items-start justify-between gap-2 border-b border-gray-50 py-1.5 last:border-0">
       <span className="min-w-0">
-        <span className="block text-[10px] font-bold text-slate-600">{label}</span>
+        <span className="block text-[10px] font-bold text-gray-600">{label}</span>
         {(hint || missing) && (
-          <span className="block text-[9px] font-semibold text-slate-400">{hint}</span>
+          <span className="block text-[9px] font-semibold text-gray-400">{hint}</span>
         )}
       </span>
       <span
         className={cn(
           "shrink-0 text-xs font-extrabold",
-          missing ? "text-slate-300" : "text-slate-900",
+          missing ? "text-gray-300" : "text-gray-900",
         )}
       >
         {missing ? "—" : value}
@@ -209,10 +209,10 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+      <header className="flex items-start justify-between gap-3 border-b border-gray-200 pb-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">New Automation Test Suite</h1>
-          <p className="mt-1 text-xs font-semibold text-slate-500">
+          <h1 className="text-xl font-bold text-gray-900">New Automation Test Suite</h1>
+          <p className="mt-1 text-xs font-semibold text-gray-500">
             Select test cases to create your suite. Applications, frameworks, scripts, environments
             and traceability are inherited automatically.
           </p>
@@ -220,7 +220,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
         <button
           type="button"
           onClick={close}
-          className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+          className="rounded-md p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
           aria-label="Cancel"
         >
           <X className="h-4 w-4" />
@@ -248,9 +248,9 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                   className={cn(
                     "flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition",
                     active
-                      ? "border-[#1b59f8] bg-blue-50/60"
+                      ? "border-[#B71920] bg-app-brand-75/60"
                       : done
-                        ? "border-slate-200 bg-white hover:bg-slate-50"
+                        ? "border-gray-200 bg-white hover:bg-gray-50"
                         : "border-transparent bg-transparent",
                   )}
                 >
@@ -260,8 +260,8 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                       done
                         ? "bg-emerald-500 text-white"
                         : active
-                          ? "bg-[#1b59f8] text-white"
-                          : "bg-slate-100 text-slate-400",
+                          ? "bg-[#B71920] text-white"
+                          : "bg-gray-100 text-gray-400",
                     )}
                   >
                     {done ? <Check className="h-3 w-3" /> : s.index}
@@ -270,12 +270,12 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                     <span
                       className={cn(
                         "block text-[11px] font-bold",
-                        active ? "text-[#1b59f8]" : done ? "text-slate-800" : "text-slate-400",
+                        active ? "text-[#B71920]" : done ? "text-gray-800" : "text-gray-400",
                       )}
                     >
                       {s.title}
                     </span>
-                    <span className="block text-[9px] font-semibold text-slate-400">
+                    <span className="block text-[9px] font-semibold text-gray-400">
                       {s.subtitle}
                     </span>
                   </span>
@@ -291,13 +291,13 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
             <Panel
               title="Select Test Cases (Primary Source)"
               action={
-                <span className="text-[10px] font-bold text-slate-500">
+                <span className="text-[10px] font-bold text-gray-500">
                   Selected: {selected.size}
                   {selected.size > 0 && (
                     <button
                       type="button"
                       onClick={() => setSelected(new Map())}
-                      className="ml-2 font-bold text-[#1b59f8]"
+                      className="ml-2 font-bold text-[#B71920]"
                     >
                       Clear all
                     </button>
@@ -307,7 +307,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
             >
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <div className="relative">
-                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
+                  <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
                   <input
                     value={search}
                     onChange={(e) => {
@@ -315,7 +315,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                       setPage(1);
                     }}
                     placeholder="Search by ID, title or objective..."
-                    className="h-8 w-56 rounded-md border border-slate-200 pl-7 pr-2 text-xs font-semibold"
+                    className="h-8 w-56 rounded-md border border-gray-200 pl-7 pr-2 text-xs font-semibold"
                   />
                 </div>
                 <select
@@ -324,14 +324,14 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                     setStatusFilter(e.target.value);
                     setPage(1);
                   }}
-                  className="h-8 rounded-md border border-slate-200 px-2 text-xs font-semibold"
+                  className="h-8 rounded-md border border-gray-200 px-2 text-xs font-semibold"
                 >
                   <option value="">Any approval status</option>
                   <option value="approved">Approved</option>
                   <option value="pending_approval">Pending approval</option>
                   <option value="draft">Draft</option>
                 </select>
-                <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600">
+                <label className="flex items-center gap-1.5 text-[10px] font-bold text-gray-600">
                   <input
                     type="checkbox"
                     checked={onlyCandidates}
@@ -347,7 +347,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-[10px]">
                   <thead>
-                    <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
+                    <tr className="border-b border-gray-100 text-[9px] font-extrabold uppercase text-gray-400">
                       <th className="w-8 py-1.5" />
                       <th>Test Case</th>
                       <th>Title / Objective</th>
@@ -362,7 +362,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                     {loadingList && (
                       <tr>
                         <td colSpan={8} className="py-8 text-center">
-                          <Loader2 className="mx-auto h-4 w-4 animate-spin text-[#1b59f8]" />
+                          <Loader2 className="mx-auto h-4 w-4 animate-spin text-[#B71920]" />
                         </td>
                       </tr>
                     )}
@@ -374,8 +374,8 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                             key={tc.id}
                             onClick={() => toggle(tc)}
                             className={cn(
-                              "cursor-pointer border-b border-slate-50 hover:bg-slate-50",
-                              checked && "bg-blue-50/40",
+                              "cursor-pointer border-b border-gray-50 hover:bg-gray-50",
+                              checked && "bg-app-brand-75/40",
                             )}
                           >
                             <td className="py-1.5">
@@ -390,18 +390,18 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                                 aria-label={`Select ${tc.test_case_reference ?? tc.id}`}
                               />
                             </td>
-                            <td className="font-bold text-slate-800">
+                            <td className="font-bold text-gray-800">
                               {tc.test_case_reference ?? `TC-${tc.id}`}
                             </td>
-                            <td className="max-w-[240px] truncate font-semibold text-slate-600">
+                            <td className="max-w-[240px] truncate font-semibold text-gray-600">
                               {tc.title ?? "—"}
                             </td>
-                            <td className="font-semibold text-slate-600">{tc.test_type ?? "—"}</td>
-                            <td className="font-semibold text-slate-600">{tc.priority ?? "—"}</td>
-                            <td className="font-semibold text-slate-600">
+                            <td className="font-semibold text-gray-600">{tc.test_type ?? "—"}</td>
+                            <td className="font-semibold text-gray-600">{tc.priority ?? "—"}</td>
+                            <td className="font-semibold text-gray-600">
                               {tc.automation_status ?? "—"}
                             </td>
-                            <td className="font-semibold text-slate-600">
+                            <td className="font-semibold text-gray-600">
                               {tc.linked_script_count > 0 ? (
                                 <span className="flex flex-wrap gap-1">
                                   {tc.frameworks.map((f) => (
@@ -411,7 +411,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                                   ))}
                                 </span>
                               ) : (
-                                <span className="text-slate-300">None</span>
+                                <span className="text-gray-300">None</span>
                               )}
                             </td>
                             <td>
@@ -427,7 +427,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                       })}
                     {!loadingList && candidates.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="py-10 text-center text-xs font-semibold text-slate-400">
+                        <td colSpan={8} className="py-10 text-center text-xs font-semibold text-gray-400">
                           {search || onlyCandidates || statusFilter
                             ? "No test cases match these filters."
                             : "No test cases are available for selection. Create or import test cases in Test Management first."}
@@ -438,7 +438,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                 </table>
               </div>
 
-              <div className="flex items-center justify-between border-t border-slate-100 pt-2 text-[10px] font-semibold text-slate-500">
+              <div className="flex items-center justify-between border-t border-gray-100 pt-2 text-[10px] font-semibold text-gray-500">
                 <span>
                   Showing {candidates.length} of {total} test cases
                 </span>
@@ -447,7 +447,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                     type="button"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="font-bold disabled:text-slate-300"
+                    className="font-bold disabled:text-gray-300"
                   >
                     Previous
                   </button>
@@ -458,14 +458,14 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                     type="button"
                     disabled={page >= pages}
                     onClick={() => setPage((p) => Math.min(pages, p + 1))}
-                    className="font-bold disabled:text-slate-300"
+                    className="font-bold disabled:text-gray-300"
                   >
                     Next
                   </button>
                 </span>
               </div>
 
-              <p className="mt-2 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-[10px] font-semibold text-blue-700">
+              <p className="mt-2 rounded-md border border-app-brand-100 bg-app-brand-75/60 px-3 py-2 text-[10px] font-semibold text-app-brand-700">
                 All application, framework, script, environment, data and traceability information
                 is inherited from the selected test cases and their linked assets.
               </p>
@@ -476,39 +476,39 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
             <Panel title="Suite Identification">
               <div className="space-y-3">
                 <label className="block">
-                  <span className="mb-1 block text-[10px] font-extrabold uppercase text-slate-600">
+                  <span className="mb-1 block text-[10px] font-extrabold uppercase text-gray-600">
                     Suite Name *
                   </span>
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Postpaid Order Provisioning E2E"
-                    className="h-9 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                    className="h-9 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[10px] font-extrabold uppercase text-slate-600">
+                  <span className="mb-1 block text-[10px] font-extrabold uppercase text-gray-600">
                     Description
                   </span>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     rows={3}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold"
                   />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[10px] font-extrabold uppercase text-slate-600">
+                  <span className="mb-1 block text-[10px] font-extrabold uppercase text-gray-600">
                     Tags
                   </span>
                   <input
                     value={tagsText}
                     onChange={(e) => setTagsText(e.target.value)}
                     placeholder="Comma separated, e.g. regression, postpaid"
-                    className="h-9 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                    className="h-9 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold"
                   />
                 </label>
-                <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-semibold text-slate-500">
+                <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-[10px] font-semibold text-gray-500">
                   Domain, product, channel, application, framework, priority, criticality and owner
                   are not captured here — they are inherited from the selected test cases. Suite
                   ownership is derived from you as the creator.
@@ -520,7 +520,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
           {step === 3 && (
             <Panel title="Review Inherited Details">
               {!preview ? (
-                <p className="py-8 text-center text-xs font-semibold text-slate-400">
+                <p className="py-8 text-center text-xs font-semibold text-gray-400">
                   Select test cases to see what this suite inherits.
                 </p>
               ) : (
@@ -562,7 +562,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                   />
                 </div>
               )}
-              <p className="mt-2 text-[9px] font-semibold text-slate-400">
+              <p className="mt-2 text-[9px] font-semibold text-gray-400">
                 All values above are read-only. Correct them at their source, not here.
               </p>
             </Panel>
@@ -571,7 +571,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
           {step === 4 && (
             <Panel title="Resolve Conflicts and Define Scope">
               {!preview || preview.findings.length === 0 ? (
-                <p className="py-8 text-center text-xs font-semibold text-slate-400">
+                <p className="py-8 text-center text-xs font-semibold text-gray-400">
                   No conflicts or missing mappings detected for this selection.
                 </p>
               ) : (
@@ -590,7 +590,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                   <div className="max-h-[340px] overflow-y-auto">
                     <table className="w-full text-left text-[10px]">
                       <thead>
-                        <tr className="border-b border-slate-100 text-[9px] font-extrabold uppercase text-slate-400">
+                        <tr className="border-b border-gray-100 text-[9px] font-extrabold uppercase text-gray-400">
                           <th className="py-1.5">Finding</th>
                           <th>Severity</th>
                           <th>Scope</th>
@@ -599,20 +599,20 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                       </thead>
                       <tbody>
                         {preview.findings.map((f, i) => (
-                          <tr key={i} className="border-b border-slate-50 align-top">
-                            <td className="py-1.5 font-bold text-slate-800">
+                          <tr key={i} className="border-b border-gray-50 align-top">
+                            <td className="py-1.5 font-bold text-gray-800">
                               {humanizeCode(f.gap_type)}
                             </td>
                             <td>
                               <SeverityBadge severity={f.severity as "critical" | "warning"} />
                             </td>
-                            <td className="font-semibold text-slate-500">
+                            <td className="font-semibold text-gray-500">
                               {f.scope === "suite" ? "Suite" : `TC-${f.test_case_id ?? "?"}`}
                             </td>
-                            <td className="max-w-[320px] font-semibold text-slate-600">
+                            <td className="max-w-[320px] font-semibold text-gray-600">
                               {f.reason}
                               {f.remediation && (
-                                <span className="mt-0.5 block text-[9px] text-slate-400">
+                                <span className="mt-0.5 block text-[9px] text-gray-400">
                                   {f.remediation}
                                 </span>
                               )}
@@ -638,22 +638,22 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
           {step === 5 && (
             <Panel title="Execution and Schedule">
               <label className="block max-w-xs">
-                <span className="mb-1 block text-[10px] font-extrabold uppercase text-slate-600">
+                <span className="mb-1 block text-[10px] font-extrabold uppercase text-gray-600">
                   Default Environment
                 </span>
                 <input
                   value={environment}
                   onChange={(e) => setEnvironment(e.target.value)}
                   placeholder="e.g. SIT"
-                  className="h-9 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold"
+                  className="h-9 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold"
                 />
-                <span className="mt-1 block text-[9px] font-semibold text-slate-400">
+                <span className="mt-1 block text-[9px] font-semibold text-gray-400">
                   Applied only where a test case has no environment of its own. It is matched
                   against the environment URLs configured in the Application Registry.
                 </span>
               </label>
-              <div className="mt-3 space-y-1.5 rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5">
-                <p className="text-[10px] font-extrabold uppercase text-slate-600">
+              <div className="mt-3 space-y-1.5 rounded-md border border-gray-200 bg-gray-50 px-3 py-2.5">
+                <p className="text-[10px] font-extrabold uppercase text-gray-600">
                   Configured elsewhere, or not available
                 </p>
                 {[
@@ -674,8 +674,8 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                   ["Agent pool preference", "no agent-pool entity exists"],
                   ["Notification rules", "no notification-rule entity exists"],
                 ].map(([item, reason]) => (
-                  <p key={item} className="text-[10px] font-semibold text-slate-400">
-                    · <span className="text-slate-500">{item}</span> — {reason}
+                  <p key={item} className="text-[10px] font-semibold text-gray-400">
+                    · <span className="text-gray-500">{item}</span> — {reason}
                   </p>
                 ))}
               </div>
@@ -717,7 +717,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                   A suite name is required before the suite can be created.
                 </p>
               )}
-              <p className="mt-2 text-[10px] font-semibold text-slate-500">
+              <p className="mt-2 text-[10px] font-semibold text-gray-500">
                 The suite will be created and immediately evaluated. Its status is derived from the
                 result — it is not chosen here.
               </p>
@@ -731,7 +731,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
             title="Selection Summary"
             action={
               loadingPreview ? (
-                <Loader2 className="h-3 w-3 animate-spin text-[#1b59f8]" />
+                <Loader2 className="h-3 w-3 animate-spin text-[#B71920]" />
               ) : (
                 <Badge variant="info" className="text-[8px]">
                   {selected.size} selected
@@ -740,7 +740,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
             }
           >
             {selected.size === 0 ? (
-              <p className="py-6 text-center text-[10px] font-semibold text-slate-400">
+              <p className="py-6 text-center text-[10px] font-semibold text-gray-400">
                 Select test cases to see the inherited scope.
               </p>
             ) : (
@@ -777,20 +777,20 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
                 {Array.from(selected.values()).map((tc) => (
                   <li
                     key={tc.id}
-                    className="flex items-center justify-between gap-2 border-b border-slate-50 py-1 last:border-0"
+                    className="flex items-center justify-between gap-2 border-b border-gray-50 py-1 last:border-0"
                   >
                     <span className="min-w-0">
-                      <span className="block truncate text-[10px] font-bold text-slate-700">
+                      <span className="block truncate text-[10px] font-bold text-gray-700">
                         {tc.test_case_reference ?? `TC-${tc.id}`}
                       </span>
-                      <span className="block truncate text-[9px] font-semibold text-slate-400">
+                      <span className="block truncate text-[9px] font-semibold text-gray-400">
                         {tc.title ?? ""}
                       </span>
                     </span>
                     <button
                       type="button"
                       onClick={() => toggle(tc)}
-                      className="shrink-0 text-slate-300 hover:text-red-500"
+                      className="shrink-0 text-gray-300 hover:text-red-500"
                       aria-label={`Remove ${tc.test_case_reference ?? tc.id}`}
                     >
                       <X className="h-3 w-3" />
@@ -806,7 +806,7 @@ export function NewAutomationSuiteWizard({ projectId }: { projectId: number }) {
       {/* ── Sticky footer ── */}
       {/* The platform's floating assistant widget sits bottom-right, so the
           primary action needs clearance or it ends up underneath it. */}
-      <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white/95 py-3 pr-[230px] backdrop-blur">
+      <footer className="sticky bottom-0 flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 bg-white/95 py-3 pr-[230px] backdrop-blur">
         <Button variant="outline" size="sm" onClick={close} disabled={submitting}>
           Cancel
         </Button>

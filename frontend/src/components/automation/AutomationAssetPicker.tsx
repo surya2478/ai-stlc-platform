@@ -76,7 +76,7 @@ export function AutomationAssetPicker({
 
   if (loading && !data) {
     return (
-      <div className="flex items-center gap-2 p-6 text-[12px] text-slate-500">
+      <div className="flex items-center gap-2 p-6 text-[12px] text-gray-500">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading automation assets…
       </div>
     );
@@ -93,24 +93,24 @@ export function AutomationAssetPicker({
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center gap-3">
-        <div className="rounded-xl border border-blue-100 bg-blue-50 p-2.5">
-          <Layers3 className="h-6 w-6 text-[#1b59f8]" />
+        <div className="rounded-xl border border-app-brand-100 bg-app-brand-75 p-2.5">
+          <Layers3 className="h-6 w-6 text-[#B71920]" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Automation Assets</h1>
-          <p className="mt-1 text-xs text-slate-500">
+          <h1 className="text-xl font-bold text-gray-900">Automation Assets</h1>
+          <p className="mt-1 text-xs text-gray-500">
             Behaviour, code and review for one test case. Open an asset to work on it.
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <Count label="Total assets" value={data.counts.total} tone="border-slate-200 bg-white text-slate-800" />
+        <Count label="Total assets" value={data.counts.total} tone="border-gray-200 bg-white text-gray-800" />
         <Count label="AI Held" value={data.counts.ai_held} tone="border-amber-200 bg-amber-50 text-amber-900" />
         <Count
           label="Awaiting final approval"
           value={data.counts.pending_final_approval}
-          tone="border-blue-200 bg-blue-50 text-blue-800"
+          tone="border-app-brand-200 bg-app-brand-75 text-app-brand-800"
         />
         <Count
           label="Final approved"
@@ -120,7 +120,7 @@ export function AutomationAssetPicker({
       </div>
 
       {data.counts.pending_final_approval > 0 ? (
-        <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-[11px] text-blue-900">
+        <div className="flex items-start gap-2 rounded-lg border border-app-brand-200 bg-app-brand-75 p-2.5 text-[11px] text-app-brand-900">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             {data.counts.pending_final_approval} asset
@@ -134,7 +134,7 @@ export function AutomationAssetPicker({
       <Panel title={`Assets (${data.assets.length})`}>
         <table className="w-full text-[11px]">
           <thead>
-            <tr className="text-left text-[9px] uppercase text-slate-400">
+            <tr className="text-left text-[9px] uppercase text-gray-400">
               <th className="py-1">Test case</th>
               <th>Suite</th>
               <th>Framework</th>
@@ -148,24 +148,24 @@ export function AutomationAssetPicker({
               <tr
                 key={row.member_id}
                 className={cn(
-                  "border-b border-slate-50 hover:bg-slate-50",
+                  "border-b border-gray-50 hover:bg-gray-50",
                   row.inclusion_status === "excluded" && "opacity-50",
                 )}
               >
                 <td className="py-1.5">
-                  <span className="font-medium text-slate-800">
+                  <span className="font-medium text-gray-800">
                     {row.test_case_display_id ?? `TC-${row.test_case_id}`}
                   </span>
-                  <span className="ml-1 text-slate-500">{row.test_case_title}</span>
+                  <span className="ml-1 text-gray-500">{row.test_case_title}</span>
                 </td>
-                <td className="text-slate-600">
+                <td className="text-gray-600">
                   {row.suite_name} <SuiteStatusBadge status={row.suite_status} />
                 </td>
                 {/* Absent values render as an explained dash, never a zero. */}
-                <td className="text-slate-600" title={row.framework ? undefined : "No linked script, so no framework resolves."}>
+                <td className="text-gray-600" title={row.framework ? undefined : "No linked script, so no framework resolves."}>
                   {row.framework ?? "—"}
                 </td>
-                <td className="text-slate-600">{row.has_script ? "Yes" : "No"}</td>
+                <td className="text-gray-600">{row.has_script ? "Yes" : "No"}</td>
                 <td>
                   <AutonomyCell row={row} />
                 </td>
@@ -173,7 +173,7 @@ export function AutomationAssetPicker({
                   <button
                     type="button"
                     onClick={() => onOpen(row.member_id)}
-                    className="text-[10px] font-bold text-[#1b59f8] hover:underline"
+                    className="text-[10px] font-bold text-[#B71920] hover:underline"
                   >
                     Open asset
                   </button>

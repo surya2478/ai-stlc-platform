@@ -34,7 +34,7 @@ export function PipelineStageRail({ scriptId }: { scriptId: number | null }) {
 
   if (isLoading || !stages) {
     return (
-      <div className="flex items-center gap-2 py-2 text-[11px] text-slate-400">
+      <div className="flex items-center gap-2 py-2 text-[11px] text-gray-400">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Loading pipeline…
       </div>
@@ -58,7 +58,7 @@ export function PipelineStageRail({ scriptId }: { scriptId: number | null }) {
                 "flex flex-col items-center gap-0.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition",
                 stage.state === "done" && "bg-emerald-50 text-emerald-700 border border-emerald-200",
                 stage.state === "failed" && "bg-red-50 text-red-700 border border-red-200",
-                stage.state === "pending" && "bg-slate-50 text-slate-500 border border-slate-200",
+                stage.state === "pending" && "bg-gray-50 text-gray-500 border border-gray-200",
                 isStuck && "ring-2 ring-offset-1 ring-violet-400",
               )}
             >
@@ -73,14 +73,14 @@ export function PipelineStageRail({ scriptId }: { scriptId: number | null }) {
                 {meta.label}
               </span>
               {stage.at && (
-                <span className="text-[9px] font-normal text-slate-400">{formatAt(stage.at)}</span>
+                <span className="text-[9px] font-normal text-gray-400">{formatAt(stage.at)}</span>
               )}
             </div>
             {idx < stages.length - 1 && (
               <div
                 className={cn(
                   "h-px w-4 shrink-0",
-                  stage.state === "done" ? "bg-emerald-300" : "bg-slate-200",
+                  stage.state === "done" ? "bg-emerald-300" : "bg-gray-200",
                 )}
               />
             )}

@@ -275,7 +275,7 @@ function AutomationExecutionContent() {
 
 type KpiTone = "blue" | "emerald" | "orange" | "violet";
 const KPI_TONE: Record<KpiTone, { iconBg: string; iconColor: string }> = {
-  blue:    { iconBg: "bg-blue-500",    iconColor: "text-white" },
+  blue:    { iconBg: "bg-app-brand-500",    iconColor: "text-white" },
   emerald: { iconBg: "bg-emerald-500", iconColor: "text-white" },
   orange:  { iconBg: "bg-orange-500",  iconColor: "text-white" },
   violet:  { iconBg: "bg-violet-500",  iconColor: "text-white" },
@@ -301,8 +301,8 @@ function AutomationKpiCard({
   const deltaCol =
     direction === "up" ? "text-emerald-600"
     : direction === "down" ? "text-red-600"
-    : direction === "flat" ? "text-slate-500"
-    : "text-slate-400";
+    : direction === "flat" ? "text-gray-500"
+    : "text-gray-400";
   return (
     <Card className="shadow-sm">
       <CardContent className="p-3">
@@ -311,9 +311,9 @@ function AutomationKpiCard({
             <Icon className={cn("h-5 w-5", t.iconColor)} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium leading-tight text-slate-500">{label}</p>
-            <p className="mt-0.5 text-xl font-bold leading-tight tabular-nums text-slate-900">
-              {loading ? <span className="inline-block h-6 w-16 animate-pulse rounded bg-slate-100" /> : value}
+            <p className="text-[11px] font-medium leading-tight text-gray-500">{label}</p>
+            <p className="mt-0.5 text-xl font-bold leading-tight tabular-nums text-gray-900">
+              {loading ? <span className="inline-block h-6 w-16 animate-pulse rounded bg-gray-100" /> : value}
             </p>
             {!loading && deltaPct != null && (
               <p className={cn("text-[10px] font-medium leading-tight", deltaCol)}>
@@ -321,7 +321,7 @@ function AutomationKpiCard({
               </p>
             )}
             {!loading && deltaPct == null && footnote && (
-              <p className="text-[10px] leading-tight text-slate-400">{footnote}</p>
+              <p className="text-[10px] leading-tight text-gray-400">{footnote}</p>
             )}
           </div>
         </div>
@@ -349,7 +349,7 @@ function AutomationExecutionTabs({
     { key: "insights", label: "Results & Insights" },
   ];
   return (
-    <div className="border-b border-slate-200">
+    <div className="border-b border-gray-200">
       <div className="flex items-center gap-1 overflow-x-auto">
         {items.map((item) => {
           const active = tab === item.key;
@@ -362,15 +362,15 @@ function AutomationExecutionTabs({
               className={cn(
                 "shrink-0 border-b-2 px-3 py-2 text-xs font-semibold transition -mb-px",
                 active
-                  ? "border-[#1b59f8] text-[#1b59f8]"
-                  : "border-transparent text-slate-500 hover:text-slate-800",
+                  ? "border-[#B71920] text-[#B71920]"
+                  : "border-transparent text-gray-500 hover:text-gray-800",
               )}
             >
               {item.label}
               {item.badge != null && item.badge > 0 && (
                 <span className={cn(
                   "ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-                  active ? "bg-blue-100 text-[#1b59f8]" : "bg-slate-100 text-slate-600",
+                  active ? "bg-app-brand-100 text-[#B71920]" : "bg-gray-100 text-gray-600",
                 )}>
                   {item.badge}
                 </span>
@@ -394,7 +394,7 @@ function ExecutionModeToggle({
     <div
       role="group"
       aria-label="Execution mode"
-      className="inline-flex items-center rounded-lg border border-slate-200 bg-white p-0.5"
+      className="inline-flex items-center rounded-lg border border-gray-200 bg-white p-0.5"
     >
       <ModeButton
         active={mode === "standard"}
@@ -418,7 +418,7 @@ function ModeButton({
   onClick,
   icon,
   label,
-  activeToneClass = "bg-slate-900 text-white hover:bg-slate-800",
+  activeToneClass = "bg-gray-900 text-white hover:bg-gray-800",
 }: {
   active: boolean;
   onClick: () => void;
@@ -433,7 +433,7 @@ function ModeButton({
       aria-pressed={active}
       className={cn(
         "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition",
-        active ? activeToneClass : "text-slate-600 hover:bg-slate-50",
+        active ? activeToneClass : "text-gray-600 hover:bg-gray-50",
       )}
     >
       {icon}
@@ -479,7 +479,7 @@ function AiAssistedInfoCard() {
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="flex h-96 items-center justify-center text-slate-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading…</div>}>
+    <Suspense fallback={<div className="flex h-96 items-center justify-center text-gray-400"><Loader2 className="mr-2 h-5 w-5 animate-spin" />Loading…</div>}>
       <AutomationExecutionContent />
     </Suspense>
   );

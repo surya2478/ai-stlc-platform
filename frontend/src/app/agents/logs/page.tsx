@@ -36,21 +36,21 @@ function LevelIcon({ level }: { level: string }) {
   const s = level.toLowerCase();
   if (s === "error" || s === "critical") return <AlertTriangle size={13} className="text-rose-500 shrink-0 mt-0.5" />;
   if (s === "warning") return <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />;
-  if (s === "info") return <Info size={13} className="text-blue-500 shrink-0 mt-0.5" />;
-  return <Bug size={13} className="text-slate-400 shrink-0 mt-0.5" />;
+  if (s === "info") return <Info size={13} className="text-app-brand-500 shrink-0 mt-0.5" />;
+  return <Bug size={13} className="text-gray-400 shrink-0 mt-0.5" />;
 }
 
 function LevelBadge({ level }: { level: string }) {
   const s = level.toLowerCase();
   const map: Record<string, string> = {
-    debug:    "bg-slate-50 text-slate-500 border-slate-150",
-    info:     "bg-blue-50 text-blue-600 border-blue-150",
+    debug:    "bg-gray-50 text-gray-500 border-gray-150",
+    info:     "bg-app-brand-75 text-app-brand-600 border-app-brand-150",
     warning:  "bg-amber-50 text-amber-600 border-amber-150",
     error:    "bg-rose-50 text-rose-600 border-rose-150",
     critical: "bg-rose-100 text-rose-700 border-rose-200 font-bold",
   };
   return (
-    <span className={cn("px-1.5 py-0.5 rounded text-[10px] uppercase font-bold border tracking-wider select-none shrink-0", map[s] ?? "bg-slate-50 text-slate-500 border-slate-150")}>
+    <span className={cn("px-1.5 py-0.5 rounded text-[10px] uppercase font-bold border tracking-wider select-none shrink-0", map[s] ?? "bg-gray-50 text-gray-500 border-gray-150")}>
       {level}
     </span>
   );
@@ -63,34 +63,34 @@ function LogEntry({ log }: { log: AgentLog }) {
 
   return (
     <div className={cn(
-      "border-b border-slate-100 last:border-0",
+      "border-b border-gray-100 last:border-0",
       isErr && "bg-rose-50/20"
     )}>
       <div
         className={cn(
           "flex items-start gap-3 px-4 py-3 font-semibold text-xs transition-colors",
-          hasData ? "cursor-pointer hover:bg-slate-50/50" : ""
+          hasData ? "cursor-pointer hover:bg-gray-50/50" : ""
         )}
         onClick={() => hasData && setExpanded(!expanded)}
       >
-        <span className="text-[10px] text-slate-400 font-mono shrink-0 mt-0.5 w-18 select-none">
+        <span className="text-[10px] text-gray-400 font-mono shrink-0 mt-0.5 w-18 select-none">
           {new Date(log.created_at).toLocaleTimeString()}
         </span>
         <LevelIcon level={log.level} />
         <LevelBadge level={log.level} />
         {log.step && (
-          <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0 mt-0.5">[{log.step}]</span>
+          <span className="text-[10px] font-mono font-bold text-gray-400 shrink-0 mt-0.5">[{log.step}]</span>
         )}
-        <span className="text-slate-700 flex-1 leading-relaxed break-words">{log.message}</span>
+        <span className="text-gray-700 flex-1 leading-relaxed break-words">{log.message}</span>
         {hasData && (
-          <span className="text-slate-350 shrink-0 mt-0.5">
+          <span className="text-gray-350 shrink-0 mt-0.5">
             {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
           </span>
         )}
       </div>
       {expanded && hasData && (
         <div className="px-4 pb-3.5 pt-0.5 pl-24 animate-in slide-in-from-top-1 duration-100">
-          <pre className="text-[11px] bg-slate-900 text-slate-100 p-3.5 rounded-lg overflow-x-auto max-h-56 font-mono leading-relaxed shadow-inner">
+          <pre className="text-[11px] bg-gray-900 text-gray-100 p-3.5 rounded-lg overflow-x-auto max-h-56 font-mono leading-relaxed shadow-inner">
             {JSON.stringify(log.data, null, 2)}
           </pre>
         </div>
@@ -115,19 +115,19 @@ function RunPanel({
     <div
       onClick={onSelect}
       className={cn(
-        "px-4 py-3 cursor-pointer border-b border-slate-100 hover:bg-slate-50/50 transition-colors select-none font-semibold",
-        selected ? "bg-[#1b59f8]/5 border-l-2 border-l-[#1b59f8]" : ""
+        "px-4 py-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50/50 transition-colors select-none font-semibold",
+        selected ? "bg-[#B71920]/5 border-l-2 border-l-[#B71920]" : ""
       )}
     >
       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
         <Badge variant={getStatusVariant(run.status)} className="capitalize text-[9px] py-0 px-1.5">
           {run.status}
         </Badge>
-        <span className="text-[10px] font-mono text-slate-400 font-bold">#{run.id}</span>
+        <span className="text-[10px] font-mono text-gray-400 font-bold">#{run.id}</span>
         {run.status === "failed" && <AlertTriangle size={12} className="text-rose-500 shrink-0" />}
       </div>
-      <p className="text-xs font-bold text-slate-800 truncate">{label}</p>
-      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400 font-bold">
+      <p className="text-xs font-bold text-gray-800 truncate">{label}</p>
+      <div className="flex items-center gap-2 mt-1.5 text-[10px] text-gray-400 font-bold">
         <span>{new Date(run.created_at).toLocaleDateString()} {new Date(run.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
         <span>·</span>
         <span className="flex items-center gap-0.5"><Clock className="h-3 w-3" /> {durSec}</span>
@@ -220,17 +220,17 @@ function AgentLogsContent() {
       {/* ── Title & Global Controls ────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            <Cpu className="h-6 w-6 text-[#1b59f8]" />
+          <div className="rounded-xl bg-app-brand-75 border border-app-brand-100 p-2.5">
+            <Cpu className="h-6 w-6 text-[#B71920]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Agent Run Logs</h1>
-            <p className="text-xs text-slate-500 mt-1">Detailed execution trace, debugging outputs, and LLM telemetry for every agent task</p>
+            <h1 className="text-xl font-bold text-gray-900">Agent Run Logs</h1>
+            <p className="text-xs text-gray-500 mt-1">Detailed execution trace, debugging outputs, and LLM telemetry for every agent task</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadRuns} className="h-8 w-8 p-0 border-slate-200">
-            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500", loading && "animate-spin")} />
+          <Button variant="outline" size="sm" onClick={loadRuns} className="h-8 w-8 p-0 border-gray-200">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-gray-500", loading && "animate-spin")} />
           </Button>
         </div>
       </div>
@@ -238,14 +238,14 @@ function AgentLogsContent() {
       {selectedProject && (
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4" style={{ minHeight: "70vh" }}>
           {/* ── Left side: Run List Panel ────────────────────────────────────────── */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
-            <div className="px-4 py-3.5 border-b border-slate-100 bg-slate-50/50 space-y-2.5">
-              <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Runs ({filteredRuns.length})</h2>
+          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-full">
+            <div className="px-4 py-3.5 border-b border-gray-100 bg-gray-50/50 space-y-2.5">
+              <h2 className="text-xs font-bold text-gray-800 uppercase tracking-wider">Runs ({filteredRuns.length})</h2>
               
               <select
                 value={filterAgent}
                 onChange={(e) => setFilterAgent(e.target.value)}
-                className="w-full text-xs font-semibold border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none bg-white"
+                className="w-full text-xs font-semibold border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none bg-white"
               >
                 <option value="all">All Agents</option>
                 {uniqueAgents.map(a => (
@@ -256,17 +256,17 @@ function AgentLogsContent() {
 
             {loading ? (
               <div className="flex-1 flex items-center justify-center py-12">
-                <RefreshCw className="h-6 w-6 animate-spin text-[#1b59f8]" />
+                <RefreshCw className="h-6 w-6 animate-spin text-[#B71920]" />
               </div>
             ) : filteredRuns.length === 0 ? (
               <div className="flex-1 flex items-center justify-center py-16 text-center p-4">
                 <div>
-                  <Cpu className="mx-auto text-slate-200 mb-3 h-8 w-8" />
-                  <p className="text-xs font-bold text-slate-450">No runs logged yet</p>
+                  <Cpu className="mx-auto text-gray-200 mb-3 h-8 w-8" />
+                  <p className="text-xs font-bold text-gray-450">No runs logged yet</p>
                 </div>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto max-h-[60vh] divide-y divide-slate-50">
+              <div className="flex-1 overflow-y-auto max-h-[60vh] divide-y divide-gray-50">
                 {filteredRuns.map(run => (
                   <RunPanel
                     key={run.id}
@@ -280,18 +280,18 @@ function AgentLogsContent() {
           </div>
 
           {/* ── Right side: Log Details ─────────────────────────────────────────── */}
-          <div className="lg:col-span-3 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-full">
+          <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-full">
             {selectedRun ? (
               <>
                 {/* Header detail */}
-                <div className="px-4 py-3.5 border-b border-slate-100 bg-slate-50/50">
+                <div className="px-4 py-3.5 border-b border-gray-100 bg-gray-50/50">
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div>
-                      <p className="text-xs font-bold text-slate-850">
+                      <p className="text-xs font-bold text-gray-850">
                         {AGENT_LABELS[selectedRun.agent_name] ?? selectedRun.agent_name}
-                        <span className="text-slate-400 font-mono font-bold"> #{selectedRun.id}</span>
+                        <span className="text-gray-400 font-mono font-bold"> #{selectedRun.id}</span>
                       </p>
-                      <p className="text-[10px] text-slate-400 font-bold mt-0.5 leading-relaxed">
+                      <p className="text-[10px] text-gray-400 font-bold mt-0.5 leading-relaxed">
                         {new Date(selectedRun.created_at).toLocaleString()}
                         {selectedRun.duration_seconds !== undefined && ` · ${selectedRun.duration_seconds.toFixed(1)}s`}
                         {selectedRun.llm_model && ` · ${selectedRun.llm_model}`}
@@ -311,8 +311,8 @@ function AgentLogsContent() {
                   
                   {/* Status count filters */}
                   {logs.length > 0 && (
-                    <div className="flex items-center gap-3.5 mt-3 border-t border-slate-100/50 pt-2 flex-wrap">
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{logStats.total} entries</span>
+                    <div className="flex items-center gap-3.5 mt-3 border-t border-gray-100/50 pt-2 flex-wrap">
+                      <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">{logStats.total} entries</span>
                       {logStats.errors > 0 && (
                         <span className="text-[10px] font-extrabold text-rose-500 bg-rose-50 border border-rose-100 rounded px-1.5 py-0.5">{logStats.errors} error{logStats.errors !== 1 ? "s" : ""}</span>
                       )}
@@ -320,7 +320,7 @@ function AgentLogsContent() {
                         <span className="text-[10px] font-extrabold text-amber-500 bg-amber-50 border border-amber-100 rounded px-1.5 py-0.5">{logStats.warnings} warning{logStats.warnings !== 1 ? "s" : ""}</span>
                       )}
                       
-                      <div className="sm:ml-auto flex gap-1 rounded bg-slate-100/80 p-0.5 w-fit border border-slate-200">
+                      <div className="sm:ml-auto flex gap-1 rounded bg-gray-100/80 p-0.5 w-fit border border-gray-200">
                         {["all", "info", "warning", "error"].map(l => (
                           <button
                             key={l}
@@ -328,8 +328,8 @@ function AgentLogsContent() {
                             className={cn(
                               "px-2 py-0.5 text-[9px] font-bold rounded capitalize transition-all select-none",
                               filterLevel === l 
-                                ? "bg-slate-800 text-white shadow-sm" 
-                                : "text-slate-500 hover:text-slate-800"
+                                ? "bg-gray-800 text-white shadow-sm" 
+                                : "text-gray-500 hover:text-gray-800"
                             )}
                           >
                             {l}
@@ -343,21 +343,21 @@ function AgentLogsContent() {
                 {/* Logs listings viewport */}
                 {logsLoading ? (
                   <div className="flex-1 flex items-center justify-center py-12">
-                    <RefreshCw className="h-6 w-6 animate-spin text-[#1b59f8]" />
+                    <RefreshCw className="h-6 w-6 animate-spin text-[#B71920]" />
                   </div>
                 ) : filteredLogs.length === 0 ? (
                   <div className="flex-1 flex items-center justify-center py-16 text-center p-4">
                     {logs.length === 0 ? (
                       <div>
-                        <CheckCircle size={28} className="mx-auto text-slate-200 mb-2" />
-                        <p className="text-xs font-bold text-slate-450">No logs generated for this run</p>
+                        <CheckCircle size={28} className="mx-auto text-gray-200 mb-2" />
+                        <p className="text-xs font-bold text-gray-450">No logs generated for this run</p>
                       </div>
                     ) : (
-                      <p className="text-xs font-bold text-slate-450">No {filterLevel} logs found</p>
+                      <p className="text-xs font-bold text-gray-450">No {filterLevel} logs found</p>
                     )}
                   </div>
                 ) : (
-                  <div className="flex-1 overflow-y-auto max-h-[60vh] font-medium divide-y divide-slate-100">
+                  <div className="flex-1 overflow-y-auto max-h-[60vh] font-medium divide-y divide-gray-100">
                     {filteredLogs.map(log => (
                       <LogEntry key={log.id} log={log} />
                     ))}
@@ -367,9 +367,9 @@ function AgentLogsContent() {
             ) : (
               <div className="flex-1 flex items-center justify-center py-16 text-center p-4">
                 <div>
-                  <Cpu className="mx-auto text-slate-200 mb-3 h-9 w-9" />
-                  <p className="text-xs font-bold text-slate-450">Select an execution run to view logs</p>
-                  <p className="text-[10px] text-slate-400 font-semibold mt-1">Select one of the runs from the left panel catalog</p>
+                  <Cpu className="mx-auto text-gray-200 mb-3 h-9 w-9" />
+                  <p className="text-xs font-bold text-gray-450">Select an execution run to view logs</p>
+                  <p className="text-[10px] text-gray-400 font-semibold mt-1">Select one of the runs from the left panel catalog</p>
                 </div>
               </div>
             )}
@@ -383,8 +383,8 @@ function AgentLogsContent() {
 export default function AgentLogsPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
-        <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
+      <div className="flex h-64 items-center justify-center text-gray-400 text-xs font-semibold">
+        <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mr-2" />
         Loading Agent Logs...
       </div>
     }>

@@ -285,19 +285,19 @@ function SidebarContent() {
   };
 
   if (!mounted) {
-    return <aside className="flex w-60 flex-col bg-[#091225] border-r border-[#13223f] text-slate-400" />;
+    return <aside className="flex w-60 flex-col bg-sidebar border-r border-app-sidebar-border text-app-sidebar-muted" />;
   }
 
   return (
     <aside
       className={cn(
-        "flex flex-col border-r border-[#13223f] bg-[#091225] text-slate-400 transition-all duration-300 ease-in-out select-none",
+        "flex flex-col border-r border-app-sidebar-border bg-sidebar text-app-sidebar-muted transition-all duration-300 ease-in-out select-none",
         collapsed ? "w-16" : "w-60"
       )}
     >
       {/* Logo */}
-      <div className="flex h-14 items-center gap-2.5 border-b border-[#13223f] px-4 overflow-hidden shrink-0">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-cyan-400 to-indigo-500 shadow-md">
+      <div className="flex h-14 items-center gap-2.5 border-b border-app-sidebar-border px-4 overflow-hidden shrink-0">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-tr from-app-brand-500 to-app-brand-700 shadow-md">
           <Bot className="h-4.5 w-4.5 text-white" />
         </div>
         {!collapsed && (
@@ -305,7 +305,7 @@ function SidebarContent() {
             <span className="font-bold text-sm text-white leading-tight tracking-wide truncate">
               QAI
             </span>
-            <span className="text-[10px] font-medium text-cyan-400 tracking-wider uppercase leading-none mt-0.5">
+            <span className="text-[10px] font-medium text-app-sidebar-muted tracking-wider uppercase leading-none mt-0.5">
               QAI Command Center
             </span>
           </div>
@@ -335,12 +335,12 @@ function SidebarContent() {
                     "mb-1.5 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-150",
                     collapsed && "justify-center px-0",
                     groupActive
-                      ? "bg-[#1b59f8] text-white"
-                      : "text-slate-300 hover:bg-[#13223f] hover:text-white",
+                      ? "bg-[#B71920] text-white"
+                      : "text-app-sidebar-muted hover:bg-app-sidebar-hover hover:text-white",
                   )}
                 >
                   <group.icon
-                    className={cn("h-4 w-4 shrink-0", groupActive ? "text-white" : "text-slate-400")}
+                    className={cn("h-4 w-4 shrink-0", groupActive ? "text-white" : "text-app-sidebar-muted")}
                   />
                   {!collapsed && <span className="flex-1 truncate text-left">{group.group}</span>}
                 </Link>
@@ -356,14 +356,14 @@ function SidebarContent() {
                   className={cn(
                     "mb-1.5 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-150",
                     groupActive
-                      ? "bg-[#13223f] text-white"
-                      : "text-slate-300 hover:bg-[#13223f] hover:text-white"
+                      ? "bg-app-sidebar-active text-white"
+                      : "text-app-sidebar-muted hover:bg-app-sidebar-hover hover:text-white"
                   )}
                 >
                   <group.icon
                     className={cn(
                       "h-4 w-4 shrink-0",
-                      groupActive ? "text-white" : "text-slate-400"
+                      groupActive ? "text-white" : "text-app-sidebar-muted"
                     )}
                   />
                   <span className="truncate flex-1 text-left">{group.group}</span>
@@ -371,12 +371,12 @@ function SidebarContent() {
                     className={cn(
                       "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
                       isGroupExpanded(group.group) ? "rotate-0" : "-rotate-90",
-                      groupActive ? "text-white/70" : "text-slate-500"
+                      groupActive ? "text-white/70" : "text-white/50"
                     )}
                   />
                 </button>
               ) : (
-                <div className="border-t border-[#13223f]/50 my-3 first:hidden" />
+                <div className="border-t border-app-sidebar-border my-3 first:hidden" />
               )}
               <div id={groupId} className={cn("space-y-0.5", !showItems && "hidden")}>
                 {group.items.map((item) => {
@@ -412,13 +412,13 @@ function SidebarContent() {
       </nav>
 
       {/* Footer / Collapse Button */}
-      <div className="border-t border-[#13223f] p-3 flex items-center justify-between shrink-0">
+      <div className="border-t border-app-sidebar-border p-3 flex items-center justify-between shrink-0">
         {!collapsed && (
-          <p className="text-[10px] text-slate-500 font-mono pl-1">v1.0.0 — Enterprise</p>
+          <p className="text-[10px] text-white/50 font-mono pl-1">v1.0.0 — Enterprise</p>
         )}
         <button
           onClick={toggleCollapse}
-          className="flex h-7 w-7 items-center justify-center rounded-lg border border-[#13223f] hover:bg-[#13223f] hover:text-white transition-colors ml-auto"
+          className="flex h-7 w-7 items-center justify-center rounded-lg border border-app-sidebar-border hover:bg-app-sidebar-hover hover:text-white transition-colors ml-auto"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -448,11 +448,11 @@ function LeafItem({ item, pathname, currentQuery, projectId, collapsed, nested }
         "flex items-center gap-3 rounded-lg text-xs font-medium transition-all duration-150",
         nested ? "pl-8 pr-3 py-1.5" : "px-3 py-2",
         active
-          ? "bg-[#1b59f8] text-white shadow-sm"
-          : "text-slate-400 hover:bg-[#13223f] hover:text-white"
+          ? "bg-[#B71920] text-white shadow-sm"
+          : "text-app-sidebar-muted hover:bg-app-sidebar-hover hover:text-white"
       )}
     >
-      <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-white" : "text-slate-400")} />
+      <item.icon className={cn("h-4 w-4 shrink-0", active ? "text-white" : "text-app-sidebar-muted")} />
       {!collapsed && <span className="truncate flex-1">{item.label}</span>}
       {!collapsed && active && <ChevronRight className="ml-auto h-3 w-3 opacity-60" />}
     </Link>
@@ -484,8 +484,8 @@ function ParentItem({ item, pathname, currentQuery, projectId, collapsed, expand
         className={cn(
           "flex items-center justify-center rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150",
           parentActive
-            ? "bg-[#1b59f8] text-white shadow-sm"
-            : "text-slate-400 hover:bg-[#13223f] hover:text-white"
+            ? "bg-[#B71920] text-white shadow-sm"
+            : "text-app-sidebar-muted hover:bg-app-sidebar-hover hover:text-white"
         )}
       >
         <item.icon className="h-4 w-4 shrink-0" />
@@ -503,19 +503,19 @@ function ParentItem({ item, pathname, currentQuery, projectId, collapsed, expand
         className={cn(
           "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all duration-150",
           directHrefActive
-            ? "bg-[#1b59f8] text-white shadow-sm"
+            ? "bg-[#B71920] text-white shadow-sm"
             : parentActive
-            ? "bg-[#13223f] text-white"
-            : "text-slate-400 hover:bg-[#13223f] hover:text-white"
+            ? "bg-app-sidebar-active text-white"
+            : "text-app-sidebar-muted hover:bg-app-sidebar-hover hover:text-white"
         )}
       >
-        <item.icon className={cn("h-4 w-4 shrink-0", parentActive ? "text-white" : "text-slate-400")} />
+        <item.icon className={cn("h-4 w-4 shrink-0", parentActive ? "text-white" : "text-app-sidebar-muted")} />
         <span className="truncate flex-1 text-left">{item.label}</span>
         <ChevronDown
           className={cn(
             "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
             expanded ? "rotate-0" : "-rotate-90",
-            parentActive ? "text-white/70" : "text-slate-500"
+            parentActive ? "text-white/70" : "text-white/50"
           )}
         />
       </button>
@@ -540,7 +540,7 @@ function ParentItem({ item, pathname, currentQuery, projectId, collapsed, expand
 
 export function Sidebar() {
   return (
-    <Suspense fallback={<aside className="flex w-60 flex-col bg-[#091225] border-r border-[#13223f] text-slate-400" />}>
+    <Suspense fallback={<aside className="flex w-60 flex-col bg-sidebar border-r border-app-sidebar-border text-app-sidebar-muted" />}>
       <SidebarContent />
     </Suspense>
   );

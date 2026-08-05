@@ -80,7 +80,7 @@ export function LifecycleStepper({ current, variant = "internal" }: Props) {
                 "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition",
                 isDone && "bg-emerald-50 text-emerald-700 border border-emerald-200",
                 isCurrent && "bg-violet-100 text-violet-800 border border-violet-300",
-                isUpcoming && "bg-slate-50 text-slate-500 border border-slate-200",
+                isUpcoming && "bg-gray-50 text-gray-500 border border-gray-200",
               )}
             >
               <Icon className="h-3 w-3" />
@@ -90,7 +90,7 @@ export function LifecycleStepper({ current, variant = "internal" }: Props) {
               <div
                 className={cn(
                   "h-px w-4 shrink-0",
-                  isDone ? "bg-emerald-300" : "bg-slate-200",
+                  isDone ? "bg-emerald-300" : "bg-gray-200",
                 )}
               />
             )}

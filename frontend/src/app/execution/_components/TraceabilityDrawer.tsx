@@ -43,29 +43,29 @@ function NodeCard({ node, projectId }: { node: LineageNode; projectId: string | 
   const body = (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5",
-        href && "transition-colors hover:border-blue-200 hover:bg-blue-50/40",
+        "flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5",
+        href && "transition-colors hover:border-app-brand-200 hover:bg-app-brand-75/40",
       )}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 ring-1 ring-slate-100">
-        <Icon className="h-4 w-4 text-slate-500" />
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 ring-1 ring-gray-100">
+        <Icon className="h-4 w-4 text-gray-500" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{meta.label}</span>
-          {node.ref && <span className="truncate font-mono text-[11px] text-[#1b59f8]">{node.ref}</span>}
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{meta.label}</span>
+          {node.ref && <span className="truncate font-mono text-[11px] text-[#B71920]">{node.ref}</span>}
         </div>
-        <p className="truncate text-xs font-medium text-slate-800">{node.title ?? `#${node.entity_id}`}</p>
+        <p className="truncate text-xs font-medium text-gray-800">{node.title ?? `#${node.entity_id}`}</p>
       </div>
       {node.status && <ExecutionStatusBadge status={node.status} className="shrink-0 text-[10px]" />}
-      {href && <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-slate-300" />}
+      {href && <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-gray-300" />}
     </div>
   );
   return href ? <Link href={href}>{body}</Link> : body;
 }
 
 function ChainConnector() {
-  return <div className="ml-7 h-3 w-px bg-slate-200" aria-hidden />;
+  return <div className="ml-7 h-3 w-px bg-gray-200" aria-hidden />;
 }
 
 /**
@@ -101,7 +101,7 @@ export function TraceabilityDrawer({
         <DrawerHeader>
           <div>
             <DrawerTitle className="flex items-center gap-2">
-              <Network className="h-4 w-4 text-[#1b59f8]" /> Traceability chain
+              <Network className="h-4 w-4 text-[#B71920]" /> Traceability chain
             </DrawerTitle>
             <DrawerDescription>
               {target?.label ?? `${selfMeta?.label ?? target?.entityType} #${target?.entityId}`} — upstream origins and downstream outcomes
@@ -120,11 +120,11 @@ export function TraceabilityDrawer({
           {chain && (
             <>
               <section>
-                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   Upstream — where this came from
                 </h3>
                 {upstream.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-slate-200 p-3 text-center text-[11px] text-slate-400">
+                  <p className="rounded-lg border border-dashed border-gray-200 p-3 text-center text-[11px] text-gray-400">
                     No upstream links recorded. Artifacts created before lineage tracking won&apos;t have them.
                   </p>
                 ) : (
@@ -140,19 +140,19 @@ export function TraceabilityDrawer({
               </section>
 
               {/* The artifact itself */}
-              <div className="flex items-center gap-2 rounded-lg border-2 border-blue-200 bg-blue-50/50 px-3 py-2.5">
+              <div className="flex items-center gap-2 rounded-lg border-2 border-app-brand-200 bg-app-brand-75/50 px-3 py-2.5">
                 <Badge variant="info" className="text-[10px]">This artifact</Badge>
-                <span className="truncate text-xs font-semibold text-slate-800">
+                <span className="truncate text-xs font-semibold text-gray-800">
                   {target?.label ?? `${selfMeta?.label ?? target?.entityType} #${target?.entityId}`}
                 </span>
               </div>
 
               <section>
-                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                   Downstream — what this produced
                 </h3>
                 {downstream.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-slate-200 p-3 text-center text-[11px] text-slate-400">
+                  <p className="rounded-lg border border-dashed border-gray-200 p-3 text-center text-[11px] text-gray-400">
                     Nothing downstream yet.
                   </p>
                 ) : (

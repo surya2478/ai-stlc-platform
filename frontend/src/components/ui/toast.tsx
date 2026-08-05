@@ -29,8 +29,8 @@ const ToastContext = React.createContext<ToastContextValue | null>(null);
 
 const VARIANT_STYLES: Record<ToastVariant, { border: string; icon: React.ReactNode }> = {
   default: {
-    border: "border-slate-200",
-    icon: <Info className="h-4 w-4 text-[#1b59f8]" />,
+    border: "border-gray-200",
+    icon: <Info className="h-4 w-4 text-[#B71920]" />,
   },
   success: {
     border: "border-emerald-200",
@@ -82,11 +82,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             >
               <div className="mt-0.5 shrink-0">{style.icon}</div>
               <div className="min-w-0 flex-1">
-                <ToastPrimitive.Title className="text-sm font-semibold text-slate-900">
+                <ToastPrimitive.Title className="text-sm font-semibold text-gray-900">
                   {t.title}
                 </ToastPrimitive.Title>
                 {t.description && (
-                  <ToastPrimitive.Description className="mt-0.5 text-xs text-slate-500 break-words">
+                  <ToastPrimitive.Description className="mt-0.5 text-xs text-gray-500 break-words">
                     {t.description}
                   </ToastPrimitive.Description>
                 )}
@@ -94,14 +94,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                   <ToastPrimitive.Action altText={t.action.label} asChild>
                     <button
                       onClick={t.action.onClick}
-                      className="mt-2 text-xs font-semibold text-[#1b59f8] hover:underline"
+                      className="mt-2 text-xs font-semibold text-[#B71920] hover:underline"
                     >
                       {t.action.label}
                     </button>
                   </ToastPrimitive.Action>
                 )}
               </div>
-              <ToastPrimitive.Close className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+              <ToastPrimitive.Close className="shrink-0 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
                 <X className="h-3.5 w-3.5" />
               </ToastPrimitive.Close>
             </ToastPrimitive.Root>

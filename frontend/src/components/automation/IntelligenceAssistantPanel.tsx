@@ -167,14 +167,14 @@ export function IntelligenceAssistantPanel({ open, onClose, script }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
             aria-label="Close panel"
           >
             <X className="h-4 w-4" />
           </button>
         </DrawerHeader>
 
-        <div className="border-b border-slate-100 px-3 pt-2 shrink-0">
+        <div className="border-b border-gray-100 px-3 pt-2 shrink-0">
           <div className="flex gap-1 overflow-x-auto">
             {TABS.map((t) => {
               const Icon = t.icon;
@@ -188,7 +188,7 @@ export function IntelligenceAssistantPanel({ open, onClose, script }: Props) {
                     "flex shrink-0 items-center gap-1.5 rounded-t-md px-3 py-2 text-[11px] font-semibold transition",
                     active
                       ? "border-b-2 border-violet-600 text-violet-700"
-                      : "text-slate-500 hover:text-slate-800",
+                      : "text-gray-500 hover:text-gray-800",
                   )}
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -237,14 +237,14 @@ export function IntelligenceAssistantPanel({ open, onClose, script }: Props) {
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="flex h-48 items-center justify-center p-6 text-center">
-      <p className="max-w-sm text-xs text-slate-500">{message}</p>
+      <p className="max-w-sm text-xs text-gray-500">{message}</p>
     </div>
   );
 }
 
 function LoadingState() {
   return (
-    <div className="flex h-48 items-center justify-center p-6 text-center text-xs text-slate-400">
+    <div className="flex h-48 items-center justify-center p-6 text-center text-xs text-gray-400">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
       Analyzing script…
     </div>
@@ -268,7 +268,7 @@ function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => voi
 function severityClasses(s: RecommendationSeverity): string {
   if (s === "high") return "bg-red-50 text-red-700 border-red-200";
   if (s === "medium") return "bg-amber-50 text-amber-700 border-amber-200";
-  return "bg-slate-50 text-slate-600 border-slate-200";
+  return "bg-gray-50 text-gray-600 border-gray-200";
 }
 
 function ActionRow({
@@ -304,7 +304,7 @@ function ActionRow({
   if (state === "dismissed") {
     return (
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] text-slate-500">Dismissed · logged for audit</div>
+        <div className="text-[11px] text-gray-500">Dismissed · logged for audit</div>
         <button
           type="button"
           onClick={() => onAction(id, "open")}
@@ -344,14 +344,14 @@ function RecommendationsTab({
   }
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-gray-500">
         Combined view of the highest-impact suggestions. Each is explainable, scoped to a script
         location, and applied only as a draft change.
       </p>
       {data.map((r) => (
-        <div key={r.id} className="rounded-lg border border-slate-200 p-3">
+        <div key={r.id} className="rounded-lg border border-gray-200 p-3">
           <div className="mb-1.5 flex items-start justify-between gap-2">
-            <p className="text-xs font-semibold text-slate-800">{r.title}</p>
+            <p className="text-xs font-semibold text-gray-800">{r.title}</p>
             <div className="flex shrink-0 items-center gap-1.5">
               <span
                 className={cn(
@@ -366,12 +366,12 @@ function RecommendationsTab({
               </span>
             </div>
           </div>
-          <p className="text-[11px] leading-relaxed text-slate-600">{r.description}</p>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-700">
+          <p className="text-[11px] leading-relaxed text-gray-600">{r.description}</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-gray-700">
             <span className="font-semibold">Proposal: </span>
             {r.proposal}
           </p>
-          <p className="mt-1 text-[10px] font-mono text-slate-400">{r.related}</p>
+          <p className="mt-1 text-[10px] font-mono text-gray-400">{r.related}</p>
           <div className="mt-2">
             <ActionRow id={r.id} state={states[r.id]} busy={busyId === r.id} onAction={onAction} />
           </div>
@@ -408,11 +408,11 @@ function LocatorsTab({
         <EmptyState message="No fragile locators detected. Either the script uses stable selectors, or our analyzers missed something — check the script tab and let us know." />
       ) : (
         data.map((l) => (
-          <div key={l.id} className="rounded-lg border border-slate-200 p-3">
+          <div key={l.id} className="rounded-lg border border-gray-200 p-3">
             <div className="grid grid-cols-2 gap-3 text-[11px]">
               <div>
-                <p className="font-semibold text-slate-500">Current locator</p>
-                <p className="mt-0.5 font-mono text-slate-800 break-all">{l.current}</p>
+                <p className="font-semibold text-gray-500">Current locator</p>
+                <p className="mt-0.5 font-mono text-gray-800 break-all">{l.current}</p>
                 <Badge
                   variant={l.current_confidence < 50 ? "destructive" : "warning"}
                   className="mt-1 text-[10px]"
@@ -428,7 +428,7 @@ function LocatorsTab({
                 </Badge>
               </div>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
+            <p className="mt-2 text-[11px] leading-relaxed text-gray-600">
               <span className="font-semibold">Why: </span>
               {l.rationale}
             </p>
@@ -458,20 +458,20 @@ function AssertionsTab({
   }
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-gray-500">
         Business actions found in the script without a corresponding verification. Adding these
         is additive — existing assertions stay.
       </p>
       {data.map((a) => (
-        <div key={a.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
+        <div key={a.id} className="rounded-lg border border-gray-200 p-3 space-y-2">
           <div className="flex items-start gap-2">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
             <div>
-              <p className="text-xs font-semibold text-slate-800">{a.scenario}</p>
-              <p className="text-[11px] text-slate-600">{a.missing}</p>
+              <p className="text-xs font-semibold text-gray-800">{a.scenario}</p>
+              <p className="text-[11px] text-gray-600">{a.missing}</p>
             </div>
           </div>
-          <p className="text-[11px] leading-relaxed text-slate-700">
+          <p className="text-[11px] leading-relaxed text-gray-700">
             <span className="font-semibold">Suggestion: </span>
             {a.suggestion}
           </p>
@@ -516,19 +516,19 @@ function TestDataTab({
   }
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-gray-500">
         Data-hygiene issues found in the script and its fixtures.
       </p>
       {data.map((d) => {
         const Icon = iconFor(d.kind);
         return (
-          <div key={d.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
+          <div key={d.id} className="rounded-lg border border-gray-200 p-3 space-y-2">
             <div className="flex items-center gap-2">
               <Icon className="h-3.5 w-3.5 text-amber-600" />
-              <span className="text-xs font-semibold text-slate-800">{labelFor(d.kind)}</span>
+              <span className="text-xs font-semibold text-gray-800">{labelFor(d.kind)}</span>
             </div>
-            <p className="text-[11px] text-slate-600">{d.description}</p>
-            <p className="text-[11px] leading-relaxed text-slate-700">
+            <p className="text-[11px] text-gray-600">{d.description}</p>
+            <p className="text-[11px] leading-relaxed text-gray-700">
               <span className="font-semibold">Proposal: </span>
               {d.proposal}
             </p>
@@ -556,17 +556,17 @@ function ApiDbTab({
   }
   return (
     <div className="space-y-3">
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-gray-500">
         Additive backend checks the AI thinks would strengthen this test. Nothing here removes
         an existing assertion.
       </p>
       {data.map((c) => (
-        <div key={c.id} className="rounded-lg border border-slate-200 p-3 space-y-2">
+        <div key={c.id} className="rounded-lg border border-gray-200 p-3 space-y-2">
           <div className="flex items-center gap-2">
             <Badge variant="info" className="text-[10px]">{c.layer}</Badge>
-            <span className="text-xs font-semibold text-slate-800">{c.title}</span>
+            <span className="text-xs font-semibold text-gray-800">{c.title}</span>
           </div>
-          <p className="text-[11px] leading-relaxed text-slate-600">{c.details}</p>
+          <p className="text-[11px] leading-relaxed text-gray-600">{c.details}</p>
           <ActionRow
             id={c.id}
             state={states[c.id]}
@@ -584,26 +584,26 @@ function HealthTab({ data }: { data: IntelligenceHealth }) {
   const tone = data.overall >= 85 ? "text-emerald-600" : data.overall >= 70 ? "text-amber-600" : "text-red-600";
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-slate-200 p-4">
+      <div className="rounded-lg border border-gray-200 p-4">
         <div className="flex items-baseline justify-between">
-          <p className="text-xs font-semibold text-slate-700">Script health</p>
+          <p className="text-xs font-semibold text-gray-700">Script health</p>
           <p className={cn("text-3xl font-bold tabular-nums", tone)}>
             {data.overall}
-            <span className="ml-1 text-sm font-normal text-slate-400">/ 100</span>
+            <span className="ml-1 text-sm font-normal text-gray-400">/ 100</span>
           </p>
         </div>
-        <p className="mt-1 text-[11px] text-slate-500">
+        <p className="mt-1 text-[11px] text-gray-500">
           Composite score with every contributing dimension explained below.
         </p>
       </div>
       <div className="space-y-2">
         {data.parts.map((p) => (
-          <div key={p.label} className="rounded-lg border border-slate-200 p-3">
+          <div key={p.label} className="rounded-lg border border-gray-200 p-3">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-800">{p.label}</span>
-              <span className="tabular-nums text-slate-700">{p.value}</span>
+              <span className="font-semibold text-gray-800">{p.label}</span>
+              <span className="tabular-nums text-gray-700">{p.value}</span>
             </div>
-            <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-100">
+            <div className="mt-1.5 h-1.5 w-full rounded-full bg-gray-100">
               <div
                 className={cn(
                   "h-full rounded-full",
@@ -612,11 +612,11 @@ function HealthTab({ data }: { data: IntelligenceHealth }) {
                 style={{ width: `${p.value}%` }}
               />
             </div>
-            <p className="mt-1.5 text-[11px] text-slate-500">{p.note}</p>
+            <p className="mt-1.5 text-[11px] text-gray-500">{p.note}</p>
           </div>
         ))}
       </div>
-      <p className="flex items-start gap-1.5 text-[11px] text-slate-400">
+      <p className="flex items-start gap-1.5 text-[11px] text-gray-400">
         <ChevronRight className="mt-0.5 h-3 w-3 shrink-0" />
         Score is recomputed each time you reopen the assistant after editing the script.
       </p>

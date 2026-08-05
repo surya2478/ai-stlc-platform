@@ -352,7 +352,7 @@ export function SuiteExecutionCommandCenter({ runId }: { runId: number }) {
 
   if (live.loading && !identity) {
     return (
-      <div className="flex h-64 items-center justify-center text-xs text-slate-500">
+      <div className="flex h-64 items-center justify-center text-xs text-gray-500">
         Loading execution run…
       </div>
     );
@@ -478,17 +478,17 @@ function RunHeader({
   const canResume = identity.lifecycle_state === "PAUSED" && identity.can_control;
 
   return (
-    <header className="rounded-lg border border-slate-200 bg-white p-4">
-      <nav className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-        <Link href="/automation?view=workspace" className="hover:text-slate-600">
+    <header className="rounded-lg border border-gray-200 bg-white p-4">
+      <nav className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+        <Link href="/automation?view=workspace" className="hover:text-gray-600">
           Automation
         </Link>
         <ChevronRight className="h-3 w-3" />
-        <Link href="/execution" className="hover:text-slate-600">
+        <Link href="/execution" className="hover:text-gray-600">
           Execution
         </Link>
         <ChevronRight className="h-3 w-3" />
-        <span className="text-slate-600">Live</span>
+        <span className="text-gray-600">Live</span>
       </nav>
 
       <div className="mt-1.5 flex flex-wrap items-start justify-between gap-3">
@@ -496,7 +496,7 @@ function RunHeader({
           <div className="flex flex-wrap items-center gap-2">
             {/* The suite name, not the screen name: an operator needs to know
                 which run they are looking at (contract Section 2.1.2). */}
-            <h1 className="truncate text-lg font-bold text-slate-900">
+            <h1 className="truncate text-lg font-bold text-gray-900">
               {identity.suite_name ?? `Run ${identity.execution_id}`}
             </h1>
             <LifecycleBadge state={identity.lifecycle_state} />
@@ -511,14 +511,14 @@ function RunHeader({
             )}
           </div>
 
-          <dl className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-slate-600">
+          <dl className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-gray-600">
             <MetaField label="Suite snapshot">
               {identity.suite_version != null ? `v${identity.suite_version}` : "—"}
             </MetaField>
             <MetaField label="Run">
               <button
                 type="button"
-                className="inline-flex items-center gap-1 font-semibold hover:text-[#1b59f8]"
+                className="inline-flex items-center gap-1 font-semibold hover:text-[#B71920]"
                 onClick={() => {
                   void navigator.clipboard.writeText(identity.execution_id);
                   toast({ title: "Run ID copied", description: identity.execution_id });
@@ -625,7 +625,7 @@ function RunHeader({
       </div>
 
       {showDetails && (
-        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-md border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 md:grid-cols-3">
+        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1.5 rounded-md border border-gray-200 bg-gray-50 p-3 text-[11px] text-gray-600 md:grid-cols-3">
           <MetaField label="Purpose">{identity.execution_purpose ?? "Not stated"}</MetaField>
           <MetaField label="Trigger">{identity.trigger_source ?? "—"}</MetaField>
           <MetaField label="Triggered by">
@@ -662,8 +662,8 @@ function RunHeader({
 function MetaField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-baseline gap-1.5">
-      <dt className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</dt>
-      <dd className="font-semibold text-slate-700">{children}</dd>
+      <dt className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</dt>
+      <dd className="font-semibold text-gray-700">{children}</dd>
     </div>
   );
 }
@@ -721,17 +721,17 @@ function StatusStrip({
   );
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3">
+    <section className="rounded-lg border border-gray-200 bg-white p-3">
       <div className="flex flex-wrap items-center gap-4">
         <div className="min-w-[180px]">
-          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
             Suite completion
           </p>
           {summary.reconciled ? (
             <>
-              <p className="text-lg font-bold leading-tight text-slate-900">
+              <p className="text-lg font-bold leading-tight text-gray-900">
                 {summary.completed} of {summary.total}
-                <span className="ml-2 text-xs font-semibold text-[#1b59f8]">
+                <span className="ml-2 text-xs font-semibold text-[#B71920]">
                   {summary.completion_percent}%
                 </span>
               </p>
@@ -770,18 +770,18 @@ function StatusStrip({
                 className={cn(
                   "min-w-[74px] rounded-md border px-2.5 py-1.5 text-left transition",
                   active
-                    ? "border-[#1b59f8] bg-blue-50 ring-1 ring-[#1b59f8]"
-                    : "border-slate-200 bg-white",
-                  filterable ? "hover:border-slate-300" : "cursor-default opacity-90",
+                    ? "border-[#B71920] bg-app-brand-75 ring-1 ring-[#B71920]"
+                    : "border-gray-200 bg-white",
+                  filterable ? "hover:border-gray-300" : "cursor-default opacity-90",
                 )}
               >
-                <span className="block text-base font-bold leading-none text-slate-900">
+                <span className="block text-base font-bold leading-none text-gray-900">
                   {count}
                 </span>
                 <span
                   className={cn(
                     "mt-0.5 block text-[9px] font-bold uppercase tracking-wide",
-                    tone?.text ?? "text-slate-500",
+                    tone?.text ?? "text-gray-500",
                   )}
                 >
                   {card.label}
@@ -793,14 +793,14 @@ function StatusStrip({
             <button
               type="button"
               onClick={onClear}
-              className="self-center text-[10px] font-semibold text-[#1b59f8] underline"
+              className="self-center text-[10px] font-semibold text-[#B71920] underline"
             >
               Clear filters
             </button>
           )}
         </div>
 
-        <div className="flex gap-4 border-l border-slate-200 pl-4">
+        <div className="flex gap-4 border-l border-gray-200 pl-4">
           <Metric
             label="Parallel runners"
             value={`${summary.parallel_in_use} / ${summary.parallel_allowed}`}
@@ -816,7 +816,7 @@ function StatusStrip({
             }
           />
           <div>
-            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
               Environment
             </p>
             <p
@@ -837,7 +837,7 @@ function StatusStrip({
         </div>
       </div>
 
-      <p className="mt-2 text-[11px] text-slate-600">{summary.operational_message}</p>
+      <p className="mt-2 text-[11px] text-gray-600">{summary.operational_message}</p>
     </section>
   );
 }
@@ -852,7 +852,7 @@ function SegmentedRail({ summary }: { summary: SuiteRunSummary }) {
     }),
   );
   return (
-    <div className="mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+    <div className="mt-1.5 flex h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
       {segments.map((segment) =>
         segment.count === 0 ? null : (
           <div
@@ -877,8 +877,8 @@ function Metric({
 }) {
   return (
     <div>
-      <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className={cn("text-xs font-bold text-slate-800", tone)}>{value}</p>
+      <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className={cn("text-xs font-bold text-gray-800", tone)}>{value}</p>
     </div>
   );
 }
@@ -913,7 +913,7 @@ function SuiteStructurePanel({
   onPriorityChange: (priority: string | null) => void;
 }) {
   return (
-    <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
+    <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3">
       <div>
         <label htmlFor="matrix-search" className="sr-only">
           Search test cases or errors
@@ -923,12 +923,12 @@ function SuiteStructurePanel({
           value={searchDraft}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder="Search ID, objective or error…"
-          className="w-full rounded-md border border-slate-200 px-2 py-1.5 text-[11px] outline-none focus:border-[#1b59f8]"
+          className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-[11px] outline-none focus:border-[#B71920]"
         />
       </div>
 
       <nav>
-        <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+        <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-gray-400">
           Saved views
         </p>
         <ul className="space-y-0.5">
@@ -941,8 +941,8 @@ function SuiteStructurePanel({
                 className={cn(
                   "w-full rounded px-2 py-1 text-left text-[11px] font-semibold transition",
                   activeView === view.id
-                    ? "bg-blue-50 text-[#1b59f8]"
-                    : "text-slate-600 hover:bg-slate-50",
+                    ? "bg-app-brand-75 text-[#B71920]"
+                    : "text-gray-600 hover:bg-gray-50",
                 )}
               >
                 {view.label}
@@ -953,11 +953,11 @@ function SuiteStructurePanel({
       </nav>
 
       <div>
-        <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+        <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-gray-400">
           Business journeys
         </p>
         {tree.length === 0 ? (
-          <p className="text-[10px] text-slate-400">
+          <p className="text-[10px] text-gray-400">
             No journey grouping — these test cases are not linked to scenarios.
           </p>
         ) : (
@@ -968,7 +968,7 @@ function SuiteStructurePanel({
                 onClick={() => onJourneyChange(null)}
                 className={cn(
                   "w-full rounded px-2 py-1 text-left text-[11px] font-semibold",
-                  journeyFilter == null ? "bg-blue-50 text-[#1b59f8]" : "text-slate-600",
+                  journeyFilter == null ? "bg-app-brand-75 text-[#B71920]" : "text-gray-600",
                 )}
               >
                 Complete suite
@@ -986,8 +986,8 @@ function SuiteStructurePanel({
         )}
       </div>
 
-      <div className="space-y-2 border-t border-slate-100 pt-2">
-        <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
+      <div className="space-y-2 border-t border-gray-100 pt-2">
+        <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
           Quick filters
         </p>
         <FilterSelect
@@ -1030,15 +1030,15 @@ function JourneyNode({
         type="button"
         onClick={onSelect}
         className={cn(
-          "w-full rounded px-2 py-1 text-left transition hover:bg-slate-50",
-          active && "bg-blue-50",
+          "w-full rounded px-2 py-1 text-left transition hover:bg-gray-50",
+          active && "bg-app-brand-75",
         )}
       >
         <span className="flex items-center justify-between gap-2">
           <span
             className={cn(
               "truncate text-[11px] font-semibold",
-              active ? "text-[#1b59f8]" : "text-slate-700",
+              active ? "text-[#B71920]" : "text-gray-700",
             )}
           >
             {node.journey}
@@ -1046,11 +1046,11 @@ function JourneyNode({
           {tone && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone.dot)} />}
         </span>
         <span className="mt-0.5 flex items-center gap-2">
-          <span className="text-[9px] text-slate-400">
+          <span className="text-[9px] text-gray-400">
             {node.complete} / {node.total} complete
           </span>
-          <span className="h-1 flex-1 overflow-hidden rounded-full bg-slate-200">
-            <span className="block h-full bg-[#1b59f8]" style={{ width: `${percent}%` }} />
+          <span className="h-1 flex-1 overflow-hidden rounded-full bg-gray-200">
+            <span className="block h-full bg-[#B71920]" style={{ width: `${percent}%` }} />
           </span>
         </span>
       </button>
@@ -1059,7 +1059,7 @@ function JourneyNode({
           {node.children.map((child) => (
             <li
               key={child.framework}
-              className="flex items-center justify-between text-[9px] text-slate-400"
+              className="flex items-center justify-between text-[9px] text-gray-400"
             >
               <span className="truncate">{child.framework}</span>
               <span>
@@ -1086,11 +1086,11 @@ function FilterSelect({
 }) {
   return (
     <label className="block">
-      <span className="text-[9px] font-semibold text-slate-500">{label}</span>
+      <span className="text-[9px] font-semibold text-gray-500">{label}</span>
       <select
         value={value ?? ""}
         onChange={(event) => onChange(event.target.value || null)}
-        className="mt-0.5 w-full rounded-md border border-slate-200 px-2 py-1 text-[11px] outline-none focus:border-[#1b59f8]"
+        className="mt-0.5 w-full rounded-md border border-gray-200 px-2 py-1 text-[11px] outline-none focus:border-[#B71920]"
       >
         <option value="">All</option>
         {options.map((option) => (
@@ -1123,12 +1123,12 @@ function ExecutionMatrix({
   onLoadMore: () => void;
 }) {
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-        <h2 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
+        <h2 className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
           Test execution matrix
         </h2>
-        <span className="text-[10px] text-slate-400">
+        <span className="text-[10px] text-gray-400">
           Showing {items.length} of {totalMatching}
         </span>
       </div>
@@ -1141,8 +1141,8 @@ function ExecutionMatrix({
 
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-[11px]">
-          <thead className="sticky top-0 z-10 bg-slate-50">
-            <tr className="text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">
+          <thead className="sticky top-0 z-10 bg-gray-50">
+            <tr className="text-left text-[9px] font-bold uppercase tracking-wide text-gray-500">
               <th className="w-10 px-2 py-1.5">#</th>
               <th className="px-2 py-1.5">Test case</th>
               <th className="px-2 py-1.5">Journey</th>
@@ -1160,7 +1160,7 @@ function ExecutionMatrix({
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-3 py-6 text-center text-[11px] text-slate-400">
+                <td colSpan={12} className="px-3 py-6 text-center text-[11px] text-gray-400">
                   No test case matches the current filters.
                 </td>
               </tr>
@@ -1175,29 +1175,29 @@ function ExecutionMatrix({
                     onClick={() => onSelect(item.id)}
                     aria-selected={selected}
                     className={cn(
-                      "cursor-pointer border-b border-slate-100 transition",
+                      "cursor-pointer border-b border-gray-100 transition",
                       selected
-                        ? "bg-blue-50"
+                        ? "bg-app-brand-75"
                         : running
-                          ? "bg-blue-50/40 hover:bg-blue-50/70"
-                          : "hover:bg-slate-50",
+                          ? "bg-app-brand-75/40 hover:bg-app-brand-75/70"
+                          : "hover:bg-gray-50",
                     )}
                   >
-                    <td className="px-2 py-1.5 text-slate-400">{item.order_index}</td>
+                    <td className="px-2 py-1.5 text-gray-400">{item.order_index}</td>
                     <td className="px-2 py-1.5">
-                      <span className="block font-bold text-slate-800">
+                      <span className="block font-bold text-gray-800">
                         {item.test_case_key ?? `#${item.test_case_id ?? "—"}`}
                       </span>
-                      <span className="block max-w-[26rem] truncate text-[10px] text-slate-500">
+                      <span className="block max-w-[26rem] truncate text-[10px] text-gray-500">
                         {item.title ?? "No title in the published snapshot"}
                       </span>
                     </td>
-                    <td className="px-2 py-1.5 text-slate-600">{item.journey ?? "—"}</td>
+                    <td className="px-2 py-1.5 text-gray-600">{item.journey ?? "—"}</td>
                     <td className={cn("px-2 py-1.5 font-bold", priorityClass(item.priority))}>
                       {item.priority ?? "—"}
                     </td>
-                    <td className="px-2 py-1.5 text-slate-600">{item.framework ?? "—"}</td>
-                    <td className="px-2 py-1.5 text-[10px] text-slate-500">
+                    <td className="px-2 py-1.5 text-gray-600">{item.framework ?? "—"}</td>
+                    <td className="px-2 py-1.5 text-[10px] text-gray-500">
                       {item.runner_name ?? "—"}
                     </td>
                     <td className="px-2 py-1.5">
@@ -1206,7 +1206,7 @@ function ExecutionMatrix({
                     <td className="px-2 py-1.5">
                       <ResultPill result={item.result} reason={item.attention_reason} />
                     </td>
-                    <td className="px-2 py-1.5 text-slate-600">
+                    <td className="px-2 py-1.5 text-gray-600">
                       {/* No runner reports per-step progress, so there is no
                           completion count to show against the declared total.
                           "0 / 9" would read as "failed on step one", which is a
@@ -1215,14 +1215,14 @@ function ExecutionMatrix({
                         "—"
                       ) : (
                         <span
-                          className="text-slate-400"
+                          className="text-gray-400"
                           title={`${item.steps_total} steps declared by the Automation IR. No runner reports per-step progress, so per-step completion is not tracked yet.`}
                         >
                           {item.steps_total} declared
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-slate-500">
+                    <td className="px-2 py-1.5 text-gray-500">
                       {item.attempt} / {item.attempts_allowed}
                     </td>
                     <td
@@ -1231,7 +1231,7 @@ function ExecutionMatrix({
                         item.evidence_required > 0 &&
                           item.evidence_captured < item.evidence_required
                           ? "font-bold text-amber-600"
-                          : "text-slate-600",
+                          : "text-gray-600",
                       )}
                       title={
                         item.evidence_required > 0
@@ -1248,7 +1248,7 @@ function ExecutionMatrix({
                           ? `${item.evidence_total_captured} kept`
                           : "—"}
                     </td>
-                    <td className="px-2 py-1.5 font-mono text-[10px] text-slate-500">
+                    <td className="px-2 py-1.5 font-mono text-[10px] text-gray-500">
                       {formatDuration(item.duration_ms)}
                     </td>
                   </tr>
@@ -1307,8 +1307,8 @@ function InspectorPanel({
 }) {
   if (selectedItemId == null) {
     return (
-      <aside className="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
-        <p className="text-[11px] text-slate-400">
+      <aside className="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-gray-200 bg-white p-3">
+        <p className="text-[11px] text-gray-400">
           Select a test case to inspect its steps, assertions and evidence.
         </p>
         <EventTimeline events={events} />
@@ -1318,7 +1318,7 @@ function InspectorPanel({
 
   if (!detail) {
     return (
-      <aside className="rounded-lg border border-slate-200 bg-white p-3 text-[11px] text-slate-400">
+      <aside className="rounded-lg border border-gray-200 bg-white p-3 text-[11px] text-gray-400">
         Loading test details…
       </aside>
     );
@@ -1336,16 +1336,16 @@ function InspectorPanel({
     evaluated.every((a) => a.evaluation_source === "runner_verdict");
 
   return (
-    <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
+    <aside className="flex min-h-0 flex-col gap-3 overflow-y-auto rounded-lg border border-gray-200 bg-white p-3">
       <div>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-bold text-[#1b59f8]">
+          <span className="text-[11px] font-bold text-[#B71920]">
             {item.test_case_key ?? `#${item.test_case_id}`}
           </span>
           <ItemLifecyclePill item={item} />
           <ResultPill result={item.result} reason={item.attention_reason} />
         </div>
-        <h3 className="mt-0.5 text-sm font-bold text-slate-900">
+        <h3 className="mt-0.5 text-sm font-bold text-gray-900">
           {item.title ?? "No title in the published snapshot"}
         </h3>
         <div className="mt-1.5 flex flex-wrap gap-1">
@@ -1374,7 +1374,7 @@ function InspectorPanel({
           </p>
         )}
         {detail.error_message && (
-          <pre className="mt-1.5 max-h-24 overflow-auto rounded border border-slate-200 bg-slate-50 p-2 text-[9px] text-slate-700">
+          <pre className="mt-1.5 max-h-24 overflow-auto rounded border border-gray-200 bg-gray-50 p-2 text-[9px] text-gray-700">
             {detail.error_message}
           </pre>
         )}
@@ -1384,23 +1384,23 @@ function InspectorPanel({
         title={`Steps${item.steps_total ? ` — ${item.steps_total} declared` : ""}`}
       >
         {detail.current_step ? (
-          <div className="rounded border border-slate-200 bg-slate-50 p-2">
-            <p className="text-[11px] font-bold text-slate-800">
+          <div className="rounded border border-gray-200 bg-gray-50 p-2">
+            <p className="text-[11px] font-bold text-gray-800">
               {detail.current_step.action_text ?? `Step ${detail.current_step.step_number}`}
             </p>
             {detail.current_step.expected_text && (
-              <p className="mt-0.5 text-[10px] text-slate-600">
+              <p className="mt-0.5 text-[10px] text-gray-600">
                 Expected: {detail.current_step.expected_text}
               </p>
             )}
-            <p className="mt-1 text-[9px] text-slate-400">
+            <p className="mt-1 text-[9px] text-gray-400">
               {detail.current_step.application_context ?? "No application context recorded"}
               {detail.current_step.elapsed_ms != null &&
                 ` · ${formatDuration(detail.current_step.elapsed_ms)}`}
             </p>
           </div>
         ) : (
-          <p className="text-[10px] text-slate-400">
+          <p className="text-[10px] text-gray-400">
             {item.steps_total === 0
               ? "No steps were declared by the Automation IR for this test."
               : // Not "no step has started yet" — that implies one will be
@@ -1414,7 +1414,7 @@ function InspectorPanel({
       <Section title="Last captured application view">
         {/* Section 2.1.6 — a last-captured frame, never presented as live. */}
         {detail.latest_screenshot_evidence_id != null ? (
-          <div className="rounded border border-slate-200 bg-slate-50 p-2 text-[10px] text-slate-600">
+          <div className="rounded border border-gray-200 bg-gray-50 p-2 text-[10px] text-gray-600">
             Screenshot captured
             {detail.latest_screenshot_captured_at
               ? ` at ${formatClock(detail.latest_screenshot_captured_at)}`
@@ -1423,7 +1423,7 @@ function InspectorPanel({
             UI-052 Execution Report and Evidence is implemented.
           </div>
         ) : (
-          <p className="text-[10px] text-slate-400">
+          <p className="text-[10px] text-gray-400">
             No screenshot has been captured for this test yet. This pane shows the
             most recent captured frame — the platform has no live browser feed.
           </p>
@@ -1466,7 +1466,7 @@ function InspectorPanel({
         )}
 
         {item.assertions_total === 0 && (
-          <p className="mt-1.5 rounded border border-slate-200 bg-slate-50 p-2 text-[10px] text-slate-600">
+          <p className="mt-1.5 rounded border border-gray-200 bg-gray-50 p-2 text-[10px] text-gray-600">
             This test declares no mandatory assertion, so a green runner cannot
             produce a pass. Accepted checkpoints in the Automation IR are what
             become assertions.
@@ -1474,7 +1474,7 @@ function InspectorPanel({
         )}
 
         {allInferred && (
-          <p className="mt-1.5 text-[10px] text-slate-500">
+          <p className="mt-1.5 text-[10px] text-gray-500">
             Assertion verdicts are inferred from the test-level result: the
             runner fails the whole test when any assertion fails, but does not
             report which one. Per-assertion attribution arrives with adapter
@@ -1508,22 +1508,22 @@ function InspectorPanel({
                 <AlertTriangle
                   className={cn(
                     "mt-0.5 h-3 w-3 shrink-0",
-                    evidence.mandatory ? "text-amber-500" : "text-slate-300",
+                    evidence.mandatory ? "text-amber-500" : "text-gray-300",
                   )}
                 />
               )}
               <span className="min-w-0">
-                <span className="font-semibold text-slate-700">
+                <span className="font-semibold text-gray-700">
                   {evidence.evidence_type}
                   {evidence.mandatory ? " (mandatory)" : ""}
                 </span>
                 {evidence.payload_entry_count != null && (
-                  <span className="text-slate-400"> · {evidence.payload_entry_count} entries</span>
+                  <span className="text-gray-400"> · {evidence.payload_entry_count} entries</span>
                 )}
                 {evidence.downloadable && (
                   <button
                     type="button"
-                    className="ml-1.5 font-semibold text-[#1b59f8] hover:underline"
+                    className="ml-1.5 font-semibold text-[#B71920] hover:underline"
                     onClick={() => onDownloadEvidence(evidence)}
                     title={
                       evidence.redaction_state === "not_maskable"
@@ -1541,7 +1541,7 @@ function InspectorPanel({
                   <span className="ml-1 text-amber-600">not masked</span>
                 )}
                 {evidence.unavailable_reason && (
-                  <span className="block text-slate-500">{evidence.unavailable_reason}</span>
+                  <span className="block text-gray-500">{evidence.unavailable_reason}</span>
                 )}
               </span>
             </li>
@@ -1556,8 +1556,8 @@ function InspectorPanel({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="border-t border-slate-100 pt-2">
-      <h4 className="mb-1 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+    <section className="border-t border-gray-100 pt-2">
+      <h4 className="mb-1 text-[9px] font-bold uppercase tracking-wide text-gray-400">
         {title}
       </h4>
       {children}
@@ -1568,8 +1568,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div>
-      <p className="text-[9px] text-slate-400">{label}</p>
-      <p className={cn("text-[11px] font-bold text-slate-800", tone)}>{value}</p>
+      <p className="text-[9px] text-gray-400">{label}</p>
+      <p className={cn("text-[11px] font-bold text-gray-800", tone)}>{value}</p>
     </div>
   );
 }
@@ -1582,21 +1582,21 @@ function EventTimeline({
   return (
     <Section title="Latest events">
       {events.length === 0 ? (
-        <p className="text-[10px] text-slate-400">
+        <p className="text-[10px] text-gray-400">
           The run is ready. Waiting for the first runner event.
         </p>
       ) : (
         <ol className="space-y-1.5">
           {events.slice(0, 20).map((event) => (
             <li key={event.sequence} className="flex gap-2 text-[10px]">
-              <span className="shrink-0 font-mono text-slate-400">
+              <span className="shrink-0 font-mono text-gray-400">
                 {formatClock(event.occurred_at)}
               </span>
               <span className="min-w-0">
-                <span className="block font-semibold text-slate-700">
+                <span className="block font-semibold text-gray-700">
                   {event.event_type.replace(/_/g, " ")}
                 </span>
-                <span className="block text-slate-500">{event.message}</span>
+                <span className="block text-gray-500">{event.message}</span>
               </span>
             </li>
           ))}
@@ -1624,7 +1624,7 @@ function OperationsBar({
   newestEvent: string | null;
 }) {
   return (
-    <footer className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[10px] text-slate-500">
+    <footer className="flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[10px] text-gray-500">
       <span className="flex items-center gap-1.5">
         <ConnectionBadge state={connection} />
         {/* Measured poll round-trip. There is no socket, so reporting "stream
@@ -1635,16 +1635,16 @@ function OperationsBar({
       </span>
       <span>
         Runners{" "}
-        <strong className="text-slate-700">
+        <strong className="text-gray-700">
           {summary ? `${summary.parallel_in_use} of ${summary.parallel_allowed}` : "—"}
         </strong>
       </span>
       <span>
-        Queued <strong className="text-slate-700">{summary?.queue_depth ?? "—"}</strong>
+        Queued <strong className="text-gray-700">{summary?.queue_depth ?? "—"}</strong>
       </span>
       <span>
         Evidence{" "}
-        <strong className="text-slate-700">
+        <strong className="text-gray-700">
           {summary ? `${summary.evidence_captured} / ${summary.evidence_required}` : "—"}
         </strong>
       </span>

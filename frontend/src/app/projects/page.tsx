@@ -29,9 +29,9 @@ import { useUserDirectory } from "@/hooks/useUserDirectory";
 
 // Keep in sync with backend\app\schemas\project.py:ProjectDomain.
 const PROJECT_DOMAINS = [
-  { value: "digital_consumer", label: "Digital-Consumer", color: "bg-blue-50 text-blue-700 border-blue-200" },
-  { value: "digital_business", label: "Digital-Business", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  { value: "non_digital", label: "Non-Digital", color: "bg-slate-50 text-slate-700 border-slate-200" },
+  { value: "digital_consumer", label: "Digital-Consumer", color: "bg-app-brand-75 text-app-brand-700 border-app-brand-200" },
+  { value: "digital_business", label: "Digital-Business", color: "bg-app-brand-75 text-app-brand-700 border-app-brand-200" },
+  { value: "non_digital", label: "Non-Digital", color: "bg-gray-50 text-gray-700 border-gray-200" },
   { value: "billing", label: "Billing", color: "bg-amber-50 text-amber-700 border-amber-200" },
   { value: "sales", label: "Sales", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   { value: "marketing", label: "Marketing", color: "bg-pink-50 text-pink-700 border-pink-200" },
@@ -56,9 +56,9 @@ const DOMAIN_COLOR: Record<string, string> = Object.fromEntries(
 // ── Input style helpers ──────────────────────────────────────────────────────
 
 const inputClass =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:opacity-50";
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none transition-all focus:border-app-brand-500 focus:ring-2 focus:ring-app-brand-100 disabled:opacity-50";
 const inputErrClass =
-  "w-full rounded-lg border border-red-300 bg-red-50/40 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:opacity-50";
+  "w-full rounded-lg border border-red-300 bg-red-50/40 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-100 disabled:opacity-50";
 
 // ── Delete Modal ─────────────────────────────────────────────────────────────
 
@@ -213,14 +213,14 @@ function EditProjectModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-xl rounded-2xl border bg-white shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
-            <h2 className="font-bold text-slate-900 text-base">Edit Project</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Update project details and governance fields</p>
+            <h2 className="font-bold text-gray-900 text-base">Edit Project</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Update project details and governance fields</p>
           </div>
           <button
             onClick={onCancel}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+            className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors"
           >
             <X className="h-4 w-4" />
           </button>
@@ -231,8 +231,8 @@ function EditProjectModal({
           {/* Row 1 */}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                <FolderOpen className="h-3 w-3 text-slate-400" />
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                <FolderOpen className="h-3 w-3 text-gray-400" />
                 Project Name <span className="text-red-500">*</span>
               </label>
               <input
@@ -246,8 +246,8 @@ function EditProjectModal({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                <Hash className="h-3 w-3 text-slate-400" />
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                <Hash className="h-3 w-3 text-gray-400" />
                 HP PPM ID <span className="text-red-500">*</span>
               </label>
               <input
@@ -266,8 +266,8 @@ function EditProjectModal({
           {/* Row 2 */}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                <User className="h-3 w-3 text-slate-400" />
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                <User className="h-3 w-3 text-gray-400" />
                 Project Manager <span className="text-red-500">*</span>
               </label>
               <input
@@ -283,8 +283,8 @@ function EditProjectModal({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                <Users className="h-3 w-3 text-slate-400" />
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                <Users className="h-3 w-3 text-gray-400" />
                 Business PM Name
               </label>
               <input
@@ -301,8 +301,8 @@ function EditProjectModal({
           {/* Row 3 — Domain */}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                <Globe2 className="h-3 w-3 text-slate-400" />
+              <label className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                <Globe2 className="h-3 w-3 text-gray-400" />
                 Project Domain
               </label>
               <select
@@ -322,7 +322,7 @@ function EditProjectModal({
 
           {/* Description */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-slate-700">Description</label>
+            <label className="text-xs font-semibold text-gray-700">Description</label>
             <textarea
               rows={3}
               className={`${inputClass} resize-none`}
@@ -351,18 +351,18 @@ function EditProjectModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50/60">
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50/60">
           <button
             onClick={onCancel}
             disabled={saving}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving || saved}
-            className="flex items-center gap-2 rounded-lg bg-[#1b59f8] px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-[#B71920] px-5 py-2 text-sm font-semibold text-white hover:bg-app-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {saving ? "Saving…" : "Save Changes"}
@@ -388,22 +388,22 @@ function ProjectCard({
 }) {
   const domainKey = project.domain ?? "";
   const domainLabel = DOMAIN_LABEL[domainKey];
-  const domainColor = DOMAIN_COLOR[domainKey] ?? "bg-slate-50 text-slate-600 border-slate-200";
+  const domainColor = DOMAIN_COLOR[domainKey] ?? "bg-gray-50 text-gray-600 border-gray-200";
 
   return (
-    <div className="relative group rounded-2xl border border-slate-200 bg-white hover:shadow-lg hover:border-slate-300 transition-all duration-200">
+    <div className="relative group rounded-2xl border border-gray-200 bg-white hover:shadow-lg hover:border-gray-300 transition-all duration-200">
       {/* Action buttons — shown on hover */}
       <div className="absolute top-3 right-3 z-10 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.preventDefault(); onEdit(); }}
-          className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+          className="rounded-lg p-1.5 text-gray-400 hover:bg-app-brand-75 hover:text-app-brand-600 transition-colors"
           title="Edit project"
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={(e) => { e.preventDefault(); onDelete(); }}
-          className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
           title="Delete project"
         >
           <Trash2 className="h-3.5 w-3.5" />
@@ -413,13 +413,13 @@ function ProjectCard({
       <Link href={`/requirements?project=${project.id}`} className="block p-5">
         {/* Card header — name + PPM badge */}
         <div className="flex items-start gap-3 mb-3 pr-14">
-          <div className="rounded-xl bg-blue-50 p-2.5 shrink-0 border border-blue-100">
-            <FolderOpen className="h-5 w-5 text-[#1b59f8]" />
+          <div className="rounded-xl bg-app-brand-75 p-2.5 shrink-0 border border-app-brand-100">
+            <FolderOpen className="h-5 w-5 text-[#B71920]" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-bold text-slate-900 truncate text-sm leading-5">{project.name}</h2>
+            <h2 className="font-bold text-gray-900 truncate text-sm leading-5">{project.name}</h2>
             {project.ppm_id && (
-              <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] font-mono font-semibold text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-2 py-0.5">
+              <span className="inline-flex items-center gap-1 mt-0.5 text-[10px] font-mono font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
                 <Hash className="h-2.5 w-2.5" />
                 {project.ppm_id}
               </span>
@@ -431,17 +431,17 @@ function ProjectCard({
         {(project.project_manager_name || project.business_pm_name) && (
           <div className="space-y-0.5 mb-3">
             {project.project_manager_name && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-600">
-                <User className="h-3 w-3 text-slate-400 shrink-0" />
+              <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                <User className="h-3 w-3 text-gray-400 shrink-0" />
                 <span className="font-medium truncate">{project.project_manager_name}</span>
-                <span className="text-slate-400 text-[10px] shrink-0">PM</span>
+                <span className="text-gray-400 text-[10px] shrink-0">PM</span>
               </div>
             )}
             {project.business_pm_name && (
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <Users className="h-3 w-3 text-slate-400 shrink-0" />
+              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                <Users className="h-3 w-3 text-gray-400 shrink-0" />
                 <span className="truncate">{project.business_pm_name}</span>
-                <span className="text-slate-400 text-[10px] shrink-0">Business PM</span>
+                <span className="text-gray-400 text-[10px] shrink-0">Business PM</span>
               </div>
             )}
           </div>
@@ -449,7 +449,7 @@ function ProjectCard({
 
         {/* Description */}
         {project.description && (
-          <p className="text-xs text-slate-500 line-clamp-2 mb-3 leading-5">{project.description}</p>
+          <p className="text-xs text-gray-500 line-clamp-2 mb-3 leading-5">{project.description}</p>
         )}
 
         {/* Footer — domain pill + status + date + open arrow */}
@@ -460,10 +460,10 @@ function ProjectCard({
               {domainLabel}
             </span>
           )}
-          <span className="text-[10px] font-semibold text-slate-400 capitalize bg-slate-50 border border-slate-200 rounded-full px-2 py-0.5">
+          <span className="text-[10px] font-semibold text-gray-400 capitalize bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
             {project.status}
           </span>
-          <span className="ml-auto flex items-center gap-1 text-[11px] text-[#1b59f8] font-semibold">
+          <span className="ml-auto flex items-center gap-1 text-[11px] text-[#B71920] font-semibold">
             Open <ArrowRight className="h-3 w-3" />
           </span>
         </div>
@@ -474,7 +474,7 @@ function ProjectCard({
           updatedAt={project.updated_at}
           createdByName={resolveUser(project.owner_id ?? undefined)}
           compact
-          className="mt-3 pt-2.5 border-t border-slate-100/60"
+          className="mt-3 pt-2.5 border-t border-gray-100/60"
         />
       </Link>
     </div>
@@ -523,7 +523,7 @@ export default function ProjectsPage() {
         </div>
         <Link
           href="/projects/new"
-          className="flex items-center gap-2 rounded-lg bg-[#1b59f8] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm"
+          className="flex items-center gap-2 rounded-lg bg-[#B71920] px-4 py-2 text-sm font-semibold text-white hover:bg-app-brand-700 transition-colors shadow-sm"
         >
           <Plus className="h-4 w-4" />
           New Project
@@ -553,7 +553,7 @@ export default function ProjectsPage() {
           <p className="text-sm mt-1">Create your first project to get started</p>
           <Link
             href="/projects/new"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1b59f8] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#B71920] px-4 py-2 text-sm font-semibold text-white hover:bg-app-brand-700 transition-colors"
           >
             <Plus className="h-4 w-4" />New Project
           </Link>

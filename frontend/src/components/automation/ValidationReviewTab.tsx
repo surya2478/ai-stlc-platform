@@ -47,7 +47,7 @@ const WORKFLOW_STEPS = ["Draft", "Pending Review", "Changes Requested", "Approve
 function SummaryCard({ card }: { card: ValidationCard }) {
   const tone =
     !card.available
-      ? "border-slate-200 bg-slate-50 text-slate-400"
+      ? "border-gray-200 bg-gray-50 text-gray-400"
       : card.status === "pass"
         ? "border-emerald-200 bg-emerald-50 text-emerald-800"
         : card.status === "fail"
@@ -162,7 +162,7 @@ export function ValidationReviewTab({
 
   if (loading && !data) {
     return (
-      <div className="flex items-center gap-2 p-6 text-[12px] text-slate-500">
+      <div className="flex items-center gap-2 p-6 text-[12px] text-gray-500">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading validation…
       </div>
     );
@@ -185,7 +185,7 @@ export function ValidationReviewTab({
       {/* Validation summary — four cards. */}
       <Panel
         title="Validation summary"
-        action={<span className="text-[10px] text-slate-400">Deterministic results</span>}
+        action={<span className="text-[10px] text-gray-400">Deterministic results</span>}
       >
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           <SummaryCard card={data.cards.static_quality} />
@@ -206,7 +206,7 @@ export function ValidationReviewTab({
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-600">
+            <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-600">
               Gating decision · Autonomy &amp; Scoring Model
             </p>
             <p
@@ -221,7 +221,7 @@ export function ValidationReviewTab({
                   ? "AI Held"
                   : "Not yet evaluated"}
             </p>
-            <p className="text-[11px] text-slate-700">
+            <p className="text-[11px] text-gray-700">
               {g.preconditions.filter((p) => p.met).length} of {g.preconditions.length}{" "}
               preconditions met · threshold {g.threshold} · rubric {g.rubric_id}
             </p>
@@ -229,16 +229,16 @@ export function ValidationReviewTab({
               <p className="mt-0.5 text-[11px] font-medium text-amber-900">{g.held_reason}</p>
             ) : null}
             {!g.enabled ? (
-              <p className="mt-1 text-[10px] text-slate-500">
+              <p className="mt-1 text-[10px] text-gray-500">
                 Automatic approval is disabled for this project, so no autonomy state is written.
                 Configuring it is UI-055.
               </p>
             ) : null}
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">Score</p>
-            <p className="text-[22px] font-bold text-slate-900">
-              {g.score === null ? "—" : g.score} <span className="text-[12px] text-slate-400">/100</span>
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Score</p>
+            <p className="text-[22px] font-bold text-gray-900">
+              {g.score === null ? "—" : g.score} <span className="text-[12px] text-gray-400">/100</span>
             </p>
           </div>
         </div>
@@ -252,9 +252,9 @@ export function ValidationReviewTab({
               ) : (
                 <CircleSlash className="mt-0.5 h-3 w-3 shrink-0 text-red-600" />
               )}
-              <span className={cn(p.met ? "text-slate-700" : "font-medium text-slate-900")}>
+              <span className={cn(p.met ? "text-gray-700" : "font-medium text-gray-900")}>
                 {p.label}
-                <span className="ml-1 text-slate-500">— {p.detail}</span>
+                <span className="ml-1 text-gray-500">— {p.detail}</span>
               </span>
             </li>
           ))}
@@ -263,7 +263,7 @@ export function ValidationReviewTab({
 
       {/* Validation details — sub-tabs WITHIN one panel, not page navigation. */}
       <Panel title="Validation details">
-        <div className="mb-2 flex gap-1 border-b border-slate-100">
+        <div className="mb-2 flex gap-1 border-b border-gray-100">
           {DETAIL_TABS.map((t) => (
             <button
               key={t}
@@ -272,8 +272,8 @@ export function ValidationReviewTab({
               className={cn(
                 "-mb-px border-b-2 px-2 py-1 text-[11px] font-semibold",
                 detailTab === t
-                  ? "border-blue-600 text-blue-700"
-                  : "border-transparent text-slate-500 hover:text-slate-800",
+                  ? "border-app-brand-600 text-app-brand-700"
+                  : "border-transparent text-gray-500 hover:text-gray-800",
               )}
             >
               {t}
@@ -284,17 +284,17 @@ export function ValidationReviewTab({
         {detailTab === "Static quality" ? (
           <div className="space-y-1">
             {data.findings.length === 0 ? (
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-gray-400">
                 {data.unavailable.static_quality ?? "No findings."}
               </p>
             ) : (
               data.findings.map((f, i) => (
                 <div
                   key={`${f.code}-${i}`}
-                  className="flex items-start justify-between gap-2 rounded border border-slate-100 p-1.5"
+                  className="flex items-start justify-between gap-2 rounded border border-gray-100 p-1.5"
                 >
                   <div className="min-w-0">
-                    <p className="flex items-center gap-1 text-[11px] font-semibold text-slate-800">
+                    <p className="flex items-center gap-1 text-[11px] font-semibold text-gray-800">
                       {f.severity === "block" ? (
                         <Ban className="h-3 w-3 text-red-600" />
                       ) : (
@@ -307,7 +307,7 @@ export function ValidationReviewTab({
                         </Badge>
                       ) : null}
                     </p>
-                    <p className="mt-0.5 text-[10px] text-slate-600">{f.message}</p>
+                    <p className="mt-0.5 text-[10px] text-gray-600">{f.message}</p>
                   </div>
                   {f.waivable && !f.accepted ? (
                     <Button
@@ -321,7 +321,7 @@ export function ValidationReviewTab({
                     </Button>
                   ) : f.severity === "block" ? (
                     <span
-                      className="shrink-0 text-[9px] font-semibold text-slate-400"
+                      className="shrink-0 text-[9px] font-semibold text-gray-400"
                       title="Blocking violations cannot be waived from this screen — fix the behaviour and recompile."
                     >
                       not waivable
@@ -331,7 +331,7 @@ export function ValidationReviewTab({
               ))
             )}
             {/* Three states, never two. */}
-            <p className="mt-1 border-t border-slate-100 pt-1 text-[10px] text-slate-600">
+            <p className="mt-1 border-t border-gray-100 pt-1 text-[10px] text-gray-600">
               Syntax check:{" "}
               <span
                 className={cn(
@@ -340,13 +340,13 @@ export function ValidationReviewTab({
                     ? "text-emerald-700"
                     : data.syntax_check.status === "failed"
                       ? "text-red-700"
-                      : "text-slate-500",
+                      : "text-gray-500",
                 )}
               >
                 {data.syntax_check.status}
               </span>
               {data.syntax_check.status === "skipped" ? (
-                <span className="ml-1 text-slate-400">
+                <span className="ml-1 text-gray-400">
                   — {data.syntax_check.detail ?? "the check did not run"}
                 </span>
               ) : null}
@@ -356,14 +356,14 @@ export function ValidationReviewTab({
 
         {detailTab === "Execution" ? (
           data.dry_runs.length === 0 ? (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-gray-400">
               {data.unavailable.real_execution ?? "No dry runs recorded."}
             </p>
           ) : (
             <ul className="space-y-1">
               {data.dry_runs.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-2 text-[11px]">
-                  <span className="truncate text-slate-700">{r.test_name}</span>
+                  <span className="truncate text-gray-700">{r.test_name}</span>
                   <span
                     className={cn(
                       "rounded px-1.5 py-0.5 text-[10px] font-semibold",
@@ -382,7 +382,7 @@ export function ValidationReviewTab({
 
         {detailTab === "Readiness" ? (
           data.readiness_items.length === 0 ? (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-gray-400">
               {data.unavailable.readiness ?? "Nothing unresolved."}
             </p>
           ) : (
@@ -399,21 +399,21 @@ export function ValidationReviewTab({
 
         {detailTab === "Confidence" ? (
           Object.keys(g.dimensions).length === 0 ? (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-gray-400">
               {data.unavailable.confidence_score ?? "No score computed."}
             </p>
           ) : (
             <ul className="space-y-1">
               {Object.entries(g.dimensions).map(([name, value]) => (
                 <li key={name} className="flex items-center gap-2 text-[11px]">
-                  <span className="w-44 shrink-0 text-slate-600">{name.replace(/_/g, " ")}</span>
-                  <span className="h-1.5 flex-1 overflow-hidden rounded bg-slate-100">
+                  <span className="w-44 shrink-0 text-gray-600">{name.replace(/_/g, " ")}</span>
+                  <span className="h-1.5 flex-1 overflow-hidden rounded bg-gray-100">
                     <span
-                      className="block h-full bg-blue-500"
+                      className="block h-full bg-app-brand-500"
                       style={{ width: `${Math.round(value * 100)}%` }}
                     />
                   </span>
-                  <span className="w-10 shrink-0 text-right font-medium text-slate-700">
+                  <span className="w-10 shrink-0 text-right font-medium text-gray-700">
                     {value.toFixed(2)}
                   </span>
                 </li>
@@ -427,7 +427,7 @@ export function ValidationReviewTab({
       <Panel title="Approval workflow">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-gray-500">
               Current state{" "}
               <Badge
                 variant={
@@ -442,7 +442,7 @@ export function ValidationReviewTab({
                 {g.approval_state.replace(/_/g, " ")}
               </Badge>
             </p>
-            <p className="mt-0.5 text-[10px] text-slate-500">
+            <p className="mt-0.5 text-[10px] text-gray-500">
               Final approval is mandatory before this suite can be published.
             </p>
           </div>
@@ -479,8 +479,8 @@ export function ValidationReviewTab({
                   className={cn(
                     "flex h-5 w-5 items-center justify-center rounded-full border text-[9px] font-bold",
                     i <= currentStepIndex
-                      ? "border-blue-600 bg-blue-600 text-white"
-                      : "border-slate-300 bg-white text-slate-400",
+                      ? "border-app-brand-600 bg-app-brand-600 text-white"
+                      : "border-gray-300 bg-white text-gray-400",
                   )}
                 >
                   {i + 1}
@@ -488,7 +488,7 @@ export function ValidationReviewTab({
                 <span
                   className={cn(
                     "mt-0.5 whitespace-nowrap text-[9px]",
-                    i <= currentStepIndex ? "font-semibold text-slate-800" : "text-slate-400",
+                    i <= currentStepIndex ? "font-semibold text-gray-800" : "text-gray-400",
                   )}
                 >
                   {label}
@@ -498,7 +498,7 @@ export function ValidationReviewTab({
                 <div
                   className={cn(
                     "mx-1 mb-3 h-px flex-1",
-                    i < currentStepIndex ? "bg-blue-600" : "bg-slate-200",
+                    i < currentStepIndex ? "bg-app-brand-600" : "bg-gray-200",
                   )}
                 />
               ) : null}
@@ -508,13 +508,13 @@ export function ValidationReviewTab({
       </Panel>
 
       {/* Decision history — insert-only, stored by value. */}
-      <Panel title="Decision history" action={<span className="text-[10px] text-slate-400">{decisions.length}</span>}>
+      <Panel title="Decision history" action={<span className="text-[10px] text-gray-400">{decisions.length}</span>}>
         {decisions.length === 0 ? (
-          <p className="text-[11px] text-slate-400">No decisions recorded yet.</p>
+          <p className="text-[11px] text-gray-400">No decisions recorded yet.</p>
         ) : (
           <table className="w-full text-[11px]">
             <thead>
-              <tr className="text-left text-[9px] uppercase text-slate-400">
+              <tr className="text-left text-[9px] uppercase text-gray-400">
                 <th className="py-1">Decision</th>
                 <th>By</th>
                 <th>Score</th>
@@ -525,14 +525,14 @@ export function ValidationReviewTab({
             </thead>
             <tbody>
               {decisions.map((d) => (
-                <tr key={d.id} className="border-t border-slate-100">
-                  <td className="py-1 font-medium text-slate-800">{d.decision}</td>
+                <tr key={d.id} className="border-t border-gray-100">
+                  <td className="py-1 font-medium text-gray-800">{d.decision}</td>
                   {/* NULL actor means the machine decided. */}
-                  <td className="text-slate-600">{d.decided_by ?? "machine"}</td>
-                  <td className="text-slate-600">{d.score ?? "—"}</td>
-                  <td className="text-slate-600">{d.threshold}</td>
-                  <td className="text-slate-500">{d.rubric_id}</td>
-                  <td className="max-w-[200px] truncate text-slate-500">{d.reason ?? "—"}</td>
+                  <td className="text-gray-600">{d.decided_by ?? "machine"}</td>
+                  <td className="text-gray-600">{d.score ?? "—"}</td>
+                  <td className="text-gray-600">{d.threshold}</td>
+                  <td className="text-gray-500">{d.rubric_id}</td>
+                  <td className="max-w-[200px] truncate text-gray-500">{d.reason ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

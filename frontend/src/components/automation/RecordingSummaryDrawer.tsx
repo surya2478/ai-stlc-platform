@@ -85,7 +85,7 @@ export function RecordingSummaryDrawer({
 
         <DrawerBody>
           {loading || !summary ? (
-            <p className="p-4 text-xs font-semibold text-slate-400">Building summary…</p>
+            <p className="p-4 text-xs font-semibold text-gray-400">Building summary…</p>
           ) : (
             <div className="space-y-4">
               {error && (
@@ -113,7 +113,7 @@ export function RecordingSummaryDrawer({
               </div>
 
               <Section title="Coverage">
-                <ul className="space-y-0.5 text-[11px] font-semibold text-slate-600">
+                <ul className="space-y-0.5 text-[11px] font-semibold text-gray-600">
                   <li>{coverage?.recorded_steps} step(s) have recorded actions</li>
                   <li>{coverage?.steps_without_actions} step(s) have nothing recorded</li>
                   <li>{coverage?.skipped_steps} step(s) deliberately skipped (excluded from the percentage)</li>
@@ -165,7 +165,7 @@ export function RecordingSummaryDrawer({
               <Section title="Evidence">
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(summary.evidence_generated).length === 0 ? (
-                    <span className="text-[11px] font-semibold text-slate-400">
+                    <span className="text-[11px] font-semibold text-gray-400">
                       No evidence captured.
                     </span>
                   ) : (
@@ -176,7 +176,7 @@ export function RecordingSummaryDrawer({
                     ))
                   )}
                 </div>
-                <p className="mt-1.5 text-[10px] font-semibold text-slate-500">
+                <p className="mt-1.5 text-[10px] font-semibold text-gray-500">
                   {summary.redactions.inputs} input value(s) and {summary.redactions.captures} capture(s)
                   were redacted before being stored.
                 </p>
@@ -184,9 +184,9 @@ export function RecordingSummaryDrawer({
 
               <Section title="Applications visited">
                 {summary.applications_visited.length === 0 ? (
-                  <p className="text-[11px] font-semibold text-slate-400">No segment recorded.</p>
+                  <p className="text-[11px] font-semibold text-gray-400">No segment recorded.</p>
                 ) : (
-                  <ul className="space-y-0.5 text-[11px] font-semibold text-slate-600">
+                  <ul className="space-y-0.5 text-[11px] font-semibold text-gray-600">
                     {summary.applications_visited.map((segment) => (
                       <li key={segment.segment}>
                         Segment {segment.segment} — application {segment.application_id} ({segment.environment})
@@ -238,7 +238,7 @@ export function RecordingSummaryDrawer({
 
               {showDiscard && (
                 <Section title="Discard this recording">
-                  <p className="mb-1.5 text-[10px] font-semibold text-slate-500">
+                  <p className="mb-1.5 text-[10px] font-semibold text-gray-500">
                     The captured actions and evidence are kept and the recording is marked discarded, so
                     the decision stays reviewable. A reason is required.
                   </p>
@@ -246,7 +246,7 @@ export function RecordingSummaryDrawer({
                     value={discardReason}
                     onChange={(event) => setDiscardReason(event.target.value)}
                     placeholder="Why is this recording being discarded?"
-                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-red-400"
+                    className="w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-red-400"
                   />
                 </Section>
               )}
@@ -318,9 +318,9 @@ function Metric({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-2.5" title={hint}>
-      <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 text-lg font-extrabold leading-none text-slate-950">{value}</p>
+    <div className="rounded-lg border border-gray-200 bg-white p-2.5" title={hint}>
+      <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-1 text-lg font-extrabold leading-none text-gray-950">{value}</p>
     </div>
   );
 }
@@ -333,8 +333,8 @@ function MeasureMetric({
   measure: RecordingSummary["network_requests"];
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-2.5">
-      <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+    <div className="rounded-lg border border-gray-200 bg-white p-2.5">
+      <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
       <p className="mt-1 text-lg leading-none">
         <MeasureValue measure={measure} />
       </p>
@@ -344,8 +344,8 @@ function MeasureMetric({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3">
-      <h4 className="mb-1.5 text-[10px] font-extrabold uppercase tracking-wide text-slate-800">{title}</h4>
+    <section className="rounded-lg border border-gray-200 bg-white p-3">
+      <h4 className="mb-1.5 text-[10px] font-extrabold uppercase tracking-wide text-gray-800">{title}</h4>
       {children}
     </section>
   );

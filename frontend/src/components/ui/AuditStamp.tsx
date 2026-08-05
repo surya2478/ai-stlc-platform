@@ -41,7 +41,7 @@ export function AuditStamp({
 
   // If there's no audit info at all, render nothing or a clean dash
   if (!formattedCreated && !formattedUpdated) {
-    return <span className="text-slate-400">—</span>;
+    return <span className="text-gray-400">—</span>;
   }
 
   // Show "Modified" only if it's actually different from "Created" (within 1 min margin of error) or if no created date is provided but updated is.
@@ -57,26 +57,26 @@ export function AuditStamp({
   if (compact) {
     return (
       <div
-        className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500", className)}
+        className={cn("flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500", className)}
         {...props}
       >
         {formattedCreated && (
           <div className="flex items-center gap-1" title={`Created at: ${new Date(createdAt!).toISOString()}`}>
-            <span className="font-semibold text-slate-700">Created:</span>
+            <span className="font-semibold text-gray-700">Created:</span>
             <span>{formattedCreated}</span>
             {createdByName && (
-              <span className="font-medium text-slate-600">by {createdByName}</span>
+              <span className="font-medium text-gray-600">by {createdByName}</span>
             )}
           </div>
         )}
         {hasModified && formattedUpdated && (
           <>
-            <span className="text-slate-300">·</span>
+            <span className="text-gray-300">·</span>
             <div className="flex items-center gap-1" title={`Modified at: ${new Date(updatedAt!).toISOString()}`}>
-              <span className="font-semibold text-slate-700">Modified:</span>
+              <span className="font-semibold text-gray-700">Modified:</span>
               <span>{formattedUpdated}</span>
               {updatedByName && (
-                <span className="font-medium text-slate-600">by {updatedByName}</span>
+                <span className="font-medium text-gray-600">by {updatedByName}</span>
               )}
             </div>
           </>
@@ -87,7 +87,7 @@ export function AuditStamp({
 
   return (
     <div
-      className={cn("space-y-1.5 text-xs text-slate-500 bg-slate-50/50 p-2.5 rounded-lg border border-slate-100/80", className)}
+      className={cn("space-y-1.5 text-xs text-gray-500 bg-gray-50/50 p-2.5 rounded-lg border border-gray-100/80", className)}
       {...props}
     >
       {formattedCreated && (
@@ -96,14 +96,14 @@ export function AuditStamp({
           title={`Created: ${new Date(createdAt!).toISOString()}`}
         >
           <div className="flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span className="font-medium text-slate-700">Created</span>
+            <Clock className="w-3.5 h-3.5 text-gray-400" />
+            <span className="font-medium text-gray-700">Created</span>
           </div>
           <div className="flex items-center gap-2 text-right">
             <span>{formattedCreated}</span>
             {createdByName && (
-              <span className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
-                <User className="w-3 h-3 text-slate-400" />
+              <span className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-medium">
+                <User className="w-3 h-3 text-gray-400" />
                 {createdByName}
               </span>
             )}
@@ -112,18 +112,18 @@ export function AuditStamp({
       )}
       {hasModified && formattedUpdated && (
         <div
-          className="flex items-center justify-between gap-4 pt-1.5 border-t border-slate-100"
+          className="flex items-center justify-between gap-4 pt-1.5 border-t border-gray-100"
           title={`Modified: ${new Date(updatedAt!).toISOString()}`}
         >
           <div className="flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span className="font-medium text-slate-700">Modified</span>
+            <Clock className="w-3.5 h-3.5 text-gray-400" />
+            <span className="font-medium text-gray-700">Modified</span>
           </div>
           <div className="flex items-center gap-2 text-right">
             <span>{formattedUpdated}</span>
             {updatedByName && (
-              <span className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
-                <User className="w-3 h-3 text-slate-400" />
+              <span className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 font-medium">
+                <User className="w-3 h-3 text-gray-400" />
                 {updatedByName}
               </span>
             )}

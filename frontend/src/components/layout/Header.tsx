@@ -169,18 +169,18 @@ function HeaderContent() {
       {/* Left side: Breadcrumb & selectors */}
       <div className="flex min-w-0 items-center gap-3 xl:gap-6">
         {/* Breadcrumb path */}
-        <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-          <Link href="/dashboard" className="hover:text-slate-800 transition-colors">
+        <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
+          <Link href="/dashboard" className="hover:text-gray-800 transition-colors">
             QAI Command Center
           </Link>
-          <span className="text-slate-300">/</span>
-          <span className="text-[#1b59f8] font-semibold">{getPageTitle()}</span>
+          <span className="text-gray-300">/</span>
+          <span className="text-[#B71920] font-semibold">{getPageTitle()}</span>
         </div>
 
         {/* Project Selector Dropdown */}
         {projects.length > 0 && (
-          <div className="hidden min-w-0 sm:flex items-center gap-2 border-l border-slate-100 pl-3 xl:pl-6">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="hidden min-w-0 sm:flex items-center gap-2 border-l border-gray-100 pl-3 xl:pl-6">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
               Project
             </span>
             <select
@@ -190,7 +190,7 @@ function HeaderContent() {
                 setSelectedProjectId(Number(val));
                 updateQueryParam("project", val);
               }}
-              className="w-[220px] appearance-none truncate bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-800 rounded-lg text-xs font-medium px-3 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-[#1b59f8] transition-colors cursor-pointer select-none 2xl:w-[280px]"
+              className="w-[220px] appearance-none truncate bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-800 rounded-lg text-xs font-medium px-3 py-1.5 pr-8 focus:outline-none focus:ring-2 focus:ring-[#B71920] transition-colors cursor-pointer select-none 2xl:w-[280px]"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e")`,
                 backgroundPosition: 'right 0.5rem center',
@@ -214,7 +214,7 @@ function HeaderContent() {
             ? "border-red-100 bg-red-50 text-red-700"
             : jiraSync && jiraSync.synced > 0
               ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-              : "border-slate-200 bg-slate-50 text-slate-500"
+              : "border-gray-200 bg-gray-50 text-gray-500"
         )}>
           {jiraSync && (jiraSync.failures > 0 || jiraSync.conflicts > 0)
             ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -238,7 +238,7 @@ function HeaderContent() {
           onClick={() => setSearchOpen(true)}
           aria-label="Search"
           title="Search (Ctrl+K)"
-          className="rounded-lg p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+          className="rounded-lg p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors"
         >
           <Search className="h-4.5 w-4.5" />
         </button>
@@ -248,7 +248,7 @@ function HeaderContent() {
           <button
             onClick={() => setNotificationsOpen(!notificationsOpen)}
             aria-label={notifications.length ? `Notifications (${notifications.length})` : "Notifications"}
-            className="relative rounded-lg p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+            className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors"
           >
             <Bell className="h-4.5 w-4.5" />
             {notifications.length > 0 && (
@@ -258,27 +258,27 @@ function HeaderContent() {
           {notificationsOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setNotificationsOpen(false)} />
-              <div className="absolute right-0 mt-2.5 w-80 rounded-xl border border-slate-200 bg-white shadow-lg z-20">
-                <div className="border-b border-slate-50 px-4 py-2.5">
-                  <p className="text-xs font-semibold text-slate-800">Needs attention</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
+              <div className="absolute right-0 mt-2.5 w-80 rounded-xl border border-gray-200 bg-white shadow-lg z-20">
+                <div className="border-b border-gray-50 px-4 py-2.5">
+                  <p className="text-xs font-semibold text-gray-800">Needs attention</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">
                     {selectedProjectId ? "Outstanding items in the selected project" : "Select a project to see its items"}
                   </p>
                 </div>
                 <div className="max-h-80 overflow-y-auto py-1">
                   {notifications.length === 0 ? (
-                    <p className="px-4 py-6 text-center text-[11px] font-medium text-slate-400">
+                    <p className="px-4 py-6 text-center text-[11px] font-medium text-gray-400">
                       Nothing outstanding.
                     </p>
                   ) : (
                     notifications.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2 px-4 py-2 hover:bg-slate-50">
+                      <div key={item.id} className="flex items-start gap-2 px-4 py-2 hover:bg-gray-50">
                         {item.tone === "warn"
                           ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
-                          : <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#1b59f8]" />}
+                          : <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#B71920]" />}
                         <div className="min-w-0">
-                          <p className="text-[11px] font-semibold text-slate-800">{item.title}</p>
-                          <p className="text-[10px] text-slate-500 leading-relaxed">{item.detail}</p>
+                          <p className="text-[11px] font-semibold text-gray-800">{item.title}</p>
+                          <p className="text-[10px] text-gray-500 leading-relaxed">{item.detail}</p>
                         </div>
                       </div>
                     ))
@@ -295,7 +295,7 @@ function HeaderContent() {
           disabled={!themeReady}
           aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
           title={isDark ? "Switch to light theme" : "Switch to dark theme"}
-          className="rounded-lg p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors disabled:opacity-50"
+          className="rounded-lg p-2 text-gray-500 hover:bg-gray-50 hover:text-gray-800 transition-colors disabled:opacity-50"
         >
           {/* Rendered only after mount — the server cannot know the resolved
               theme, and guessing produces a hydration mismatch. */}
@@ -306,16 +306,16 @@ function HeaderContent() {
         <div className="relative">
           <button 
             onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-            className="flex items-center gap-2.5 pl-3 border-l border-slate-100 text-left focus:outline-none"
+            className="flex items-center gap-2.5 pl-3 border-l border-gray-100 text-left focus:outline-none"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-[#1b59f8] to-cyan-500 text-white font-semibold text-xs shadow-sm uppercase select-none">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-tr from-[#B71920] to-cyan-500 text-white font-semibold text-xs shadow-sm uppercase select-none">
               {userInitials}
             </div>
             <div className="hidden xl:flex flex-col">
-              <span className="text-xs font-semibold text-slate-800 leading-none">{currentUser?.full_name ?? "Loading..."}</span>
-              <span className="text-[10px] text-slate-500 mt-1 font-medium leading-none capitalize">{roleLabel || "..."}</span>
+              <span className="text-xs font-semibold text-gray-800 leading-none">{currentUser?.full_name ?? "Loading..."}</span>
+              <span className="text-[10px] text-gray-500 mt-1 font-medium leading-none capitalize">{roleLabel || "..."}</span>
             </div>
-            <ChevronDown className="h-3.5 w-3.5 text-slate-400 hidden sm:block" />
+            <ChevronDown className="h-3.5 w-3.5 text-gray-400 hidden sm:block" />
           </button>
 
           {profileDropdownOpen && (
@@ -324,10 +324,10 @@ function HeaderContent() {
                 className="fixed inset-0 z-10" 
                 onClick={() => setProfileDropdownOpen(false)}
               />
-              <div className="absolute right-0 mt-2.5 w-48 rounded-xl border border-slate-200 bg-white py-1 shadow-lg z-20 transition-all duration-200">
-                <div className="px-4 py-2 border-b border-slate-50">
-                  <p className="text-xs font-semibold text-slate-800">{currentUser?.full_name ?? "..."}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{currentUser?.email ?? "..."}</p>
+              <div className="absolute right-0 mt-2.5 w-48 rounded-xl border border-gray-200 bg-white py-1 shadow-lg z-20 transition-all duration-200">
+                <div className="px-4 py-2 border-b border-gray-50">
+                  <p className="text-xs font-semibold text-gray-800">{currentUser?.full_name ?? "..."}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{currentUser?.email ?? "..."}</p>
                 </div>
                 <button
                   onClick={() => {

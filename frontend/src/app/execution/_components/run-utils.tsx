@@ -83,10 +83,10 @@ const VERDICT_BADGE: Record<RunVerdict, { cls: string; label: string }> = {
   in_progress:     { cls: "bg-amber-100 text-amber-700", label: "In Progress" },
   blocked:         { cls: "bg-orange-100 text-orange-700", label: "Blocked" },
   review_required: { cls: "bg-violet-100 text-violet-700", label: "Review" },
-  cancelled:       { cls: "bg-slate-100 text-slate-600", label: "Cancelled" },
+  cancelled:       { cls: "bg-gray-100 text-gray-600", label: "Cancelled" },
   failed:          { cls: "bg-red-100 text-red-700", label: "Failed" },
   passed:          { cls: "bg-emerald-100 text-emerald-700", label: "Passed" },
-  skipped:         { cls: "bg-slate-100 text-slate-600", label: "Skipped" },
+  skipped:         { cls: "bg-gray-100 text-gray-600", label: "Skipped" },
 };
 
 export function RunVerdictBadge({ run }: { run: Pick<ExecutionRun, "status" | "passed" | "failed"> }) {
@@ -129,14 +129,14 @@ export function RunsTable({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 text-xs text-slate-400">
+      <div className="flex items-center justify-center py-16 text-xs text-gray-400">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading runs…
       </div>
     );
   }
   if (runs.length === 0) {
     return (
-      <p className="rounded border border-dashed border-slate-200 px-3 py-6 text-center text-[11px] text-slate-400">
+      <p className="rounded border border-dashed border-gray-200 px-3 py-6 text-center text-[11px] text-gray-400">
         {emptyMessage}
       </p>
     );
@@ -145,7 +145,7 @@ export function RunsTable({
     <div className="overflow-x-auto">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-left text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-100">
+          <tr className="text-left text-[10px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
             <th className="py-2 pr-3">Run ID</th>
             <th className="py-2 pr-3">Suite</th>
             <th className="py-2 pr-3">Mode</th>
@@ -162,23 +162,23 @@ export function RunsTable({
             <tr
               key={r.id}
               className={cn(
-                "border-b border-slate-50 hover:bg-slate-50/40",
+                "border-b border-gray-50 hover:bg-gray-50/40",
                 onRowClick && "cursor-pointer",
               )}
               onClick={onRowClick ? () => onRowClick(r) : undefined}
             >
-              <td className="py-2 pr-3 font-mono text-[#1b59f8] whitespace-nowrap">{r.execution_id}</td>
-              <td className="py-2 pr-3 truncate max-w-[220px] text-slate-700">{r.suite_name ?? "—"}</td>
+              <td className="py-2 pr-3 font-mono text-[#B71920] whitespace-nowrap">{r.execution_id}</td>
+              <td className="py-2 pr-3 truncate max-w-[220px] text-gray-700">{r.suite_name ?? "—"}</td>
               <td className="py-2 pr-3"><AiAssistedBadge run={r} /></td>
-              <td className="py-2 pr-3 text-slate-500">{r.environment ?? "—"}</td>
+              <td className="py-2 pr-3 text-gray-500">{r.environment ?? "—"}</td>
               <td className="py-2 pr-3"><RunVerdictBadge run={r} /></td>
               <td className="py-2 pr-3 text-right tabular-nums">
                 <span className="text-emerald-600">{r.passed}</span>
-                <span className="text-slate-300 mx-1">/</span>
+                <span className="text-gray-300 mx-1">/</span>
                 <span className="text-red-600">{r.failed}</span>
               </td>
-              <td className="py-2 pr-3 text-slate-500 whitespace-nowrap">{formatDate(r.started_at ?? r.created_at)}</td>
-              <td className="py-2 pr-3 text-right tabular-nums text-slate-500 font-mono">{formatDuration(r.duration_seconds)}</td>
+              <td className="py-2 pr-3 text-gray-500 whitespace-nowrap">{formatDate(r.started_at ?? r.created_at)}</td>
+              <td className="py-2 pr-3 text-right tabular-nums text-gray-500 font-mono">{formatDuration(r.duration_seconds)}</td>
               {rowAction && (
                 <td className="py-2 pr-3 text-right" onClick={(e) => e.stopPropagation()}>
                   {rowAction(r)}

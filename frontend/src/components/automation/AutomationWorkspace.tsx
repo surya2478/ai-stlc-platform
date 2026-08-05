@@ -153,11 +153,11 @@ export function AutomationWorkspace({
 
   if (!item) {
     return (
-      <Card className="border-slate-200">
+      <Card className="border-gray-200">
         <CardContent className="flex h-full min-h-[360px] flex-col items-center justify-center gap-2 p-6 text-center">
-          <Code2 className="h-8 w-8 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-700">No test case selected</p>
-          <p className="max-w-xs text-xs text-slate-500">
+          <Code2 className="h-8 w-8 text-gray-300" />
+          <p className="text-sm font-semibold text-gray-700">No test case selected</p>
+          <p className="max-w-xs text-xs text-gray-500">
             Pick a test case from the inventory on the left to load its automation workspace,
             review its script, and apply AI recommendations.
           </p>
@@ -176,20 +176,20 @@ export function AutomationWorkspace({
   );
 
   return (
-    <Card className="border-slate-200">
+    <Card className="border-gray-200">
       <CardContent className="space-y-3 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] text-slate-500">
-              <span className="font-mono text-[#1b59f8]">{item.testCaseKey}</span>
+            <div className="flex items-center gap-2 text-[11px] text-gray-500">
+              <span className="font-mono text-[#B71920]">{item.testCaseKey}</span>
               <span>·</span>
               <span>{isExternal ? item.externalTool ?? "External" : (item.framework ?? "—")}</span>
               {item.module && <><span>·</span><span>{item.module}</span></>}
             </div>
-            <h2 className="mt-0.5 text-base font-bold text-slate-900 truncate" title={item.title}>
+            <h2 className="mt-0.5 text-base font-bold text-gray-900 truncate" title={item.title}>
               {item.title}
             </h2>
-            <p className="mt-0.5 text-[11px] text-slate-400">
+            <p className="mt-0.5 text-[11px] text-gray-400">
               {script?.script_id ? `Script ${script.script_id}` : "No script yet"}
               {script?.updated_at && (
                 <> · last modified {new Date(script.updated_at).toLocaleString()}</>
@@ -221,7 +221,7 @@ export function AutomationWorkspace({
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
+        <div className="rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2">
           {!isExternal && script ? (
             <PipelineStageRail scriptId={script.id} />
           ) : (
@@ -256,7 +256,7 @@ export function AutomationWorkspace({
           </p>
         )}
 
-        <div className="border-b border-slate-100">
+        <div className="border-b border-gray-100">
           <div className="flex gap-0.5 overflow-x-auto">
             {TABS.map((t) => {
               const Icon = t.icon;
@@ -270,7 +270,7 @@ export function AutomationWorkspace({
                     "flex shrink-0 items-center gap-1 rounded-t-md px-2.5 py-1.5 text-[11px] font-semibold transition",
                     active
                       ? "border-b-2 border-violet-600 text-violet-700"
-                      : "text-slate-500 hover:text-slate-800",
+                      : "text-gray-500 hover:text-gray-800",
                   )}
                 >
                   <Icon className="h-3 w-3" />
@@ -439,18 +439,18 @@ function GenerationHistory({ script }: { script: AutomationScript | null }) {
   if (attempts.length <= 1) return null;
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
-      <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+    <div className="rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2">
+      <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-gray-700">
         <History className="h-3 w-3" />
         Generation took {attempts.length} attempts
       </p>
       <ul className="space-y-1">
         {attempts.map((a) => (
-          <li key={a.attempt} className="flex items-start gap-1.5 text-[11px] text-slate-600">
+          <li key={a.attempt} className="flex items-start gap-1.5 text-[11px] text-gray-600">
             {a.outcome === "compiled" ? (
               <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
             ) : (
-              <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+              <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
             )}
             <span>
               <span className="font-mono">#{a.attempt}</span>{" "}
@@ -628,7 +628,7 @@ function GroundedActionBar({
 }) {
   if (stage === "generated" && gateFailed) {
     return (
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-gray-500">
         The static quality gate failed — see the notice above to view the violations and
         regenerate.
       </p>
@@ -637,7 +637,7 @@ function GroundedActionBar({
 
   if (stage === "generated" || stage === "static_passed") {
     return (
-      <p className="text-[11px] text-slate-500">
+      <p className="text-[11px] text-gray-500">
         Waiting on the automatic static quality gate and dry run to finish before this script
         can be reviewed. No action needed here yet.
       </p>
@@ -762,12 +762,12 @@ function ScriptTab({
   if (isExternal) {
     return (
       <div className="space-y-3">
-        <p className="text-[11px] text-slate-500">
+        <p className="text-[11px] text-gray-500">
           External automation. Script lives in the connected tool; QAI orchestrates the run
           and pulls back evidence.
         </p>
         {mapping ? (
-          <div className="rounded-lg border border-slate-200 p-3 space-y-1.5 text-xs">
+          <div className="rounded-lg border border-gray-200 p-3 space-y-1.5 text-xs">
             <Row label="Tool" value={mapping.external_tool_name} />
             <Row label="Project" value={mapping.external_project_id ?? "—"} />
             <Row label="Suite" value={mapping.external_suite_id ?? "—"} />
@@ -776,7 +776,7 @@ function ScriptTab({
             <Row label="Status" value={mapping.automation_status} />
           </div>
         ) : (
-          <div className="rounded-lg border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+          <div className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-xs text-gray-400">
             No external mapping yet. Configure the connection to link this test case.
           </div>
         )}
@@ -786,9 +786,9 @@ function ScriptTab({
 
   if (!script || !script.code) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center">
-        <p className="text-xs text-slate-500">No script generated for this test case yet.</p>
-        <p className="mt-1 text-[11px] text-slate-400">
+      <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center">
+        <p className="text-xs text-gray-500">No script generated for this test case yet.</p>
+        <p className="mt-1 text-[11px] text-gray-400">
           Generate a draft Playwright or Pytest script with AI, preselected for this test case.
         </p>
         <Button
@@ -812,7 +812,7 @@ function ScriptTab({
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between text-[11px] text-slate-500">
+      <div className="flex items-center justify-between text-[11px] text-gray-500">
         <span>
           {script.framework.toUpperCase()} · {lineCount} lines
           {editing && dirty && (
@@ -823,7 +823,7 @@ function ScriptTab({
         </span>
         <div className="flex items-center gap-2">
           {script.execution_command && (
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-700">
+            <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] text-gray-700">
               {script.execution_command}
             </code>
           )}
@@ -857,10 +857,10 @@ function ScriptTab({
           value={draftCode}
           onChange={(e) => onChange(e.target.value)}
           spellCheck={false}
-          className="block max-h-[480px] min-h-[280px] w-full overflow-auto rounded-lg border border-slate-300 bg-slate-950 p-3 font-mono text-[11px] leading-relaxed text-slate-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
+          className="block max-h-[480px] min-h-[280px] w-full overflow-auto rounded-lg border border-gray-300 bg-gray-950 p-3 font-mono text-[11px] leading-relaxed text-gray-100 focus:outline-none focus:ring-2 focus:ring-violet-500"
         />
       ) : (
-        <pre className="max-h-[360px] overflow-auto rounded-lg border border-slate-200 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-100">
+        <pre className="max-h-[360px] overflow-auto rounded-lg border border-gray-200 bg-gray-950 p-3 text-[11px] leading-relaxed text-gray-100">
           <code>{script.code}</code>
         </pre>
       )}
@@ -871,8 +871,8 @@ function ScriptTab({
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <span className="text-[11px] text-slate-500">{label}</span>
-      <span className="font-mono text-[11px] text-slate-800 truncate">{value}</span>
+      <span className="text-[11px] text-gray-500">{label}</span>
+      <span className="font-mono text-[11px] text-gray-800 truncate">{value}</span>
     </div>
   );
 }
@@ -897,7 +897,7 @@ function HistoryTab({ script }: { script: AutomationScript | null }) {
 
   if (!script) {
     return (
-      <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-slate-200 p-6 text-xs text-slate-400">
+      <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-gray-200 p-6 text-xs text-gray-400">
         No script selected.
       </div>
     );
@@ -917,7 +917,7 @@ function HistoryTab({ script }: { script: AutomationScript | null }) {
 
   if (approvalsQuery.isLoading) {
     return (
-      <div className="flex h-48 items-center justify-center text-xs text-slate-400">
+      <div className="flex h-48 items-center justify-center text-xs text-gray-400">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading review history…
       </div>
     );
@@ -925,10 +925,10 @@ function HistoryTab({ script }: { script: AutomationScript | null }) {
 
   if (approvals.length === 0 && transitions.length === 0) {
     return (
-      <div className="flex h-48 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-200 p-6 text-center">
-        <History className="h-5 w-5 text-slate-300" />
-        <p className="text-xs font-semibold text-slate-700">No review history yet</p>
-        <p className="max-w-md text-[11px] text-slate-500">
+      <div className="flex h-48 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-200 p-6 text-center">
+        <History className="h-5 w-5 text-gray-300" />
+        <p className="text-xs font-semibold text-gray-700">No review history yet</p>
+        <p className="max-w-md text-[11px] text-gray-500">
           Approvals, rejections, and lifecycle transitions for this script will appear here.
         </p>
       </div>
@@ -939,20 +939,20 @@ function HistoryTab({ script }: { script: AutomationScript | null }) {
     <div className="space-y-4">
       {approvals.length > 0 && (
         <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
             Approval decisions
           </p>
           <ul className="space-y-1.5">
             {approvals.map((a) => (
-              <li key={a.id} className="rounded-lg border border-slate-100 px-3 py-2 text-[11px]">
+              <li key={a.id} className="rounded-lg border border-gray-100 px-3 py-2 text-[11px]">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={decisionBadge(a.decision)} className="text-[9px] capitalize">
                     {a.decision.replace(/_/g, " ")}
                   </Badge>
-                  {a.actor_role && <span className="text-slate-500">by {a.actor_role}</span>}
-                  <span className="ml-auto text-slate-400">{new Date(a.created_at).toLocaleString()}</span>
+                  {a.actor_role && <span className="text-gray-500">by {a.actor_role}</span>}
+                  <span className="ml-auto text-gray-400">{new Date(a.created_at).toLocaleString()}</span>
                 </div>
-                {a.notes && <p className="mt-1 text-slate-600">{a.notes}</p>}
+                {a.notes && <p className="mt-1 text-gray-600">{a.notes}</p>}
               </li>
             ))}
           </ul>
@@ -961,22 +961,22 @@ function HistoryTab({ script }: { script: AutomationScript | null }) {
 
       {transitions.length > 0 && (
         <div>
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
             Lifecycle transitions
           </p>
           <ul className="space-y-1.5">
             {[...transitions].reverse().map((t, i) => (
-              <li key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 px-3 py-2 text-[11px]">
-                <span className="font-semibold capitalize text-slate-700">
+              <li key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-[11px]">
+                <span className="font-semibold capitalize text-gray-700">
                   {(t.action ?? "").replace(/_/g, " ")}
                 </span>
                 {t.to && (
                   <>
-                    <span className="text-slate-300">→</span>
+                    <span className="text-gray-300">→</span>
                     <Badge variant="outline" className="text-[9px] capitalize">{t.to.replace(/_/g, " ")}</Badge>
                   </>
                 )}
-                {t.notes && <span className="text-slate-500">— {t.notes}</span>}
+                {t.notes && <span className="text-gray-500">— {t.notes}</span>}
               </li>
             ))}
           </ul>
@@ -988,10 +988,10 @@ function HistoryTab({ script }: { script: AutomationScript | null }) {
 
 function PlaceholderTab({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex h-48 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-200 p-6 text-center">
+    <div className="flex h-48 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-200 p-6 text-center">
       <Badge variant="outline" className="text-[10px]">Phase 2C</Badge>
-      <p className="text-xs font-semibold text-slate-700">{title}</p>
-      <p className="max-w-md text-[11px] text-slate-500">{description}</p>
+      <p className="text-xs font-semibold text-gray-700">{title}</p>
+      <p className="max-w-md text-[11px] text-gray-500">{description}</p>
     </div>
   );
 }

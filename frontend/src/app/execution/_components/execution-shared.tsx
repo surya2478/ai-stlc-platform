@@ -22,8 +22,8 @@ export function ExecutionPageHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{title}</h1>
+        {subtitle && <p className="mt-1 text-sm text-gray-500">{subtitle}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
@@ -37,13 +37,13 @@ export function ExecutionPageHeader({
 export type KpiTone = "blue" | "violet" | "emerald" | "red" | "orange" | "cyan" | "slate";
 
 const KPI_TONE: Record<KpiTone, { bg: string; text: string; ring: string }> = {
-  blue:    { bg: "bg-blue-50",    text: "text-[#1b59f8]",  ring: "ring-blue-100" },
+  blue:    { bg: "bg-app-brand-75",    text: "text-[#B71920]",  ring: "ring-app-brand-100" },
   violet:  { bg: "bg-violet-50",  text: "text-violet-600", ring: "ring-violet-100" },
   emerald: { bg: "bg-emerald-50", text: "text-emerald-600", ring: "ring-emerald-100" },
   red:     { bg: "bg-red-50",     text: "text-red-600",    ring: "ring-red-100" },
   orange:  { bg: "bg-orange-50",  text: "text-orange-600", ring: "ring-orange-100" },
   cyan:    { bg: "bg-cyan-50",    text: "text-cyan-600",   ring: "ring-cyan-100" },
-  slate:   { bg: "bg-slate-100",  text: "text-slate-600",  ring: "ring-slate-200" },
+  slate:   { bg: "bg-gray-100",  text: "text-gray-600",  ring: "ring-gray-200" },
 };
 
 export function KpiCard({
@@ -69,7 +69,7 @@ export function KpiCard({
       ? "text-emerald-600"
       : deltaDirection === "down"
       ? "text-red-600"
-      : "text-slate-500";
+      : "text-gray-500";
   const arrow = deltaDirection === "up" ? "↑" : deltaDirection === "down" ? "↓" : "";
 
   return (
@@ -80,9 +80,9 @@ export function KpiCard({
             <Icon className={cn("h-5 w-5", t.text)} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-slate-500">{label}</p>
-            <p className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">
-              {loading ? <span className="inline-block h-6 w-16 animate-pulse rounded bg-slate-100" /> : value}
+            <p className="text-xs font-medium text-gray-500">{label}</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900 tabular-nums">
+              {loading ? <span className="inline-block h-6 w-16 animate-pulse rounded bg-gray-100" /> : value}
             </p>
             {delta && !loading && (
               <p className={cn("mt-1 text-[11px] font-medium", deltaColor)}>
@@ -113,7 +113,7 @@ export function ProcessSteps({
   currentStep: number;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <ol className="flex flex-wrap items-center gap-y-3">
         {steps.map((step, idx) => {
           const stepNum = idx + 1;
@@ -128,8 +128,8 @@ export function ProcessSteps({
                     done
                       ? "bg-emerald-500 text-white"
                       : active
-                      ? "bg-[#1b59f8] text-white shadow"
-                      : "bg-slate-100 text-slate-500"
+                      ? "bg-[#B71920] text-white shadow"
+                      : "bg-gray-100 text-gray-500"
                   )}
                 >
                   {done ? <Check className="h-4 w-4" /> : stepNum}
@@ -138,18 +138,18 @@ export function ProcessSteps({
                   <p
                     className={cn(
                       "text-xs font-semibold leading-tight",
-                      active ? "text-slate-900" : done ? "text-slate-700" : "text-slate-500"
+                      active ? "text-gray-900" : done ? "text-gray-700" : "text-gray-500"
                     )}
                   >
                     {step.label}
                   </p>
                   {step.description && (
-                    <p className="text-[11px] text-slate-400 leading-tight">{step.description}</p>
+                    <p className="text-[11px] text-gray-400 leading-tight">{step.description}</p>
                   )}
                 </div>
               </div>
               {idx < steps.length - 1 && (
-                <div className="hidden md:block flex-1 h-px bg-slate-200 mx-3" aria-hidden />
+                <div className="hidden md:block flex-1 h-px bg-gray-200 mx-3" aria-hidden />
               )}
             </li>
           );
@@ -314,12 +314,12 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-10 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white ring-1 ring-slate-200">
-        <Icon className="h-6 w-6 text-slate-400" />
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 p-10 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white ring-1 ring-gray-200">
+        <Icon className="h-6 w-6 text-gray-400" />
       </div>
-      <h3 className="mt-3 text-sm font-semibold text-slate-700">{title}</h3>
-      {description && <p className="mt-1 max-w-sm text-xs text-slate-500">{description}</p>}
+      <h3 className="mt-3 text-sm font-semibold text-gray-700">{title}</h3>
+      {description && <p className="mt-1 max-w-sm text-xs text-gray-500">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
@@ -354,7 +354,7 @@ export function LoadingSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="space-y-2">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="h-10 animate-pulse rounded-lg bg-slate-100" />
+        <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-100" />
       ))}
     </div>
   );

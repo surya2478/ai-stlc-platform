@@ -326,28 +326,28 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
       <Notices error={error} notice={notice} onDismiss={() => { setError(""); setNotice(""); }} />
 
       {/* Context bar — the two choices everything below depends on. */}
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Application</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">Application</span>
           <select
             value={selectedApplicationId ?? ""}
             onChange={(e) => {
               setSelectedApplicationId(Number(e.target.value) || null);
               setSelectedSessionId(null); setEvents([]); setKpis(null); setSelectedEventId(null);
             }}
-            className="h-9 w-60 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            className="h-9 w-60 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
           >
             <option value="">Select application…</option>
             {applications.map((a) => <option key={a.id ?? a.key} value={a.id ?? ""}>{a.name}</option>)}
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">Discovery session</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">Discovery session</span>
           <select
             value={selectedSessionId ?? ""}
             disabled={!selectedApplicationId || sessions.length === 0}
             onChange={(e) => { setSelectedSessionId(Number(e.target.value) || null); setSelectedEventId(null); }}
-            className="h-9 w-72 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+            className="h-9 w-72 rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100 disabled:bg-gray-50 disabled:text-gray-400"
           >
             <option value="">{sessions.length === 0 ? "No sessions recorded" : "Select a session…"}</option>
             {sessions.map((s) => (
@@ -356,12 +356,12 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
           </select>
         </label>
         {selectedApplication && (
-          <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-            <Boxes className="h-3.5 w-3.5 text-slate-400" />
-            <span className="font-mono font-bold text-[#1b59f8]">APP-{selectedApplication.id}</span>
+          <div className="ml-auto flex items-center gap-2 text-[11px] font-semibold text-gray-500">
+            <Boxes className="h-3.5 w-3.5 text-gray-400" />
+            <span className="font-mono font-bold text-[#B71920]">APP-{selectedApplication.id}</span>
             <span>{selectedApplication.key}</span>
             {selectedSession && (
-              <a href={discoveryHref} className="ml-2 inline-flex items-center gap-1 font-bold text-[#1b59f8]">
+              <a href={discoveryHref} className="ml-2 inline-flex items-center gap-1 font-bold text-[#B71920]">
                 <Radar className="h-3.5 w-3.5" /> Open session <ExternalLink className="h-3 w-3" />
               </a>
             )}
@@ -382,8 +382,8 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
             <StatCard title="Validation" value="Not configured" subtitle="No API/DB validator for this project" icon={CheckCircle2} tone="slate" />
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Governance &amp; Evidence Integrity</p>
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-gray-800">Governance &amp; Evidence Integrity</p>
             <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
               <ChecklistRow label="Discovery session authorized" state="pass" detail={`Session #${selectedSessionId} in ${selectedSession?.environment ?? "—"}`} />
               <ChecklistRow
@@ -408,12 +408,12 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-64 flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by URL, host or path…"
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
               />
             </div>
             <FilterSelect
@@ -431,7 +431,7 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
             {(search || methodFilter || statusFilter || queueTab !== "all") && (
               <button
                 onClick={() => { setSearch(""); setMethodFilter(""); setStatusFilter(""); setQueueTab("all"); }}
-                className="text-xs font-bold text-[#1b59f8]"
+                className="text-xs font-bold text-[#B71920]"
               >
                 Clear Filters
               </button>
@@ -454,7 +454,7 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
                   : <Button size="sm" variant="outline" onClick={() => { setSearch(""); setMethodFilter(""); setStatusFilter(""); setQueueTab("all"); }}>Clear Filters</Button>}
               />
             ) : undefined}
-            footer={<span className="text-xs font-semibold text-slate-500">Showing {filteredEvents.length} of {events.length} requests</span>}
+            footer={<span className="text-xs font-semibold text-gray-500">Showing {filteredEvents.length} of {events.length} requests</span>}
           >
             {filteredEvents.map((event) => {
               const action = event.action_id != null ? actionById.get(event.action_id) : undefined;
@@ -465,19 +465,19 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
                   selected={selectedEventId === event.id}
                   onClick={() => { setSelectedEventId(event.id); setDrawerTab("overview"); }}
                 >
-                  <span className="font-mono font-bold text-slate-400">#{event.sequence}</span>
-                  <span className="font-mono font-extrabold text-slate-800">
-                    {event.method || <span className="font-sans font-semibold text-slate-300">unparsed</span>}
+                  <span className="font-mono font-bold text-gray-400">#{event.sequence}</span>
+                  <span className="font-mono font-extrabold text-gray-800">
+                    {event.method || <span className="font-sans font-semibold text-gray-300">unparsed</span>}
                   </span>
-                  <span className="truncate font-semibold text-slate-600" title={event.url || event.raw_line}>
+                  <span className="truncate font-semibold text-gray-600" title={event.url || event.raw_line}>
                     {event.path || event.url || event.raw_line}
                   </span>
                   <span><Badge variant={statusTone(event.status_code)}>{event.status_code ?? "—"}</Badge></span>
-                  <span className="truncate font-semibold text-slate-600">
-                    {action?.target_screen_ref || <span className="font-normal text-slate-300">Unmapped</span>}
+                  <span className="truncate font-semibold text-gray-600">
+                    {action?.target_screen_ref || <span className="font-normal text-gray-300">Unmapped</span>}
                   </span>
                   <span>{reviewBadge(event.review_state)}</span>
-                  <span className="truncate font-semibold text-slate-500">
+                  <span className="truncate font-semibold text-gray-500">
                     {event.host || "—"}{event.is_external ? " ↗" : ""}
                   </span>
                 </ListRow>
@@ -485,17 +485,17 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
             })}
           </ListShell>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-800">Session Activity</p>
+          <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+            <p className="mb-2 text-[11px] font-extrabold uppercase tracking-wide text-gray-800">Session Activity</p>
             {activity.length === 0 ? (
-              <p className="text-xs font-semibold text-slate-400">No review activity recorded for this session yet.</p>
+              <p className="text-xs font-semibold text-gray-400">No review activity recorded for this session yet.</p>
             ) : (
               <div className="space-y-2">
                 {activity.map((entry) => (
                   <div key={entry.id} className="flex flex-wrap items-baseline gap-2 text-xs">
-                    <span className="font-bold text-slate-700">{entry.event_type.replace(/_/g, " ")}</span>
-                    <span className="font-semibold text-slate-400">{new Date(entry.created_at).toLocaleString()}</span>
-                    {entry.reason && <span className="font-semibold text-slate-500">— {entry.reason}</span>}
+                    <span className="font-bold text-gray-700">{entry.event_type.replace(/_/g, " ")}</span>
+                    <span className="font-semibold text-gray-400">{new Date(entry.created_at).toLocaleString()}</span>
+                    {entry.reason && <span className="font-semibold text-gray-500">— {entry.reason}</span>}
                   </div>
                 ))}
               </div>
@@ -509,10 +509,10 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
         <DrawerContent size="xl">
           {selectedEvent && (
             <div className="flex h-full flex-col">
-              <div className="border-b border-slate-100 p-5">
+              <div className="border-b border-gray-100 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-lg font-extrabold text-slate-950">
+                    <span className="font-mono text-lg font-extrabold text-gray-950">
                       {selectedEvent.method || "UNPARSED"}
                     </span>
                     <Badge variant={statusTone(selectedEvent.status_code)}>
@@ -521,24 +521,24 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
                     {reviewBadge(selectedEvent.review_state)}
                     {selectedEvent.is_external && <Badge variant="warning">External host</Badge>}
                   </div>
-                  <button onClick={() => setSelectedEventId(null)} aria-label="Close" className="rounded-md p-1 text-slate-500 hover:bg-slate-50">
+                  <button onClick={() => setSelectedEventId(null)} aria-label="Close" className="rounded-md p-1 text-gray-500 hover:bg-gray-50">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <p className="mt-4 break-all text-sm font-bold text-slate-900">
+                <p className="mt-4 break-all text-sm font-bold text-gray-900">
                   {selectedEvent.url || selectedEvent.raw_line}
                 </p>
-                <p className="mt-2 text-xs font-semibold text-slate-500">
+                <p className="mt-2 text-xs font-semibold text-gray-500">
                   Request #{selectedEvent.sequence} of session #{selectedEvent.session_id}
                   {selectedAction
-                    ? <> · captured during <span className="text-[#1b59f8]">step {selectedAction.sequence} — {selectedAction.target_semantic || selectedAction.action_family}</span></>
+                    ? <> · captured during <span className="text-[#B71920]">step {selectedAction.sequence} — {selectedAction.target_semantic || selectedAction.action_family}</span></>
                     : <> · <span className="text-amber-700">not linked to any discovery action</span></>}
                 </p>
               </div>
 
               <DrawerTabBar tabs={DRAWER_TABS} active={drawerTab} onChange={setDrawerTab} />
 
-              <div className="flex-1 space-y-4 overflow-y-auto bg-slate-50/50 p-4">
+              <div className="flex-1 space-y-4 overflow-y-auto bg-gray-50/50 p-4">
                 {drawerTab === "overview" && (
                   <>
                     <DrawerCard title="Request" icon={Network}>
@@ -564,18 +564,18 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
                         <InfoPair label="Reviewed at" value={selectedEvent.reviewed_at ? new Date(selectedEvent.reviewed_at).toLocaleString() : "—"} />
                       </div>
                       {selectedEvent.review_reason && (
-                        <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] font-semibold text-slate-600">
+                        <p className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-2.5 text-[11px] font-semibold text-gray-600">
                           {selectedEvent.review_reason}
                         </p>
                       )}
-                      <p className="mt-3 text-[11px] font-semibold text-slate-400">
+                      <p className="mt-3 text-[11px] font-semibold text-gray-400">
                         Reviewing records that a human looked at this request. Ignoring removes it from mapping
                         readiness without deleting it from the evidence trail. Both are audited.
                       </p>
                     </DrawerCard>
 
                     <DrawerCard title="Raw capture line" icon={Search}>
-                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] leading-5 text-slate-600">
+                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-3 text-[11px] leading-5 text-gray-600">
                         {selectedEvent.raw_line}
                       </pre>
                     </DrawerCard>
@@ -593,13 +593,13 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
                           <InfoPair label="Test step" value={selectedAction.test_step_ref || "Not mapped"} mono />
                         </div>
                         {selectedAction.target_semantic && (
-                          <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">{selectedAction.target_semantic}</p>
+                          <p className="mt-3 text-xs font-semibold leading-5 text-gray-600">{selectedAction.target_semantic}</p>
                         )}
                       </>
                     ) : (
                       <div className="space-y-2">
                         <p className="text-xs font-semibold text-amber-700">This request is not linked to any discovery action.</p>
-                        <p className="text-[11px] font-semibold leading-5 text-slate-500">
+                        <p className="text-[11px] font-semibold leading-5 text-gray-500">
                           Requests are correlated by the capture they came from. An uncorrelated request usually means
                           the traffic happened between recorded steps — background polling, telemetry, or a redirect
                           chain. It is normal to ignore these with a reason rather than to chase a mapping.
@@ -611,18 +611,18 @@ export function NetworkExplorerView({ projectId, applicationId }: Props) {
 
                 {drawerTab === "evidence" && (
                   <DrawerCard title="Capture content" icon={Download}>
-                    <p className="mb-2 text-[11px] font-semibold text-slate-500">
+                    <p className="mb-2 text-[11px] font-semibold text-gray-500">
                       The sanitized network-log capture this request was parsed from, as stored on disk.
                     </p>
-                    <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] leading-5 text-slate-600">
+                    <pre className="max-h-[28rem] overflow-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 p-3 text-[11px] leading-5 text-gray-600">
                       {evidenceText || "Loading…"}
                     </pre>
                   </DrawerCard>
                 )}
               </div>
 
-              <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50 p-4">
-                <p className="text-[11px] font-semibold text-slate-500">
+              <div className="flex items-center justify-between gap-2 border-t border-gray-100 bg-gray-50 p-4">
+                <p className="text-[11px] font-semibold text-gray-500">
                   {selectedEvent.review_state === "unreviewed"
                     ? "Not yet reviewed — both actions below ask for a note first."
                     : `Already ${selectedEvent.review_state}. Re-reviewing overwrites the previous note.`}

@@ -55,11 +55,11 @@ function SettingsContent() {
       <div className="mx-auto max-w-7xl pb-8">
         <div className="rounded-2xl border border-dashed p-12 text-center text-muted-foreground">
           <FolderKanban className="mx-auto h-10 w-10 mb-3 opacity-40" />
-          <p className="font-semibold text-slate-800">No project selected</p>
+          <p className="font-semibold text-gray-800">No project selected</p>
           <p className="text-sm mt-1">Create a project or pick one from the project selector above to manage its settings.</p>
           <Link
             href="/projects/new"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1b59f8] px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#B71920] px-4 py-2 text-sm font-semibold text-white hover:bg-app-brand-700 transition-colors"
           >
             <Plus className="h-4 w-4" />New Project
           </Link>
@@ -71,10 +71,10 @@ function SettingsContent() {
   return (
     <div className="mx-auto flex max-w-7xl gap-6 pb-8">
       <aside className="hidden w-80 shrink-0 lg:block">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="px-1 pb-4">
-            <h1 className="text-lg font-bold text-slate-900">Project Settings</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500">Manage all configurations and integrations for this project.</p>
+            <h1 className="text-lg font-bold text-gray-900">Project Settings</h1>
+            <p className="mt-2 text-sm leading-6 text-gray-500">Manage all configurations and integrations for this project.</p>
           </div>
           <nav className="space-y-1">
             {settingsNav.map((item) => {
@@ -86,10 +86,10 @@ function SettingsContent() {
                   onClick={() => setActiveTab(item.label)}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold transition-colors",
-                    active ? "bg-blue-50 text-[#1b59f8]" : "text-slate-600 hover:bg-slate-50"
+                    active ? "bg-app-brand-75 text-[#B71920]" : "text-gray-600 hover:bg-gray-50"
                   )}
                 >
-                  <item.icon className={cn("h-4 w-4", active ? "text-[#1b59f8]" : "text-slate-400")} />
+                  <item.icon className={cn("h-4 w-4", active ? "text-[#B71920]" : "text-gray-400")} />
                   <span className="flex-1">{item.label}</span>
                   {active && <Badge variant="info" className="text-[10px]">Active</Badge>}
                 </button>
@@ -100,8 +100,8 @@ function SettingsContent() {
             <div className="flex gap-2">
               <ShieldCheck className="mt-0.5 h-4 w-4 text-emerald-600" />
               <div>
-                <p className="text-xs font-bold text-slate-800">Changes are saved per project</p>
-                <p className="mt-1 text-xs leading-5 text-slate-600">These settings apply only to the current project.</p>
+                <p className="text-xs font-bold text-gray-800">Changes are saved per project</p>
+                <p className="mt-1 text-xs leading-5 text-gray-600">These settings apply only to the current project.</p>
               </div>
             </div>
           </div>
@@ -113,7 +113,7 @@ function SettingsContent() {
         {activeTab === "Applications & Environments" && <ApplicationsTab projectId={projectId} />}
         {activeTab === "Automation Classification" && <AutomationClassificationTab projectId={projectId} />}
         {!IMPLEMENTED_TABS.has(activeTab) && (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400">
+          <div className="rounded-xl border border-dashed border-gray-200 bg-white p-10 text-center text-sm text-gray-400">
             {activeTab} settings are not available yet.
           </div>
         )}
@@ -125,8 +125,8 @@ function SettingsContent() {
 export default function SettingsPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-sm font-semibold text-slate-500">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#1b59f8]" />
+      <div className="flex h-64 items-center justify-center text-sm font-semibold text-gray-500">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#B71920]" />
         Loading settings...
       </div>
     }>

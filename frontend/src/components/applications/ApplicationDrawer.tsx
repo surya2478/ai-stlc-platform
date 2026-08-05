@@ -215,54 +215,54 @@ export function ApplicationDrawer({
             <Badge variant={reviewState === "Blocked" ? "destructive" : reviewState === "Discovery Ready" ? "success" : reviewState === "Ready to Activate" ? "info" : "secondary"}>
               {reviewState}
             </Badge>
-            <button aria-label="Close" onClick={() => !saving && onClose()} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+            <button aria-label="Close" onClick={() => !saving && onClose()} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-50"><X className="h-4 w-4" /></button>
           </div>
         </DrawerHeader>
         <DrawerBody>
           <section className="space-y-3">
-            <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Step 1 · Identity</h4>
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Step 1 · Identity</h4>
             <div className="grid grid-cols-2 gap-3">
               <label className="col-span-2 block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Application Name *</span>
-                <input value={draft.name} onChange={(e) => handleNameChange(e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Application Name *</span>
+                <input value={draft.name} onChange={(e) => handleNameChange(e.target.value)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Stable Key *</span>
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Stable Key *</span>
                 <input
                   value={draft.key}
                   disabled={mode === "edit"}
                   onChange={(e) => setDraft((p) => ({ ...p, key: e.target.value, keyManuallyEdited: true }))}
-                  className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-mono font-semibold outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-400"
+                  className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-mono font-semibold outline-none focus:ring-2 focus:ring-app-brand-100 disabled:bg-gray-50 disabled:text-gray-400"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Application Type</span>
-                <input value={draft.applicationType} onChange={(e) => updateDraft("applicationType", e.target.value)} placeholder="Web, API, Mobile, Service..." className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Application Type</span>
+                <input value={draft.applicationType} onChange={(e) => updateDraft("applicationType", e.target.value)} placeholder="Web, API, Mobile, Service..." className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
               </label>
               <label className="col-span-2 block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Description</span>
-                <textarea value={draft.description} onChange={(e) => updateDraft("description", e.target.value)} rows={2} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Description</span>
+                <textarea value={draft.description} onChange={(e) => updateDraft("description", e.target.value)} rows={2} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
               </label>
               <label className="col-span-2 block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Aliases — one per line</span>
-                <textarea value={draft.aliasesText} onChange={(e) => updateDraft("aliasesText", e.target.value)} rows={2} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Aliases — one per line</span>
+                <textarea value={draft.aliasesText} onChange={(e) => updateDraft("aliasesText", e.target.value)} rows={2} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Lifecycle State</span>
-                <select value={draft.lifecycleStatus} onChange={(e) => updateDraft("lifecycleStatus", e.target.value as ApplicationLifecycleStatus)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none">
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Lifecycle State</span>
+                <select value={draft.lifecycleStatus} onChange={(e) => updateDraft("lifecycleStatus", e.target.value as ApplicationLifecycleStatus)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-bold outline-none">
                   <option value="draft">Draft</option>
                   <option value="active">Active</option>
                   <option value="deprecated">Deprecated</option>
                   <option value="retired">Retired</option>
                 </select>
               </label>
-              <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-3">
+              <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3">
                 <input type="checkbox" checked={draft.isActive} onChange={(e) => updateDraft("isActive", e.target.checked)} />
-                <span className="text-xs font-semibold text-slate-700">Active</span>
+                <span className="text-xs font-semibold text-gray-700">Active</span>
               </label>
-              <label className="col-span-2 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+              <label className="col-span-2 flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50/60 px-3 py-2">
                 <input type="checkbox" checked={draft.isDefault} onChange={(e) => updateDraft("isDefault", e.target.checked)} className="mt-0.5" />
-                <span className="text-xs font-semibold text-slate-700">
+                <span className="text-xs font-semibold text-gray-700">
                   Set as Project Default
                   {draft.isDefault && currentDefaultApp && (
                     <span className="mt-0.5 block text-[10px] font-bold text-amber-600">This replaces &quot;{currentDefaultApp.name}&quot; as the project default.</span>
@@ -272,19 +272,19 @@ export function ApplicationDrawer({
             </div>
           </section>
 
-          <section className="space-y-3 border-t border-slate-100 pt-4">
-            <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Step 2 · Ownership & Classification</h4>
+          <section className="space-y-3 border-t border-gray-100 pt-4">
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Step 2 · Ownership & Classification</h4>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Business Owner</span>
-                <select value={draft.businessOwnerId ?? ""} onChange={(e) => updateDraft("businessOwnerId", e.target.value ? Number(e.target.value) : null)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none">
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Business Owner</span>
+                <select value={draft.businessOwnerId ?? ""} onChange={(e) => updateDraft("businessOwnerId", e.target.value ? Number(e.target.value) : null)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-bold outline-none">
                   <option value="">Unassigned</option>
                   {ownerOptions.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Technical Owner</span>
-                <select value={draft.technicalOwnerId ?? ""} onChange={(e) => updateDraft("technicalOwnerId", e.target.value ? Number(e.target.value) : null)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-bold outline-none">
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Technical Owner</span>
+                <select value={draft.technicalOwnerId ?? ""} onChange={(e) => updateDraft("technicalOwnerId", e.target.value ? Number(e.target.value) : null)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-bold outline-none">
                   <option value="">Unassigned</option>
                   {ownerOptions.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
                 </select>
@@ -293,34 +293,34 @@ export function ApplicationDrawer({
                 <p className="col-span-2 flex items-center gap-1.5 text-[10px] font-semibold text-amber-600"><AlertTriangle className="h-3 w-3" />No authorized project members found to assign as owner.</p>
               )}
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Domain</span>
-                <input value={draft.domain} onChange={(e) => updateDraft("domain", e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Domain</span>
+                <input value={draft.domain} onChange={(e) => updateDraft("domain", e.target.value)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Product Group</span>
-                <input value={draft.productGroup} onChange={(e) => updateDraft("productGroup", e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Product Group</span>
+                <input value={draft.productGroup} onChange={(e) => updateDraft("productGroup", e.target.value)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Product</span>
-                <input value={draft.product} onChange={(e) => updateDraft("product", e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Product</span>
+                <input value={draft.product} onChange={(e) => updateDraft("product", e.target.value)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-[10px] font-bold text-slate-500">Channel</span>
-                <input value={draft.channel} onChange={(e) => updateDraft("channel", e.target.value)} className="h-10 w-full rounded-lg border border-slate-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-100" />
+                <span className="mb-1 block text-[10px] font-bold text-gray-500">Channel</span>
+                <input value={draft.channel} onChange={(e) => updateDraft("channel", e.target.value)} className="h-10 w-full rounded-lg border border-gray-200 px-3 text-xs font-semibold outline-none focus:ring-2 focus:ring-app-brand-100" />
               </label>
             </div>
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-2.5 text-[10px] font-semibold text-slate-400">
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-2.5 text-[10px] font-semibold text-gray-400">
               Customer Segment, Customer Type, Request Type, supported journeys and upstream/downstream applications — not configured. No backing subsystem persists these relationships yet.
             </div>
           </section>
 
-          <section className="space-y-3 border-t border-slate-100 pt-4">
+          <section className="space-y-3 border-t border-gray-100 pt-4">
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Step 3 · Environments & Access</h4>
-              <button onClick={addEnvironment} className="flex items-center gap-1 text-[11px] font-bold text-[#1b59f8]"><Plus className="h-3.5 w-3.5" />Add Environment</button>
+              <h4 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Step 3 · Environments & Access</h4>
+              <button onClick={addEnvironment} className="flex items-center gap-1 text-[11px] font-bold text-[#B71920]"><Plus className="h-3.5 w-3.5" />Add Environment</button>
             </div>
             {draft.environments.length === 0 ? (
-              <p className="text-xs font-semibold text-slate-400">No environments configured. An application may be saved as Draft without one, but at least one is required for Discovery Ready.</p>
+              <p className="text-xs font-semibold text-gray-400">No environments configured. An application may be saved as Draft without one, but at least one is required for Discovery Ready.</p>
             ) : (
               <div className="space-y-2">
                 {draft.environments.map((env, index) => (
@@ -330,15 +330,15 @@ export function ApplicationDrawer({
                       onChange={(e) => updateEnvironment(index, "name", e.target.value)}
                       placeholder="SIT, QA, UAT..."
                       list="available-environments"
-                      className="h-9 rounded-lg border border-slate-200 px-2 text-xs font-bold outline-none"
+                      className="h-9 rounded-lg border border-gray-200 px-2 text-xs font-bold outline-none"
                     />
                     <input
                       value={env.url}
                       onChange={(e) => updateEnvironment(index, "url", e.target.value)}
                       placeholder="https://..."
-                      className="h-9 rounded-lg border border-slate-200 px-2 text-xs font-semibold outline-none"
+                      className="h-9 rounded-lg border border-gray-200 px-2 text-xs font-semibold outline-none"
                     />
-                    <button onClick={() => removeEnvironment(index)} className="text-slate-400 hover:text-red-600"><X className="h-4 w-4" /></button>
+                    <button onClick={() => removeEnvironment(index)} className="text-gray-400 hover:text-red-600"><X className="h-4 w-4" /></button>
                   </div>
                 ))}
               </div>
@@ -346,23 +346,23 @@ export function ApplicationDrawer({
             <datalist id="available-environments">
               {availableEnvironments.map((env) => <option key={env} value={env} />)}
             </datalist>
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-2.5 text-[10px] font-semibold text-slate-400">
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-2.5 text-[10px] font-semibold text-gray-400">
               Health-check strategy, authentication profile reference, browser/device/AVD compatibility and environment restrictions — not configured. Auth profiles are selector-only when available; credentials are never stored here.
             </div>
           </section>
 
-          <section className="space-y-3 border-t border-slate-100 pt-4">
-            <h4 className="text-xs font-extrabold uppercase tracking-wide text-slate-500">Step 4 · Discovery, Dependencies & Review</h4>
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/60 p-3 text-[10px] font-semibold text-slate-400">
+          <section className="space-y-3 border-t border-gray-100 pt-4">
+            <h4 className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Step 4 · Discovery, Dependencies & Review</h4>
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-3 text-[10px] font-semibold text-gray-400">
               Discovery Enabled, supported modes/surfaces, allowed host list and evidence policy — not configured; this backend extension has not been built yet. External dependency mapping is managed from the application&apos;s Dependencies inspector tab after saving.
             </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <p className="mb-2 text-[10px] font-extrabold uppercase text-slate-500">Review Summary</p>
+            <div className="rounded-lg border border-gray-200 bg-white p-3">
+              <p className="mb-2 text-[10px] font-extrabold uppercase text-gray-500">Review Summary</p>
               <ul className="space-y-1 text-[11px] font-semibold">
                 <li className={ownerAssigned ? "text-emerald-700" : "text-amber-600"}>{ownerAssigned ? "✓" : "○"} Owner assigned</li>
                 <li className={mapped ? "text-emerald-700" : "text-amber-600"}>{mapped ? "✓" : "○"} Domain/Product/Channel mapped</li>
                 <li className={hasEnvironment ? "text-emerald-700" : "text-amber-600"}>{hasEnvironment ? "✓" : "○"} At least one environment configured</li>
-                <li className={draft.isActive ? "text-emerald-700" : "text-slate-400"}>{draft.isActive ? "✓" : "○"} Active</li>
+                <li className={draft.isActive ? "text-emerald-700" : "text-gray-400"}>{draft.isActive ? "✓" : "○"} Active</li>
               </ul>
               {validationErrors.length > 0 && (
                 <div className="mt-2 space-y-1">
@@ -382,17 +382,17 @@ export function ApplicationDrawer({
           )}
         </DrawerBody>
         <DrawerFooter>
-          <button type="button" disabled={saving} onClick={onClose} className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" disabled={saving} onClick={onClose} className="inline-flex h-9 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
             Cancel
           </button>
-          <button type="button" disabled={saving} onClick={() => setValidated(true)} className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <button type="button" disabled={saving} onClick={() => setValidated(true)} className="inline-flex h-9 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50">
             Validate
           </button>
           <button
             type="button"
             disabled={saving}
             onClick={() => submit({ lifecycleStatus: "draft", isActive: false }, "Saved as draft")}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Save Draft
@@ -401,7 +401,7 @@ export function ApplicationDrawer({
             type="button"
             disabled={saving || validationErrors.length > 0}
             onClick={() => submit({}, mode === "add" ? "Application registered" : "Application updated")}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#1b59f8] px-4 text-xs font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[#B71920] px-4 text-xs font-bold text-white shadow-sm hover:bg-app-brand-700 disabled:opacity-50"
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {mode === "add" ? "Add Application" : canActivateNow ? "Activate Application" : "Save Changes"}

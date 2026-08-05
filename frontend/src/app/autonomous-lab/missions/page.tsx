@@ -101,18 +101,18 @@ function statusPresentation(
     return { tone: "border-emerald-100 bg-emerald-50 text-emerald-600", badgeVariant: "success" };
   }
   if (state === "progress") {
-    return { tone: "border-blue-100 bg-blue-50 text-[#1b59f8]", badgeVariant: "info" };
+    return { tone: "border-app-brand-100 bg-app-brand-75 text-[#B71920]", badgeVariant: "info" };
   }
   if (state === "warning") {
     return { tone: "border-amber-100 bg-amber-50 text-amber-600", badgeVariant: "warning" };
   }
-  return { tone: "border-slate-200 bg-slate-50 text-slate-500", badgeVariant: "outline" };
+  return { tone: "border-gray-200 bg-gray-50 text-gray-500", badgeVariant: "outline" };
 }
 
 function MetricCard({ item }: { item: MetricItem }) {
   const Icon = item.icon;
   return (
-    <Card className="rounded-lg border-slate-200 bg-white shadow-sm">
+    <Card className="rounded-lg border-gray-200 bg-white shadow-sm">
       <CardContent className="p-4">
         <div className="mb-5 flex items-center justify-between gap-3">
           <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${item.tone}`}>
@@ -120,12 +120,12 @@ function MetricCard({ item }: { item: MetricItem }) {
           </div>
           <Badge variant={item.badgeVariant} className="whitespace-nowrap text-[10px]">{item.badge}</Badge>
         </div>
-        <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+        <p className="text-sm font-semibold text-gray-900">{item.title}</p>
         <div className="mt-5 flex items-end gap-2">
-          <span className="text-3xl font-bold tracking-tight text-slate-950">{item.value}</span>
-          <span className="pb-1 text-xs text-slate-500">{item.suffix}</span>
+          <span className="text-3xl font-bold tracking-tight text-gray-950">{item.value}</span>
+          <span className="pb-1 text-xs text-gray-500">{item.suffix}</span>
         </div>
-        <p className="mt-3 text-xs text-slate-500">{item.note}</p>
+        <p className="mt-3 text-xs text-gray-500">{item.note}</p>
       </CardContent>
     </Card>
   );
@@ -140,12 +140,12 @@ function LifecycleStep({ item, index, last }: { item: LifecycleItem; index: numb
           <Icon className="h-6 w-6" />
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-semibold leading-5 text-slate-950">{index}. {item.title}</p>
+          <p className="text-xs font-semibold leading-5 text-gray-950">{index}. {item.title}</p>
           <Badge variant={item.badgeVariant} className="mt-1 text-[10px]">{item.status}</Badge>
-          <p className="mt-1 text-xs text-slate-500">{item.detail}</p>
+          <p className="mt-1 text-xs text-gray-500">{item.detail}</p>
         </div>
       </div>
-      {!last && <div className="mx-4 hidden h-px min-w-8 flex-1 bg-slate-300 xl:block" />}
+      {!last && <div className="mx-4 hidden h-px min-w-8 flex-1 bg-gray-300 xl:block" />}
     </div>
   );
 }
@@ -156,7 +156,7 @@ function ReadinessRow({ label, value, warning = false }: { label: string; value:
     <div className="flex items-center justify-between gap-4 py-2 text-sm">
       <div className="flex min-w-0 items-center gap-3">
         <Icon className={`h-4 w-4 shrink-0 ${warning ? "text-amber-500" : "text-emerald-500"}`} />
-        <span className="truncate text-slate-700">{label}</span>
+        <span className="truncate text-gray-700">{label}</span>
       </div>
       <span className={`shrink-0 text-xs font-medium ${warning ? "text-amber-600" : "text-emerald-600"}`}>{value}</span>
     </div>
@@ -164,12 +164,12 @@ function ReadinessRow({ label, value, warning = false }: { label: string; value:
 }
 
 function QueueRow({ icon: Icon, label, count, variant }: { icon: LucideIcon; label: string; count: number; variant: BadgeVariant }) {
-  const iconColor = variant === "warning" ? "text-amber-500" : variant === "destructive" ? "text-red-500" : "text-blue-500";
+  const iconColor = variant === "warning" ? "text-amber-500" : variant === "destructive" ? "text-red-500" : "text-app-brand-500";
   return (
     <div className="flex items-center justify-between gap-4 py-2 text-sm">
       <div className="flex min-w-0 items-center gap-3">
         <Icon className={`h-4 w-4 shrink-0 ${iconColor}`} />
-        <span className="truncate text-slate-700">{label}</span>
+        <span className="truncate text-gray-700">{label}</span>
       </div>
       <Badge variant={variant} className="min-w-6 justify-center px-2 text-[10px]">{count}</Badge>
     </div>
@@ -184,12 +184,12 @@ function EvidenceRing({ coverage, results }: { coverage: number; results: Array<
     cursor += total ? (item.count / total) * 100 : 0;
     return `${item.color} ${start}% ${cursor}%`;
   });
-  const background = total ? `conic-gradient(${segments.join(", ")})` : "#e2e8f0";
+  const background = total ? `conic-gradient(${segments.join(", ")})` : "#E8EAEE";
   return (
     <div className="relative flex h-36 w-36 shrink-0 items-center justify-center rounded-full p-3" style={{ background }} aria-label={`Evidence coverage is ${coverage} percent`}>
       <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-white">
-        <span className="text-3xl font-bold text-slate-950">{coverage}%</span>
-        <span className="text-xs text-slate-500">Evidence Coverage</span>
+        <span className="text-3xl font-bold text-gray-950">{coverage}%</span>
+        <span className="text-xs text-gray-500">Evidence Coverage</span>
       </div>
     </div>
   );
@@ -198,7 +198,7 @@ function EvidenceRing({ coverage, results }: { coverage: number; results: Array<
 function ActionRow({ label, href, button }: { label: string; href: string; button: string }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3 text-sm">
-      <span className="text-slate-700">{label}</span>
+      <span className="text-gray-700">{label}</span>
       <Button asChild variant="outline" size="sm" className="border-violet-300 text-violet-700 hover:bg-violet-50">
         <Link href={href}>{button}</Link>
       </Button>
@@ -317,7 +317,7 @@ function ExecutiveOverviewContent() {
         badge: requirementMetrics?.total && requirementMetrics.pending === 0 ? "Complete" : requirementMetrics?.pending ? "Pending Review" : "No Data",
         badgeVariant: requirementMetrics?.total && requirementMetrics.pending === 0 ? "success" : requirementMetrics?.pending ? "warning" : "outline",
         icon: FileText,
-        tone: "bg-blue-50 text-blue-600",
+        tone: "bg-app-brand-75 text-app-brand-600",
       },
       {
         title: "Test Cases",
@@ -347,7 +347,7 @@ function ExecutiveOverviewContent() {
         badge: automationScripts.length ? (automationReadiness === 100 ? "Ready" : "In Progress") : "No Scripts",
         badgeVariant: automationReadiness === 100 && automationScripts.length ? "success" : automationScripts.length ? "info" : "outline",
         icon: Sparkles,
-        tone: "bg-blue-50 text-[#1b59f8]",
+        tone: "bg-app-brand-75 text-[#B71920]",
       },
       {
         title: "Execution",
@@ -406,19 +406,19 @@ function ExecutiveOverviewContent() {
       { label: "Pass", count: passed, color: "#34d399" },
       { label: "Fail", count: failed, color: "#ef4444" },
       { label: "Blocked", count: blocked, color: "#f59e0b" },
-      { label: "Not Run / Skipped", count: notRun, color: "#94a3b8" },
+      { label: "Not Run / Skipped", count: notRun, color: "#9CA3AF" },
     ];
   }, [dashboard, executionKpis]);
   const resultTotal = resultDistribution.reduce((sum, item) => sum + item.count, 0);
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white px-1 pb-4">
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <span>QAI Command Center</span><ChevronRight className="h-3 w-3" /><span className="font-medium text-[#1b59f8]">Command Centre</span>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 bg-white px-1 pb-4">
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span>QAI Command Center</span><ChevronRight className="h-3 w-3" /><span className="font-medium text-[#B71920]">Command Centre</span>
         </div>
         <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-400">
+          <label className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-gray-400">
             Project
             <select
               aria-label="Command Centre project"
@@ -428,7 +428,7 @@ function ExecutiveOverviewContent() {
                 params.set("project", event.target.value);
                 router.push(`${pathname}?${params.toString()}`);
               }}
-              className="h-9 min-w-[220px] rounded-lg border border-slate-200 bg-white px-3 text-sm normal-case tracking-normal text-slate-900"
+              className="h-9 min-w-[220px] rounded-lg border border-gray-200 bg-white px-3 text-sm normal-case tracking-normal text-gray-900"
             >
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
@@ -444,23 +444,23 @@ function ExecutiveOverviewContent() {
 
       <section className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-[#1b59f8]"><FileText className="h-6 w-6" /></div>
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-app-brand-75 text-[#B71920]"><FileText className="h-6 w-6" /></div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950">Executive Overview</h1>
-            <p className="mt-1 text-sm text-slate-500">Live lifecycle status for {selectedProject?.name || "the selected project"} across requirements, design, discovery, automation, execution and evidence.</p>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-950">Executive Overview</h1>
+            <p className="mt-1 text-sm text-gray-500">Live lifecycle status for {selectedProject?.name || "the selected project"} across requirements, design, discovery, automation, execution and evidence.</p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
           <label className="flex items-center gap-2">
             Environment:
-            <select aria-label="Execution environment" value={environment} onChange={(event) => setEnvironment(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900">
+            <select aria-label="Execution environment" value={environment} onChange={(event) => setEnvironment(event.target.value)} className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900">
               <option value="">All environments</option>
               {availableEnvironments.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </label>
           <label className="flex items-center gap-2">
             Release:
-            <select aria-label="Release version" value={releaseVersion} onChange={(event) => setReleaseVersion(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900">
+            <select aria-label="Release version" value={releaseVersion} onChange={(event) => setReleaseVersion(event.target.value)} className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-900">
               <option value="">All releases</option>
               {releaseOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
@@ -478,9 +478,9 @@ function ExecutiveOverviewContent() {
         {metrics.map((metric) => <MetricCard key={metric.title} item={metric} />)}
       </section>
 
-      <Card className="rounded-lg border-slate-200 bg-white shadow-sm">
+      <Card className="rounded-lg border-gray-200 bg-white shadow-sm">
         <CardContent className="p-6">
-          <h2 className="mb-6 text-sm font-semibold text-slate-950">AAF Lifecycle - Live Operating Domains</h2>
+          <h2 className="mb-6 text-sm font-semibold text-gray-950">AAF Lifecycle - Live Operating Domains</h2>
           <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
             {lifecycle.map((item, index) => <LifecycleStep key={item.title} item={item} index={index + 1} last={index === lifecycle.length - 1} />)}
           </div>
@@ -488,70 +488,70 @@ function ExecutiveOverviewContent() {
       </Card>
 
       <section className="grid gap-4 xl:grid-cols-3">
-        <Card className="rounded-lg border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-lg border-gray-200 bg-white shadow-sm">
           <CardContent className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-950">Readiness &amp; Blockers</h2>
+            <h2 className="mb-4 text-sm font-semibold text-gray-950">Readiness &amp; Blockers</h2>
             <ReadinessRow label="Application Environments" value={applicationSummary ? (applicationSummary.environment_gaps ? `${applicationSummary.environment_gaps} gaps` : "Configured") : "Not available"} warning={!applicationSummary || applicationSummary.environment_gaps > 0} />
             <ReadinessRow label="Discovery & App Model" value={applicationSummary ? `${applicationSummary.discovery_ready}/${applicationSummary.total_applications} ready` : "Not available"} warning={!applicationSummary || applicationSummary.discovery_ready < applicationSummary.total_applications} />
             <ReadinessRow label="Automation Approval" value={`${readyAutomationScripts}/${automationScripts.length} ready`} warning={automationScripts.length === 0 || readyAutomationScripts < automationScripts.length} />
             <ReadinessRow label="Mandatory Evidence" value={`${evidenceCoverage}% covered`} warning={testCases.length === 0 || evidenceCoverage < 100} />
             <ReadinessRow label="Agent Run Health" value={failedAgentRuns ? `${failedAgentRuns} failed` : "No failed runs"} warning={failedAgentRuns > 0} />
-            <Link className="mt-4 inline-flex text-sm font-medium text-[#1b59f8]" href={projectHref("/applications", selectedProjectId)}>Open readiness sources <ChevronRight className="ml-1 h-4 w-4" /></Link>
+            <Link className="mt-4 inline-flex text-sm font-medium text-[#B71920]" href={projectHref("/applications", selectedProjectId)}>Open readiness sources <ChevronRight className="ml-1 h-4 w-4" /></Link>
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-lg border-gray-200 bg-white shadow-sm">
           <CardContent className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-950">Work Queue</h2>
+            <h2 className="mb-4 text-sm font-semibold text-gray-950">Work Queue</h2>
             <QueueRow icon={Bell} label="Pending Approvals" count={pendingApprovalCount} variant={pendingApprovalCount ? "warning" : "outline"} />
             <QueueRow icon={Bot} label="Active Agent Runs" count={runningAgentRuns} variant={runningAgentRuns ? "info" : "outline"} />
             <QueueRow icon={PauseCircle} label="Paused / Waiting Runs" count={pausedAgentRuns} variant={pausedAgentRuns ? "warning" : "outline"} />
             <QueueRow icon={XCircle} label="Failed Agent Runs" count={failedAgentRuns} variant={failedAgentRuns ? "destructive" : "outline"} />
-            <Link className="mt-4 inline-flex text-sm font-medium text-[#1b59f8]" href={projectHref("/agents/logs", selectedProjectId)}>Open Agent Run Logs <ChevronRight className="ml-1 h-4 w-4" /></Link>
+            <Link className="mt-4 inline-flex text-sm font-medium text-[#B71920]" href={projectHref("/agents/logs", selectedProjectId)}>Open Agent Run Logs <ChevronRight className="ml-1 h-4 w-4" /></Link>
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-lg border-gray-200 bg-white shadow-sm">
           <CardContent className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-950">Execution &amp; Evidence Summary</h2>
+            <h2 className="mb-4 text-sm font-semibold text-gray-950">Execution &amp; Evidence Summary</h2>
             <div className="flex flex-col items-center gap-5 sm:flex-row">
               <EvidenceRing coverage={evidenceCoverage} results={resultDistribution} />
               <div className="w-full space-y-3 text-sm">
                 {resultDistribution.map((item) => (
                   <div key={item.label} className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 text-slate-600"><span className="h-2 w-2 rounded-full" style={{ background: item.color }} />{item.label}</span>
-                    <span className="text-slate-500">{pct(item.count, resultTotal)}% ({item.count})</span>
+                    <span className="flex items-center gap-2 text-gray-600"><span className="h-2 w-2 rounded-full" style={{ background: item.color }} />{item.label}</span>
+                    <span className="text-gray-500">{pct(item.count, resultTotal)}% ({item.count})</span>
                   </div>
                 ))}
               </div>
             </div>
-            <Link className="mt-4 inline-flex text-sm font-medium text-[#1b59f8]" href={projectHref("/execution/dashboard", selectedProjectId)}>Open Execution Dashboard <ChevronRight className="ml-1 h-4 w-4" /></Link>
+            <Link className="mt-4 inline-flex text-sm font-medium text-[#B71920]" href={projectHref("/execution/dashboard", selectedProjectId)}>Open Execution Dashboard <ChevronRight className="ml-1 h-4 w-4" /></Link>
           </CardContent>
         </Card>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-        <Card className="rounded-lg border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-lg border-gray-200 bg-white shadow-sm">
           <CardContent className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-950">Recent Activity</h2>
-            <div className="divide-y divide-slate-100">
+            <h2 className="mb-4 text-sm font-semibold text-gray-950">Recent Activity</h2>
+            <div className="divide-y divide-gray-100">
               {(dashboard?.recentActivities || []).map((item, index) => (
                 <div key={`${item.action}-${item.subject}-${index}`} className="grid grid-cols-[1fr_auto_auto] items-center gap-4 py-3 text-sm">
-                  <span className="min-w-0 truncate text-slate-700">{item.action}: {item.subject}</span>
-                  <span className="text-xs text-slate-500">{formatRelativeTime(item.time)}</span>
+                  <span className="min-w-0 truncate text-gray-700">{item.action}: {item.subject}</span>
+                  <span className="text-xs text-gray-500">{formatRelativeTime(item.time)}</span>
                   <Badge variant="outline" className="max-w-40 truncate text-[10px]">{item.user}</Badge>
                 </div>
               ))}
-              {!dashboard?.recentActivities.length && <div className="py-8 text-center text-sm text-slate-400">No project activity is available.</div>}
+              {!dashboard?.recentActivities.length && <div className="py-8 text-center text-sm text-gray-400">No project activity is available.</div>}
             </div>
-            <Link className="mt-4 inline-flex text-sm font-medium text-[#1b59f8]" href={projectHref("/agents/logs", selectedProjectId)}>View agent run timeline <ChevronRight className="ml-1 h-4 w-4" /></Link>
+            <Link className="mt-4 inline-flex text-sm font-medium text-[#B71920]" href={projectHref("/agents/logs", selectedProjectId)}>View agent run timeline <ChevronRight className="ml-1 h-4 w-4" /></Link>
           </CardContent>
         </Card>
 
-        <Card className="rounded-lg border-slate-200 bg-white shadow-sm">
+        <Card className="rounded-lg border-gray-200 bg-white shadow-sm">
           <CardContent className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-950">Next Actions</h2>
-            <div className="divide-y divide-slate-100">
+            <h2 className="mb-4 text-sm font-semibold text-gray-950">Next Actions</h2>
+            <div className="divide-y divide-gray-100">
               <ActionRow label={`Review ${Math.max(0, testCases.length - approvedTestCases)} pending test cases`} href={projectHref("/test-cases?view=approval", selectedProjectId)} button="Open Approvals" />
               <ActionRow label={`${Math.max(0, automationScripts.length - readyAutomationScripts)} automation scripts need readiness`} href={projectHref("/automation", selectedProjectId)} button="Open Automation" />
               <ActionRow label={`Monitor ${executionKpis?.in_progress ?? dashboard?.execution.runningRuns ?? 0} active executions`} href={projectHref("/execution/dashboard", selectedProjectId)} button="Live Execution" />
@@ -567,7 +567,7 @@ function ExecutiveOverviewContent() {
 
 export default function ExecutiveOverviewPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-slate-500">Loading command centre...</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-gray-500">Loading command centre...</div>}>
       <ExecutiveOverviewContent />
     </Suspense>
   );

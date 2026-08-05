@@ -355,12 +355,12 @@ function reviewForCase(
 function badgeClass(tone: Tone) {
   return cn(
     "inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold",
-    tone === "blue" && "border-blue-100 bg-blue-50 text-blue-700",
+    tone === "blue" && "border-app-brand-100 bg-app-brand-75 text-app-brand-700",
     tone === "emerald" && "border-emerald-100 bg-emerald-50 text-emerald-700",
     tone === "red" && "border-red-100 bg-red-50 text-red-700",
     tone === "purple" && "border-purple-100 bg-purple-50 text-purple-700",
     tone === "amber" && "border-amber-100 bg-amber-50 text-amber-700",
-    tone === "slate" && "border-slate-200 bg-slate-50 text-slate-600",
+    tone === "slate" && "border-gray-200 bg-gray-50 text-gray-600",
   );
 }
 
@@ -399,25 +399,25 @@ function StatCard({
   tone: Tone;
 }) {
   const toneMap: Record<Tone, string> = {
-    blue: "bg-blue-50 border-blue-100 text-blue-600",
+    blue: "bg-app-brand-75 border-app-brand-100 text-app-brand-600",
     emerald: "bg-emerald-50 border-emerald-100 text-emerald-600",
     red: "bg-red-50 border-red-100 text-red-600",
     purple: "bg-purple-50 border-purple-100 text-purple-600",
     amber: "bg-amber-50 border-amber-100 text-amber-600",
-    slate: "bg-slate-50 border-slate-100 text-slate-600",
+    slate: "bg-gray-50 border-gray-100 text-gray-600",
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex items-center gap-3">
         <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg border", toneMap[tone])}>
           <Icon className="h-4 w-4" />
         </div>
-        <p className="min-w-0 truncate text-xs font-semibold text-slate-800">{title}</p>
+        <p className="min-w-0 truncate text-xs font-semibold text-gray-800">{title}</p>
       </div>
       <div className="mt-7">
-        <p className="text-2xl font-bold leading-none text-slate-950">{value}</p>
-        <p className="mt-3 text-xs font-normal text-slate-500">{subtitle}</p>
+        <p className="text-2xl font-bold leading-none text-gray-950">{value}</p>
+        <p className="mt-3 text-xs font-normal text-gray-500">{subtitle}</p>
       </div>
     </div>
   );
@@ -439,8 +439,8 @@ function ReadinessItem({
         {tone === "amber" ? <AlertTriangle className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
       </span>
       <div>
-        <p className="text-xs font-semibold text-slate-800">{label}</p>
-        <p className="mt-0.5 text-sm font-bold leading-none text-slate-950">{value}</p>
+        <p className="text-xs font-semibold text-gray-800">{label}</p>
+        <p className="mt-0.5 text-sm font-bold leading-none text-gray-950">{value}</p>
       </div>
     </div>
   );
@@ -450,21 +450,21 @@ type SummaryItem = { label: string; value: number | string; tone: Tone; subtitle
 
 function SummaryStrip({ items }: { items: SummaryItem[] }) {
   const toneMap: Record<Tone, string> = {
-    blue: "text-blue-700",
+    blue: "text-app-brand-700",
     emerald: "text-emerald-700",
     red: "text-red-700",
     purple: "text-purple-700",
     amber: "text-amber-700",
-    slate: "text-slate-700",
+    slate: "text-gray-700",
   };
   return (
-    <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap divide-x divide-slate-100">
+    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="flex flex-wrap divide-x divide-gray-100">
         {items.map((item) => (
           <div key={item.label} className="flex-1 min-w-[120px] px-4 py-3">
-            <p className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-500">{item.label}</p>
+            <p className="truncate text-[10px] font-bold uppercase tracking-wide text-gray-500">{item.label}</p>
             <p className={cn("mt-1 text-xl font-extrabold leading-none", toneMap[item.tone])}>{item.value}</p>
-            {item.subtitle && <p className="mt-1 text-[10px] font-semibold text-slate-400">{item.subtitle}</p>}
+            {item.subtitle && <p className="mt-1 text-[10px] font-semibold text-gray-400">{item.subtitle}</p>}
           </div>
         ))}
       </div>
@@ -506,12 +506,12 @@ function ScenarioSelectionPanel({
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+    <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
         <button onClick={() => setExpanded((v) => !v)} className="flex items-center gap-2 text-left">
-          <ChevronDown className={cn("h-4 w-4 text-slate-400 transition", !expanded && "-rotate-90")} />
-          <span className="text-xs font-extrabold uppercase tracking-wide text-slate-800">Select Scenarios to Generate From</span>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+          <ChevronDown className={cn("h-4 w-4 text-gray-400 transition", !expanded && "-rotate-90")} />
+          <span className="text-xs font-extrabold uppercase tracking-wide text-gray-800">Select Scenarios to Generate From</span>
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">
             {selectedScenarioIds.length} / {scenarios.length} selected
           </span>
         </button>
@@ -532,7 +532,7 @@ function ScenarioSelectionPanel({
             size="sm"
             onClick={onRegenerate}
             disabled={generating || selectedScenarioIds.length === 0}
-            className="h-9 gap-2 border-slate-200 text-xs font-bold"
+            className="h-9 gap-2 border-gray-200 text-xs font-bold"
           >
             <RefreshCw className="h-4 w-4" />
             Re-generate
@@ -542,44 +542,44 @@ function ScenarioSelectionPanel({
       {expanded && (
         <div className="max-h-64 overflow-y-auto">
           {scenarios.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs font-semibold text-slate-400">
+            <p className="px-4 py-6 text-center text-xs font-semibold text-gray-400">
               No approved scenarios available. Approve scenarios in Test Planning before generating test cases.
             </p>
           ) : (
             <>
-              <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/50 px-4 py-2">
+              <div className="flex items-center gap-3 border-b border-gray-100 bg-gray-50/50 px-4 py-2">
                 <input
                   type="checkbox"
                   aria-label="Select all scenarios"
                   checked={allSelected}
                   ref={(el) => { if (el) el.indeterminate = someSelected; }}
                   onChange={toggleAll}
-                  className="h-3.5 w-3.5 rounded border-slate-300 accent-[#1b59f8]"
+                  className="h-3.5 w-3.5 rounded border-gray-300 accent-[#B71920]"
                 />
-                <span className="text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                <span className="text-[10px] font-extrabold uppercase tracking-wide text-gray-500">
                   {allSelected ? "Deselect all" : "Select all"}
                 </span>
               </div>
-              <ul className="divide-y divide-slate-50">
+              <ul className="divide-y divide-gray-50">
                 {scenarios.map((scenario) => {
                   const req = scenario.requirement_id ? requirementsById.get(scenario.requirement_id) : undefined;
                   const checked = selectedSet.has(scenario.id);
                   const generatedTestCaseCount = testCaseCountByScenarioId.get(scenario.id) ?? 0;
                   return (
                     <li key={scenario.id}>
-                      <label className={cn("flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-slate-50", checked && "bg-blue-50/30")}>
+                      <label className={cn("flex cursor-pointer items-center gap-3 px-4 py-2 hover:bg-gray-50", checked && "bg-app-brand-75/30")}>
                         <input
                           type="checkbox"
                           checked={checked}
                           onChange={() => toggleOne(scenario.id)}
-                          className="h-3.5 w-3.5 rounded border-slate-300 accent-[#1b59f8]"
+                          className="h-3.5 w-3.5 rounded border-gray-300 accent-[#B71920]"
                         />
-                        <span className="w-24 shrink-0 font-mono text-[11px] font-bold text-[#1b59f8]">{scenario.scenario_id}</span>
+                        <span className="w-24 shrink-0 font-mono text-[11px] font-bold text-[#B71920]">{scenario.scenario_id}</span>
                         <span className="flex min-w-0 flex-1 items-center gap-2">
-                          <span className="min-w-0 truncate text-xs font-semibold text-slate-700">{scenario.title}</span>
+                          <span className="min-w-0 truncate text-xs font-semibold text-gray-700">{scenario.title}</span>
                           <span className="inline-flex shrink-0 items-center gap-2">
                             {req && (
-                              <span className="font-mono text-[10px] font-bold text-slate-500">
+                              <span className="font-mono text-[10px] font-bold text-gray-500">
                                 {req.requirement_id}
                               </span>
                             )}
@@ -588,7 +588,7 @@ function ScenarioSelectionPanel({
                                 "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold",
                                 generatedTestCaseCount > 0
                                   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                  : "border-slate-200 bg-slate-50 text-slate-500",
+                                  : "border-gray-200 bg-gray-50 text-gray-500",
                               )}
                               title={
                                 generatedTestCaseCount > 0
@@ -618,7 +618,7 @@ function ScenarioSelectionPanel({
 function MiniProgress({ value, tone = "emerald" }: { value: number; tone?: Tone }) {
   const color = tone === "amber" ? "bg-amber-500" : tone === "red" ? "bg-red-500" : "bg-emerald-500";
   return (
-    <div className="h-1.5 w-full rounded-full bg-slate-100">
+    <div className="h-1.5 w-full rounded-full bg-gray-100">
       <div className={cn("h-full rounded-full", color)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
     </div>
   );
@@ -1196,12 +1196,12 @@ function TestCasesContent() {
     <div className="min-h-full">
       <section className="space-y-5 pb-4">
         <TestCasesTabs active="generated" projectId={selectedProject} />
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
           <span>QAI Command Center</span>
-          <ChevronRight className="h-3 w-3 text-slate-300" />
-          <span className="text-[#1b59f8]">Test Planning</span>
-          <ChevronRight className="h-3 w-3 text-slate-300" />
-          <span className="text-slate-800">Generated Test Cases</span>
+          <ChevronRight className="h-3 w-3 text-gray-300" />
+          <span className="text-[#B71920]">Test Planning</span>
+          <ChevronRight className="h-3 w-3 text-gray-300" />
+          <span className="text-gray-800">Generated Test Cases</span>
         </div>
 
         <div className="flex items-start justify-between gap-4">
@@ -1211,10 +1211,10 @@ function TestCasesContent() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-extrabold tracking-tight text-slate-950">Generated Test Cases</h1>
+                <h1 className="text-2xl font-extrabold tracking-tight text-gray-950">Generated Test Cases</h1>
                 <span className={badgeClass("purple")}>P1-S3 UI-010</span>
               </div>
-              <p className="mt-1 text-sm font-normal leading-5 text-slate-500">
+              <p className="mt-1 text-sm font-normal leading-5 text-gray-500">
                 AI-generated test cases from approved requirements and traceability context.
               </p>
             </div>
@@ -1225,12 +1225,12 @@ function TestCasesContent() {
               size="sm"
               onClick={() => { setImportOpen(true); setImportError(""); setImportResult(""); }}
               disabled={!selectedProject}
-              className="h-9 gap-2 border-slate-200 text-xs font-bold"
+              className="h-9 gap-2 border-gray-200 text-xs font-bold"
             >
               <Upload className="h-4 w-4" />
               Import
             </Button>
-            <Button variant="outline" size="sm" onClick={exportProject} disabled={exporting || !selectedProject} className="h-9 gap-2 border-slate-200 text-xs font-bold">
+            <Button variant="outline" size="sm" onClick={exportProject} disabled={exporting || !selectedProject} className="h-9 gap-2 border-gray-200 text-xs font-bold">
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Export
             </Button>
@@ -1252,7 +1252,7 @@ function TestCasesContent() {
         {(error || notice) && (
           <div className={cn(
             "flex items-center gap-2 rounded-lg border px-4 py-3 text-xs font-semibold",
-            error ? "border-red-200 bg-red-50 text-red-700" : "border-blue-200 bg-blue-50 text-blue-700",
+            error ? "border-red-200 bg-red-50 text-red-700" : "border-app-brand-200 bg-app-brand-75 text-app-brand-700",
           )}>
             {error ? <AlertTriangle className="h-4 w-4" /> : <Loader2 className={cn("h-4 w-4", generating && "animate-spin")} />}
             <span className="flex-1">{error || notice}</span>
@@ -1291,11 +1291,11 @@ function TestCasesContent() {
                   onClick={() => setGeneratedTab(tab.key)}
                   className={cn(
                     "inline-flex h-9 items-center gap-2 rounded-md px-4 text-xs font-bold transition",
-                    active ? "bg-[#07142d] text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-slate-900",
+                    active ? "bg-[#4D0507] text-white shadow-sm" : "text-gray-600 hover:bg-white hover:text-gray-900",
                   )}
                 >
                   {tab.label}
-                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", active ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500")}>{count}</span>
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", active ? "bg-white/15 text-white" : "bg-gray-100 text-gray-500")}>{count}</span>
                 </button>
               );
             })}
@@ -1304,20 +1304,20 @@ function TestCasesContent() {
 
         <div className="flex items-center gap-3">
           <div className="relative min-w-72 flex-1">
-            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search by TC ID, title, requirement, scenario..."
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-11 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              className="h-10 w-full rounded-lg border border-gray-200 bg-white pl-11 pr-3 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
             />
           </div>
           <Button
             variant="outline"
             size="sm"
             className={cn(
-              "h-10 gap-2 border-slate-200 text-xs font-bold",
-              (generatedFiltersOpen || activeGeneratedFilterCount > 0) && "border-blue-300 bg-blue-50 text-[#1b59f8]",
+              "h-10 gap-2 border-gray-200 text-xs font-bold",
+              (generatedFiltersOpen || activeGeneratedFilterCount > 0) && "border-app-brand-300 bg-app-brand-75 text-[#B71920]",
             )}
             onClick={() => setGeneratedFiltersOpen((open) => !open)}
             aria-expanded={generatedFiltersOpen}
@@ -1326,7 +1326,7 @@ function TestCasesContent() {
             <Filter className="h-4 w-4" />
             Filters
             {activeGeneratedFilterCount > 0 && (
-              <span className="rounded-full bg-[#1b59f8] px-1.5 py-0.5 text-[10px] text-white">
+              <span className="rounded-full bg-[#B71920] px-1.5 py-0.5 text-[10px] text-white">
                 {activeGeneratedFilterCount}
               </span>
             )}
@@ -1336,7 +1336,7 @@ function TestCasesContent() {
           <div
             id="generated-test-case-filters"
             aria-label="Generated test case filters"
-            className="flex flex-wrap items-center gap-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3"
+            className="flex flex-wrap items-center gap-3 rounded-lg border border-app-brand-100 bg-app-brand-75/40 p-3"
           >
             <FilterSelect value={typeFilter} onChange={setTypeFilter} options={typeFilterOptions} label="Test Type" />
             <FilterSelect value={classFilter} onChange={setClassFilter} options={classFilterOptions} label="Scenario Class" />
@@ -1347,7 +1347,7 @@ function TestCasesContent() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-10 gap-2 text-xs font-bold text-slate-600"
+                className="h-10 gap-2 text-xs font-bold text-gray-600"
                 onClick={() => {
                   setTypeFilter("all");
                   setClassFilter("all");
@@ -1363,8 +1363,8 @@ function TestCasesContent() {
           </div>
         )}
 
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid w-full min-w-[1760px] items-center gap-x-2 border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-[9px] font-extrabold uppercase leading-4 tracking-wide text-slate-500" style={{ gridTemplateColumns: TABLE_GRID }}>
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+          <div className="grid w-full min-w-[1760px] items-center gap-x-2 border-b border-gray-200 bg-gray-50/70 px-4 py-3 text-[9px] font-extrabold uppercase leading-4 tracking-wide text-gray-500" style={{ gridTemplateColumns: TABLE_GRID }}>
             <span>TC ID</span>
             <span>Req ID / PPM ID</span>
             <span>Title</span>
@@ -1383,16 +1383,16 @@ function TestCasesContent() {
             <span>Actions</span>
           </div>
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-xs font-bold text-slate-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+            <div className="flex items-center justify-center py-20 text-xs font-bold text-gray-500">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" />
               Loading generated test cases...
             </div>
           ) : filtered.length === 0 ? (
-            <div className="py-20 text-center text-xs font-bold text-slate-400">
+            <div className="py-20 text-center text-xs font-bold text-gray-400">
               No generated test cases match the selected filters.
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-gray-100">
               {filtered.map((tc) => {
                 const req = findRequirementForCase(tc, requirementsByKey, requirementsById);
                 const selected = selectedTestCase?.id === tc.id;
@@ -1405,23 +1405,23 @@ function TestCasesContent() {
                     onClick={() => setSelectedTestCase(tc)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedTestCase(tc); }}
                     className={cn(
-                      "grid w-full min-w-[1760px] cursor-pointer items-center gap-x-2 px-4 py-3 text-left text-[11px] transition hover:bg-slate-50",
-                      selected && "bg-blue-50/25 shadow-[inset_2px_0_0_#1b59f8]",
+                      "grid w-full min-w-[1760px] cursor-pointer items-center gap-x-2 px-4 py-3 text-left text-[11px] transition hover:bg-gray-50",
+                      selected && "bg-app-brand-75/25 shadow-[inset_2px_0_0_#B71920]",
                     )}
                     style={{ gridTemplateColumns: TABLE_GRID }}
                   >
-                    <span className="font-mono font-extrabold text-[#1b59f8]">{tc.test_case_id}</span>
+                    <span className="font-mono font-extrabold text-[#B71920]">{tc.test_case_id}</span>
                     <span className="space-y-1">
-                      <span className="block font-bold text-slate-800">{tc.linked_requirement_key || req?.requirement_id || "—"}</span>
-                      <span className="block font-semibold text-slate-500">{ppmFromRequirement(req)}</span>
+                      <span className="block font-bold text-gray-800">{tc.linked_requirement_key || req?.requirement_id || "—"}</span>
+                      <span className="block font-semibold text-gray-500">{ppmFromRequirement(req)}</span>
                     </span>
-                    <span className="pr-3 font-bold leading-5 text-slate-800">{tc.title}</span>
+                    <span className="pr-3 font-bold leading-5 text-gray-800">{tc.title}</span>
                     <span><span className={badgeClass(testType(tc) === "Positive" ? "emerald" : testType(tc) === "Negative" ? "red" : "purple")}>{testType(tc)}</span></span>
                     <span><span className={badgeClass("slate")}>{scenarioClass(tc)}</span></span>
                     <span><span className={badgeClass(priorityTone(tc.priority))}>{tc.priority}</span></span>
-                    <span className="truncate font-semibold text-slate-600">{tc.domain_name || "—"}</span>
-                    <span className="truncate font-semibold text-slate-600">{tc.channel_name || "—"}</span>
-                    <span className="truncate font-semibold text-slate-600">{tc.test_case_complexity_name || "—"}</span>
+                    <span className="truncate font-semibold text-gray-600">{tc.domain_name || "—"}</span>
+                    <span className="truncate font-semibold text-gray-600">{tc.channel_name || "—"}</span>
+                    <span className="truncate font-semibold text-gray-600">{tc.test_case_complexity_name || "—"}</span>
                     <span>{tc.is_critical && <span className={badgeClass("red")}>Critical</span>}</span>
                     <span>
                       {tc.automation_candidate && classificationsEnabled && classification ? (
@@ -1430,31 +1430,31 @@ function TestCasesContent() {
                         <span className={badgeClass(tc.automation_candidate ? "emerald" : "red")}>{tc.automation_candidate ? "Yes" : "No"}</span>
                       )}
                     </span>
-                    <span className="font-semibold text-slate-600">{dataDependency(tc)}</span>
+                    <span className="font-semibold text-gray-600">{dataDependency(tc)}</span>
                     <span><span className={badgeClass(statusTone(reviewStatus(tc)))}>{reviewStatus(tc)}</span></span>
                     <span><span className={badgeClass(traceabilityHealth(tc) === "Good" ? "emerald" : "amber")}>{traceabilityHealth(tc)}</span></span>
-                    <span className="font-semibold text-slate-500">{displayDate(tc.created_at)}</span>
+                    <span className="font-semibold text-gray-500">{displayDate(tc.created_at)}</span>
                     <span className="relative flex justify-end" onClick={(event) => event.stopPropagation()}>
                       <button
                         aria-label={`Actions for ${tc.test_case_id}`}
                         onClick={() => setActionMenu(actionMenu === tc.id ? null : tc.id)}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50"
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </button>
                       {actionMenu === tc.id && (
-                        <div className="absolute right-0 top-9 z-30 w-52 rounded-md border border-slate-200 bg-white p-1 shadow-xl">
+                        <div className="absolute right-0 top-9 z-30 w-52 rounded-md border border-gray-200 bg-white p-1 shadow-xl">
                           {tc.automation_candidate && classificationsEnabled && (
                             classification ? (
-                              <button onClick={() => void reclassifyTestCase(classification.id)} disabled={classifyBusyId === classification.id} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50">Reclassify</button>
+                              <button onClick={() => void reclassifyTestCase(classification.id)} disabled={classifyBusyId === classification.id} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-gray-50 disabled:opacity-50">Reclassify</button>
                             ) : (
-                              <button onClick={() => void classifyTestCase(tc.id)} disabled={classifyBusyId === tc.id} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50 disabled:opacity-50">Classify</button>
+                              <button onClick={() => void classifyTestCase(tc.id)} disabled={classifyBusyId === tc.id} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-gray-50 disabled:opacity-50">Classify</button>
                             )
                           )}
-                          <button onClick={() => { setSelectedTestCase(tc); setDrawerTab("ai"); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50">View Recommendation</button>
-                          <button onClick={() => { setSelectedTestCase(tc); setDrawerTab("ai"); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50">View Matched Rules</button>
-                          <button onClick={() => { setPolicyDrawerTestCase(tc); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50">Open Classification Policy</button>
-                          <button onClick={() => { openInEditor(tc.id); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-slate-50">Send to Test Case Editor</button>
+                          <button onClick={() => { setSelectedTestCase(tc); setDrawerTab("ai"); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-gray-50">View Recommendation</button>
+                          <button onClick={() => { setSelectedTestCase(tc); setDrawerTab("ai"); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-gray-50">View Matched Rules</button>
+                          <button onClick={() => { setPolicyDrawerTestCase(tc); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-gray-50">Open Classification Policy</button>
+                          <button onClick={() => { openInEditor(tc.id); setActionMenu(null); }} className="w-full rounded px-2 py-1.5 text-left text-[11px] font-bold hover:bg-gray-50">Send to Test Case Editor</button>
                         </div>
                       )}
                     </span>
@@ -1463,8 +1463,8 @@ function TestCasesContent() {
               })}
             </div>
           )}
-          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
-            <span className="text-xs font-semibold text-slate-500">
+          <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3">
+            <span className="text-xs font-semibold text-gray-500">
               Showing {filtered.length} of {kpiValues.totalGenerated} test cases
             </span>
           </div>
@@ -1475,7 +1475,7 @@ function TestCasesContent() {
         <DrawerContent size="xl">
           <DrawerHeader>
             <div className="flex items-center gap-2">
-              <Upload className="h-5 w-5 text-[#1b59f8]" />
+              <Upload className="h-5 w-5 text-[#B71920]" />
               <div>
                 <DrawerTitle>Import Test Cases</DrawerTitle>
                 <DrawerDescription>
@@ -1483,7 +1483,7 @@ function TestCasesContent() {
                 </DrawerDescription>
               </div>
             </div>
-            <button onClick={() => setImportOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50">
+            <button onClick={() => setImportOpen(false)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-50">
               <X className="h-4 w-4" />
             </button>
           </DrawerHeader>
@@ -1499,14 +1499,14 @@ function TestCasesContent() {
                 type="file"
                 accept=".csv,.xlsx,.xls"
                 onChange={(event) => { setImportFile(event.target.files?.[0] ?? null); setImportPreview(null); }}
-                className="flex-1 rounded-lg border border-slate-200 bg-white p-2 text-xs font-semibold"
+                className="flex-1 rounded-lg border border-gray-200 bg-white p-2 text-xs font-semibold"
               />
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleImportPreview}
                 disabled={!importFile || previewingImport}
-                className="h-9 gap-2 border-slate-200 text-xs font-bold"
+                className="h-9 gap-2 border-gray-200 text-xs font-bold"
               >
                 {previewingImport ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 Preview
@@ -1514,11 +1514,11 @@ function TestCasesContent() {
             </div>
 
             {importPreview && (
-              <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2">
                   <div>
-                    <h4 className="text-xs font-bold text-slate-800">{importPreview.filename}</h4>
-                    <p className="mt-0.5 text-[10px] text-slate-400">{importPreview.row_count} row(s) detected</p>
+                    <h4 className="text-xs font-bold text-gray-800">{importPreview.filename}</h4>
+                    <p className="mt-0.5 text-[10px] text-gray-400">{importPreview.row_count} row(s) detected</p>
                   </div>
                   <span className={badgeClass(importPreview.can_import ? "emerald" : "red")}>
                     {importPreview.can_import ? "Ready to import" : "Cannot import"}
@@ -1540,9 +1540,9 @@ function TestCasesContent() {
                   </div>
                 )}
 
-                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
                   <table className="min-w-full border-collapse text-left text-[11px]">
-                    <thead className="border-b border-slate-100 bg-slate-50 text-[9px] font-extrabold uppercase tracking-wide text-slate-500">
+                    <thead className="border-b border-gray-100 bg-gray-50 text-[9px] font-extrabold uppercase tracking-wide text-gray-500">
                       <tr>
                         <th className="px-2.5 py-1.5">Test Case ID</th>
                         <th className="px-2.5 py-1.5">Title</th>
@@ -1551,10 +1551,10 @@ function TestCasesContent() {
                         <th className="px-2.5 py-1.5">Critical</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-gray-100">
                       {importPreview.preview_rows.map((row, idx) => (
                         <tr key={idx}>
-                          <td className="px-2.5 py-1.5 font-mono font-bold text-[#1b59f8]">{String(row.test_case_id ?? "—")}</td>
+                          <td className="px-2.5 py-1.5 font-mono font-bold text-[#B71920]">{String(row.test_case_id ?? "—")}</td>
                           <td className="max-w-[220px] truncate px-2.5 py-1.5">{String(row.title ?? "—")}</td>
                           <td className="px-2.5 py-1.5">{row.test_case_type_id ? "Matched" : "—"}</td>
                           <td className="px-2.5 py-1.5">{row.test_case_complexity_id ? "Matched" : "—"}</td>
@@ -1569,12 +1569,12 @@ function TestCasesContent() {
                   <Button
                     onClick={handleImportConfirm}
                     disabled={!importPreview.can_import || confirmingImport}
-                    className="h-9 gap-2 bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1447c9]"
+                    className="h-9 gap-2 bg-[#B71920] text-xs font-bold text-white hover:bg-[#941216]"
                   >
                     {confirmingImport ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                     Confirm Import
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setImportPreview(null)} className="h-9 border-slate-200 text-xs font-bold">
+                  <Button variant="outline" size="sm" onClick={() => setImportPreview(null)} className="h-9 border-gray-200 text-xs font-bold">
                     Cancel
                   </Button>
                 </div>
@@ -1588,25 +1588,25 @@ function TestCasesContent() {
         <DrawerContent size="xl">
         {selectedTestCase && (
           <div className="flex h-full flex-col">
-            <div className="border-b border-slate-100 p-5">
+            <div className="border-b border-gray-100 p-5">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <DrawerTitle className="font-mono text-lg font-extrabold text-slate-950">{selectedTestCase.test_case_id}</DrawerTitle>
+                  <DrawerTitle className="font-mono text-lg font-extrabold text-gray-950">{selectedTestCase.test_case_id}</DrawerTitle>
                   <span className={badgeClass("blue")}>Generated</span>
                 </div>
-                <div className="flex items-center gap-2 text-slate-500">
-                  <button className="rounded-md p-1 hover:bg-slate-50"><ChevronRight className="h-4 w-4 -rotate-45" /></button>
-                  <button onClick={() => setSelectedTestCase(null)} className="rounded-md p-1 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+                <div className="flex items-center gap-2 text-gray-500">
+                  <button className="rounded-md p-1 hover:bg-gray-50"><ChevronRight className="h-4 w-4 -rotate-45" /></button>
+                  <button onClick={() => setSelectedTestCase(null)} className="rounded-md p-1 hover:bg-gray-50"><X className="h-4 w-4" /></button>
                 </div>
               </div>
-              <h2 className="mt-5 text-base font-extrabold text-slate-950">{selectedTestCase.title}</h2>
-              <p className="mt-3 text-xs font-semibold text-slate-500">
-                Linked Requirement: <span className="text-[#1b59f8]">{selectedTestCase.linked_requirement_key || selectedRequirement?.requirement_id || "—"}</span>
+              <h2 className="mt-5 text-base font-extrabold text-gray-950">{selectedTestCase.title}</h2>
+              <p className="mt-3 text-xs font-semibold text-gray-500">
+                Linked Requirement: <span className="text-[#B71920]">{selectedTestCase.linked_requirement_key || selectedRequirement?.requirement_id || "—"}</span>
                 <span className="ml-4">{ppmFromRequirement(selectedRequirement)}</span>
               </p>
             </div>
 
-            <div className="flex border-b border-slate-100 px-4">
+            <div className="flex border-b border-gray-100 px-4">
               {([
                 ["path", "Path to Execution"],
                 ["overview", "Overview"],
@@ -1620,7 +1620,7 @@ function TestCasesContent() {
                   onClick={() => setDrawerTab(key)}
                   className={cn(
                     "border-b-2 px-3 py-3 text-xs font-bold transition",
-                    drawerTab === key ? "border-[#1b59f8] text-[#1b59f8]" : "border-transparent text-slate-600 hover:text-slate-900",
+                    drawerTab === key ? "border-[#B71920] text-[#B71920]" : "border-transparent text-gray-600 hover:text-gray-900",
                   )}
                 >
                   {label}
@@ -1638,8 +1638,8 @@ function TestCasesContent() {
                   <DrawerCard title="Test Case Details" icon={TestTube2}>
                     <div className="space-y-5">
                       <div>
-                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Objective</p>
-                        <p className="mt-1 text-xs font-semibold leading-5 text-slate-700">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">Objective</p>
+                        <p className="mt-1 text-xs font-semibold leading-5 text-gray-700">
                           {selectedTestCase.test_case_objective?.trim() || selectedTestCase.title}
                         </p>
                       </div>
@@ -1652,9 +1652,9 @@ function TestCasesContent() {
                       </div>
 
                       <div>
-                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Preconditions</p>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">Preconditions</p>
                         {(selectedTestCase.preconditions ?? []).length ? (
-                          <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs font-semibold leading-5 text-slate-700">
+                          <ol className="mt-2 list-decimal space-y-1 pl-5 text-xs font-semibold leading-5 text-gray-700">
                             {(selectedTestCase.preconditions ?? []).map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
                           </ol>
                         ) : (
@@ -1663,19 +1663,19 @@ function TestCasesContent() {
                       </div>
 
                       <div>
-                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Test Steps</p>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">Test Steps</p>
                         {normalizedSteps(selectedTestCase.steps).length ? (
-                          <div className="mt-2 overflow-hidden rounded-lg border border-slate-200">
-                            <div className="grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] bg-slate-50 text-[10px] font-extrabold uppercase tracking-wide text-slate-500">
+                          <div className="mt-2 overflow-hidden rounded-lg border border-gray-200">
+                            <div className="grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] bg-gray-50 text-[10px] font-extrabold uppercase tracking-wide text-gray-500">
                               <span className="px-3 py-2">#</span>
-                              <span className="border-l border-slate-200 px-3 py-2">Action</span>
-                              <span className="border-l border-slate-200 px-3 py-2">Expected Result</span>
+                              <span className="border-l border-gray-200 px-3 py-2">Action</span>
+                              <span className="border-l border-gray-200 px-3 py-2">Expected Result</span>
                             </div>
                             {normalizedSteps(selectedTestCase.steps).map((step, index) => (
-                              <div key={`${step.step_number}-${index}`} className="grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] border-t border-slate-200 text-xs font-semibold leading-5 text-slate-700">
+                              <div key={`${step.step_number}-${index}`} className="grid grid-cols-[42px_minmax(0,1fr)_minmax(0,1fr)] border-t border-gray-200 text-xs font-semibold leading-5 text-gray-700">
                                 <span className="px-3 py-2">{step.step_number || index + 1}</span>
-                                <span className="border-l border-slate-200 px-3 py-2">{step.action || "Missing action"}</span>
-                                <span className="border-l border-slate-200 px-3 py-2">{step.expected_result || "Missing expected result"}</span>
+                                <span className="border-l border-gray-200 px-3 py-2">{step.action || "Missing action"}</span>
+                                <span className="border-l border-gray-200 px-3 py-2">{step.expected_result || "Missing expected result"}</span>
                               </div>
                             ))}
                           </div>
@@ -1685,16 +1685,16 @@ function TestCasesContent() {
                       </div>
 
                       <div>
-                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">Overall Expected Result</p>
-                        <p className={cn("mt-1 text-xs font-semibold leading-5", selectedTestCase.expected_result?.trim() ? "text-slate-700" : "text-amber-700")}>
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">Overall Expected Result</p>
+                        <p className={cn("mt-1 text-xs font-semibold leading-5", selectedTestCase.expected_result?.trim() ? "text-gray-700" : "text-amber-700")}>
                           {selectedTestCase.expected_result?.trim() || "No overall expected result recorded."}
                         </p>
                       </div>
 
                       {selectedTestCase.bdd_scenario?.trim() && (
                         <div>
-                          <p className="text-[10px] font-extrabold uppercase tracking-wide text-slate-400">BDD Scenario</p>
-                          <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-[11px] leading-5 text-slate-100">{selectedTestCase.bdd_scenario}</pre>
+                          <p className="text-[10px] font-extrabold uppercase tracking-wide text-gray-400">BDD Scenario</p>
+                          <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-gray-950 p-3 text-[11px] leading-5 text-gray-100">{selectedTestCase.bdd_scenario}</pre>
                         </div>
                       )}
                     </div>
@@ -1702,13 +1702,13 @@ function TestCasesContent() {
 
                   <DrawerCard title="Review & Approval Readiness" icon={selectedApprovalBlockers.length ? AlertTriangle : CheckCircle}>
                     {selectedIsInApproval ? (
-                      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
-                        <p className="text-xs font-extrabold text-blue-800">
+                      <div className="rounded-lg border border-app-brand-100 bg-app-brand-75 p-3">
+                        <p className="text-xs font-extrabold text-app-brand-800">
                           {selectedTestCase.status === "approved" || selectedTestCase.approval_status === "approved"
                             ? "This test case is approved."
                             : "This test case is already in Review & Approval."}
                         </p>
-                        <p className="mt-1 text-[11px] font-semibold leading-5 text-blue-700">Open the approval queue to view its review status, findings, and decision history.</p>
+                        <p className="mt-1 text-[11px] font-semibold leading-5 text-app-brand-700">Open the approval queue to view its review status, findings, and decision history.</p>
                       </div>
                     ) : selectedApprovalBlockers.length ? (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -1743,14 +1743,14 @@ function TestCasesContent() {
 
                   <DrawerCard title="Requirement Summary" icon={ShieldCheck}>
                     {selectedRequirement?.summary ? (
-                      <p className="text-xs font-semibold leading-6 text-slate-600">{selectedRequirement.summary}</p>
+                      <p className="text-xs font-semibold leading-6 text-gray-600">{selectedRequirement.summary}</p>
                     ) : (
-                      <p className="text-xs font-semibold text-slate-400">No linked requirement summary.</p>
+                      <p className="text-xs font-semibold text-gray-400">No linked requirement summary.</p>
                     )}
                     {selectedRequirement && selectedTestCase.project_id && (
                       <button
                         onClick={() => router.push(`/requirements?project=${selectedTestCase.project_id}&view=analysis&requirement=${selectedRequirement.id}`)}
-                        className="mt-3 text-xs font-bold text-[#1b59f8]"
+                        className="mt-3 text-xs font-bold text-[#B71920]"
                       >
                         View requirement <ChevronRight className="inline h-3 w-3" />
                       </button>
@@ -1760,10 +1760,10 @@ function TestCasesContent() {
                   <DrawerCard title="Generation Summary" icon={Bot}>
                     <div className="space-y-4">
                       <div>
-                        <p className="text-xs font-semibold text-slate-500">Generated on: {displayDate(selectedTestCase.created_at)}</p>
-                        <div className="mt-4 flex items-center justify-between text-xs font-semibold text-slate-600">
+                        <p className="text-xs font-semibold text-gray-500">Generated on: {displayDate(selectedTestCase.created_at)}</p>
+                        <div className="mt-4 flex items-center justify-between text-xs font-semibold text-gray-600">
                           <span>Cases linked to this requirement</span>
-                          <span className="font-extrabold text-slate-950">{linkedCases.length}</span>
+                          <span className="font-extrabold text-gray-950">{linkedCases.length}</span>
                         </div>
                       </div>
                       <div className="space-y-3">
@@ -1774,12 +1774,12 @@ function TestCasesContent() {
                       </div>
                       {selectedReview && (
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                          <div className="flex items-center justify-between text-xs font-bold text-gray-700">
                             <span>Scenario test-case set review</span>
                             <span>{typeof selectedReview.overall_score === "number" ? reviewScoreLabel(selectedReview.overall_score) : selectedReview.verdict.replace(/_/g, " ")}</span>
                           </div>
                           {typeof selectedReview.overall_score === "number" && <MiniProgress value={reviewScorePercent(selectedReview.overall_score)} />}
-                          <p className="text-[10px] font-semibold text-slate-500">
+                          <p className="text-[10px] font-semibold text-gray-500">
                             {selectedReview.review_mode === "gating"
                               ? "Gating review — unresolved findings can block approval."
                               : "Advisory review — findings are improvement suggestions and do not block approval."}
@@ -1792,10 +1792,10 @@ function TestCasesContent() {
                   <DrawerCard title="Coverage & Gaps" icon={Layers}>
                     {selectedReview?.coverage_gaps?.length ? (
                       <div className="space-y-2">
-                        <p className="text-xs font-bold text-slate-700">Coverage gaps</p>
+                        <p className="text-xs font-bold text-gray-700">Coverage gaps</p>
                         <div className="space-y-2">
                           {selectedReview.coverage_gaps.map((gap, index) => (
-                            <div key={index} className="flex items-start gap-2 text-xs font-semibold text-slate-600">
+                            <div key={index} className="flex items-start gap-2 text-xs font-semibold text-gray-600">
                               <span className={badgeClass(gap.severity === "high" ? "red" : gap.severity === "medium" ? "amber" : "slate")}>{gap.severity}</span>
                               <span>{gap.description}</span>
                             </div>
@@ -1803,22 +1803,22 @@ function TestCasesContent() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-xs font-semibold text-slate-400">{selectedReview ? "No coverage gaps on the latest review." : "No coverage review recorded yet."}</p>
+                      <p className="text-xs font-semibold text-gray-400">{selectedReview ? "No coverage gaps on the latest review." : "No coverage review recorded yet."}</p>
                     )}
                   </DrawerCard>
 
                   <DrawerCard title="Test Data Dependency" icon={FileText}>
                     {selectedTestCase.test_data && Object.keys(selectedTestCase.test_data).length ? (
-                      <div className="space-y-1 text-xs font-semibold text-slate-700">
+                      <div className="space-y-1 text-xs font-semibold text-gray-700">
                         {Object.entries(selectedTestCase.test_data).map(([key, value]) => (
                           <div key={key} className="flex gap-2">
-                            <span className="font-bold text-slate-500">{key}:</span>
+                            <span className="font-bold text-gray-500">{key}:</span>
                             <span className="min-w-0 break-words">{typeof value === "object" ? JSON.stringify(value) : String(value)}</span>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs font-semibold text-slate-400">No test data dependency recorded.</p>
+                      <p className="text-xs font-semibold text-gray-400">No test data dependency recorded.</p>
                     )}
                   </DrawerCard>
                 </>
@@ -1829,17 +1829,17 @@ function TestCasesContent() {
                   {linkedCases.length ? (
                     <div className="space-y-2">
                       {linkedCases.map((tc) => (
-                        <button key={tc.id} onClick={() => setSelectedTestCase(tc)} className="flex w-full items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-left hover:bg-slate-50">
+                        <button key={tc.id} onClick={() => setSelectedTestCase(tc)} className="flex w-full items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-left hover:bg-gray-50">
                           <span>
-                            <span className="block font-mono text-xs font-bold text-[#1b59f8]">{tc.test_case_id}</span>
-                            <span className="block text-xs font-semibold text-slate-700">{tc.title}</span>
+                            <span className="block font-mono text-xs font-bold text-[#B71920]">{tc.test_case_id}</span>
+                            <span className="block text-xs font-semibold text-gray-700">{tc.title}</span>
                           </span>
                           <span className={badgeClass(testType(tc) === "Positive" ? "emerald" : "red")}>{testType(tc)}</span>
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs font-semibold text-slate-400">No sibling cases for this requirement.</p>
+                    <p className="text-xs font-semibold text-gray-400">No sibling cases for this requirement.</p>
                   )}
                 </DrawerCard>
               )}
@@ -1866,10 +1866,10 @@ function TestCasesContent() {
 
                   <DrawerCard title="Automation Classification" icon={ShieldCheck}>
                     {!selectedTestCase.automation_candidate ? (
-                      <p className="text-xs font-semibold text-slate-400">Not marked as an automation candidate.</p>
+                      <p className="text-xs font-semibold text-gray-400">Not marked as an automation candidate.</p>
                     ) : !selectedClassification ? (
                       <div className="space-y-3">
-                        <p className="text-xs font-semibold text-slate-400">Not yet classified.</p>
+                        <p className="text-xs font-semibold text-gray-400">Not yet classified.</p>
                         <Button size="sm" onClick={() => void classifyTestCase(selectedTestCase.id)} disabled={classifyBusyId === selectedTestCase.id} className="h-8 text-xs font-bold">Classify Now</Button>
                       </div>
                     ) : (
@@ -1885,7 +1885,7 @@ function TestCasesContent() {
                           <InfoPair label="Last classified" value={displayDateTime(selectedClassification.updated_at)} />
                         </div>
                         <div>
-                          <p className="mb-1 text-xs font-bold text-slate-700">Supporting adapters / validators</p>
+                          <p className="mb-1 text-xs font-bold text-gray-700">Supporting adapters / validators</p>
                           <div className="flex flex-wrap gap-1">
                             {[...selectedClassification.supporting_adapters, ...selectedClassification.mandatory_validators, ...selectedClassification.optional_validators].length ? (
                               <>
@@ -1906,8 +1906,8 @@ function TestCasesContent() {
                         )}
                         {selectedClassification.matched_rules.length > 0 && (
                           <div>
-                            <p className="mb-1 text-xs font-bold text-slate-700">Matched rules</p>
-                            <pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[10px] text-slate-700">{JSON.stringify(selectedClassification.matched_rules, null, 2)}</pre>
+                            <p className="mb-1 text-xs font-bold text-gray-700">Matched rules</p>
+                            <pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-2 text-[10px] text-gray-700">{JSON.stringify(selectedClassification.matched_rules, null, 2)}</pre>
                           </div>
                         )}
                         <div className="flex gap-2">
@@ -1920,12 +1920,12 @@ function TestCasesContent() {
 
                   {selectedEligibility?.verdict && (
                     <DrawerCard title="Legacy AI Automation Note" icon={Sparkles}>
-                      <p className="text-xs font-semibold text-slate-500">Superseded by the Automation Classification above once this test case is classified.</p>
+                      <p className="text-xs font-semibold text-gray-500">Superseded by the Automation Classification above once this test case is classified.</p>
                       <div className="mt-2 grid grid-cols-2 gap-4 text-xs">
                         <InfoPair label="Automation Eligibility" value={selectedEligibility.verdict} />
                         <InfoPair label="Automation Style" value={selectedEligibility.automation_style || "—"} />
                       </div>
-                      {selectedEligibility.reason && <p className="mt-3 text-xs font-semibold text-slate-500">{selectedEligibility.reason}</p>}
+                      {selectedEligibility.reason && <p className="mt-3 text-xs font-semibold text-gray-500">{selectedEligibility.reason}</p>}
                     </DrawerCard>
                   )}
                 </>
@@ -1933,7 +1933,7 @@ function TestCasesContent() {
 
               {drawerTab === "activity" && (
                 <DrawerCard title="Activity" icon={RefreshCw}>
-                  <div className="space-y-3 text-xs font-semibold text-slate-600">
+                  <div className="space-y-3 text-xs font-semibold text-gray-600">
                     <Activity text="Created" time={displayDate(selectedTestCase.created_at)} />
                     {selectedTestCase.last_status_updated_at && <Activity text="Status updated" time={displayDate(selectedTestCase.last_status_updated_at)} />}
                     {selectedTestCase.updated_at && selectedTestCase.updated_at !== selectedTestCase.created_at && <Activity text="Last modified" time={displayDate(selectedTestCase.updated_at)} />}
@@ -1942,16 +1942,16 @@ function TestCasesContent() {
               )}
             </div>
 
-            <div className="border-t border-slate-100 p-4">
-              <p className="mb-3 text-xs font-extrabold text-slate-800">Actions</p>
+            <div className="border-t border-gray-100 p-4">
+              <p className="mb-3 text-xs font-extrabold text-gray-800">Actions</p>
               <div className="grid grid-cols-2 gap-3">
-                <Button variant="outline" size="sm" onClick={() => openInEditor(selectedTestCase.id)} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Open in Editor</Button>
+                <Button variant="outline" size="sm" onClick={() => openInEditor(selectedTestCase.id)} className="h-9 border-app-brand-200 text-xs font-bold text-[#B71920]">Open in Editor</Button>
                 {selectedIsInApproval ? (
-                  <Button variant="outline" size="sm" onClick={() => openInApproval(selectedTestCase.id)} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Open Review &amp; Approval</Button>
+                  <Button variant="outline" size="sm" onClick={() => openInApproval(selectedTestCase.id)} className="h-9 border-app-brand-200 text-xs font-bold text-[#B71920]">Open Review &amp; Approval</Button>
                 ) : (
-                  <Button variant="outline" size="sm" onClick={() => void sendCaseToApproval(selectedTestCase.id)} disabled={selectedApprovalBlockers.length > 0} title={selectedApprovalBlockers.join(" ")} className="h-9 border-blue-200 text-xs font-bold text-[#1b59f8]">Send to Review &amp; Approval</Button>
+                  <Button variant="outline" size="sm" onClick={() => void sendCaseToApproval(selectedTestCase.id)} disabled={selectedApprovalBlockers.length > 0} title={selectedApprovalBlockers.join(" ")} className="h-9 border-app-brand-200 text-xs font-bold text-[#B71920]">Send to Review &amp; Approval</Button>
                 )}
-                <Button variant="outline" size="sm" onClick={() => exportToCSV([selectedTestCase], requirementsByKey, requirementsById)} className="col-span-2 h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]">
+                <Button variant="outline" size="sm" onClick={() => exportToCSV([selectedTestCase], requirementsByKey, requirementsById)} className="col-span-2 h-9 gap-2 border-app-brand-200 text-xs font-bold text-[#B71920]">
                   <Download className="h-3.5 w-3.5" />
                   Export Test Case
                 </Button>
@@ -1991,15 +1991,15 @@ function ClassificationPolicyDrawer({ testCase, onClose }: { testCase: TestCase 
         {testCase && (
           <div className="flex h-full flex-col">
             <DrawerHeader>
-              <DrawerTitle className="text-sm text-slate-900">Classification Policy — {testCase.test_case_id}</DrawerTitle>
+              <DrawerTitle className="text-sm text-gray-900">Classification Policy — {testCase.test_case_id}</DrawerTitle>
             </DrawerHeader>
             <DrawerBody>
               {loading ? (
-                <div className="flex items-center justify-center py-16 text-xs font-bold text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />Loading policy...</div>
+                <div className="flex items-center justify-center py-16 text-xs font-bold text-gray-500"><Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" />Loading policy...</div>
               ) : error ? (
                 <p className="text-xs font-semibold text-red-600">{error}</p>
               ) : !policy ? (
-                <p className="text-xs font-semibold text-slate-400">No published policy resolved for this project.</p>
+                <p className="text-xs font-semibold text-gray-400">No published policy resolved for this project.</p>
               ) : (
                 <div className="space-y-4">
                   <DrawerCard title="Effective Policy" icon={ShieldCheck}>
@@ -2015,7 +2015,7 @@ function ClassificationPolicyDrawer({ testCase, onClose }: { testCase: TestCase 
                       <div className="space-y-3 text-xs">
                         <InfoPair label="Routing default adapter" value={simulation.routing_default_adapter || "Not resolved"} />
                         <div>
-                          <p className="mb-1 font-bold text-slate-700">Default mandatory / optional validators</p>
+                          <p className="mb-1 font-bold text-gray-700">Default mandatory / optional validators</p>
                           <div className="flex flex-wrap gap-1">
                             {simulation.routing_default_mandatory_validators.map((item) => <span key={`m-${item}`} className={badgeClass("red")}>{item}</span>)}
                             {simulation.routing_default_optional_validators.map((item) => <span key={`o-${item}`} className={badgeClass("blue")}>{item}</span>)}
@@ -2038,7 +2038,7 @@ function ClassificationPolicyDrawer({ testCase, onClose }: { testCase: TestCase 
                     </DrawerCard>
                   )}
                   <DrawerCard title="Routing Matrix (Raw Policy Rules)" icon={FileText}>
-                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-[10px] text-slate-700">{JSON.stringify(policy.rules, null, 2)}</pre>
+                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded bg-gray-50 p-2 text-[10px] text-gray-700">{JSON.stringify(policy.rules, null, 2)}</pre>
                   </DrawerCard>
                 </div>
               )}
@@ -2065,7 +2065,7 @@ function FilterSelect({
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-xs font-medium text-slate-600 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+      className="h-10 rounded-lg border border-gray-200 bg-white px-4 text-xs font-medium text-gray-600 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
       aria-label={label}
     >
       {options.map((option) => (
@@ -2459,12 +2459,12 @@ function TestCaseEditorView({
   return (
     <div className="min-h-full pb-3">
       <section className="space-y-4">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
           <span>QAI Command Center</span>
-          <ChevronRight className="h-3 w-3 text-slate-300" />
-          <span className="text-[#1b59f8]">Test Planning</span>
-          <ChevronRight className="h-3 w-3 text-slate-300" />
-          <span className="text-slate-800">Test Case Editor</span>
+          <ChevronRight className="h-3 w-3 text-gray-300" />
+          <span className="text-[#B71920]">Test Planning</span>
+          <ChevronRight className="h-3 w-3 text-gray-300" />
+          <span className="text-gray-800">Test Case Editor</span>
         </div>
 
         <div className="flex items-start justify-between gap-4">
@@ -2474,24 +2474,24 @@ function TestCaseEditorView({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-extrabold tracking-tight text-slate-950">Test Case Editor</h1>
+                <h1 className="text-2xl font-extrabold tracking-tight text-gray-950">Test Case Editor</h1>
                 <span className={badgeClass("purple")}>P1-S3 UI-011</span>
               </div>
-              <p className="mt-1 text-sm font-normal leading-5 text-slate-500">Review and refine generated test cases before approval.</p>
+              <p className="mt-1 text-sm font-normal leading-5 text-gray-500">Review and refine generated test cases before approval.</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {tc && dirty && (
-              <Button variant="outline" size="sm" onClick={revertChanges} disabled={busyAction !== null} className="h-9 gap-2 border-slate-200 text-xs font-bold text-slate-600">
+              <Button variant="outline" size="sm" onClick={revertChanges} disabled={busyAction !== null} className="h-9 gap-2 border-gray-200 text-xs font-bold text-gray-600">
                 Revert
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={saveDraft} disabled={!tc || busyAction !== null || !dirty} className="h-9 gap-2 border-blue-200 text-xs font-medium text-[#1b59f8]">
+            <Button variant="outline" size="sm" onClick={saveDraft} disabled={!tc || busyAction !== null || !dirty} className="h-9 gap-2 border-app-brand-200 text-xs font-medium text-[#B71920]">
               {busyAction === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
               Save Draft
               {tc && dirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />}
             </Button>
-            <Button variant="outline" size="sm" onClick={validateCase} disabled={!tc || busyAction !== null} className="h-9 gap-2 border-blue-200 text-xs font-medium text-[#1b59f8]">
+            <Button variant="outline" size="sm" onClick={validateCase} disabled={!tc || busyAction !== null} className="h-9 gap-2 border-app-brand-200 text-xs font-medium text-[#B71920]">
               {busyAction === "validate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
               Validate
             </Button>
@@ -2501,23 +2501,23 @@ function TestCaseEditorView({
               onClick={sendToApproval}
               disabled={!tc || busyAction !== null || approvalBlockers.length > 0}
               title={approvalBlockers.length ? approvalBlockers.join(" ") : undefined}
-              className="h-9 gap-2 bg-[#1b59f8] text-xs font-medium text-white hover:bg-[#1546c2]"
+              className="h-9 gap-2 bg-[#B71920] text-xs font-medium text-white hover:bg-[#941216]"
             >
               {busyAction === "approval" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
               Send to Approval
             </Button>
             <div className="relative">
-            <Button variant="outline" size="sm" onClick={() => setShowMore((value) => !value)} className="h-9 gap-2 border-slate-200 text-xs font-medium">
+            <Button variant="outline" size="sm" onClick={() => setShowMore((value) => !value)} className="h-9 gap-2 border-gray-200 text-xs font-medium">
               More
               <ChevronDown className="h-3.5 w-3.5" />
             </Button>
             {showMore && (
-              <div className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-slate-200 bg-white p-2 text-xs font-bold shadow-lg">
-                <button onClick={() => { setShowMore(false); exportToCSV(tc ? [tc] : testCases, requirementsByKey, requirementsById); }} className="w-full rounded-md px-3 py-2 text-left text-slate-700 hover:bg-slate-50">Export selected</button>
+              <div className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-gray-200 bg-white p-2 text-xs font-bold shadow-lg">
+                <button onClick={() => { setShowMore(false); exportToCSV(tc ? [tc] : testCases, requirementsByKey, requirementsById); }} className="w-full rounded-md px-3 py-2 text-left text-gray-700 hover:bg-gray-50">Export selected</button>
               </div>
             )}
             </div>
-            <Button variant="outline" size="sm" onClick={() => setInspectorOpen(true)} disabled={!tc} className="h-9 gap-2 border-slate-200 text-xs font-medium">
+            <Button variant="outline" size="sm" onClick={() => setInspectorOpen(true)} disabled={!tc} className="h-9 gap-2 border-gray-200 text-xs font-medium">
               <ShieldCheck className="h-4 w-4" />
               Inspector
             </Button>
@@ -2542,8 +2542,8 @@ function TestCaseEditorView({
         </div>
 
         <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="mb-4 text-sm font-semibold text-slate-800">Editing Readiness Check</p>
+          <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="mb-4 text-sm font-semibold text-gray-800">Editing Readiness Check</p>
             <div className="grid grid-cols-2 gap-x-6 gap-y-4 xl:grid-cols-4">
               <ReadinessItem
                 label="Requirement Linked"
@@ -2567,22 +2567,22 @@ function TestCaseEditorView({
               />
             </div>
           </div>
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-800">Scenario Test-Case Set Review</p>
+          <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-semibold text-gray-800">Scenario Test-Case Set Review</p>
             {review ? (
               <>
-                <p className="mt-5 text-xl font-extrabold text-slate-950">
+                <p className="mt-5 text-xl font-extrabold text-gray-950">
                   {typeof review.overall_score === "number" ? reviewScoreLabel(review.overall_score) : "—"}
                 </p>
                 <span className={badgeClass(review.verdict === "pass" ? "emerald" : review.verdict === "fail" ? "red" : "amber")}>
                   {review.verdict.replace(/_/g, " ")} · {review.review_mode === "gating" ? "gating" : "advisory"}
                 </span>
-                <p className="mt-3 text-[10px] font-semibold leading-5 text-slate-500">
+                <p className="mt-3 text-[10px] font-semibold leading-5 text-gray-500">
                   This score reviews the complete set of test cases linked to the parent scenario, not this test case in isolation.
                 </p>
               </>
             ) : (
-              <p className="mt-5 text-xs font-normal leading-5 text-slate-500">No automated coverage review recorded yet.</p>
+              <p className="mt-5 text-xs font-normal leading-5 text-gray-500">No automated coverage review recorded yet.</p>
             )}
           </div>
         </div>
@@ -2590,7 +2590,7 @@ function TestCaseEditorView({
         <div className="min-w-0">
           <div className="min-w-0 space-y-3">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-extrabold text-slate-950">Editable Test Cases</h2>
+              <h2 className="text-sm font-extrabold text-gray-950">Editable Test Cases</h2>
               <span className={badgeClass("slate")}>{editableTotal}</span>
             </div>
             <div className="flex flex-wrap items-center gap-1">
@@ -2600,30 +2600,30 @@ function TestCaseEditorView({
                   onClick={() => setActiveTab(key)}
                   className={cn(
                     "inline-flex h-8 items-center gap-2 rounded-md px-3 text-xs font-semibold transition",
-                    activeTab === key ? "bg-[#07142d] text-white" : "text-slate-600 hover:bg-white",
+                    activeTab === key ? "bg-[#4D0507] text-white" : "text-gray-600 hover:bg-white",
                   )}
                 >
                   {label}
-                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", activeTab === key ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500")}>{count}</span>
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", activeTab === key ? "bg-white/15 text-white" : "bg-gray-100 text-gray-500")}>{count}</span>
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Search by TC ID, title, requirement, scenario..."
-                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-normal text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                  className="h-9 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-xs font-normal text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
                 />
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 className={cn(
-                  "h-9 gap-2 border-slate-200 px-3 text-xs font-bold",
-                  (filtersOpen || activeFilterCount > 0) && "border-blue-300 bg-blue-50 text-[#1b59f8]",
+                  "h-9 gap-2 border-gray-200 px-3 text-xs font-bold",
+                  (filtersOpen || activeFilterCount > 0) && "border-app-brand-300 bg-app-brand-75 text-[#B71920]",
                 )}
                 onClick={() => setFiltersOpen((open) => !open)}
                 aria-expanded={filtersOpen}
@@ -2632,7 +2632,7 @@ function TestCaseEditorView({
                 <Filter className="h-4 w-4" />
                 Filters
                 {activeFilterCount > 0 && (
-                  <span className="rounded-full bg-[#1b59f8] px-1.5 py-0.5 text-[10px] text-white">
+                  <span className="rounded-full bg-[#B71920] px-1.5 py-0.5 text-[10px] text-white">
                     {activeFilterCount}
                   </span>
                 )}
@@ -2642,7 +2642,7 @@ function TestCaseEditorView({
               <div
                 id="editor-test-case-filters"
                 aria-label="Editor test case filters"
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50/40 p-3"
+                className="flex flex-wrap items-center gap-2 rounded-lg border border-app-brand-100 bg-app-brand-75/40 p-3"
               >
                 <FilterSelect value={typeFilter} onChange={setTypeFilter} options={typeFilterOptions} label="Test Type" />
                 <FilterSelect value={classFilter} onChange={setClassFilter} options={classFilterOptions} label="Scenario Class" />
@@ -2652,7 +2652,7 @@ function TestCaseEditorView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-10 gap-2 text-xs font-bold text-slate-600"
+                    className="h-10 gap-2 text-xs font-bold text-gray-600"
                     onClick={() => {
                       setTypeFilter("all");
                       setClassFilter("all");
@@ -2666,19 +2666,19 @@ function TestCaseEditorView({
                 )}
               </div>
             )}
-            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-              <div className="grid min-w-max border-b border-slate-200 bg-slate-50/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: EDITOR_TABLE_GRID }}>
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+              <div className="grid min-w-max border-b border-gray-200 bg-gray-50/70 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500" style={{ gridTemplateColumns: EDITOR_TABLE_GRID }}>
                 <span>TC ID</span><span>Req ID / PPM ID</span><span>Title</span><span>Test Type</span><span>Scenario Class</span><span>Priority</span><span>Domain</span><span>Channel</span><span>Complexity</span><span>Critical</span><span>Edit Status</span><span>Validation Status</span><span>Actions</span>
               </div>
               {loading ? (
-                <div className="flex items-center justify-center py-16 text-xs font-bold text-slate-500">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+                <div className="flex items-center justify-center py-16 text-xs font-bold text-gray-500">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#B71920]" />
                   Loading editor queue...
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-gray-100">
                   {editorRows.length === 0 ? (
-                    <div className="py-16 text-center text-xs font-semibold text-slate-400">No test cases match the selected filters.</div>
+                    <div className="py-16 text-center text-xs font-semibold text-gray-400">No test cases match the selected filters.</div>
                   ) : editorRows.map((row) => {
                     const rowReq = findRequirementForCase(row, requirementsByKey, requirementsById);
                     const selected = editorDrawerOpen && selectedTestCase?.id === row.id;
@@ -2690,32 +2690,32 @@ function TestCaseEditorView({
                           setSelectedTestCase(row);
                           setEditorDrawerOpen(true);
                         }}
-                        className={cn("grid w-full min-w-max items-center px-3 py-3 text-left text-[11px] font-medium transition hover:bg-slate-50", selected && "border-l-2 border-[#1b59f8] bg-blue-50/30")}
+                        className={cn("grid w-full min-w-max items-center px-3 py-3 text-left text-[11px] font-medium transition hover:bg-gray-50", selected && "border-l-2 border-[#B71920] bg-app-brand-75/30")}
                         style={{ gridTemplateColumns: EDITOR_TABLE_GRID }}
                       >
-                        <span className="font-mono font-extrabold text-[#1b59f8]">{row.test_case_id}</span>
+                        <span className="font-mono font-extrabold text-[#B71920]">{row.test_case_id}</span>
                         <span>
-                          <span className="block font-bold text-slate-800">{row.linked_requirement_key || rowReq?.requirement_id || "—"}</span>
-                          <span className="block text-slate-500">{ppmFromRequirement(rowReq)}</span>
+                          <span className="block font-bold text-gray-800">{row.linked_requirement_key || rowReq?.requirement_id || "—"}</span>
+                          <span className="block text-gray-500">{ppmFromRequirement(rowReq)}</span>
                         </span>
-                        <span className="pr-2 font-bold leading-4 text-slate-800">{row.title}</span>
+                        <span className="pr-2 font-bold leading-4 text-gray-800">{row.title}</span>
                         <span><span className={badgeClass(testType(row) === "Negative" ? "red" : "blue")}>{testType(row)}</span></span>
                         <span><span className={badgeClass("slate")}>{scenarioClass(row)}</span></span>
                         <span><span className={badgeClass(priorityTone(row.priority))}>{row.priority}</span></span>
-                        <span className="truncate text-slate-600">{row.domain_name || "—"}</span>
-                        <span className="truncate text-slate-600">{row.channel_name || "—"}</span>
-                        <span className="truncate text-slate-600">{row.test_case_complexity_name || "—"}</span>
+                        <span className="truncate text-gray-600">{row.domain_name || "—"}</span>
+                        <span className="truncate text-gray-600">{row.channel_name || "—"}</span>
+                        <span className="truncate text-gray-600">{row.test_case_complexity_name || "—"}</span>
                         <span>{row.is_critical && <span className={badgeClass("red")}>Critical</span>}</span>
                         <span><span className={badgeClass("slate")}>{row.status.replace(/_/g, " ")}</span></span>
                         <span><span className={badgeClass(issue ? "amber" : "emerald")}>{issue ? "Issues" : "Valid"}</span></span>
-                        <span className="flex justify-end"><span className="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-500"><MoreHorizontal className="h-3.5 w-3.5" /></span></span>
+                        <span className="flex justify-end"><span className="flex h-7 w-7 items-center justify-center rounded-md border border-gray-200 text-gray-500"><MoreHorizontal className="h-3.5 w-3.5" /></span></span>
                       </button>
                     );
                   })}
                 </div>
               )}
-              <div className="flex items-center justify-between border-t border-slate-100 px-3 py-3">
-                <span className="text-xs font-semibold text-slate-500">{editorRows.length} of {editableTotal} test cases</span>
+              <div className="flex items-center justify-between border-t border-gray-100 px-3 py-3">
+                <span className="text-xs font-semibold text-gray-500">{editorRows.length} of {editableTotal} test cases</span>
               </div>
             </div>
           </div>
@@ -2729,20 +2729,20 @@ function TestCaseEditorView({
           >
             <DrawerContent size="2xl">
               <DrawerBody className="space-y-0 p-4">
-                <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             {tc ? (
               <>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <DrawerTitle className="text-sm font-extrabold text-slate-950">{tc.test_case_id}</DrawerTitle>
+                    <DrawerTitle className="text-sm font-extrabold text-gray-950">{tc.test_case_id}</DrawerTitle>
                     <span className={badgeClass(dirty ? "purple" : "slate")}>{dirty ? "Editing" : tc.status.replace(/_/g, " ")}</span>
                     {dirty ? (
                       <span className="text-[10px] font-bold text-amber-600">Unsaved changes</span>
                     ) : tc.updated_at && (
-                      <span className="text-[10px] font-bold text-slate-400">Updated {relativeTime(tc.updated_at)}</span>
+                      <span className="text-[10px] font-bold text-gray-400">Updated {relativeTime(tc.updated_at)}</span>
                     )}
                   </div>
-                  <div className="flex gap-2 text-slate-500">
+                  <div className="flex gap-2 text-gray-500">
                     <button
                       aria-label="Close"
                       onClick={() => {
@@ -2754,11 +2754,11 @@ function TestCaseEditorView({
                     </button>
                   </div>
                 </div>
-                <div className="mb-4 flex items-center gap-5 rounded-lg border border-slate-200 bg-slate-50/40 px-3 py-2 text-xs font-semibold text-slate-600">
-                  <span>Linked Requirement: <span className="font-bold text-[#1b59f8]">{tc.linked_requirement_key || req?.requirement_id || "—"}</span></span>
+                <div className="mb-4 flex items-center gap-5 rounded-lg border border-gray-200 bg-gray-50/40 px-3 py-2 text-xs font-semibold text-gray-600">
+                  <span>Linked Requirement: <span className="font-bold text-[#B71920]">{tc.linked_requirement_key || req?.requirement_id || "—"}</span></span>
                   <span>{ppmFromRequirement(req)}</span>
                   <span className="min-w-0 flex-1 truncate">{req?.title || ""}</span>
-                  {(tc.linked_requirement_id ?? req?.id) && <button onClick={viewRequirement} className="font-bold text-[#1b59f8]">View</button>}
+                  {(tc.linked_requirement_id ?? req?.id) && <button onClick={viewRequirement} className="font-bold text-[#B71920]">View</button>}
                 </div>
                 <div className="grid grid-cols-4 gap-3">
                   <EditorField label="Test Type" value={draft.testType} onChange={(v) => updateDraft("testType", v)} select options={testTypeOptions} />
@@ -2810,40 +2810,40 @@ function TestCaseEditorView({
                     onChange={(event) => updateDraft("preconditionsText", event.target.value)}
                     rows={3}
                     placeholder="One precondition per line"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
                   />
                 </EditorSection>
                 <EditorSection title="Test Steps" action="+ Add Step" onAction={addStep}>
                   {draft.steps.length ? (
-                    <div className="overflow-hidden rounded-lg border border-slate-200">
-                      <div className="grid grid-cols-[40px_minmax(160px,1fr)_minmax(160px,1fr)_32px] bg-slate-50 px-3 py-2 text-[10px] font-extrabold uppercase text-slate-500">
+                    <div className="overflow-hidden rounded-lg border border-gray-200">
+                      <div className="grid grid-cols-[40px_minmax(160px,1fr)_minmax(160px,1fr)_32px] bg-gray-50 px-3 py-2 text-[10px] font-extrabold uppercase text-gray-500">
                         <span>#</span><span>Action</span><span>Expected Result</span><span></span>
                       </div>
                       {draft.steps.map((step, index) => (
-                        <div key={index} className="grid grid-cols-[40px_minmax(160px,1fr)_minmax(160px,1fr)_32px] items-start gap-2 border-t border-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
-                          <span className="mt-2 text-slate-500">{step.step_number}</span>
+                        <div key={index} className="grid grid-cols-[40px_minmax(160px,1fr)_minmax(160px,1fr)_32px] items-start gap-2 border-t border-gray-100 px-3 py-2 text-xs font-semibold text-gray-700">
+                          <span className="mt-2 text-gray-500">{step.step_number}</span>
                           <textarea
                             aria-label={`Step ${step.step_number} action`}
                             value={step.action}
                             onChange={(event) => updateStep(index, "action", event.target.value)}
                             rows={2}
-                            className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                            className="w-full rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
                           />
                           <textarea
                             aria-label={`Step ${step.step_number} expected result`}
                             value={step.expected_result}
                             onChange={(event) => updateStep(index, "expected_result", event.target.value)}
                             rows={2}
-                            className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                            className="w-full rounded-md border border-gray-200 px-2 py-1 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
                           />
-                          <button aria-label={`Remove step ${step.step_number}`} onClick={() => removeStep(index)} className="mt-1.5 text-slate-400 hover:text-red-600">
+                          <button aria-label={`Remove step ${step.step_number}`} onClick={() => removeStep(index)} className="mt-1.5 text-gray-400 hover:text-red-600">
                             <X className="h-3.5 w-3.5" />
                           </button>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs font-semibold text-slate-400">No test steps recorded. Use + Add Step to create one.</p>
+                    <p className="text-xs font-semibold text-gray-400">No test steps recorded. Use + Add Step to create one.</p>
                   )}
                 </EditorSection>
                 <EditorSection title="Expected Result (Overall)">
@@ -2853,26 +2853,26 @@ function TestCaseEditorView({
                     onChange={(event) => updateDraft("expectedResult", event.target.value)}
                     rows={3}
                     placeholder="Describe the overall expected outcome"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
                   />
                 </EditorSection>
                 <EditorSection title="Test Data Dependency">
                   {tc.test_data && Object.keys(tc.test_data).length ? (
-                    <div className="space-y-1 text-xs font-semibold text-slate-700">
+                    <div className="space-y-1 text-xs font-semibold text-gray-700">
                       {Object.entries(tc.test_data).map(([key, value]) => (
                         <div key={key} className="flex gap-2">
-                          <span className="font-bold text-slate-500">{key}:</span>
+                          <span className="font-bold text-gray-500">{key}:</span>
                           <span className="min-w-0 break-words">{typeof value === "object" ? JSON.stringify(value) : String(value)}</span>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-xs font-semibold text-slate-400">No test data dependency recorded.</p>
+                    <p className="text-xs font-semibold text-gray-400">No test data dependency recorded.</p>
                   )}
                 </EditorSection>
               </>
             ) : (
-              <div className="flex h-full items-center justify-center text-xs font-semibold text-slate-500">Select a test case to edit.</div>
+              <div className="flex h-full items-center justify-center text-xs font-semibold text-gray-500">Select a test case to edit.</div>
             )}
                 </div>
               </DrawerBody>
@@ -2895,7 +2895,7 @@ function TestCaseEditorView({
                     size="sm"
                     onClick={saveDraft}
                     disabled={!tc || busyAction !== null || !dirty}
-                    className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]"
+                    className="h-9 gap-2 border-app-brand-200 text-xs font-bold text-[#B71920]"
                   >
                     {busyAction === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                     Save Draft
@@ -2906,7 +2906,7 @@ function TestCaseEditorView({
                     size="sm"
                     onClick={validateCase}
                     disabled={!tc || busyAction !== null}
-                    className="h-9 gap-2 border-blue-200 text-xs font-bold text-[#1b59f8]"
+                    className="h-9 gap-2 border-app-brand-200 text-xs font-bold text-[#B71920]"
                   >
                     {busyAction === "validate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                     Validate
@@ -2917,7 +2917,7 @@ function TestCaseEditorView({
                     onClick={sendToApproval}
                     disabled={!tc || busyAction !== null || approvalBlockers.length > 0}
                     title={approvalBlockers.length ? approvalBlockers.join(" ") : undefined}
-                    className="h-9 gap-2 bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]"
+                    className="h-9 gap-2 bg-[#B71920] text-xs font-bold text-white hover:bg-[#941216]"
                   >
                     {busyAction === "approval" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
                     Send to Approval
@@ -2933,15 +2933,15 @@ function TestCaseEditorView({
       <DrawerContent size="lg">
       <DrawerHeader>
         <DrawerTitle>Test Case Inspector</DrawerTitle>
-        <button aria-label="Close" onClick={() => setInspectorOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+        <button aria-label="Close" onClick={() => setInspectorOpen(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-50"><X className="h-4 w-4" /></button>
       </DrawerHeader>
       <DrawerBody>
         <InspectorCard title="Traceability">
           <div className="grid grid-cols-[1fr_18px_1fr_18px_1fr] items-center gap-2 text-center text-[10px] font-bold">
             <TraceBox label="Requirement" value={`${tc?.linked_requirement_key || req?.requirement_id || "—"}\n${ppmFromRequirement(req)}`} />
-            <ChevronRight className="h-4 w-4 text-slate-400" />
+            <ChevronRight className="h-4 w-4 text-gray-400" />
             <TraceBox label="Scenario" value={scenario?.scenario_id || "—"} />
-            <ChevronRight className="h-4 w-4 text-slate-400" />
+            <ChevronRight className="h-4 w-4 text-gray-400" />
             <TraceBox label="Test Case" value={tc?.test_case_id || "—"} />
           </div>
         </InspectorCard>
@@ -2954,25 +2954,25 @@ function TestCaseEditorView({
         />
         <InspectorCard title="Validation Findings" badge={reviewFindings.length ? `${reviewFindings.length} finding${reviewFindings.length === 1 ? "" : "s"}` : undefined}>
           {reviewFindings.length ? (
-            <div className="space-y-3 text-xs font-semibold text-slate-700">
+            <div className="space-y-3 text-xs font-semibold text-gray-700">
               {reviewFindings.map((f, index) => <Issue key={index} text={`${f.dimension}: ${f.issue}`} />)}
             </div>
           ) : (
-            <p className="text-xs font-semibold text-slate-400">{review ? "No open findings on the latest coverage review." : "No automated review recorded yet."}</p>
+            <p className="text-xs font-semibold text-gray-400">{review ? "No open findings on the latest coverage review." : "No automated review recorded yet."}</p>
           )}
         </InspectorCard>
         <InspectorCard title="Review Suggestions" badge={reviewSuggestions.length ? `${reviewSuggestions.length}` : undefined}>
           {reviewSuggestions.length ? (
-            <div className="space-y-3 text-xs font-semibold text-slate-700">
+            <div className="space-y-3 text-xs font-semibold text-gray-700">
               {reviewSuggestions.map((s, index) => <Suggestion key={index} text={s} />)}
             </div>
           ) : (
-            <p className="text-xs font-semibold text-slate-400">No suggestions on the latest coverage review.</p>
+            <p className="text-xs font-semibold text-gray-400">No suggestions on the latest coverage review.</p>
           )}
         </InspectorCard>
         <InspectorCard title="Change History">
           {historyLoading ? (
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading history…</div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-gray-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading history…</div>
           ) : history.length ? (
             <div className="space-y-4 text-xs">
               {history.slice(0, 8).map((h) => (
@@ -2985,7 +2985,7 @@ function TestCaseEditorView({
               ))}
             </div>
           ) : (
-            <p className="text-xs font-semibold text-slate-400">No change history recorded.</p>
+            <p className="text-xs font-semibold text-gray-400">No change history recorded.</p>
           )}
         </InspectorCard>
         <InspectorCard title="Review & Audit">
@@ -2999,15 +2999,15 @@ function TestCaseEditorView({
           </div>
         </InspectorCard>
         <div className="space-y-3 pt-1">
-          <p className="text-xs font-extrabold text-slate-800">Actions</p>
-          <Button onClick={saveDraft} disabled={!tc || busyAction !== null || !dirty} className="h-10 w-full bg-[#1b59f8] text-xs font-bold text-white hover:bg-[#1546c2]">Save Draft</Button>
+          <p className="text-xs font-extrabold text-gray-800">Actions</p>
+          <Button onClick={saveDraft} disabled={!tc || busyAction !== null || !dirty} className="h-10 w-full bg-[#B71920] text-xs font-bold text-white hover:bg-[#941216]">Save Draft</Button>
           <Button onClick={validateCase} disabled={!tc || busyAction !== null} variant="outline" className="h-10 w-full border-emerald-300 text-xs font-bold text-emerald-700">Check Coverage Review</Button>
           <Button
             onClick={sendToApproval}
             disabled={!tc || busyAction !== null || approvalBlockers.length > 0}
             title={approvalBlockers.length ? approvalBlockers.join(" ") : undefined}
             variant="outline"
-            className="h-10 w-full border-blue-300 text-xs font-bold text-[#1b59f8]"
+            className="h-10 w-full border-app-brand-300 text-xs font-bold text-[#B71920]"
           >
             Send to Approval
           </Button>
@@ -3046,8 +3046,8 @@ function EditorField({
   if (!onChange) {
     return (
       <div className="block">
-        <span className="mb-1.5 block text-[10px] font-extrabold text-slate-500">{label}</span>
-        <div className={cn("flex h-10 w-full items-center truncate rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-800", muted ? "bg-slate-50" : "bg-white")}>
+        <span className="mb-1.5 block text-[10px] font-extrabold text-gray-500">{label}</span>
+        <div className={cn("flex h-10 w-full items-center truncate rounded-lg border border-gray-200 px-3 text-xs font-bold text-gray-800", muted ? "bg-gray-50" : "bg-white")}>
           {value}
         </div>
       </div>
@@ -3055,12 +3055,12 @@ function EditorField({
   }
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[10px] font-extrabold text-slate-500">{label}</span>
+      <span className="mb-1.5 block text-[10px] font-extrabold text-gray-500">{label}</span>
       {select ? (
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+          className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-800 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
         >
           {(options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}
         </select>
@@ -3068,7 +3068,7 @@ function EditorField({
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+          className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-800 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
         />
       )}
     </label>
@@ -3091,11 +3091,11 @@ function EditorIdSelect({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[10px] font-extrabold text-slate-500">{label}</span>
+      <span className="mb-1.5 block text-[10px] font-extrabold text-gray-500">{label}</span>
       <select
         value={value ?? ""}
         onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
-        className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+        className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-800 outline-none focus:border-app-brand-300 focus:ring-2 focus:ring-app-brand-100"
       >
         <option value="">—</option>
         {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
@@ -3106,10 +3106,10 @@ function EditorIdSelect({
 
 function EditorSection({ title, action, onAction, children }: { title: string; action?: string; onAction?: () => void; children: ReactNode }) {
   return (
-    <section className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+    <section className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-xs font-extrabold text-slate-900">{title}</h3>
-        {action && <button onClick={onAction} className="text-xs font-bold text-[#1b59f8]">{action}</button>}
+        <h3 className="text-xs font-extrabold text-gray-900">{title}</h3>
+        {action && <button onClick={onAction} className="text-xs font-bold text-[#B71920]">{action}</button>}
       </div>
       {children}
     </section>
@@ -3152,7 +3152,7 @@ function AutomationReadinessCard({
   if (!classification) {
     return (
       <InspectorCard title="Automation Readiness">
-        <p className="text-xs font-semibold text-slate-400">This test case has not been classified yet. Run classification from Generated Test Cases first.</p>
+        <p className="text-xs font-semibold text-gray-400">This test case has not been classified yet. Run classification from Generated Test Cases first.</p>
       </InspectorCard>
     );
   }
@@ -3198,25 +3198,25 @@ function AutomationReadinessCard({
         {error && <p className="text-[11px] font-semibold text-red-600">{error}</p>}
 
         <label className="block">
-          <span className="mb-1 block text-[10px] font-bold text-slate-500">Primary adapter</span>
-          <input value={primaryAdapter} onChange={(e) => setPrimaryAdapter(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-slate-200 px-2 text-xs disabled:bg-slate-50" />
+          <span className="mb-1 block text-[10px] font-bold text-gray-500">Primary adapter</span>
+          <input value={primaryAdapter} onChange={(e) => setPrimaryAdapter(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-gray-200 px-2 text-xs disabled:bg-gray-50" />
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-bold text-slate-500">Mandatory validators (comma-separated)</span>
-          <input value={mandatoryText} onChange={(e) => setMandatoryText(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-slate-200 px-2 text-xs disabled:bg-slate-50" />
+          <span className="mb-1 block text-[10px] font-bold text-gray-500">Mandatory validators (comma-separated)</span>
+          <input value={mandatoryText} onChange={(e) => setMandatoryText(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-gray-200 px-2 text-xs disabled:bg-gray-50" />
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-bold text-slate-500">Optional validators (comma-separated)</span>
-          <input value={optionalText} onChange={(e) => setOptionalText(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-slate-200 px-2 text-xs disabled:bg-slate-50" />
+          <span className="mb-1 block text-[10px] font-bold text-gray-500">Optional validators (comma-separated)</span>
+          <input value={optionalText} onChange={(e) => setOptionalText(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-gray-200 px-2 text-xs disabled:bg-gray-50" />
         </label>
         <div className="flex items-center gap-2">
           <input id="discovery-required" type="checkbox" checked={discoveryRequired} onChange={(e) => setDiscoveryRequired(e.target.checked)} disabled={!canReview || locked} />
-          <label htmlFor="discovery-required" className="text-[10px] font-bold text-slate-500">Discovery required</label>
+          <label htmlFor="discovery-required" className="text-[10px] font-bold text-gray-500">Discovery required</label>
         </div>
         {discoveryRequired && (
           <label className="block">
-            <span className="mb-1 block text-[10px] font-bold text-slate-500">Discovery mode</span>
-            <select value={discoveryMode} onChange={(e) => setDiscoveryMode(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-slate-200 px-2 text-xs disabled:bg-slate-50">
+            <span className="mb-1 block text-[10px] font-bold text-gray-500">Discovery mode</span>
+            <select value={discoveryMode} onChange={(e) => setDiscoveryMode(e.target.value)} disabled={!canReview || locked} className="h-8 w-full rounded border border-gray-200 px-2 text-xs disabled:bg-gray-50">
               <option value="">Select mode</option>
               <option value="GUIDED_USER">Guided User Recording</option>
               <option value="FREE_USER_ACTION">Free User Action</option>
@@ -3237,13 +3237,13 @@ function AutomationReadinessCard({
         {canReview && !locked && dirty && (
           <>
             <label className="block">
-              <span className="mb-1 block text-[10px] font-bold text-slate-500">Reason for correction</span>
-              <textarea value={reason} onChange={(e) => setReason(e.target.value)} className="h-16 w-full resize-none rounded border border-slate-200 p-2 text-xs" />
+              <span className="mb-1 block text-[10px] font-bold text-gray-500">Reason for correction</span>
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} className="h-16 w-full resize-none rounded border border-gray-200 p-2 text-xs" />
             </label>
             <Button size="sm" onClick={() => void save()} disabled={busy} className="h-8 text-xs font-bold">Save Correction</Button>
           </>
         )}
-        {!canReview && <p className="text-[10px] font-semibold text-slate-400">You do not have permission to correct the automation classification.</p>}
+        {!canReview && <p className="text-[10px] font-semibold text-gray-400">You do not have permission to correct the automation classification.</p>}
       </div>
     </InspectorCard>
   );
@@ -3263,10 +3263,10 @@ function InspectorCard({
   children: ReactNode;
 }) {
   return (
-    <section className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
+    <section className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-xs font-extrabold text-slate-900">{title}</h3>
-        {action && <button onClick={onAction} className="text-[11px] font-bold text-[#1b59f8]">{action}</button>}
+        <h3 className="text-xs font-extrabold text-gray-900">{title}</h3>
+        {action && <button onClick={onAction} className="text-[11px] font-bold text-[#B71920]">{action}</button>}
         {badge && <span className={badgeClass(badge.includes("Issue") ? "red" : "blue")}>{badge}</span>}
       </div>
       {children}
@@ -3276,10 +3276,10 @@ function InspectorCard({
 
 function TraceBox({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-3">
-      <p className="mb-1 text-[10px] font-bold text-slate-400">{label}</p>
+    <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-3">
+      <p className="mb-1 text-[10px] font-bold text-gray-400">{label}</p>
       {value.split("\n").map((line, index) => (
-        <p key={index} className={cn("font-extrabold", line.startsWith("REQ") || line.startsWith("TC") || line.startsWith("SCN") ? "text-[#1b59f8]" : "text-slate-600")}>{line}</p>
+        <p key={index} className={cn("font-extrabold", line.startsWith("REQ") || line.startsWith("TC") || line.startsWith("SCN") ? "text-[#B71920]" : "text-gray-600")}>{line}</p>
       ))}
     </div>
   );
@@ -3306,10 +3306,10 @@ function Suggestion({ text }: { text: string }) {
 function HistoryRow({ time, actor, text }: { time: string; actor: string; text: string }) {
   return (
     <div className="relative pl-5">
-      <span className="absolute left-0 top-1.5 h-2 w-2 rounded-full bg-[#1b59f8]" />
-      <p className="font-bold text-slate-500">{time}</p>
-      <p className="mt-1 font-extrabold text-slate-800">{actor}</p>
-      <p className="mt-0.5 font-semibold text-slate-500">{text}</p>
+      <span className="absolute left-0 top-1.5 h-2 w-2 rounded-full bg-[#B71920]" />
+      <p className="font-bold text-gray-500">{time}</p>
+      <p className="mt-1 font-extrabold text-gray-800">{actor}</p>
+      <p className="mt-0.5 font-semibold text-gray-500">{text}</p>
     </div>
   );
 }
@@ -3324,10 +3324,10 @@ function DrawerCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
       <div className="mb-4 flex items-center gap-2">
-        <Icon className="h-4 w-4 text-[#1b59f8]" />
-        <p className="text-xs font-extrabold text-slate-800">{title}</p>
+        <Icon className="h-4 w-4 text-[#B71920]" />
+        <p className="text-xs font-extrabold text-gray-800">{title}</p>
       </div>
       {children}
     </div>
@@ -3337,12 +3337,12 @@ function DrawerCard({
 function SummaryRow({ tone, label, value }: { tone: Tone; label: string; value: string | number }) {
   const dotClass = tone === "emerald" ? "bg-emerald-500" : tone === "red" ? "bg-red-500" : "bg-amber-500";
   return (
-    <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+    <div className="flex items-center justify-between text-xs font-semibold text-gray-600">
       <span className="flex items-center gap-2">
         <span className={cn("h-2 w-2 rounded-full", dotClass)} />
         {label}
       </span>
-      <span className="font-extrabold text-slate-950">{value}</span>
+      <span className="font-extrabold text-gray-950">{value}</span>
     </div>
   );
 }
@@ -3350,8 +3350,8 @@ function SummaryRow({ tone, label, value }: { tone: Tone; label: string; value: 
 function InfoPair({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] font-bold text-slate-400">{label}</p>
-      <p className="mt-1 text-xs font-extrabold text-slate-700">{value}</p>
+      <p className="text-[10px] font-bold text-gray-400">{label}</p>
+      <p className="mt-1 text-xs font-extrabold text-gray-700">{value}</p>
     </div>
   );
 }
@@ -3363,7 +3363,7 @@ function Activity({ text, time }: { text: string; time: string }) {
         <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
         {text}
       </span>
-      <span className="text-slate-400">{time}</span>
+      <span className="text-gray-400">{time}</span>
     </div>
   );
 }
@@ -3371,8 +3371,8 @@ function Activity({ text, time }: { text: string; time: string }) {
 export default function TestCasesPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center gap-2 p-8 text-center text-xs font-semibold text-slate-500">
-        <Loader2 className="h-4 w-4 animate-spin text-[#1b59f8]" />
+      <div className="flex items-center justify-center gap-2 p-8 text-center text-xs font-semibold text-gray-500">
+        <Loader2 className="h-4 w-4 animate-spin text-[#B71920]" />
         Loading Generated Test Cases...
       </div>
     }>

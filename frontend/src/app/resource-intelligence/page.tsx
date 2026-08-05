@@ -231,7 +231,7 @@ function ResourceIntelligenceContent() {
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-border pb-4 space-y-2 md:space-y-0">
         <div>
-          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-400">
+          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-app-brand-500">
             Resource Intelligence & Utilization Hub
           </h1>
           <p className="text-xs text-muted-foreground font-semibold tracking-wide">
@@ -261,7 +261,7 @@ function ResourceIntelligenceContent() {
                   onClick={() => setActiveTab(menu.id)}
                   className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-left text-xs font-semibold tracking-wide transition-all duration-150 ${
                     active
-                      ? "bg-primary text-primary-foreground shadow-lg shadow-indigo-650/30"
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-app-brand-650/30"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
@@ -309,10 +309,10 @@ function ResourceIntelligenceContent() {
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={dashboardChartData}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                        <XAxis dataKey="name" stroke="#64748b" fontSize={11} />
-                        <YAxis stroke="#64748b" fontSize={11} />
+                        <XAxis dataKey="name" stroke="#6B7280" fontSize={11} />
+                        <YAxis stroke="#6B7280" fontSize={11} />
                         <Tooltip contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }} />
-                        <Bar dataKey="Hours" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="Hours" fill="#D52B31" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -325,7 +325,7 @@ function ResourceIntelligenceContent() {
                       Object.entries(dashboardData.evidence_contributions).map(([source, val]: any) => (
                         <div key={source} className="flex items-center justify-between border-b border-border/50 pb-2">
                           <span className="text-xs font-semibold text-muted-foreground">{source} API Integration</span>
-                          <span className="text-xs font-mono font-bold text-indigo-400 bg-secondary px-2 py-0.5 rounded border border-border">
+                          <span className="text-xs font-mono font-bold text-app-brand-500 bg-secondary px-2 py-0.5 rounded border border-border">
                             {val} events synced
                           </span>
                         </div>
@@ -492,8 +492,8 @@ function ResourceIntelligenceContent() {
                 <h4 className="text-xs font-bold text-muted-foreground uppercase mb-3">Timezone Distribution Heatmap</h4>
                 <div className="flex items-center gap-2">
                   <div className="px-3 py-1 bg-cyan-950 text-cyan-400 border border-cyan-900 rounded text-xs font-mono font-bold">CST: 8 Resources</div>
-                  <div className="px-3 py-1 bg-indigo-950 text-indigo-400 border border-indigo-900 rounded text-xs font-mono font-bold">EST: 12 Resources</div>
-                  <div className="px-3 py-1 bg-blue-950 text-blue-400 border border-blue-900 rounded text-xs font-mono font-bold">UTC: 4 Resources</div>
+                  <div className="px-3 py-1 bg-app-brand-950 text-app-brand-500 border border-app-brand-900 rounded text-xs font-mono font-bold">EST: 12 Resources</div>
+                  <div className="px-3 py-1 bg-app-brand-950 text-app-brand-500 border border-app-brand-900 rounded text-xs font-mono font-bold">UTC: 4 Resources</div>
                 </div>
               </div>
             </div>
@@ -554,7 +554,7 @@ function ResourceIntelligenceContent() {
                       <p className="text-xs text-muted-foreground">{ev.event_type.replace(/_/g, " ").toUpperCase()}</p>
                       <div className="flex justify-between items-center text-[10px] text-muted-foreground font-semibold pt-1 border-t border-border/30">
                         <span>External ID: {ev.source_event_id}</span>
-                        <span className="text-indigo-400">{ev.actual_effort_hours} hrs logged</span>
+                        <span className="text-app-brand-500">{ev.actual_effort_hours} hrs logged</span>
                       </div>
                     </div>
                   </div>
@@ -725,7 +725,7 @@ function ResourceIntelligenceContent() {
                   <div className="flex items-end">
                     <button
                       type="submit"
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 rounded-lg transition-colors"
+                      className="w-full bg-app-brand-600 hover:bg-app-brand-700 text-white text-xs font-bold py-2.5 rounded-lg transition-colors"
                     >
                       Save Configuration
                     </button>
@@ -889,7 +889,7 @@ function ResourceIntelligenceContent() {
                       <p className="text-[10px] text-muted-foreground/70 mt-1">Available formats: Excel (.xlsx), PDF, CSV</p>
                     </div>
                     <div className="flex gap-2">
-                      <button className="bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg border border-border transition-all">
+                      <button className="bg-gray-800 hover:bg-gray-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg border border-border transition-all">
                         PDF
                       </button>
                       <button className="bg-cyan-600 hover:bg-cyan-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all">

@@ -68,14 +68,14 @@ export function AIProcessingModal({
     emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
     amber: "border-amber-200 bg-amber-50 text-amber-700",
     red: "border-red-200 bg-red-50 text-red-700",
-    slate: "border-slate-200 bg-slate-50 text-slate-600",
+    slate: "border-gray-200 bg-gray-50 text-gray-600",
   };
   const labelToneClasses = {
     violet: "text-violet-600",
     emerald: "text-emerald-600",
     amber: "text-amber-600",
     red: "text-red-600",
-    slate: "text-slate-600",
+    slate: "text-gray-600",
   };
   const message =
     context.status === "success"
@@ -91,12 +91,12 @@ export function AIProcessingModal({
   return (
     <DialogPrimitive.Root open={context.isOpen} onOpenChange={(open) => { if (!open && !active) onClose(); }}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[90] bg-slate-950/45 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0 motion-reduce:animate-none" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[90] bg-gray-950/45 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0 motion-reduce:animate-none" />
         <DialogPrimitive.Content
           aria-describedby="ai-processing-description"
           onEscapeKeyDown={(event) => { if (active) event.preventDefault(); }}
           onPointerDownOutside={(event) => event.preventDefault()}
-          className="fixed left-1/2 top-1/2 z-[91] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white shadow-2xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 motion-reduce:animate-none"
+          className="fixed left-1/2 top-1/2 z-[91] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-gray-200 bg-white shadow-2xl focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 motion-reduce:animate-none"
         >
           <div className="p-6">
             <div className="relative flex justify-center">
@@ -111,7 +111,7 @@ export function AIProcessingModal({
                 )}
               </div>
               {!active && (
-                <button aria-label="Close AI processing" onClick={onClose} className="absolute right-0 top-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+                <button aria-label="Close AI processing" onClick={onClose} className="absolute right-0 top-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
                   <X className="h-4 w-4" />
                 </button>
               )}
@@ -121,11 +121,11 @@ export function AIProcessingModal({
               <p className={cn("mt-5 text-[10px] font-extrabold uppercase tracking-[0.18em]", labelToneClasses[presentation.tone])}>
                 {presentation.label}
               </p>
-              <DialogPrimitive.Title className="mt-1 text-xl font-extrabold tracking-tight text-slate-950">
+              <DialogPrimitive.Title className="mt-1 text-xl font-extrabold tracking-tight text-gray-950">
                 {active ? "AI is Working" : presentation.title}
               </DialogPrimitive.Title>
-              <p className="mt-2 text-sm font-bold text-slate-800">{context.title}</p>
-              <DialogPrimitive.Description id="ai-processing-description" className="mt-2 text-xs font-medium leading-5 text-slate-500">
+              <p className="mt-2 text-sm font-bold text-gray-800">{context.title}</p>
+              <DialogPrimitive.Description id="ai-processing-description" className="mt-2 text-xs font-medium leading-5 text-gray-500">
                 {message}
               </DialogPrimitive.Description>
             </div>
@@ -137,8 +137,8 @@ export function AIProcessingModal({
                 </div>
                 <div className="p-4">
                   <p className="text-[10px] font-extrabold uppercase tracking-wide text-violet-600">Current stage</p>
-                  <p aria-live="polite" className="mt-1 text-xs font-bold leading-5 text-slate-800">{stage}</p>
-                  <div className="mt-4 flex items-center justify-between border-t border-violet-100 pt-3 text-[11px] font-semibold text-slate-500">
+                  <p aria-live="polite" className="mt-1 text-xs font-bold leading-5 text-gray-800">{stage}</p>
+                  <div className="mt-4 flex items-center justify-between border-t border-violet-100 pt-3 text-[11px] font-semibold text-gray-500">
                     <span className="flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" />Elapsed {formatElapsed(context.elapsedTimeSeconds)}</span>
                     <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-violet-700">
                       {context.status === "queued" ? "Queued" : context.status === "waiting" ? "Waiting for agent" : "Processing"}
@@ -158,7 +158,7 @@ export function AIProcessingModal({
               context.jobId ||
               context.agentRunId ||
               context.correlationId) && (
-              <div className="mt-4 grid [grid-template-columns:repeat(auto-fit,minmax(7rem,1fr))] gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-[10px]">
+              <div className="mt-4 grid [grid-template-columns:repeat(auto-fit,minmax(7rem,1fr))] gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-[10px]">
                 {context.errorCategory && <Meta label="Category" value={context.errorCategory} />}
                 {context.projectId && <Meta label="Project" value={String(context.projectId)} />}
                 {context.requirementId && <Meta label="Requirement" value={String(context.requirementId)} />}
@@ -176,7 +176,7 @@ export function AIProcessingModal({
               <div className="mt-5 flex justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
                 {context.canRetry && (
-                  <Button size="sm" onClick={onRetry} className="gap-2 bg-[#1b59f8] text-white hover:bg-[#1546c2]">
+                  <Button size="sm" onClick={onRetry} className="gap-2 bg-[#B71920] text-white hover:bg-[#941216]">
                     <RefreshCw className="h-3.5 w-3.5" />Retry
                   </Button>
                 )}
@@ -192,8 +192,8 @@ export function AIProcessingModal({
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 text-center">
-      <span className="block font-bold uppercase tracking-wide text-slate-400">{label}</span>
-      <span className="mt-0.5 block truncate font-mono font-semibold text-slate-700">{value}</span>
+      <span className="block font-bold uppercase tracking-wide text-gray-400">{label}</span>
+      <span className="mt-0.5 block truncate font-mono font-semibold text-gray-700">{value}</span>
     </div>
   );
 }

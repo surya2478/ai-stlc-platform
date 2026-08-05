@@ -286,8 +286,8 @@ function UserManagementContent() {
       {
         title: "Total Registered Users",
         icon: Users,
-        iconBg: "bg-blue-50 border-blue-100",
-        iconColor: "text-blue-505",
+        iconBg: "bg-app-brand-75 border-app-brand-100",
+        iconColor: "text-app-brand-505",
         value: users.length.toLocaleString(),
         sublabel: "Total",
         footer: "Total user records on platform",
@@ -304,8 +304,8 @@ function UserManagementContent() {
       {
         title: "Platform Admins",
         icon: Shield,
-        iconBg: "bg-indigo-50 border-indigo-100",
-        iconColor: "text-indigo-505",
+        iconBg: "bg-app-brand-75 border-app-brand-100",
+        iconColor: "text-app-brand-505",
         value: adminUsers.toLocaleString(),
         sublabel: "Admins",
         footer: `${users.length > 0 ? ((adminUsers / users.length) * 100).toFixed(1) : "0.0"}% privileged superusers`,
@@ -318,17 +318,17 @@ function UserManagementContent() {
       {/* ── Title & Global Controls ────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-blue-50 border border-blue-100 p-2.5">
-            <Users className="h-6 w-6 text-[#1b59f8]" />
+          <div className="rounded-xl bg-app-brand-75 border border-app-brand-100 p-2.5">
+            <Users className="h-6 w-6 text-[#B71920]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">User Management</h1>
-            <p className="text-xs text-slate-500 mt-1">Manage global user credentials, platform permission flags, and project-level RBAC role assignments</p>
+            <h1 className="text-xl font-bold text-gray-900">User Management</h1>
+            <p className="text-xs text-gray-500 mt-1">Manage global user credentials, platform permission flags, and project-level RBAC role assignments</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh} className="h-8 border-slate-205 bg-white font-semibold text-slate-700">
-            <RefreshCw className={cn("h-3.5 w-3.5 text-slate-500 mr-1.5", loading && "animate-spin")} />
+          <Button variant="outline" size="sm" onClick={handleRefresh} className="h-8 border-gray-205 bg-white font-semibold text-gray-700">
+            <RefreshCw className={cn("h-3.5 w-3.5 text-gray-500 mr-1.5", loading && "animate-spin")} />
             Refresh
           </Button>
         </div>
@@ -339,21 +339,21 @@ function UserManagementContent() {
         {stats.map((card) => {
           const Icon = card.icon;
           return (
-            <Card key={card.title} className="border-slate-200 hover:-translate-y-0.5 transition-all bg-white">
+            <Card key={card.title} className="border-gray-200 hover:-translate-y-0.5 transition-all bg-white">
               <CardContent className="p-4 flex flex-col justify-between h-full space-y-3">
                 <div className="flex items-center gap-2">
                   <div className={cn("rounded-lg p-1.5 flex items-center justify-center shrink-0 border", card.iconBg)}>
                     <Icon className={cn("h-4 w-4", card.iconColor)} />
                   </div>
-                  <span className="text-xs font-bold text-slate-700 truncate">{card.title}</span>
+                  <span className="text-xs font-bold text-gray-700 truncate">{card.title}</span>
                 </div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-bold text-slate-900">{card.value}</span>
+                  <span className="text-xl font-bold text-gray-900">{card.value}</span>
                   {card.sublabel && (
-                    <span className="text-[10px] font-bold text-slate-400">{card.sublabel}</span>
+                    <span className="text-[10px] font-bold text-gray-400">{card.sublabel}</span>
                   )}
                 </div>
-                <div className="text-[10px] text-slate-400 font-semibold border-t border-slate-50 pt-2">
+                <div className="text-[10px] text-gray-400 font-semibold border-t border-gray-50 pt-2">
                   {card.footer}
                 </div>
               </CardContent>
@@ -386,57 +386,57 @@ function UserManagementContent() {
         
         {/* Create User Card */}
         {isPlatformAdmin ? (
-        <Card className="border-slate-200 shadow-sm overflow-hidden bg-white h-fit">
-          <div className="border-b px-5 py-4 border-slate-100 bg-slate-50/50">
+        <Card className="border-gray-200 shadow-sm overflow-hidden bg-white h-fit">
+          <div className="border-b px-5 py-4 border-gray-100 bg-gray-50/50">
             <div className="flex items-center gap-2">
-              <UserPlus className="h-4 w-4 text-[#1b59f8]" />
-              <h2 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Create User Account</h2>
+              <UserPlus className="h-4 w-4 text-[#B71920]" />
+              <h2 className="font-bold text-gray-800 text-xs uppercase tracking-wider">Create User Account</h2>
             </div>
           </div>
-          <form onSubmit={handleCreateUser} className="space-y-4.5 p-5 text-xs font-semibold text-slate-750">
+          <form onSubmit={handleCreateUser} className="space-y-4.5 p-5 text-xs font-semibold text-gray-750">
             <div className="space-y-1.5">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Full Name</span>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Full Name</span>
               <input
                 value={form.full_name}
                 onChange={(event) => setForm((value) => ({ ...value, full_name: event.target.value }))}
-                className="w-full rounded-lg border border-slate-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1b59f8] transition-all bg-white"
+                className="w-full rounded-lg border border-gray-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#B71920] transition-all bg-white"
                 placeholder="e.g. Priya Raman"
               />
             </div>
             <div className="space-y-1.5">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Email Address</span>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Email Address</span>
               <input
                 type="email"
                 value={form.email}
                 onChange={(event) => setForm((value) => ({ ...value, email: event.target.value }))}
-                className="w-full rounded-lg border border-slate-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1b59f8] transition-all bg-white"
+                className="w-full rounded-lg border border-gray-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#B71920] transition-all bg-white"
                 placeholder="name@example.com"
               />
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Password</span>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Password</span>
                 <input
                   type="password"
                   value={form.password}
                   onChange={(event) => setForm((value) => ({ ...value, password: event.target.value }))}
-                  className="w-full rounded-lg border border-slate-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1b59f8] transition-all bg-white"
+                  className="w-full rounded-lg border border-gray-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#B71920] transition-all bg-white"
                 />
               </div>
               <div className="space-y-1.5">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Confirm</span>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Confirm</span>
                 <input
                   type="password"
                   value={form.confirm_password}
                   onChange={(event) => setForm((value) => ({ ...value, confirm_password: event.target.value }))}
-                  className="w-full rounded-lg border border-slate-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1b59f8] transition-all bg-white"
+                  className="w-full rounded-lg border border-gray-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#B71920] transition-all bg-white"
                 />
               </div>
             </div>
-            <p className="text-[10px] text-slate-400 font-bold leading-relaxed">{PASSWORD_HINT}</p>
+            <p className="text-[10px] text-gray-400 font-bold leading-relaxed">{PASSWORD_HINT}</p>
             
             <div className="space-y-1.5">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Global Role Permission</span>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Global Role Permission</span>
               <select
                 value={form.role}
                 onChange={(event) => setForm((value) => ({ 
@@ -444,7 +444,7 @@ function UserManagementContent() {
                   role: event.target.value, 
                   is_superuser: event.target.value === "admin" ? value.is_superuser : false 
                 }))}
-                className="w-full rounded-lg border border-slate-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1b59f8] bg-white cursor-pointer"
+                className="w-full rounded-lg border border-gray-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#B71920] bg-white cursor-pointer"
               >
                 {GLOBAL_ROLES.map((role) => (
                   <option key={role.value} value={role.value}>
@@ -454,17 +454,17 @@ function UserManagementContent() {
               </select>
             </div>
             
-            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-3 text-xs font-semibold cursor-pointer">
+            <label className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50/50 p-3 text-xs font-semibold cursor-pointer">
               <input
                 type="checkbox"
                 checked={form.is_superuser}
                 disabled={form.role !== "admin"}
                 onChange={(event) => setForm((value) => ({ ...value, is_superuser: event.target.checked }))}
-                className="mt-0.5 rounded border-slate-300 text-[#1b59f8] focus:ring-[#1b59f8]"
+                className="mt-0.5 rounded border-gray-300 text-[#B71920] focus:ring-[#B71920]"
               />
               <span className="flex-1">
-                <span className="font-bold text-slate-800">Platform Superuser flag</span>
-                <span className="block text-[10px] text-slate-400 font-semibold mt-0.5 leading-normal">
+                <span className="font-bold text-gray-800">Platform Superuser flag</span>
+                <span className="block text-[10px] text-gray-400 font-semibold mt-0.5 leading-normal">
                   Grants bypass rules and full database access. Enabled only for Platform Admin role.
                 </span>
               </span>
@@ -473,7 +473,7 @@ function UserManagementContent() {
             <Button
               disabled={saving}
               variant="default"
-              className="w-full items-center justify-center gap-2 bg-[#1b59f8] hover:bg-[#1546c7] text-white h-9"
+              className="w-full items-center justify-center gap-2 bg-[#B71920] hover:bg-[#941216] text-white h-9"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin text-white" /> : <UserPlus className="h-4 w-4 mr-0.5" />}
               Create User Profile
@@ -483,28 +483,28 @@ function UserManagementContent() {
         ) : null}
 
         {/* Users Table List */}
-        <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
-          <div className="flex flex-col gap-3 border-b px-5 py-4 border-slate-100 bg-slate-50/50 sm:flex-row sm:items-center sm:justify-between">
+        <Card className="border-gray-200 shadow-sm overflow-hidden bg-white">
+          <div className="flex flex-col gap-3 border-b px-5 py-4 border-gray-100 bg-gray-50/50 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-[#1b59f8]" />
-              <h2 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Users Directory</h2>
+              <Users className="h-4 w-4 text-[#B71920]" />
+              <h2 className="font-bold text-gray-800 text-xs uppercase tracking-wider">Users Directory</h2>
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold bg-white shadow-inner">
-              <Search className="h-4 w-4 text-slate-400" />
+            <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold bg-white shadow-inner">
+              <Search className="h-4 w-4 text-gray-400" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") loadUsersList();
                 }}
-                className="w-48 bg-transparent outline-none text-slate-850 font-semibold"
+                className="w-48 bg-transparent outline-none text-gray-850 font-semibold"
                 placeholder="Search users..."
               />
             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs font-semibold select-none">
-              <thead className="border-b border-slate-100 bg-slate-50/20 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <thead className="border-b border-gray-100 bg-gray-50/20 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">
                 <tr>
                   <th className="px-4 py-3">User Profile</th>
                   <th className="px-4 py-3">Global Role</th>
@@ -512,31 +512,31 @@ function UserManagementContent() {
                   <th className="px-4 py-3 text-right">Controls</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
+              <tbody className="divide-y divide-gray-100 text-gray-600 font-medium">
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-16 text-center text-slate-400 font-semibold">
-                      <RefreshCw className="inline mr-2 h-4 w-4 animate-spin text-[#1b59f8]" />
+                    <td colSpan={4} className="px-4 py-16 text-center text-gray-400 font-semibold">
+                      <RefreshCw className="inline mr-2 h-4 w-4 animate-spin text-[#B71920]" />
                       Loading users directory...
                     </td>
                   </tr>
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-16 text-center text-slate-450 font-bold">No registered users found.</td>
+                    <td colSpan={4} className="px-4 py-16 text-center text-gray-450 font-bold">No registered users found.</td>
                   </tr>
                 ) : (
                   users.map((user) => (
-                    <tr key={user.id} className="hover:bg-slate-50/30 transition-colors">
+                    <tr key={user.id} className="hover:bg-gray-50/30 transition-colors">
                       <td className="px-4 py-3">
-                        <p className="font-bold text-slate-800 text-xs">{user.full_name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono font-bold mt-0.5">{user.email}</p>
+                        <p className="font-bold text-gray-800 text-xs">{user.full_name}</p>
+                        <p className="text-[10px] text-gray-400 font-mono font-bold mt-0.5">{user.email}</p>
                       </td>
                       <td className="px-4 py-3">
                         {isPlatformAdmin ? (
                           <select
                             value={user.role}
                             onChange={(event) => updateUser(user, { role: event.target.value })}
-                            className="rounded-lg border border-slate-205 px-2 py-1 text-[11px] font-semibold bg-white cursor-pointer"
+                            className="rounded-lg border border-gray-205 px-2 py-1 text-[11px] font-semibold bg-white cursor-pointer"
                           >
                             {GLOBAL_ROLES.map((role) => (
                               <option key={role.value} value={role.value}>
@@ -556,7 +556,7 @@ function UserManagementContent() {
                             {user.is_active ? "Active" : "Inactive"}
                           </Badge>
                           {user.is_superuser && (
-                            <Badge variant="default" className="bg-blue-50 text-blue-700 border border-blue-100 text-[9px] py-0 px-2 uppercase tracking-wider font-extrabold">
+                            <Badge variant="default" className="bg-app-brand-75 text-app-brand-700 border border-app-brand-100 text-[9px] py-0 px-2 uppercase tracking-wider font-extrabold">
                               Superuser
                             </Badge>
                           )}
@@ -569,7 +569,7 @@ function UserManagementContent() {
                               variant="outline"
                               size="sm"
                               onClick={() => updateUser(user, { is_active: !user.is_active })}
-                              className="h-7 px-2.5 text-[10px] font-bold border-slate-200 bg-white"
+                              className="h-7 px-2.5 text-[10px] font-bold border-gray-200 bg-white"
                             >
                               {user.is_active ? "Deactivate" : "Activate"}
                             </Button>
@@ -580,13 +580,13 @@ function UserManagementContent() {
                                 is_superuser: !user.is_superuser,
                                 role: !user.is_superuser ? "admin" : user.role
                               })}
-                              className="h-7 px-2.5 text-[10px] font-bold border-slate-200 bg-white"
+                              className="h-7 px-2.5 text-[10px] font-bold border-gray-200 bg-white"
                             >
                               {user.is_superuser ? "Revoke Super" : "Grant Super"}
                             </Button>
                           </div>
                         ) : (
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-350">Project role access only</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-350">Project role access only</span>
                         )}
                       </td>
                     </tr>
@@ -599,20 +599,20 @@ function UserManagementContent() {
       </div>
 
       {/* ── Project RBAC Assignment Card ─────────────────────────────────────────── */}
-      <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
-        <div className="border-b px-5 py-4 border-slate-100 bg-slate-50/50">
+      <Card className="border-gray-200 shadow-sm overflow-hidden bg-white">
+        <div className="border-b px-5 py-4 border-gray-100 bg-gray-50/50">
           <div className="flex items-center gap-2">
-            <Shield className="h-4 w-4 text-[#1b59f8]" />
-            <h2 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Project RBAC Memberships</h2>
+            <Shield className="h-4 w-4 text-[#B71920]" />
+            <h2 className="font-bold text-gray-800 text-xs uppercase tracking-wider">Project RBAC Memberships</h2>
           </div>
-          <p className="mt-1 text-[11px] text-slate-450 font-bold leading-relaxed">
+          <p className="mt-1 text-[11px] text-gray-450 font-bold leading-relaxed">
             Link dynamic team roles to localized project permissions. Adding a user already in the project overrides their existing role.
           </p>
         </div>
         
-        <form onSubmit={assignMembership} className="grid gap-3 p-5 lg:grid-cols-[1fr_1fr_1fr_auto] items-end text-xs font-semibold text-slate-700">
+        <form onSubmit={assignMembership} className="grid gap-3 p-5 lg:grid-cols-[1fr_1fr_1fr_auto] items-end text-xs font-semibold text-gray-700">
           <div className="space-y-1.5">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Target Project</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Target Project</span>
             <select
               value={selectedProjectId ?? ""}
               onChange={(e) => {
@@ -621,7 +621,7 @@ function UserManagementContent() {
                 params.set("project", val);
                 router.push(`${pathname}?${params.toString()}`);
               }}
-              className="w-full rounded-lg border border-slate-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1b59f8] bg-white cursor-pointer"
+              className="w-full rounded-lg border border-gray-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#B71920] bg-white cursor-pointer"
             >
               {projects.length === 0 ? <option value="">No manageable projects</option> : null}
               {projects.map((project) => (
@@ -633,11 +633,11 @@ function UserManagementContent() {
           </div>
           
           <div className="space-y-1.5">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Select User Account</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Select User Account</span>
             <select
               value={selectedUserId ?? ""}
               onChange={(event) => setSelectedUserId(Number(event.target.value))}
-              className="w-full rounded-lg border border-slate-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1b59f8] bg-white cursor-pointer"
+              className="w-full rounded-lg border border-gray-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#B71920] bg-white cursor-pointer"
             >
               <option value="">Choose User...</option>
               {users.map((user) => (
@@ -649,11 +649,11 @@ function UserManagementContent() {
           </div>
           
           <div className="space-y-1.5">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">RBAC Role Privilege</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">RBAC Role Privilege</span>
             <select
               value={selectedProjectRole}
               onChange={(event) => setSelectedProjectRole(event.target.value)}
-              className="w-full rounded-lg border border-slate-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#1b59f8] bg-white cursor-pointer"
+              className="w-full rounded-lg border border-gray-205 px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-[#B71920] bg-white cursor-pointer"
             >
               {roles.map((role) => (
                 <option key={role.role} value={role.role}>
@@ -666,7 +666,7 @@ function UserManagementContent() {
           <Button
             disabled={saving || !selectedProjectId || !selectedUserId}
             variant="default"
-            className="bg-[#1b59f8] hover:bg-[#1546c7] text-white h-9 px-5 shrink-0"
+            className="bg-[#B71920] hover:bg-[#941216] text-white h-9 px-5 shrink-0"
           >
             <KeyRound className="h-4 w-4 mr-1.5" />
             Assign Role
@@ -674,24 +674,24 @@ function UserManagementContent() {
         </form>
 
         {/* Memberships Grid Section */}
-        <div className="border-t border-slate-100 bg-slate-50/20 px-5 py-4">
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider select-none mb-3">
+        <div className="border-t border-gray-100 bg-gray-50/20 px-5 py-4">
+          <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider select-none mb-3">
             {selectedProject ? selectedProject.name : "Project"} Active Memberships
           </h3>
           {membershipRows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-white p-8 text-center text-slate-400 font-semibold text-xs shadow-sm">
+            <div className="rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-gray-400 font-semibold text-xs shadow-sm">
               No custom memberships defined for this project.
             </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {membershipRows.map((membership) => (
-                <Card key={membership.id} className="border-slate-205 p-3.5 bg-white hover:shadow-sm transition-all flex flex-col justify-between space-y-2 select-none">
+                <Card key={membership.id} className="border-gray-205 p-3.5 bg-white hover:shadow-sm transition-all flex flex-col justify-between space-y-2 select-none">
                   <div>
-                    <p className="font-bold text-slate-800 text-xs">{membership.user?.full_name ?? `User #${membership.user_id}`}</p>
-                    <p className="text-[10px] text-slate-400 font-mono font-bold mt-0.5">{membership.user?.email ?? "Unknown account email"}</p>
+                    <p className="font-bold text-gray-800 text-xs">{membership.user?.full_name ?? `User #${membership.user_id}`}</p>
+                    <p className="text-[10px] text-gray-400 font-mono font-bold mt-0.5">{membership.user?.email ?? "Unknown account email"}</p>
                   </div>
-                  <div className="flex items-center justify-between gap-3 border-t border-slate-50 pt-2.5 mt-1 text-[11px] font-semibold">
-                    <span className="rounded bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 text-[10px] font-bold select-none capitalize">
+                  <div className="flex items-center justify-between gap-3 border-t border-gray-50 pt-2.5 mt-1 text-[11px] font-semibold">
+                    <span className="rounded bg-app-brand-75 border border-app-brand-100 text-app-brand-700 px-2 py-0.5 text-[10px] font-bold select-none capitalize">
                       {membership.role}
                     </span>
                     {membership.is_active && (
@@ -718,8 +718,8 @@ function UserManagementContent() {
 export default function UserManagementPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-64 items-center justify-center text-slate-400 text-xs font-semibold">
-        <Loader2 className="h-6 w-6 animate-spin text-[#1b59f8] mr-2" />
+      <div className="flex h-64 items-center justify-center text-gray-400 text-xs font-semibold">
+        <Loader2 className="h-6 w-6 animate-spin text-[#B71920] mr-2" />
         Loading User Management...
       </div>
     }>

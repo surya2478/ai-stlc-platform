@@ -38,12 +38,12 @@ const TAB_LABELS: Record<AssetTabKey, string> = {
 function InheritedChip({ label, field }: { label: string; field: InheritedField }) {
   return (
     <div className="flex flex-col" title={field.available ? field.source ?? undefined : field.reason ?? undefined}>
-      <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">{label}</span>
       {field.available ? (
-        <span className="text-[11px] font-medium text-slate-700">{field.value}</span>
+        <span className="text-[11px] font-medium text-gray-700">{field.value}</span>
       ) : (
         // Section 21 rule 8: absent data is an explained dash, never a zero.
-        <span className="text-[11px] font-medium text-slate-400">—</span>
+        <span className="text-[11px] font-medium text-gray-400">—</span>
       )}
     </div>
   );
@@ -82,7 +82,7 @@ function AutonomyBadge({ asset }: { asset: AutomationAsset }) {
 
 const STRIP_TONE: Record<string, string> = {
   published: "border-purple-200 bg-purple-50 text-purple-800",
-  no_ir: "border-slate-200 bg-slate-50 text-slate-700",
+  no_ir: "border-gray-200 bg-gray-50 text-gray-700",
   ir_invalid: "border-red-200 bg-red-50 text-red-800",
   ir_incomplete: "border-amber-200 bg-amber-50 text-amber-900",
   ir_ready: "border-emerald-200 bg-emerald-50 text-emerald-800",
@@ -111,7 +111,7 @@ function ReadinessStrip({
     <div
       className={cn(
         "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
-        STRIP_TONE[strip.state] ?? "border-slate-200 bg-slate-50 text-slate-700",
+        STRIP_TONE[strip.state] ?? "border-gray-200 bg-gray-50 text-gray-700",
       )}
     >
       <div className="flex min-w-0 items-center gap-2">
@@ -187,7 +187,7 @@ export function AutomationAssetWorkspace({
 
   if (loading && !asset) {
     return (
-      <div className="flex items-center gap-2 p-6 text-[12px] text-slate-500">
+      <div className="flex items-center gap-2 p-6 text-[12px] text-gray-500">
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading automation asset…
       </div>
@@ -209,32 +209,32 @@ export function AutomationAssetWorkspace({
   return (
     <div className="space-y-3">
       {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-[11px] text-slate-500">
-        <button className="hover:text-slate-800" onClick={() => onBackToSuite(h.suite_id)}>
+      <nav className="flex items-center gap-1 text-[11px] text-gray-500">
+        <button className="hover:text-gray-800" onClick={() => onBackToSuite(h.suite_id)}>
           Automation
         </button>
         <ChevronRight className="h-3 w-3" />
-        <button className="hover:text-slate-800" onClick={() => onBackToSuite(h.suite_id)}>
+        <button className="hover:text-gray-800" onClick={() => onBackToSuite(h.suite_id)}>
           {h.suite_name} v{h.suite_version}
         </button>
         <ChevronRight className="h-3 w-3" />
-        <span className="font-medium text-slate-800">
+        <span className="font-medium text-gray-800">
           {h.test_case_display_id ?? `TC-${h.test_case_id}`}
         </span>
       </nav>
 
       {/* Header — identity, inherited context, autonomy badge. All read-only. */}
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="rounded-lg border border-gray-200 bg-white p-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="truncate text-[15px] font-bold text-slate-900">
+              <h2 className="truncate text-[15px] font-bold text-gray-900">
                 {h.test_case_title ?? `Test case ${h.test_case_id}`}
               </h2>
               <SuiteStatusBadge status={h.suite_status} />
               <AutonomyBadge asset={asset} />
             </div>
-            <p className="mt-0.5 text-[11px] text-slate-500">
+            <p className="mt-0.5 text-[11px] text-gray-500">
               Suite member #{h.member_id} · {h.test_case_display_id ?? `TC-${h.test_case_id}`}
             </p>
           </div>
@@ -259,7 +259,7 @@ export function AutomationAssetWorkspace({
       <ReadinessStrip asset={asset} busyLabel={busyLabel} onPrimary={handlePrimary} />
 
       {/* Tab rail. A tab not yet reachable is visible but disabled with its reason. */}
-      <div className="flex items-center gap-1 border-b border-slate-200">
+      <div className="flex items-center gap-1 border-b border-gray-200">
         {(Object.keys(TAB_LABELS) as AssetTabKey[]).map((key) => {
           const state = asset.tabs[key] ?? { enabled: true, reason: null };
           const active = tab === key;
@@ -273,9 +273,9 @@ export function AutomationAssetWorkspace({
               className={cn(
                 "-mb-px border-b-2 px-3 py-1.5 text-[12px] font-semibold transition-colors",
                 active
-                  ? "border-blue-600 text-blue-700"
-                  : "border-transparent text-slate-500 hover:text-slate-800",
-                !state.enabled && "cursor-not-allowed text-slate-300 hover:text-slate-300",
+                  ? "border-app-brand-600 text-app-brand-700"
+                  : "border-transparent text-gray-500 hover:text-gray-800",
+                !state.enabled && "cursor-not-allowed text-gray-300 hover:text-gray-300",
               )}
             >
               {TAB_LABELS[key]}

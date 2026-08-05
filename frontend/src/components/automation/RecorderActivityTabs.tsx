@@ -54,8 +54,8 @@ export const ACTIVITY_TABS: { id: ActivityTab; label: string; icon: typeof Targe
   { id: "notes", label: "Notes", icon: MessageSquare },
 ];
 
-const TH = "px-2 py-1.5 text-[9px] font-extrabold uppercase tracking-wide text-slate-500";
-const TD = "px-2 py-1.5 text-[10px] font-semibold text-slate-600";
+const TH = "px-2 py-1.5 text-[9px] font-extrabold uppercase tracking-wide text-gray-500";
+const TD = "px-2 py-1.5 text-[10px] font-semibold text-gray-600";
 
 interface ActivityProps {
   projectId: number;
@@ -127,7 +127,7 @@ function ActionsTab({
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full text-left">
           <thead className="sticky top-0 bg-white">
-            <tr className="border-b border-slate-200">
+            <tr className="border-b border-gray-200">
               {["#", "Time", "Action", "Element", "Step", "Locator", "Evidence", "IR"].map((heading) => (
                 <th key={heading} className={TH}>
                   {heading}
@@ -149,12 +149,12 @@ function ActionsTab({
                     key={action.id}
                     onClick={() => onSelectAction(action.id)}
                     className={cn(
-                      "cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50",
-                      selectedActionId === action.id && "bg-blue-50/60",
+                      "cursor-pointer border-b border-gray-100 last:border-0 hover:bg-gray-50",
+                      selectedActionId === action.id && "bg-app-brand-75/60",
                       action.inclusion_state !== "included" && "opacity-50",
                     )}
                   >
-                    <td className={cn(TD, "font-extrabold text-slate-800")}>{action.sequence}</td>
+                    <td className={cn(TD, "font-extrabold text-gray-800")}>{action.sequence}</td>
                     <td className={TD}>
                       {new Date(action.occurred_at).toLocaleTimeString(undefined, {
                         hour: "2-digit",
@@ -187,7 +187,7 @@ function ActionsTab({
                               }),
                             )
                           }
-                          className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[10px] font-bold text-slate-700"
+                          className="rounded border border-gray-200 bg-white px-1 py-0.5 text-[10px] font-bold text-gray-700"
                         >
                           <option value="">Unmapped</option>
                           {steps.map((step) => (
@@ -204,7 +204,7 @@ function ActionsTab({
                       {action.action_family === "click" || action.action_family === "input" ? (
                         <ConfidenceChip confidence={action.locator_confidence} />
                       ) : (
-                        <span className="text-slate-300">—</span>
+                        <span className="text-gray-300">—</span>
                       )}
                     </td>
                     <td className={TD}>{action.evidence_refs?.length ?? 0}</td>
@@ -232,13 +232,13 @@ function ActionsTab({
                           className="text-[10px] font-bold"
                         >
                           {mapping.excluded_from_ir ? (
-                            <span className="text-slate-400">excluded</span>
+                            <span className="text-gray-400">excluded</span>
                           ) : (
                             <span className="text-emerald-600">included</span>
                           )}
                         </button>
                       ) : (
-                        <span className="text-slate-300">—</span>
+                        <span className="text-gray-300">—</span>
                       )}
                     </td>
                   </tr>
@@ -295,8 +295,8 @@ function NetworkTab({ sessionId, actions }: { sessionId: number; actions: Record
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-1.5">
-        <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600">
+      <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-1.5">
+        <label className="flex items-center gap-1.5 text-[10px] font-bold text-gray-600">
           <input
             type="checkbox"
             checked={failedOnly}
@@ -304,14 +304,14 @@ function NetworkTab({ sessionId, actions }: { sessionId: number; actions: Record
           />
           Failed only
         </label>
-        <span className="text-[10px] font-semibold text-slate-400">
+        <span className="text-[10px] font-semibold text-gray-400">
           {rows.length} of {events?.length} request(s)
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full text-left">
           <thead className="sticky top-0 bg-white">
-            <tr className="border-b border-slate-200">
+            <tr className="border-b border-gray-200">
               {["Method", "Host", "Path", "Status", "External"].map((heading) => (
                 <th key={heading} className={TH}>
                   {heading}
@@ -324,8 +324,8 @@ function NetworkTab({ sessionId, actions }: { sessionId: number; actions: Record
               <EmptyRow colSpan={5} message="No requests match this filter." />
             ) : (
               rows.map((event) => (
-                <tr key={event.id} className="border-b border-slate-100 last:border-0">
-                  <td className={cn(TD, "font-extrabold text-slate-800")}>{event.method ?? "—"}</td>
+                <tr key={event.id} className="border-b border-gray-100 last:border-0">
+                  <td className={cn(TD, "font-extrabold text-gray-800")}>{event.method ?? "—"}</td>
                   <td className={cn(TD, "max-w-[180px] truncate")} title={event.host ?? ""}>
                     {event.host ?? "—"}
                   </td>
@@ -334,7 +334,7 @@ function NetworkTab({ sessionId, actions }: { sessionId: number; actions: Record
                   </td>
                   <td className={TD}>
                     {event.status_code === null ? (
-                      <span className="text-slate-300">—</span>
+                      <span className="text-gray-300">—</span>
                     ) : (
                       <Badge
                         variant={event.status_code >= 400 ? "destructive" : "success"}
@@ -399,11 +399,11 @@ function ConsoleTab({ sessionId, captures }: { sessionId: number; captures: Reco
 
   return (
     <div className="min-h-0 flex-1 overflow-auto p-3">
-      <p className="mb-2 text-[10px] font-bold text-slate-500">
+      <p className="mb-2 text-[10px] font-bold text-gray-500">
         {consoleCaptures.length} console capture(s) — showing the most recent. Secrets are masked before
         the capture is written to disk.
       </p>
-      <pre className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-2 font-mono text-[10px] leading-relaxed text-slate-700">
+      <pre className="whitespace-pre-wrap break-words rounded-lg border border-gray-200 bg-gray-50 p-2 font-mono text-[10px] leading-relaxed text-gray-700">
         {text ?? "Loading…"}
       </pre>
     </div>
@@ -436,7 +436,7 @@ function LocatorsTab({
     <div className="min-h-0 flex-1 overflow-auto">
       <table className="w-full text-left">
         <thead className="sticky top-0 bg-white">
-          <tr className="border-b border-slate-200">
+          <tr className="border-b border-gray-200">
             {["#", "Element", "Strategy", "Locator", "Confidence", "Unique", "Validated"].map((heading) => (
               <th key={heading} className={TH}>
                 {heading}
@@ -450,9 +450,9 @@ function LocatorsTab({
               <tr
                 key={`${action.id}-${candidate.strategy}-${index}`}
                 onClick={() => onSelectAction(action.id)}
-                className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                className="cursor-pointer border-b border-gray-100 last:border-0 hover:bg-gray-50"
               >
-                <td className={cn(TD, "font-extrabold text-slate-800")}>
+                <td className={cn(TD, "font-extrabold text-gray-800")}>
                   {index === 0 ? action.sequence : ""}
                 </td>
                 <td className={cn(TD, "max-w-[160px] truncate")}>
@@ -518,7 +518,7 @@ function EvidenceTab({ sessionId, captures }: { sessionId: number; captures: Rec
             href={recorderApi.captureImageUrl(sessionId, capture.id)}
             target="_blank"
             rel="noreferrer"
-            className="group overflow-hidden rounded-lg border border-slate-200 bg-white"
+            className="group overflow-hidden rounded-lg border border-gray-200 bg-white"
             title={`Captured ${formatDateTime(capture.captured_at)}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -527,14 +527,14 @@ function EvidenceTab({ sessionId, captures }: { sessionId: number; captures: Rec
               alt={`Screenshot for action ${capture.action_id ?? "—"}`}
               className="h-20 w-full object-cover object-top transition-transform group-hover:scale-105"
             />
-            <p className="px-1.5 py-1 text-[9px] font-bold text-slate-500">
+            <p className="px-1.5 py-1 text-[9px] font-bold text-gray-500">
               action {capture.action_id ?? "—"}
             </p>
           </a>
         ))}
       </div>
       {(byType.video || byType.trace) === undefined && (
-        <p className="mt-3 text-[10px] font-semibold text-slate-400">
+        <p className="mt-3 text-[10px] font-semibold text-gray-400">
           Video and trace capture are not available — the Playwright MCP transport this recorder uses does
           not expose them.
         </p>
@@ -575,18 +575,18 @@ function NotesTab({
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {error && <p className="mb-2 text-[10px] font-bold text-red-600">{error}</p>}
         {(notesQuery.data ?? []).length === 0 ? (
-          <p className="text-[10px] font-semibold text-slate-400">No notes on this recording.</p>
+          <p className="text-[10px] font-semibold text-gray-400">No notes on this recording.</p>
         ) : (
           <ul className="space-y-1.5">
             {(notesQuery.data ?? []).map((note) => (
               <li
                 key={note.id}
-                className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2"
+                className="flex items-start gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2"
               >
-                <FileText className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                <FileText className="mt-0.5 h-3 w-3 shrink-0 text-gray-400" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[11px] font-semibold text-slate-700">{note.body}</span>
-                  <span className="block text-[9px] font-bold text-slate-400">
+                  <span className="block text-[11px] font-semibold text-gray-700">{note.body}</span>
+                  <span className="block text-[9px] font-bold text-gray-400">
                     {note.scope}
                     {note.step_key ? ` · step ${note.step_key}` : ""} ·{" "}
                     {formatDateTime(note.created_at)}
@@ -595,7 +595,7 @@ function NotesTab({
                 <button
                   type="button"
                   onClick={() => remove.mutate(note.id)}
-                  className="shrink-0 text-slate-300 hover:text-red-500"
+                  className="shrink-0 text-gray-300 hover:text-red-500"
                   title="Delete note"
                 >
                   <Trash2 className="h-3 w-3" />
@@ -605,14 +605,14 @@ function NotesTab({
           </ul>
         )}
       </div>
-      <div className="flex items-center gap-2 border-t border-slate-100 p-2">
+      <div className="flex items-center gap-2 border-t border-gray-100 p-2">
         <input
           value={body}
           onChange={(event) => setBody(event.target.value)}
           onKeyDown={(event) => event.key === "Enter" && submit()}
           placeholder="Add a note about this recording…"
           disabled={!editable}
-          className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#1b59f8]"
+          className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] font-semibold focus:outline-none focus:ring-2 focus:ring-[#B71920]"
         />
         <Button size="sm" onClick={submit} disabled={!editable || !body.trim() || create.isPending}>
           {create.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Add"}
@@ -640,7 +640,7 @@ export function CheckpointReviewList({
 
   if (checkpoints.length === 0) {
     return (
-      <p className="px-1 text-[10px] font-semibold text-slate-400">
+      <p className="px-1 text-[10px] font-semibold text-gray-400">
         No validation checkpoints yet. They are proposed when the recording is stopped, and you can add
         your own against any step.
       </p>
@@ -658,22 +658,22 @@ export function CheckpointReviewList({
             checkpoint.review_state === "needs_review"
               ? "border-amber-200 bg-amber-50/60"
               : checkpoint.review_state === "rejected"
-                ? "border-slate-200 bg-slate-50/60 opacity-60"
+                ? "border-gray-200 bg-gray-50/60 opacity-60"
                 : "border-emerald-200 bg-emerald-50/40",
           )}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate text-[11px] font-bold text-slate-800">
+              <p className="truncate text-[11px] font-bold text-gray-800">
                 {checkpoint.checkpoint_type.replace(/_/g, " ")}
                 {checkpoint.step_key && (
-                  <span className="ml-1 text-[9px] font-bold text-slate-400">
+                  <span className="ml-1 text-[9px] font-bold text-gray-400">
                     step {checkpoint.step_key}
                   </span>
                 )}
               </p>
               {checkpoint.expected_value && (
-                <p className="truncate text-[10px] font-semibold text-slate-500" title={checkpoint.expected_value}>
+                <p className="truncate text-[10px] font-semibold text-gray-500" title={checkpoint.expected_value}>
                   expects {checkpoint.expected_value}
                 </p>
               )}
@@ -707,7 +707,7 @@ export function CheckpointReviewList({
                         .mutateAsync({ checkpointId: checkpoint.id, review_state: "rejected" })
                         .catch((err) => setError(messageFromError(err)))
                     }
-                    className="rounded border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-50"
+                    className="rounded border border-gray-200 bg-white p-1 text-gray-500 hover:bg-gray-50"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -718,7 +718,7 @@ export function CheckpointReviewList({
                   type="button"
                   title="Delete checkpoint"
                   onClick={() => remove.mutate(checkpoint.id)}
-                  className="rounded border border-slate-200 bg-white p-1 text-slate-400 hover:text-red-500"
+                  className="rounded border border-gray-200 bg-white p-1 text-gray-400 hover:text-red-500"
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -754,7 +754,7 @@ function PanelMessage({
     <p
       className={cn(
         "p-4 text-[11px] font-semibold",
-        tone === "error" ? "text-red-600" : "text-slate-400",
+        tone === "error" ? "text-red-600" : "text-gray-400",
       )}
     >
       {children}

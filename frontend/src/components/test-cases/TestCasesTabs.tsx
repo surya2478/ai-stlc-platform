@@ -41,14 +41,14 @@ export function TestCasesTabs({
   projectId: number | string | null;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
+    <div className="mb-4 flex flex-wrap items-center gap-1 rounded-xl border border-gray-200 bg-white p-1.5 shadow-sm">
       {TABS.map((tab) => (
         <Link
           key={tab.view}
           href={testCasesHref(tab.view, projectId)}
           className={cn(
             "rounded-lg px-4 py-2 text-xs font-bold shadow-sm transition-all",
-            active === tab.view ? "bg-[#1b59f8] text-white" : "text-slate-500 hover:text-slate-900",
+            active === tab.view ? "bg-[#B71920] text-white" : "text-gray-500 hover:text-gray-900",
           )}
         >
           {tab.label} <span className="ml-1 text-[9px] opacity-75">{tab.ui}</span>

@@ -28,7 +28,7 @@ const STEP_STATUS_OPTIONS: { value: ManualStepStatus; label: string; tone: strin
   { value: "passed", label: "Passed", tone: "text-emerald-600 hover:bg-emerald-50" },
   { value: "failed", label: "Failed", tone: "text-red-600 hover:bg-red-50" },
   { value: "blocked", label: "Blocked", tone: "text-orange-600 hover:bg-orange-50" },
-  { value: "skipped", label: "Skipped", tone: "text-slate-500 hover:bg-slate-50" },
+  { value: "skipped", label: "Skipped", tone: "text-gray-500 hover:bg-gray-50" },
 ];
 
 // The AI assist endpoint speaks pass/fail/blocked; step statuses use the
@@ -150,19 +150,19 @@ export function StepEditor({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg bg-slate-50 px-3 py-2">
-        <p className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Step {step.step_number} — {testName}</p>
-        <p className="text-xs text-slate-700 mt-1 whitespace-pre-line">{step.action_text ?? "(no action recorded)"}</p>
+      <div className="rounded-lg bg-gray-50 px-3 py-2">
+        <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Step {step.step_number} — {testName}</p>
+        <p className="text-xs text-gray-700 mt-1 whitespace-pre-line">{step.action_text ?? "(no action recorded)"}</p>
         {step.expected_text && (
-          <p className="mt-2 text-[11px] text-slate-600">
-            <span className="font-semibold text-slate-500">Expected: </span>{step.expected_text}
+          <p className="mt-2 text-[11px] text-gray-600">
+            <span className="font-semibold text-gray-500">Expected: </span>{step.expected_text}
           </p>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Outcome</label>
+          <label className="block text-[11px] font-semibold text-gray-600 mb-1">Outcome</label>
           <div className="grid grid-cols-2 gap-1">
             {STEP_STATUS_OPTIONS.map((opt) => {
               const active = step.status === opt.value;
@@ -173,7 +173,7 @@ export function StepEditor({
                   onClick={() => onChange({ status: opt.value })}
                   className={cn(
                     "rounded border px-2 py-1.5 text-[11px] font-semibold transition-colors",
-                    active ? "border-[#1b59f8] bg-[#1b59f8] text-white" : `border-slate-200 ${opt.tone}`,
+                    active ? "border-[#B71920] bg-[#B71920] text-white" : `border-gray-200 ${opt.tone}`,
                     locked && "opacity-50 cursor-not-allowed"
                   )}
                 >
@@ -184,9 +184,9 @@ export function StepEditor({
           </div>
         </div>
         <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Time Taken</label>
-          <p className="text-xs text-slate-500">{step.started_at ? `Started ${formatDate(step.started_at)}` : "Not started"}</p>
-          {step.completed_at && <p className="text-[11px] text-slate-400">Completed {formatDate(step.completed_at)}</p>}
+          <label className="block text-[11px] font-semibold text-gray-600 mb-1">Time Taken</label>
+          <p className="text-xs text-gray-500">{step.started_at ? `Started ${formatDate(step.started_at)}` : "Not started"}</p>
+          {step.completed_at && <p className="text-[11px] text-gray-400">Completed {formatDate(step.completed_at)}</p>}
         </div>
       </div>
 
@@ -261,16 +261,16 @@ export function StepEditor({
                 )}>
                   {aiResult.suggested_status}
                 </span>
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-gray-500">
                   Confidence <b className="tabular-nums">{aiResult.confidence}%</b>
                   {aiResult.inputs_used.mode === "text_only" && aiResult.inputs_used.vision_blocker && (
-                    <span className="ml-1 text-slate-400">(text-only: {aiResult.inputs_used.vision_blocker})</span>
+                    <span className="ml-1 text-gray-400">(text-only: {aiResult.inputs_used.vision_blocker})</span>
                   )}
                 </span>
               </div>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-slate-700">{aiResult.reasoning}</p>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-gray-700">{aiResult.reasoning}</p>
               {aiResult.observations.length > 0 && (
-                <ul className="mt-1 list-inside list-disc text-[11px] text-slate-500">
+                <ul className="mt-1 list-inside list-disc text-[11px] text-gray-500">
                   {aiResult.observations.map((o, i) => <li key={i}>{o}</li>)}
                 </ul>
               )}
@@ -281,7 +281,7 @@ export function StepEditor({
                 <Button size="sm" variant="outline" onClick={() => setAiResult(null)} className="h-6 px-2 text-[10px]">
                   Dismiss
                 </Button>
-                <span className="text-[10px] text-slate-400">You stay in control — AI only suggests.</span>
+                <span className="text-[10px] text-gray-400">You stay in control — AI only suggests.</span>
               </div>
             </div>
           )}
@@ -289,36 +289,36 @@ export function StepEditor({
       )}
 
       <div>
-        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Actual Result</label>
+        <label className="block text-[11px] font-semibold text-gray-600 mb-1">Actual Result</label>
         <textarea
           rows={2}
           value={actual}
           disabled={locked}
           onChange={(e) => { setActual(e.target.value); scheduleSave({ actual_result: e.target.value }); }}
           placeholder="What did you observe?"
-          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b59f8] disabled:bg-slate-50 disabled:text-slate-500"
+          className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#B71920] disabled:bg-gray-50 disabled:text-gray-500"
         />
       </div>
 
       <div>
-        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Comments / Tester Notes</label>
+        <label className="block text-[11px] font-semibold text-gray-600 mb-1">Comments / Tester Notes</label>
         <textarea
           rows={2}
           value={comments}
           disabled={locked}
           onChange={(e) => { setComments(e.target.value); scheduleSave({ comments: e.target.value }); }}
           placeholder="Optional context — defects, env notes, screenshot annotations"
-          className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b59f8] disabled:bg-slate-50 disabled:text-slate-500"
+          className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#B71920] disabled:bg-gray-50 disabled:text-gray-500"
         />
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="block text-[11px] font-semibold text-slate-600">Evidence ({step.evidence.length})</label>
+          <label className="block text-[11px] font-semibold text-gray-600">Evidence ({step.evidence.length})</label>
           {!locked && (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="text-[11px] text-[#1b59f8] hover:underline flex items-center gap-1"
+              className="text-[11px] text-[#B71920] hover:underline flex items-center gap-1"
             >
               <Paperclip className="h-3 w-3" /> Upload
             </button>
@@ -336,7 +336,7 @@ export function StepEditor({
         </div>
 
         {step.evidence.length === 0 ? (
-          <p className="text-[11px] text-slate-400 px-3 py-2 border border-dashed border-slate-200 rounded">No evidence attached</p>
+          <p className="text-[11px] text-gray-400 px-3 py-2 border border-dashed border-gray-200 rounded">No evidence attached</p>
         ) : (
           <div className="space-y-2">
             {/* Image gallery */}
@@ -347,7 +347,7 @@ export function StepEditor({
                     <button
                       type="button"
                       onClick={() => setLightboxUrl(ev.download_url)}
-                      className="block w-full overflow-hidden rounded-md border border-slate-200"
+                      className="block w-full overflow-hidden rounded-md border border-gray-200"
                       title={ev.filename}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -361,7 +361,7 @@ export function StepEditor({
                     {!locked && (
                       <button
                         onClick={() => onDeleteEvidence(ev.id)}
-                        className="absolute -right-1.5 -top-1.5 hidden rounded-full bg-white p-0.5 text-slate-400 shadow ring-1 ring-slate-200 hover:text-red-600 group-hover:block"
+                        className="absolute -right-1.5 -top-1.5 hidden rounded-full bg-white p-0.5 text-gray-400 shadow ring-1 ring-gray-200 hover:text-red-600 group-hover:block"
                         aria-label="Delete evidence"
                       >
                         <Trash2 className="h-3 w-3" />
@@ -373,16 +373,16 @@ export function StepEditor({
             )}
             {/* Non-image files */}
             {fileEvidence.map((ev) => (
-              <div key={ev.id} className="flex items-center justify-between gap-2 rounded border border-slate-100 px-2 py-1 text-[11px]">
-                <a href={ev.download_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-slate-700 hover:text-[#1b59f8] truncate">
+              <div key={ev.id} className="flex items-center justify-between gap-2 rounded border border-gray-100 px-2 py-1 text-[11px]">
+                <a href={ev.download_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-gray-700 hover:text-[#B71920] truncate">
                   <FileText className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{ev.filename}</span>
-                  <span className="text-slate-400">({Math.ceil(ev.size / 1024)} KB)</span>
+                  <span className="text-gray-400">({Math.ceil(ev.size / 1024)} KB)</span>
                 </a>
                 {!locked && (
                   <button
                     onClick={() => onDeleteEvidence(ev.id)}
-                    className="text-slate-400 hover:text-red-600"
+                    className="text-gray-400 hover:text-red-600"
                     aria-label="Delete evidence"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
