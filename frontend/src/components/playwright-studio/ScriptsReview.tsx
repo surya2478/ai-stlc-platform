@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import type { StudioRunDetail, StudioScriptSummary } from "@/lib/api";
 import { useApproveStudioScripts } from "@/lib/queries/playwrightStudio";
+import { runnerIsContainerised, runnerModeLabel } from "./studio-utils";
 
 function scriptStatusVariant(status: string): "success" | "warning" | "destructive" | "outline" | "info" {
   if (["dry_run_passed", "static_passed", "approved"].includes(status)) return "success";
@@ -167,8 +168,8 @@ export function ScriptsReview({
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
               Approves all {run.scripts.length} script(s) in one action and launches
-              {" "}{run.config.runner_mode === "docker"
-                ? `Docker execution (${run.config.parallelism ?? 1} parallel containers)`
+              {" "}{runnerIsContainerised(run.config.runner_mode)
+                ? `${runnerModeLabel(run.config.runner_mode)} execution (${run.config.parallelism ?? 1} parallel containers)`
                 : "local execution"} on {run.config.environment}.
             </p>
             <Button

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { StudioRunDetail } from "@/lib/api";
 import { FailureInsights } from "./FailureInsights";
+import { runnerIsContainerised, runnerModeLabel } from "./studio-utils";
 
 function executionStatusVariant(status: string): "success" | "warning" | "destructive" | "outline" {
   if (status === "completed") return "success";
@@ -28,7 +29,7 @@ export function ExecutionPanel({ run }: { run: StudioRunDetail }) {
   );
   const done = totals.passed + totals.failed + totals.skipped;
   const progress = totals.total > 0 ? Math.round((done / totals.total) * 100) : 0;
-  const isDocker = run.config.runner_mode === "docker";
+  const containerised = runnerIsContainerised(run.config.runner_mode);
 
   return (
     <div className="space-y-4">
@@ -36,13 +37,13 @@ export function ExecutionPanel({ run }: { run: StudioRunDetail }) {
         <CardContent className="space-y-3 p-4">
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <span className="font-semibold">Execution Progress</span>
-            {isDocker ? (
+            {containerised ? (
               <Badge variant="purple">
                 <Container className="mr-1 h-3 w-3" />
-                Docker · up to {run.config.parallelism ?? 1} parallel containers
+                {runnerModeLabel(run.config.runner_mode)} · up to {run.config.parallelism ?? 1} parallel containers
               </Badge>
             ) : (
-              <Badge variant="outline">Local subprocess runner</Badge>
+              <Badge variant="outline">{runnerModeLabel(run.config.runner_mode)} runner</Badge>
             )}
             <Badge variant="outline">{run.config.environment}</Badge>
             {run.status === "executing" && <Loader2 className="h-4 w-4 animate-spin text-violet-600" />}

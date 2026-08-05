@@ -11,7 +11,7 @@ import {
   Search,
   StopCircle,
 } from "lucide-react";
-import { projectsApi } from "@/lib/api";
+import { projectsApi, type StudioRunnerMode } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -32,6 +32,8 @@ import { ScriptsReview } from "@/components/playwright-studio/ScriptsReview";
 import { StudioStepsHeader } from "@/components/playwright-studio/StudioStepsHeader";
 import {
   isTerminalStudioStatus,
+  runnerIsContainerised,
+  runnerModeLabel,
   stepForStatus,
   studioStatusLabel,
   studioStatusVariant,
@@ -155,7 +157,11 @@ function PlaywrightStudioContent() {
   const startRun = useStartStudioRun(projectId);
   const cancelRun = useCancelStudioRun(projectId);
   const retryRun = useRetryStudioRun(projectId);
-  const [retryRunnerMode, setRetryRunnerMode] = useState("");
+  // Defaults to the executor rather than "same as before": a run reaches this
+  // retry bar because it failed, and the most common reason is that it asked
+  // for a runner the dispatching service cannot drive. Repeating that choice
+  // reproduces the failure, so the isolated executor is the useful default.
+  const [retryRunnerMode, setRetryRunnerMode] = useState<StudioRunnerMode | "">("executor");
 
   useEffect(() => {
     projectsApi
@@ -322,7 +328,7 @@ function PlaywrightStudioContent() {
                   Runner
                   <select
                     value={retryRunnerMode}
-                    onChange={(e) => setRetryRunnerMode(e.target.value)}
+                    onChange={(e) => setRetryRunnerMode(e.target.value as StudioRunnerMode | "")}
                     className="h-8 rounded-md border border-amber-300 bg-white px-2 text-xs font-semibold text-slate-700 outline-none dark:bg-slate-900 dark:text-slate-200"
                   >
                     <option value="">Same as before{runDetail.config.runner_mode ? ` (${runDetail.config.runner_mode})` : ""}</option>
@@ -450,9 +456,9 @@ function PlaywrightStudioContent() {
                       <td className="px-4 py-2.5">{run.config.application_name ?? "—"}</td>
                       <td className="px-4 py-2.5">{run.config.environment}</td>
                       <td className="px-4 py-2.5">
-                        {run.config.runner_mode === "docker"
-                          ? `Docker ×${run.config.parallelism ?? 1}`
-                          : "Local"}
+                        {runnerIsContainerised(run.config.runner_mode)
+                          ? `${runnerModeLabel(run.config.runner_mode)} ×${run.config.parallelism ?? 1}`
+                          : runnerModeLabel(run.config.runner_mode)}
                       </td>
                       <td className="px-4 py-2.5">
                         <span className="flex items-center gap-2">

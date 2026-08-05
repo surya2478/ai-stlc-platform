@@ -2224,6 +2224,12 @@ export const automationApi = {
 
 // ── Playwright AI Studio ──────────────────────────────────────────────────────
 
+/** Mirrors the server's runner policy (`VALID_MODES`). "executor" brokers the
+ *  containers through the runner-executor service, which is the only one that
+ *  mounts the Docker socket; "docker" drives the daemon from the calling
+ *  service and is therefore refused wherever that socket is absent. */
+export type StudioRunnerMode = "local" | "docker" | "executor";
+
 export interface StudioRunConfig {
   application_id: number;
   application_name?: string;
@@ -2237,7 +2243,7 @@ export interface StudioRunConfig {
   max_minutes?: number;
   target_test_case_count?: number | null;
   framework?: string;
-  runner_mode?: "local" | "docker";
+  runner_mode?: StudioRunnerMode;
   parallelism?: number;
   timeout_seconds?: number;
 }
@@ -2367,7 +2373,7 @@ export interface StudioRunCreatePayload {
   max_minutes?: number;
   target_test_case_count?: number;
   framework?: string;
-  runner_mode?: "local" | "docker";
+  runner_mode?: StudioRunnerMode;
   parallelism?: number;
   timeout_seconds?: number;
 }

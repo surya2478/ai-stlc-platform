@@ -71,3 +71,21 @@ export function isTerminalStudioStatus(status: string | undefined): boolean {
 export function runEnvironmentLabel(run: StudioRun): string {
   return run.config?.environment ?? "—";
 }
+
+/** "executor" runs the same containers as "docker", but through the isolated
+ *  runner-executor service — the only process in the deployment that holds the
+ *  Docker socket. The Studio screens used to test `=== "docker"` and call
+ *  everything else "local", so an executor run was labelled as a local
+ *  subprocess run it has nothing in common with. */
+export function runnerIsContainerised(mode: string | undefined): boolean {
+  return mode === "docker" || mode === "executor";
+}
+
+export function runnerModeLabel(mode: string | undefined): string {
+  switch (mode) {
+    case "executor": return "Executor";
+    case "docker": return "Docker";
+    case "local": return "Local subprocess";
+    default: return "Server default";
+  }
+}

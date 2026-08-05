@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Globe, Loader2, Sparkles } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type StudioRunnerMode } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,7 +56,12 @@ export function NewRunForm({
   const [maxPages, setMaxPages] = useState(10);
   const [maxMinutes, setMaxMinutes] = useState(20);
   const [targetTestCaseCount, setTargetTestCaseCount] = useState<string>("");
-  const [runnerMode, setRunnerMode] = useState<"local" | "docker">("docker");
+  // Executor, not docker: "docker" drives the daemon from whichever service
+  // dispatches the job, and neither the backend nor the worker mounts the
+  // socket (AUT-002) — so every run started from this form failed with
+  // "docker daemon not reachable" before a browser ever opened. The executor
+  // service is the one that holds the socket, and it runs the same containers.
+  const [runnerMode, setRunnerMode] = useState<StudioRunnerMode>("executor");
   const [parallelism, setParallelism] = useState(4);
   const [timeoutSeconds, setTimeoutSeconds] = useState(600);
   const [submitting, setSubmitting] = useState(false);
@@ -289,15 +294,16 @@ export function NewRunForm({
               <select
                 className={inputClass}
                 value={runnerMode}
-                onChange={(e) => setRunnerMode(e.target.value as "local" | "docker")}
+                onChange={(e) => setRunnerMode(e.target.value as StudioRunnerMode)}
               >
-                <option value="docker">Docker containers (parallel)</option>
+                <option value="executor">Executor (isolated service, parallel)</option>
+                <option value="docker">Docker containers (needs the socket here)</option>
                 <option value="local">Local subprocess (sequential)</option>
               </select>
             </div>
             <div>
               <label className={labelClass}>
-                {runnerMode === "docker" ? "Parallel containers" : "Parallel runners"}
+                {runnerMode === "local" ? "Parallel runners" : "Parallel containers"}
               </label>
               <input
                 type="number" min={1} max={16} className={inputClass}
