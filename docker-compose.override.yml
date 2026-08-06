@@ -1,8 +1,23 @@
 services:
+  # ── Datastores ──────────────────────────────────────────────────────────────
+  # Loopback-only publishing for psql and redis-cli from the host. Local
+  # convenience, so it belongs here: the production stack never loads this
+  # file and therefore never binds these ports at all.
+  db:
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+
   # ── FastAPI Backend ─────────────────────────────────────────────────────────
   backend:
+    # 8000 is off-limits on the shared host, so the API is published on
+    # BACKEND_PORT (default 8400). The container still listens on 8000, which
+    # is what nginx and INTERNAL_API_URL address over the compose network.
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8400}:8000"
     volumes:
       - ./backend:/app
       - stlc_storage:/app/storage
@@ -53,8 +68,10 @@ services:
 
   # ── Next.js Frontend ────────────────────────────────────────────────────────
   frontend:
+    # 3000 is off-limits on the shared host, so the dev server is published on
+    # FRONTEND_PORT (default 4300). The container still listens on 3000.
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-4300}:3000"
     volumes:
       - ./frontend:/app
       - /app/node_modules

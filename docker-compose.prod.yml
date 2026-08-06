@@ -14,7 +14,9 @@
 services:
   # ── PostgreSQL ───────────────────────────────────────────────────────────────
   db:
-    ports: []   # Do not expose DB port externally in production
+    # No ports block: publishing is declared only in the dev override, which
+    # production does not load. `ports: []` here would have been a no-op —
+    # Compose appends port lists rather than replacing them.
     deploy:
       resources:
         limits:
@@ -22,7 +24,7 @@ services:
 
   # ── Redis ────────────────────────────────────────────────────────────────────
   redis:
-    ports: []   # Do not expose Redis port externally in production
+    # No ports block — see the note on db.
     deploy:
       resources:
         limits:
@@ -136,9 +138,11 @@ services:
 
   # ── Nginx TLS Proxy ──────────────────────────────────────────────────────────
   nginx:
+    # See the note in docker-compose.yml: 443 is off-limits on the target host,
+    # so HTTPS is published on HTTPS_PORT (default 12443) instead.
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-12443}:443"
     volumes:
       - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
