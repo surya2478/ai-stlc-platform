@@ -85,6 +85,29 @@ async def _completed_run_is_reusable(db: AsyncSession, run: AgentRun, agent_name
         )
         return result.scalar_one_or_none() is not None
 
+    if agent_name == "requirement_intake":
+        # The same defect as automation_script above, in the same shape. A run
+        # whose LLM calls all failed persists nothing and still completes, with
+        # output_data={"count": 0, "requirement_ids": []} — and treating that as
+        # reusable made every retry return the empty run instantly, queueing no
+        # task at all. Observed live on run 453: a momentary gateway outage left
+        # project 20 unable to extract requirements from any re-upload, because
+        # re-uploading the same file derives the same idempotency key and kept
+        # matching the poisoned run.
+        from app.models.requirement import Requirement
+
+        requirement_ids = (run.output_data or {}).get("requirement_ids") or []
+        if not requirement_ids:
+            return False
+        result = await db.execute(
+            select(Requirement.id).where(
+                Requirement.id.in_(requirement_ids),
+                Requirement.project_id == run.project_id,
+                Requirement.is_deleted.is_(False),
+            )
+        )
+        return result.first() is not None
+
     return True
 
 
