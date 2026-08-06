@@ -151,6 +151,19 @@ Extract all requirements from this excerpt. Return a JSON array."""
         except Exception as exc:
             errors.append(f"Chunk {i+1} extraction error: {str(exc)}")
 
+    # Every chunk failing is an outage, not a document without requirements —
+    # and the two were indistinguishable from the outside. A run whose LLM
+    # calls all failed used to finish "completed / Extracted 0 requirements",
+    # with the failures recorded as warnings nobody reads, so a gateway that
+    # was briefly unreachable looked exactly like an empty upload. Observed
+    # live on run 453: three chunks, three connection errors, reported as a
+    # success.
+    if state["chunks"] and not all_requirements and len(errors) == len(state["chunks"]):
+        raise RuntimeError(
+            f"Requirement extraction failed on all {len(state['chunks'])} chunk(s) — "
+            f"no requirement could be read. First error: {errors[0]}"
+        )
+
     return {**state, "requirements": all_requirements, "errors": errors}
 
 

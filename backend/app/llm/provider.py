@@ -261,6 +261,29 @@ def _is_retriable_llm_error(exc: Exception) -> bool:
     ):
         return True
 
+    # The openai SDK wraps transport failures in its own classes, which are NOT
+    # httpx subclasses — so the check above never matched them and every
+    # OpenAI-compatible provider (which is all of them here, the AI gateway
+    # included) had its connection failures classified as permanent. Observed
+    # live: a momentary blip on the local gateway raised APIConnectionError,
+    # `_with_retries` logged "non-retriable error" and gave up instantly, and
+    # the backoff and circuit breaker never engaged for the one failure mode
+    # they exist for.
+    try:
+        import openai
+    except Exception:  # pragma: no cover - openai is installed in runtime
+        openai = None
+
+    if openai is not None and isinstance(
+        exc,
+        (
+            openai.APIConnectionError,  # covers APITimeoutError, its subclass
+            openai.InternalServerError,
+            openai.RateLimitError,
+        ),
+    ):
+        return True
+
     status_code = _exception_status_code(exc)
     if status_code is not None:
         return status_code == 429 or status_code >= 500
