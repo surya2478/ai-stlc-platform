@@ -39,7 +39,18 @@ and it is guarded accordingly.
 from __future__ import annotations
 
 import getpass
+import os
 import sys
+
+# Running this by path — `python /repo/scripts/dev/create_admin.py` — puts THIS
+# file's directory on sys.path, not the backend package root, so `app` is not
+# importable and the script dies on the first import below. The working
+# directory is not consulted for that when a script path is given. The backend
+# image sets WORKDIR /app and compose bind-mounts ./backend there, so add it
+# explicitly rather than depending on the caller exporting PYTHONPATH.
+_BACKEND_ROOT = os.environ.get("BACKEND_ROOT", "/app")
+if os.path.isdir(os.path.join(_BACKEND_ROOT, "app")) and _BACKEND_ROOT not in sys.path:
+    sys.path.insert(0, _BACKEND_ROOT)
 
 import anyio
 from sqlalchemy import func, or_, select
