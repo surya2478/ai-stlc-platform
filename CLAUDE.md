@@ -23,10 +23,10 @@ Read the full handover before changing this repository:
 
 ## Current repository state
 
-- Repository: `D:\AI\Projects\stlc-platform`
-- Branch: `security/hardening-v1`
+- Repository: `C:\Test_AI_Agents\Test_AI_Agents\stlc-platform`
+- Branch: `Development`
 - Current implemented/partially implemented AAF range: `UI-001`, `UI-006` through `UI-013`.
-- Current uncommitted work contains the Requirement Analysis clarification-resolution fix. Review and preserve it before further implementation.
+- The Requirement Analysis clarification-resolution fix is committed. Inspect `git status` before starting work and preserve whatever is uncommitted at that time (see rule 11).
 - `UI-001` is at `/autonomous-lab/missions`; `/dashboard` must remain the original dashboard.
 - Requirements reuse `/requirements?project=<id>&view=intake|analysis|traceability|review`.
 - Test Design reuses `/test-cases?project=<id>&view=generated|editor|journey-graph|approval`.

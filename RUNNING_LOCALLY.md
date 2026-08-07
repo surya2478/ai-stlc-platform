@@ -10,14 +10,26 @@ Requirements:
 Create your private local environment file:
 
 ```powershell
-Copy-Item .env.example .env
+Copy-Item .env.development .env
 ```
 
-Edit `.env` and set at least:
+`.env.development` carries working local defaults, so the stack starts from that
+copy unchanged. `.env.example` is the annotated reference for every supported
+key; if you start from that one instead, replace each `replace-...` placeholder
+before running compose.
+
+Three keys have no usable default and stop compose from starting at all when
+they are missing — not just the service that reads them:
 
 ```env
 APP_SECRET_KEY=replace-with-a-long-random-secret
+REDIS_PASSWORD=replace-local-redis-password
+AUTOMATION_EXECUTOR_TOKEN=replace-with-a-local-executor-token-min-32-chars
 ```
+
+`REDIS_PASSWORD` must also appear inside `REDIS_URL`
+(`redis://:<password>@redis:6379/0`) — compose hands the password to
+`redis-server --requirepass`, and the application authenticates with the URL.
 
 Optional local admin seed:
 
@@ -40,11 +52,16 @@ Open:
 
 | Service | URL |
 |---|---|
-| Frontend | http://localhost:3000 |
-| Backend API | http://localhost:8000 |
-| Swagger Docs | http://localhost:8000/docs |
+| Frontend | http://localhost:4300 |
+| Backend API | http://localhost:8400 |
+| Swagger Docs | http://localhost:8400/docs |
 
-Sign in at `http://localhost:3000/login`.
+3000 and 8000 are reserved on the shared host, so the compose override
+publishes the app on `FRONTEND_PORT` (default 4300) and the API on
+`BACKEND_PORT` (default 8400). Both containers still listen on 3000 and 8000
+internally, which is what nginx and `INTERNAL_API_URL` address.
+
+Sign in at `http://localhost:4300/login`.
 
 ## Stop The Platform
 
