@@ -63,6 +63,31 @@ internally, which is what nginx and `INTERNAL_API_URL` address.
 
 Sign in at `http://localhost:4300/login`.
 
+## First Admin Account
+
+A fresh database contains no users, and there is no signup form — the login
+page exposes none by design. Bootstrap the first platform admin from the
+backend container:
+
+```powershell
+docker compose exec backend python /repo/scripts/dev/create_admin.py
+```
+
+It prompts for an email, a full name and a password (never echoed, never
+stored in shell history), and creates an active admin superuser.
+
+If you already registered through `POST /api/v1/users/register` — which always
+produces a `qa_engineer`, never an admin — give the script that same email and
+it promotes the existing account instead, leaving the password untouched.
+
+The script refuses to run once any active platform admin exists. After that,
+role changes belong to the admin API, which records an audit entry. To reset a
+forgotten password on an existing account, use `set_password.py` instead:
+
+```powershell
+docker compose exec backend python /repo/scripts/dev/set_password.py
+```
+
 ## Stop The Platform
 
 ```powershell
