@@ -7,7 +7,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.base import TimestampMixin
 
-LLM_ROLES = ("coding", "vision", "reasoning")
+# Keep in sync with app.llm.roles.ROLES — the CheckConstraint below is built
+# from this tuple, so adding a role here also needs an Alembic migration to
+# rewrite ck_project_llm_settings_role (see 061).
+LLM_ROLES = ("coding", "vision", "review", "rag", "reasoning")
 
 
 class ProjectLLMSetting(TimestampMixin, Base):
@@ -32,7 +35,7 @@ class ProjectLLMSetting(TimestampMixin, Base):
     max_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=4000)
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
     module_scope: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    # Role this setting applies to ("coding" | "vision" | "reasoning"), or
+    # Role this setting applies to (one of LLM_ROLES above), or
     # NULL for a generic setting that applies to all roles (legacy behavior).
     llm_role: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     config_status: Mapped[str] = mapped_column(String(50), nullable=False, default="disabled")

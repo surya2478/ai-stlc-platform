@@ -45,7 +45,7 @@ class ProjectLLMSettingOut(BaseModel):
     max_tokens: int
     timeout_seconds: int
     module_scope: list[str]
-    llm_role: Literal["coding", "vision", "reasoning"] | None = None
+    llm_role: Literal["coding", "vision", "review", "rag", "reasoning"] | None = None
     config_status: str
     created_by: int | None = None
     updated_by: int | None = None
@@ -66,7 +66,7 @@ class ProjectLLMSettingUpdate(BaseModel):
     max_tokens: int = Field(default=4000, ge=128, le=32000)
     timeout_seconds: int = Field(default=120, ge=5, le=600)
     module_scope: list[str] = Field(default_factory=list)
-    llm_role: Literal["coding", "vision", "reasoning"] | None = None
+    llm_role: Literal["coding", "vision", "review", "rag", "reasoning"] | None = None
 
     @field_validator("module_scope")
     @classmethod

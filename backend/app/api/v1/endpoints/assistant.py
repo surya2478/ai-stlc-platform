@@ -18,6 +18,7 @@ from app.schemas.assistant import (
     AssistantMessageOut,
     AssistantFeedbackRequest,
 )
+from app.services.project_llm_settings_service import project_llm_role_context
 
 router = APIRouter()
 settings = get_settings()
@@ -62,7 +63,12 @@ async def chat_with_assistant(
         "conversation_id": payload.conversation_id
     }
     
-    result = await agent.run(input_data)
+    # Pin this project's per-role routes for the duration of the run, so a
+    # project override of the "rag" role actually reaches the assistant. The
+    # worker does the same for agent runs; without it the assistant silently
+    # ignored project settings and always used the deployment default.
+    async with project_llm_role_context(db, payload.project_id):
+        result = await agent.run(input_data)
     
     # Check if failed
     if result.status == "failed" or not result.output:

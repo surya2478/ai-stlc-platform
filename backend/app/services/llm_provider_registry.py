@@ -21,89 +21,18 @@ class LLMProviderMetadata:
     default_model: str
 
 
+# Deliberately narrow. OpenRouter already fronts 400+ models — Llama, Qwen,
+# Mistral, Gemini, GPT and the rest — so Groq / Together AI / Cerebras /
+# Mistral AI / Google Gemini / Hugging Face / OpenAI were removed as separate
+# selectable providers on 2026-08-08 (migration 062 deleted their saved rows).
+#
+# Their branches in app.llm.provider._build_llm and their config fields are
+# INTENTIONALLY kept: they cost nothing without a UI surface, and restoring a
+# provider is then a ten-line edit here rather than a re-implementation.
+#
+# Anything listed here must also resolve in _build_llm — the registry is the
+# menu, that function is the kitchen.
 PROVIDERS: tuple[LLMProviderMetadata, ...] = (
-    LLMProviderMetadata(
-        provider_name="Groq",
-        provider_key="groq",
-        description="Fast free inference for open-source LLMs via Groq's custom LPU hardware.",
-        logo_icon="zap",
-        available_models=(
-            "llama-3.3-70b-versatile",
-            "llama-3.1-70b-versatile",
-            "llama-3.1-8b-instant",
-            "deepseek-r1-distill-llama-70b",
-            "gemma2-9b-it",
-            "compound-beta",
-        ),
-        api_key_required=True,
-        supports_local_execution=False,
-        supports_fallback_usage=True,
-        enabled_for_selection=True,
-        default_model="llama-3.3-70b-versatile",
-    ),
-    LLMProviderMetadata(
-        provider_name="Together AI",
-        provider_key="together",
-        description="Free-tier open-source LLMs (LLaMA 3.3 70B, Qwen, Mixtral). OpenAI-compatible. $25 free credit.",
-        logo_icon="zap",
-        available_models=(
-            "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-            "meta-llama/Llama-3.1-8B-Instruct-Turbo",
-            "mistralai/Mixtral-8x7B-Instruct-v0.1",
-            "Qwen/Qwen2.5-72B-Instruct-Turbo",
-        ),
-        api_key_required=True,
-        supports_local_execution=False,
-        supports_fallback_usage=True,
-        enabled_for_selection=True,
-        default_model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
-    ),
-    LLMProviderMetadata(
-        provider_name="Cerebras",
-        provider_key="cerebras",
-        description="Ultra-fast LLaMA inference at 2000+ tokens/sec. Free tier available. OpenAI-compatible API.",
-        logo_icon="zap",
-        available_models=(
-            "gpt-oss-120b",
-            "llama-3.3-70b",
-            "llama-3.1-70b",
-            "llama-3.1-8b",
-        ),
-        api_key_required=True,
-        supports_local_execution=False,
-        supports_fallback_usage=True,
-        enabled_for_selection=True,
-        default_model="gpt-oss-120b",
-    ),
-    LLMProviderMetadata(
-        provider_name="Mistral AI",
-        provider_key="mistral",
-        description="Codestral (free for code tasks), Mistral Large. European-hosted — GDPR-friendly.",
-        logo_icon="braces",
-        available_models=(
-            "codestral-latest",
-            "mistral-large-latest",
-            "open-mistral-nemo",
-            "mistral-small-latest",
-        ),
-        api_key_required=True,
-        supports_local_execution=False,
-        supports_fallback_usage=True,
-        enabled_for_selection=True,
-        default_model="codestral-latest",
-    ),
-    LLMProviderMetadata(
-        provider_name="Google Gemini",
-        provider_key="google_gemini",
-        description="Google’s multimodal AI models for reasoning and generation.",
-        logo_icon="sparkles",
-        available_models=("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"),
-        api_key_required=True,
-        supports_local_execution=False,
-        supports_fallback_usage=True,
-        enabled_for_selection=True,
-        default_model="gemini-2.0-flash",
-    ),
     LLMProviderMetadata(
         provider_name="Ollama Local",
         provider_key="ollama",
@@ -127,30 +56,6 @@ PROVIDERS: tuple[LLMProviderMetadata, ...] = (
         supports_fallback_usage=True,
         enabled_for_selection=True,
         default_model="configurable",
-    ),
-    LLMProviderMetadata(
-        provider_name="Hugging Face Inference",
-        provider_key="huggingface",
-        description="Hosted open-source models from Hugging Face Inference API. Large model catalogue.",
-        logo_icon="braces",
-        available_models=("configurable",),
-        api_key_required=True,
-        supports_local_execution=False,
-        supports_fallback_usage=True,
-        enabled_for_selection=True,
-        default_model="configurable",
-    ),
-    LLMProviderMetadata(
-        provider_name="OpenAI",
-        provider_key="openai",
-        description="Hosted OpenAI-compatible models for advanced reasoning and generation.",
-        logo_icon="bot",
-        available_models=("gpt-4o", "gpt-4o-mini", "o3-mini", "o1-mini"),
-        api_key_required=True,
-        supports_local_execution=False,
-        supports_fallback_usage=True,
-        enabled_for_selection=True,
-        default_model="gpt-4o-mini",
     ),
     LLMProviderMetadata(
         provider_name="AI Gateway",

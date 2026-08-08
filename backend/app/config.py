@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     # OpenAI-compatible: any vision-capable model (e.g. "gpt-4o-mini").
     default_vision_model: str = "llava"
 
+    # Review and RAG roles. Blank means "same as DEFAULT_LLM_MODEL", so an
+    # existing deployment that sets neither keeps its pre-role behaviour.
+    # Point DEFAULT_REVIEW_MODEL at a *different* model from DEFAULT_LLM_MODEL
+    # to get independent review — a reviewer running the generator's model
+    # shares its blind spots, and these gates feed the autonomy thresholds.
+    default_review_model: str = ""
+    # Assistant/KB answer generation only. Retrieval makes no LLM call and
+    # embeddings are configured separately (EMBEDDING_PROVIDER).
+    default_rag_model: str = ""
+
     # ── AI Gateway: 3-model role routing ────────────────────────────────────
     # Single OpenAI-compatible gateway (one base URL + one API key) fronting
     # three role-specific models. When disabled, legacy DEFAULT_LLM_* /
@@ -70,6 +80,9 @@ class Settings(BaseSettings):
     llm_coding_model: str = "qwen3-coder-next"
     llm_vision_model: str = "qwen3-vl-8b"
     llm_reasoning_model: str = "gpt-oss-20b"
+    # Blank falls back to llm_reasoning_model, matching the legacy path.
+    llm_review_model: str = ""
+    llm_rag_model: str = ""
 
     # Ollama
     ollama_base_url: str = "http://ollama:11434"
@@ -108,7 +121,18 @@ class Settings(BaseSettings):
     # OpenRouter — multi-model aggregator (Standby #4)
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = "meta-llama/llama-3.3-70b-instruct:free"
+    openrouter_model: str = "meta-llama/llama-3.3-70b-instruct"
+    # Comma-separated OpenRouter slugs tried, in order, when the primary model
+    # is rate-limited, down or errors. Sent as the request's "models" array —
+    # OpenRouter does the failover server-side, which is the only failover this
+    # platform has: the worker uses routes[0] and never retries a second route.
+    openrouter_fallback_models: str = ""
+    # Optional attribution headers OpenRouter reads off every request
+    # (HTTP-Referer / X-Title). They identify this deployment on the account's
+    # activity page and its public leaderboards, and some free-tier models
+    # rate-limit unattributed traffic harder. Blank values are simply omitted.
+    openrouter_site_url: str = ""
+    openrouter_app_name: str = ""
 
     # Hugging Face Inference (Standby #6 — open-source fallback)
     huggingface_api_key: str = ""

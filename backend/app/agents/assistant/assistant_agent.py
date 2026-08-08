@@ -415,7 +415,11 @@ async def classify_scope_node(state: AssistantState) -> AssistantState:
     scope = None
     # 2. Scope classification via LLM
     try:
-        llm = get_llm_for_role("reasoning")
+        # Same "rag" role as the answer call below, so one project setting
+        # governs the whole assistant rather than splitting it across two
+        # models — this call is a 20-token classification, so it rides along
+        # cheaply whatever the KB model is.
+        llm = get_llm_for_role("rag")
         resp = await llm.achat(
             messages=[
                 {"role": "system", "content": SCOPE_CLASSIFICATION_SYSTEM},
@@ -594,7 +598,9 @@ Retrieved Context and Tool Data:
 {state["retrieved_context"] or "No relevant documentation or live project records found."}
 """
     try:
-        llm = get_llm_for_role("reasoning")
+        # RAG/KB answer generation. Retrieval above made no LLM call; this is
+        # the only model the knowledge-base path uses.
+        llm = get_llm_for_role("rag")
         answer = await llm.achat(
             messages=[
                 {"role": "system", "content": ASSISTANT_SYSTEM_PROMPT},

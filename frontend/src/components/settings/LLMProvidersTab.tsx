@@ -53,9 +53,15 @@ type ProviderMeta = {
   default_model: string;
 };
 
-type LLMRole = "coding" | "vision" | "reasoning";
-const LLM_ROLES: LLMRole[] = ["coding", "vision", "reasoning"];
-const ROLE_LABELS: Record<LLMRole, string> = { coding: "Coding", vision: "Vision", reasoning: "Reasoning" };
+type LLMRole = "coding" | "vision" | "review" | "rag" | "reasoning";
+const LLM_ROLES: LLMRole[] = ["coding", "vision", "review", "rag", "reasoning"];
+const ROLE_LABELS: Record<LLMRole, string> = {
+  coding: "Coding",
+  vision: "Vision",
+  review: "Review",
+  rag: "RAG & KB",
+  reasoning: "Reasoning",
+};
 
 type ProjectLLMSetting = {
   id?: number | null;
@@ -97,6 +103,8 @@ type ProjectLLMSettingsResponse = {
   updated_by: number | null;
   security_status: "Secure";
 };
+
+type RoleDraft = { provider_key: string; model_name: string };
 
 type ToastState = {
   title: string;
@@ -180,6 +188,11 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
   const [configuring, setConfiguring] = useState<ProjectLLMSetting | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [confirmActive, setConfirmActive] = useState<ProjectLLMSetting | null>(null);
+  // Per-role draft edits for the Role Routing panel. Seeded from the resolved
+  // route (project override, else system default) every time data reloads, so
+  // a saved change immediately becomes the new baseline.
+  const [roleDrafts, setRoleDrafts] = useState<Record<LLMRole, RoleDraft>>({} as Record<LLMRole, RoleDraft>);
+  const [roleSaving, setRoleSaving] = useState<LLMRole | null>(null);
 
   function rowKey(providerKey: string, llmRole: LLMRole | null) {
     return `${providerKey}::${llmRole ?? ""}`;
@@ -203,6 +216,16 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
     const id = window.setTimeout(() => setToast(null), 4200);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+  useEffect(() => {
+    if (!data) return;
+    const next = {} as Record<LLMRole, RoleDraft>;
+    for (const role of LLM_ROLES) {
+      const route = data.active_by_role?.[role] ?? data.role_defaults?.[role];
+      next[role] = { provider_key: route?.provider_key ?? "", model_name: route?.model_name ?? "" };
+    }
+    setRoleDrafts(next);
+  }, [data]);
 
   // One row per provider (generic, llm_role=null) plus one extra row for
   // each role that provider has an explicit override configured for — so a
@@ -271,6 +294,90 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
       showToast({ kind: "error", title: "Configuration not saved", message });
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Role routing writes a row keyed (provider, role) rather than reusing
+  // persist(): persist() replaces a row by object identity within `rows`, and a
+  // brand-new role override has no row there yet, so it would be dropped from
+  // the payload. This builds the full settings list explicitly instead.
+  async function persistRole(role: LLMRole, draft: RoleDraft, enable: boolean) {
+    if (!data) return;
+    const provider = data.providers.find((item) => item.provider_key === draft.provider_key);
+    if (!provider) {
+      showToast({ kind: "error", title: "Unknown provider", message: "Select a provider before saving this role." });
+      return;
+    }
+    if (enable && !draft.model_name.trim()) {
+      showToast({ kind: "error", title: "Model required", message: "Enter a model name for this role." });
+      return;
+    }
+    if (enable && provider.api_key_required && !provider.api_key_configured) {
+      showToast({
+        kind: "error",
+        title: "Missing API key",
+        message: `${provider.provider_name} has no API key configured, so this role would fail at run time.`,
+      });
+      return;
+    }
+
+    const current = rows.map(({ setting }) => setting);
+    const untouched = current.filter((setting) => (setting.llm_role ?? null) !== role);
+    const forRole = current.filter((setting) => (setting.llm_role ?? null) === role);
+    const existing =
+      forRole.find((setting) => setting.provider_key === draft.provider_key) ??
+      emptySetting(data.project_id, provider, role);
+    const updated: ProjectLLMSetting = {
+      ...existing,
+      provider_key: provider.provider_key,
+      provider_name: provider.provider_name,
+      model_name: draft.model_name.trim(),
+      llm_role: role,
+      is_enabled: enable,
+      is_primary: enable,
+      is_fallback: false,
+      fallback_priority: null,
+      config_status: enable ? "active" : "disabled",
+    };
+    // Any other provider previously pinned to this role must stand down —
+    // only one primary per role is allowed (uq_project_primary_llm_role).
+    const demoted = forRole
+      .filter((setting) => setting.provider_key !== provider.provider_key)
+      .map((setting) => ({ ...setting, is_enabled: false, is_primary: false, is_fallback: false, fallback_priority: null, config_status: "disabled" }));
+
+    setRoleSaving(role);
+    try {
+      const response = await api.put<ProjectLLMSettingsResponse>(`/projects/${projectId}/llm-settings`, {
+        settings: [...untouched, updated, ...demoted].map((setting) => ({
+          provider_key: setting.provider_key,
+          model_name: setting.model_name,
+          is_enabled: setting.is_enabled,
+          is_primary: setting.is_primary,
+          is_fallback: setting.is_fallback,
+          fallback_priority: setting.fallback_priority,
+          temperature: setting.temperature,
+          max_tokens: setting.max_tokens,
+          timeout_seconds: setting.timeout_seconds,
+          module_scope: setting.module_scope,
+          llm_role: setting.llm_role,
+        })),
+        change_reason: enable
+          ? `Role '${role}' routed to ${provider.provider_name} (${updated.model_name}) from settings UI`
+          : `Role '${role}' reset to system default from settings UI`,
+      });
+      setData(response.data);
+      showToast({
+        kind: "success",
+        title: enable ? "Role routing saved" : "Role reset to system default",
+        message: enable
+          ? `${ROLE_LABELS[role]} now uses ${provider.provider_name} / ${updated.model_name}.`
+          : `${ROLE_LABELS[role]} follows the system default again.`,
+      });
+    } catch (err: any) {
+      const message = err?.response?.data?.detail || "Role routing could not be saved.";
+      showToast({ kind: "error", title: "Role routing not saved", message });
+    } finally {
+      setRoleSaving(null);
     }
   }
 
@@ -461,12 +568,23 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
           <div className="mt-5 rounded-xl border border-gray-200">
             <div className="border-b border-gray-100 px-4 py-3">
               <h3 className="font-bold text-gray-900">Role Routing</h3>
-              <p className="mt-1 text-xs text-gray-500">Which provider and model each AI role uses for this project.</p>
+              <p className="mt-1 text-xs text-gray-500">
+                Which provider and model each AI role uses for this project. A saved role overrides the system default for
+                this project only; reset returns it to the deployment default.
+              </p>
             </div>
-            <div className="grid gap-3 p-4 sm:grid-cols-3">
+            <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
               {LLM_ROLES.map((role) => {
                 const route = data.active_by_role?.[role] ?? data.role_defaults?.[role];
                 const isOverride = route?.source === "project" || route?.source === "project_fallback";
+                const draft = roleDrafts[role] ?? { provider_key: "", model_name: "" };
+                const provider = data.providers.find((item) => item.provider_key === draft.provider_key);
+                const freeFormModel = !provider || provider.available_models.includes("configurable");
+                const dirty =
+                  draft.provider_key !== (route?.provider_key ?? "") || draft.model_name !== (route?.model_name ?? "");
+                const busy = roleSaving === role;
+                const missingKey = !!provider?.api_key_required && !provider.api_key_configured;
+
                 return (
                   <div key={role} className="rounded-lg border border-gray-200 p-3">
                     <div className="flex items-center justify-between">
@@ -475,8 +593,107 @@ export function LLMProvidersTab({ projectId }: { projectId: number }) {
                         {isOverride ? "Project override" : "System default"}
                       </Badge>
                     </div>
-                    <p className="mt-2 text-sm font-semibold text-gray-800">{route?.provider_name || route?.provider_key || "—"}</p>
-                    <p className="font-mono text-xs text-gray-500">{route?.model_name || "—"}</p>
+
+                    <label className="mt-2 block text-[11px] font-semibold text-gray-500" htmlFor={`role-provider-${role}`}>
+                      Provider
+                    </label>
+                    <select
+                      id={`role-provider-${role}`}
+                      className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+                      value={draft.provider_key}
+                      disabled={busy}
+                      onChange={(event) => {
+                        const nextKey = event.target.value;
+                        const nextProvider = data.providers.find((item) => item.provider_key === nextKey);
+                        // Carry the model only if the new provider can serve it;
+                        // otherwise seed its default so the field is never left
+                        // holding a model the provider will reject.
+                        const keepModel =
+                          nextProvider &&
+                          (nextProvider.available_models.includes("configurable") ||
+                            nextProvider.available_models.includes(draft.model_name));
+                        setRoleDrafts((prev) => ({
+                          ...prev,
+                          [role]: {
+                            provider_key: nextKey,
+                            model_name: keepModel
+                              ? draft.model_name
+                              : nextProvider?.default_model === "configurable"
+                                ? ""
+                                : nextProvider?.default_model ?? "",
+                          },
+                        }));
+                      }}
+                    >
+                      {data.providers.map((item) => (
+                        <option key={item.provider_key} value={item.provider_key}>
+                          {item.provider_name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <label className="mt-2 block text-[11px] font-semibold text-gray-500" htmlFor={`role-model-${role}`}>
+                      Model
+                    </label>
+                    {freeFormModel ? (
+                      <input
+                        id={`role-model-${role}`}
+                        className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 font-mono text-xs text-gray-800 disabled:opacity-50"
+                        value={draft.model_name}
+                        disabled={busy}
+                        placeholder="provider/model-slug"
+                        onChange={(event) =>
+                          setRoleDrafts((prev) => ({ ...prev, [role]: { ...draft, model_name: event.target.value } }))
+                        }
+                      />
+                    ) : (
+                      <select
+                        id={`role-model-${role}`}
+                        className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 font-mono text-xs text-gray-800 disabled:opacity-50"
+                        value={draft.model_name}
+                        disabled={busy}
+                        onChange={(event) =>
+                          setRoleDrafts((prev) => ({ ...prev, [role]: { ...draft, model_name: event.target.value } }))
+                        }
+                      >
+                        {!provider?.available_models.includes(draft.model_name) && (
+                          <option value={draft.model_name}>{draft.model_name || "Select a model"}</option>
+                        )}
+                        {provider?.available_models.map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+
+                    {missingKey && (
+                      <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
+                        No API key configured for {provider?.provider_name}.
+                      </p>
+                    )}
+
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        disabled={!dirty || busy || missingKey || !draft.model_name.trim()}
+                        onClick={() => persistRole(role, draft, true)}
+                      >
+                        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        Save
+                      </Button>
+                      {isOverride && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => persistRole(role, draft, false)}
+                        >
+                          Reset
+                        </Button>
+                      )}
+                      {dirty && !busy && <span className="text-[11px] font-semibold text-amber-700">Unsaved</span>}
+                    </div>
                   </div>
                 );
               })}

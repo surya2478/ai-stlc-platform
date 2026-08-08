@@ -207,6 +207,16 @@ def validate_vision_configuration(provider: str | None = None, model: str | None
             )
         return None
 
+    if resolved_provider == "openrouter":
+        if not settings.openrouter_api_key:
+            return (
+                "UI image analysis is not configured because OPENROUTER_API_KEY is missing. "
+                "Add an API key and set DEFAULT_VISION_MODEL to a vision-capable OpenRouter "
+                "model such as qwen/qwen2.5-vl-72b-instruct or openai/gpt-4o-mini, "
+                "or switch to Ollama with llava/qwen2.5vl."
+            )
+        return None
+
     if resolved_provider == "google_gemini":
         if not (settings.google_gemini_api_key or settings.gemini_api_key or settings.google_api_key):
             return (
@@ -223,7 +233,7 @@ def validate_vision_configuration(provider: str | None = None, model: str | None
 
     return (
         f"UI image analysis is not enabled for the current provider '{resolved_provider}'. "
-        "This deployment currently validates vision analysis only for ollama, openai, and google_gemini. "
+        "This deployment currently validates vision analysis only for ollama, openai, openrouter, and google_gemini. "
         "Use a vision-capable model such as llava, qwen2.5vl, gpt-4o-mini, or gemini-2.0-flash."
     )
 
@@ -463,9 +473,22 @@ class OllamaProvider:
 class OpenAICompatibleProvider:
     """Wraps any OpenAI-compatible endpoint (OpenAI, Groq, OpenRouter, Ollama OpenAI-mode)."""
 
-    def __init__(self, api_key: str, base_url: str, model: str, default_options: dict[str, Any] | None = None, timeout_seconds: int = 120):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str,
+        model: str,
+        default_options: dict[str, Any] | None = None,
+        timeout_seconds: int = 120,
+        default_headers: dict[str, str] | None = None,
+    ):
         from openai import AsyncOpenAI
-        self._client = AsyncOpenAI(api_key=api_key or "ollama", base_url=base_url, timeout=timeout_seconds)
+        self._client = AsyncOpenAI(
+            api_key=api_key or "ollama",
+            base_url=base_url,
+            timeout=timeout_seconds,
+            default_headers=default_headers or None,
+        )
         self.base_url = base_url
         self.model = model
         self._circuit_key = f"openai:{base_url}:{self.model}"
@@ -680,6 +703,56 @@ class HuggingFaceInferenceProvider:
         raise NotImplementedError("Hugging Face vision routing is not enabled for this project provider.")
 
 
+def openrouter_attribution_headers() -> dict[str, str]:
+    """Optional HTTP-Referer / X-Title headers for OpenRouter requests.
+
+    OpenRouter uses these to attribute traffic to this deployment on the
+    account activity page and its public leaderboards. Unset values are
+    omitted rather than sent blank, since an empty HTTP-Referer is worse than
+    no header at all.
+    """
+    headers: dict[str, str] = {}
+    site_url = settings.openrouter_site_url.strip()
+    app_name = settings.openrouter_app_name.strip()
+    if site_url:
+        headers["HTTP-Referer"] = site_url
+    if app_name:
+        headers["X-Title"] = app_name
+    return headers
+
+
+# OpenRouter rejects a "models" array longer than this with a 400:
+# "'models' array must have 3 items or fewer." Observed live 2026-08-08 with a
+# primary plus three fallbacks. The cap counts the primary, so only two
+# fallbacks actually fit.
+OPENROUTER_MAX_MODEL_CHAIN = 3
+
+
+def openrouter_model_chain(primary: str) -> list[str]:
+    """Primary model followed by OPENROUTER_FALLBACK_MODELS, de-duplicated.
+
+    Returns [] when no fallbacks are configured, so the request keeps its
+    plain single-model shape rather than carrying a one-element array.
+    Truncated to OPENROUTER_MAX_MODEL_CHAIN, because over-length arrays fail
+    the whole request rather than being trimmed server-side.
+    """
+    extras = [item.strip() for item in settings.openrouter_fallback_models.split(",") if item.strip()]
+    if not extras:
+        return []
+    chain = [primary.strip()] + extras
+    seen: set[str] = set()
+    chain = [m for m in chain if m and not (m in seen or seen.add(m))]
+    if len(chain) > OPENROUTER_MAX_MODEL_CHAIN:
+        logger.warning(
+            "OpenRouter model chain has %d entries; only the first %d are sent. Dropped: %s",
+            len(chain),
+            OPENROUTER_MAX_MODEL_CHAIN,
+            ", ".join(chain[OPENROUTER_MAX_MODEL_CHAIN:]),
+        )
+        chain = chain[:OPENROUTER_MAX_MODEL_CHAIN]
+    return chain
+
+
 def _default_options_from_route(route: LLMRouteOverride | None) -> dict[str, Any]:
     if route is None:
         return {}
@@ -730,12 +803,20 @@ def _build_llm(
     if provider == "openrouter":
         if not settings.openrouter_api_key:
             logger.warning("OPENROUTER_API_KEY is not set - OpenRouter calls will fail")
+        resolved_model = model or settings.openrouter_model
+        options = dict(default_options or {})
+        chain = openrouter_model_chain(resolved_model)
+        if chain:
+            extra_body = dict(options.get("extra_body") or {})
+            extra_body["models"] = chain
+            options["extra_body"] = extra_body
         return OpenAICompatibleProvider(
             api_key=settings.openrouter_api_key,
             base_url=settings.openrouter_base_url,
-            model=model or settings.openrouter_model,
-            default_options=default_options,
+            model=resolved_model,
+            default_options=options,
             timeout_seconds=timeout_seconds,
+            default_headers=openrouter_attribution_headers(),
         )
     if provider == "google_gemini":
         api_key = settings.google_gemini_api_key or settings.gemini_api_key or settings.google_api_key
@@ -856,7 +937,8 @@ def get_llm(
 
 
 def get_llm_for_role(role: str) -> LLMProvider:
-    """Resolve an LLM provider for a role ("coding" | "vision" | "reasoning").
+    """Resolve an LLM provider for a role (see app.llm.roles.ROLES:
+    "coding" | "vision" | "review" | "rag" | "reasoning").
 
     Precedence:
       1. Role-keyed override (worker pins one route per role for a run).
