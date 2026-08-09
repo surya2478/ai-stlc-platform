@@ -221,12 +221,13 @@ function NewSessionDrawer({
   const [testCaseId, setTestCaseId] = useState<number | null>(null);
   const [purpose, setPurpose] = useState("");
   const [testCaseSearch, setTestCaseSearch] = useState("");
+  const [showBlocked, setShowBlocked] = useState(false);
 
   const createSession = useCreateDiscoverySession(projectId);
   const eligibleQuery = useEligibleTestCases(projectId, applicationId, mode);
 
   useEffect(() => {
-    if (open) { setMode("GUIDED_USER"); setTestCaseId(null); setPurpose(""); setTestCaseSearch(""); }
+    if (open) { setMode("GUIDED_USER"); setTestCaseId(null); setPurpose(""); setTestCaseSearch(""); setShowBlocked(false); }
   }, [open]);
 
   useEffect(() => { setTestCaseId(null); }, [mode, applicationId]);
@@ -234,12 +235,18 @@ function NewSessionDrawer({
   const needsTestCase = mode !== "FREE_USER_ACTION";
   const modeSpec = MODES.find((m) => m.value === mode)!;
   const eligible = useMemo(() => eligibleQuery.data ?? [], [eligibleQuery.data]);
+  // The list is what you can actually pick, so blocked cases are hidden by
+  // default rather than padding it with rows that cannot be clicked. They stay
+  // one toggle away: the blocking reason is the only place a user learns that a
+  // case needs approval or an application mapping before it can be recorded.
   const filteredCases = useMemo(() => {
     const q = testCaseSearch.trim().toLowerCase();
-    if (!q) return eligible;
-    return eligible.filter((tc) => `${tc.display_id} ${tc.title}`.toLowerCase().includes(q));
-  }, [eligible, testCaseSearch]);
+    const visible = showBlocked ? eligible : eligible.filter((tc) => tc.eligible);
+    if (!q) return visible;
+    return visible.filter((tc) => `${tc.display_id} ${tc.title}`.toLowerCase().includes(q));
+  }, [eligible, testCaseSearch, showBlocked]);
   const eligibleCount = eligible.filter((tc) => tc.eligible).length;
+  const blockedCount = eligible.length - eligibleCount;
 
   // Client-side gates; the backend stays authoritative. Listed rather than
   // surfaced one at a time so nothing is a surprise on submit.
@@ -319,7 +326,8 @@ function NewSessionDrawer({
               <>
                 <p className="text-[11px] font-semibold leading-4 text-gray-500">
                   {modeSpec.label} replays an approved test case. Only cases that are approved <em>and</em> mapped to this
-                  application can be recorded — every other case is listed with the exact reason it is blocked.
+                  application can be recorded, so only those are listed — show the blocked ones to see why each is
+                  ineligible.
                 </p>
                 {!applicationId ? (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
@@ -327,6 +335,24 @@ function NewSessionDrawer({
                   </p>
                 ) : eligibleQuery.isLoading ? (
                   <p className="text-xs font-semibold text-gray-400">Loading eligible test cases…</p>
+                ) : eligibleQuery.isError ? (
+                  <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                    <p>Live Discovery could not load test-case eligibility.</p>
+                    <p className="mt-1 text-[11px] font-medium text-red-600">
+                      Confirm that Live Discovery is enabled and available, then try again.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      onClick={() => void eligibleQuery.refetch()}
+                      disabled={eligibleQuery.isFetching}
+                    >
+                      {eligibleQuery.isFetching ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
+                      Retry
+                    </Button>
+                  </div>
                 ) : eligible.length === 0 ? (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
                     This project has no test cases yet. Generate and approve one in Test Design first.
@@ -347,6 +373,18 @@ function NewSessionDrawer({
                         {eligibleCount} of {eligible.length} eligible
                       </span>
                     </div>
+                    {blockedCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowBlocked((value) => !value)}
+                        aria-expanded={showBlocked}
+                        className="text-[11px] font-bold text-[#B71920] underline-offset-2 hover:underline"
+                      >
+                        {showBlocked
+                          ? `Hide ${blockedCount} blocked case${blockedCount === 1 ? "" : "s"}`
+                          : `Show ${blockedCount} blocked case${blockedCount === 1 ? "" : "s"}`}
+                      </button>
+                    )}
                     <div className="max-h-64 space-y-1.5 overflow-y-auto">
                       {filteredCases.map((tc: EligibleTestCase) => (
                         <button
@@ -376,7 +414,20 @@ function NewSessionDrawer({
                         </button>
                       ))}
                       {filteredCases.length === 0 && (
-                        <p className="py-4 text-center text-xs font-semibold text-gray-400">No test cases match that search.</p>
+                        testCaseSearch.trim() ? (
+                          <p className="py-4 text-center text-xs font-semibold text-gray-400">
+                            No {showBlocked ? "" : "eligible "}test cases match that search.
+                          </p>
+                        ) : (
+                          // Reached only when every case is blocked: the list is
+                          // empty because of eligibility, not because the project
+                          // has none, and the two need different next steps.
+                          <p className="py-4 text-center text-xs font-semibold text-amber-700">
+                            None of this project&apos;s {eligible.length} test case{eligible.length === 1 ? " is" : "s are"} eligible
+                            for {modeSpec.label}. Approve a case and map it to this application, or show the blocked ones to see
+                            what each is missing.
+                          </p>
+                        )
                       )}
                     </div>
                   </>
