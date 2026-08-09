@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/drawer";
 import { useAIAction } from "@/hooks/useAIAction";
 import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
-import { terminalAIStatus } from "@/lib/ai-processing-status";
+import { agentRunErrorCategory, terminalAIStatus } from "@/lib/ai-processing-status";
 
 // Status Chip Variant Mapping
 function getStatusVariant(status: string | null | undefined): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" {
@@ -1104,7 +1104,7 @@ function RequirementsContent() {
         if (terminalStatus) {
           const message = run.error_message || failedFallback;
           setAgentStatus("");
-          updateAIProcessing({ status: terminalStatus, currentStage: run.status, errorCategory: "AI processing failed", errorMessage: message });
+          updateAIProcessing({ status: terminalStatus, currentStage: run.status, errorCategory: agentRunErrorCategory(message), errorMessage: message });
           throw new Error(message);
         }
         if (run.progress_message) {

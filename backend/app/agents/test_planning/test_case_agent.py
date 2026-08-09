@@ -146,7 +146,13 @@ Output a JSON array."""
                 system=TESTCASE_SYSTEM,
                 user=prompt,
                 temperature=0.2,
-                max_tokens=3000,
+                # 2-4 fully detailed test cases — preconditions, numbered steps
+                # with per-step expected results, test data — is the most
+                # verbose output any agent here asks for, and 3000 did not fit
+                # it: responses were being cut mid-string around 7KB and every
+                # scenario in a run failed to parse. A configured per-role
+                # max_tokens overrides this (see _merge_call_options).
+                max_tokens=6000,
             )
             tcs = parse_and_validate_llm_list(response, TestCaseLLMOutput)
             for tc in tcs:

@@ -49,7 +49,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAIAction } from "@/hooks/useAIAction";
 import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
-import { terminalAIStatus } from "@/lib/ai-processing-status";
+import { agentRunErrorCategory, terminalAIStatus } from "@/lib/ai-processing-status";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1037,7 +1037,7 @@ function TestPlanningContent() {
       if (terminalStatus) {
         const message = run.error_message || failedFallback;
         setAgentStatus(null);
-        updateAIProcessing({ status: terminalStatus, currentStage: run.status, errorCategory: "AI processing failed", errorMessage: message });
+        updateAIProcessing({ status: terminalStatus, currentStage: run.status, errorCategory: agentRunErrorCategory(message), errorMessage: message });
         throw new Error(message);
       }
 

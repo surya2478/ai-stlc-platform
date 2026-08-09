@@ -66,7 +66,9 @@ function safeError(error: unknown): AIActionMetadata {
     };
   }
   const safeCategory =
-    ["connection", "network", "dns", "enotfound", "econn"].some((value) => lower.includes(value))
+    ["truncated", "output limit"].some((value) => lower.includes(value))
+      ? "AI response truncated"
+    : ["connection", "network", "dns", "enotfound", "econn"].some((value) => lower.includes(value))
       ? "Connection issue"
       : ["invalid response", "could not parse", "parse error", "malformed"].some((value) => lower.includes(value))
         ? "Invalid AI response"

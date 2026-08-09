@@ -120,3 +120,104 @@ def test_build_llm_ai_gateway_does_not_pin_model_like_openai_branch(monkeypatch)
 
     assert coding.model == "qwen3-coder-next"
     assert vision.model == "qwen3-vl-8b"
+
+
+def test_route_configured_max_tokens_beats_agent_call_site_value():
+    # Agents pass their own max_tokens on every call, which used to win over a
+    # per-role configured limit because the merge was `{**defaults, **kwargs}`.
+    merged = provider._merge_call_options({"max_tokens": 8000, "temperature": 0.7}, {"max_tokens": 3000, "temperature": 0.2})
+
+    assert merged["max_tokens"] == 8000
+    # Temperature is not route-authoritative: agents tune it per task.
+    assert merged["temperature"] == 0.2
+
+
+def test_agent_max_tokens_applies_when_route_configures_none():
+    merged = provider._merge_call_options({}, {"max_tokens": 6000})
+
+    assert merged["max_tokens"] == 6000
+
+
+def test_truncated_output_is_not_retriable():
+    # Re-issuing the identical request hits the identical cap, so the retry
+    # helper must treat truncation as permanent rather than transient.
+    exc = provider._truncation_error("qwen3-coder-next", {"max_tokens": 6000})
+
+    assert not provider._is_retriable_llm_error(exc)
+    assert "6000-token" in str(exc)
+
+
+@pytest.mark.anyio
+async def test_openai_provider_raises_on_length_finish_reason(monkeypatch):
+    pytest.importorskip("openai")
+    provider._circuits.clear()
+    monkeypatch.setattr(provider.settings, "llm_max_retries", 0)
+
+    llm = provider.OpenAICompatibleProvider(api_key="k", base_url="http://gw/v1", model="m")
+
+    class _Raw:
+        headers: dict = {}
+        status_code = 200
+
+        def parse(self):
+            message = type("_M", (), {"content": '[{"test_case_id": "TC-001", "title": "half a te'})()
+            choice = type("_C", (), {"finish_reason": "length", "message": message})()
+            return type("_P", (), {"choices": [choice]})()
+
+    async def fake_create(**kwargs):
+        return _Raw()
+
+    completions = type("_Completions", (), {"create": staticmethod(fake_create)})()
+    raw_response = type("_Raw2", (), {"chat": type("_Chat", (), {"completions": completions})()})()
+    monkeypatch.setattr(llm._client, "with_raw_response", raw_response, raising=False)
+
+    with pytest.raises(provider.LLMOutputTruncatedError) as excinfo:
+        await llm.achat([{"role": "user", "content": "generate"}], max_tokens=6000)
+
+    assert "truncated" in str(excinfo.value).lower()
+
+
+@pytest.mark.anyio
+async def test_ollama_provider_raises_on_length_done_reason(monkeypatch):
+    provider._circuits.clear()
+    monkeypatch.setattr(provider.settings, "llm_max_retries", 0)
+    llm = provider.OllamaProvider(base_url="http://ollama:11434", model="qwen3")
+
+    class _Resp:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"done_reason": "length", "message": {"content": '[{"title": "half a te'}}
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return _Resp()
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+
+    with pytest.raises(provider.LLMOutputTruncatedError):
+        await llm.achat([{"role": "user", "content": "generate"}], max_tokens=6000)
+
+
+def test_truncated_json_reports_a_length_problem_not_a_syntax_problem():
+    from app.llm.structured import parse_and_validate_llm_list
+
+    truncated = '[{"test_case_id": "TC-001", "title": "Verify sign-up URLs include'
+
+    with pytest.raises(ValueError) as excinfo:
+        parse_and_validate_llm_list(truncated, AutomationScriptLLMOutput)
+
+    assert "truncated" in str(excinfo.value)
+    assert "max_tokens" in str(excinfo.value)

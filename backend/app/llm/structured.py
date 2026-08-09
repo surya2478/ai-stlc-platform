@@ -58,6 +58,31 @@ def check_content_safety(val: Any) -> None:
             check_content_safety(item)
 
 
+def _json_error_message(exc: json.JSONDecodeError, cleaned: str) -> str:
+    """Explain a decode failure, naming truncation when that is what it is.
+
+    Providers that report a finish reason are caught earlier in
+    `app.llm.provider`, but the ones that report nothing usable still land
+    here, where "Unterminated string starting at ..." reads as a model bug
+    rather than an output cap that needs raising.
+    """
+    # "Unterminated string" means a quote opened and the document ended before
+    # it closed — that is a cut, not a syntax mistake. `exc.pos` points at where
+    # the string *started*, so it says nothing about the end and is not worth
+    # testing here. Structural errors need the position check instead, since
+    # those can also come from genuinely malformed output mid-document.
+    truncated = "Unterminated string" in exc.msg or (
+        "Expecting" in exc.msg and exc.pos >= len(cleaned.rstrip()) - 1
+    )
+    if truncated:
+        return (
+            f"LLM output appears truncated at {len(cleaned)} characters — the response ends "
+            f"mid-value ({exc.msg}). Raise max_tokens for this call or ask the prompt to "
+            "produce less in one response."
+        )
+    return f"LLM output is not valid JSON: {exc}"
+
+
 def parse_and_validate_llm_output(text: str, schema: type[T]) -> T:
     """Parse JSON string and validate against Pydantic schema."""
     if text and len(text) > 500000:
@@ -66,7 +91,7 @@ def parse_and_validate_llm_output(text: str, schema: type[T]) -> T:
     try:
         raw = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"LLM output is not valid JSON: {exc}")
+        raise ValueError(_json_error_message(exc, cleaned))
     
     # Content safety check on raw values
     check_content_safety(raw)
@@ -85,7 +110,7 @@ def parse_and_validate_llm_list(text: str, schema: type[T]) -> list[dict[str, An
     try:
         raw = json.loads(cleaned)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"LLM output is not valid JSON: {exc}")
+        raise ValueError(_json_error_message(exc, cleaned))
     
     # Content safety check on raw values
     check_content_safety(raw)

@@ -30,6 +30,18 @@ class LLMCircuitOpenError(RuntimeError):
     """Raised when an LLM provider circuit is temporarily open."""
 
 
+class LLMOutputTruncatedError(Exception):
+    """Raised when the model stopped because it hit the output token cap.
+
+    Deliberately not a RuntimeError: `_is_retriable_llm_error` treats those as
+    transient, and re-issuing an identical request against the same cap just
+    truncates again. Raising here also stops a half-written response from
+    reaching `json.loads`, which used to report the cut as a bare syntax error
+    ("Unterminated string starting at ...") with no hint that the cause was
+    length.
+    """
+
+
 @dataclass
 class _CircuitState:
     failures: int = 0
@@ -367,6 +379,37 @@ class LLMProvider(Protocol):
         ...
 
 
+# Options where a configured route is the authority and must beat an agent's
+# hardcoded call-site value. `default_options` is built solely from the active
+# route override (see `_default_options_from_route`), so this is admin/per-role
+# configuration losing to a literal in agent code — which is what happened to
+# max_tokens: every agent passes its own, so a configured per-role limit was
+# silently discarded by the plain `{**default_options, **kwargs}` merge.
+# Everything else keeps the normal "explicit call argument wins" precedence;
+# temperature in particular stays with the agent, which tunes it per task.
+_ROUTE_AUTHORITATIVE_OPTIONS = ("max_tokens",)
+
+
+def _merge_call_options(default_options: dict[str, Any], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Merge per-call kwargs over route defaults, honouring route authority."""
+    merged = {**default_options, **kwargs}
+    for key in _ROUTE_AUTHORITATIVE_OPTIONS:
+        configured = default_options.get(key)
+        if configured is not None:
+            merged[key] = configured
+    return merged
+
+
+def _truncation_error(model: str, options: dict[str, Any]) -> LLMOutputTruncatedError:
+    limit = options.get("max_tokens") or options.get("num_predict")
+    limit_text = f"{limit}-token" if limit else "configured"
+    return LLMOutputTruncatedError(
+        f"LLM output was truncated: model '{model}' hit its {limit_text} output limit before "
+        "finishing its response, so the result is incomplete and cannot be parsed. "
+        "Raise max_tokens for this call or ask the prompt to produce less in one response."
+    )
+
+
 def _extract_ollama_options(kwargs: dict) -> tuple[dict, dict]:
     """
     Split kwargs into Ollama-style options dict and remaining top-level kwargs.
@@ -410,7 +453,7 @@ class OllamaProvider:
 
     async def acomplete(self, prompt: str, **kwargs) -> str:
         import httpx
-        kwargs = {**self.default_options, **kwargs}
+        kwargs = _merge_call_options(self.default_options, kwargs)
         options, remaining = _extract_ollama_options(kwargs)
         payload: dict = {
             "model": self.model,
@@ -425,13 +468,16 @@ class OllamaProvider:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
                 resp = await client.post(f"{self.base_url}/api/generate", json=payload)
                 resp.raise_for_status()
-                return resp.json().get("response", "")
+                data = resp.json()
+                if data.get("done_reason") == "length":
+                    raise _truncation_error(self.model, options)
+                return data.get("response", "")
 
         return await _with_retries(self._circuit_key, _call)
 
     async def achat(self, messages: list[dict], **kwargs) -> str:
         import httpx
-        kwargs = {**self.default_options, **kwargs}
+        kwargs = _merge_call_options(self.default_options, kwargs)
         options, remaining = _extract_ollama_options(kwargs)
         payload: dict = {
             "model": self.model,
@@ -446,7 +492,10 @@ class OllamaProvider:
             async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
                 resp = await client.post(f"{self.base_url}/api/chat", json=payload)
                 resp.raise_for_status()
-                return resp.json()["message"]["content"]
+                data = resp.json()
+                if data.get("done_reason") == "length":
+                    raise _truncation_error(self.model, options)
+                return data["message"]["content"]
 
         return await _with_retries(self._circuit_key, _call)
 
@@ -499,7 +548,7 @@ class OpenAICompatibleProvider:
         return await self.achat(messages, **kwargs)
 
     async def achat(self, messages: list[dict], **kwargs) -> str:
-        kwargs = {**self.default_options, **kwargs}
+        kwargs = _merge_call_options(self.default_options, kwargs)
 
         async def _call() -> str:
             try:
@@ -526,7 +575,13 @@ class OpenAICompatibleProvider:
                 status_code=getattr(raw_resp, "status_code", None),
             )
             resp = raw_resp.parse()
-            return resp.choices[0].message.content or ""
+            choice = resp.choices[0]
+            # finish_reason used to be dropped on the floor, so a response the
+            # model cut short at the token cap was returned as if complete and
+            # only surfaced downstream as a JSON parse failure.
+            if getattr(choice, "finish_reason", None) == "length":
+                raise _truncation_error(self.model, kwargs)
+            return choice.message.content or ""
 
         return await _with_retries(self._circuit_key, _call)
 
@@ -584,7 +639,7 @@ class GoogleGeminiProvider:
 
     async def achat(self, messages: list[dict], **kwargs) -> str:
         import httpx
-        opts = {**self.default_options, **kwargs}
+        opts = _merge_call_options(self.default_options, kwargs)
         contents = []
         for message in messages:
             role = "model" if message.get("role") == "assistant" else "user"
@@ -608,6 +663,8 @@ class GoogleGeminiProvider:
                     candidates = data.get("candidates") or []
                     if not candidates:
                         return ""
+                    if candidates[0].get("finishReason") == "MAX_TOKENS":
+                        raise _truncation_error(self.model, opts)
                     parts = candidates[0].get("content", {}).get("parts", [])
                     return "\n".join(str(part.get("text", "")) for part in parts)
             except Exception as exc:
@@ -626,7 +683,7 @@ class GoogleGeminiProvider:
 
     async def generate_vision(self, system: str, user: str, images_b64: list[str], **kwargs) -> str:
         import httpx
-        opts = {**self.default_options, **kwargs}
+        opts = _merge_call_options(self.default_options, kwargs)
         parts: list[dict[str, Any]] = [{"text": f"{system}\n\n{user}"}]
         for image in images_b64:
             parts.append({"inline_data": {"mime_type": "image/png", "data": image}})
@@ -646,6 +703,8 @@ class GoogleGeminiProvider:
                     resp = await client.post(url, headers={"x-goog-api-key": self.api_key}, json=payload)
                     resp.raise_for_status()
                     candidates = resp.json().get("candidates") or []
+                    if candidates and candidates[0].get("finishReason") == "MAX_TOKENS":
+                        raise _truncation_error(self.model, opts)
                     parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
                     return "\n".join(str(part.get("text", "")) for part in parts)
             except Exception as exc:
@@ -669,7 +728,7 @@ class HuggingFaceInferenceProvider:
 
     async def acomplete(self, prompt: str, **kwargs) -> str:
         import httpx
-        opts = {**self.default_options, **kwargs}
+        opts = _merge_call_options(self.default_options, kwargs)
         parameters = {
             "temperature": opts.get("temperature"),
             "max_new_tokens": opts.get("max_tokens"),

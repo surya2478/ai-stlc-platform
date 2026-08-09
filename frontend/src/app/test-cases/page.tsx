@@ -63,7 +63,7 @@ import { JourneyGraphView } from "./JourneyGraphView";
 import { TestCaseApprovalView } from "./TestCaseApprovalView";
 import { useAIAction } from "@/hooks/useAIAction";
 import { AI_PROCESSING_STAGES } from "@/lib/ai-processing-stages";
-import { terminalAIStatus } from "@/lib/ai-processing-status";
+import { agentRunErrorCategory, terminalAIStatus } from "@/lib/ai-processing-status";
 
 // "path" leads: "why won't this run yet?" is the question a reader arrives
 // with. It is a tab rather than a banner so it does not push the rest of the
@@ -1104,7 +1104,7 @@ function TestCasesContent() {
           if (terminalStatus) {
             const message = run.error_message || "Test case generation failed.";
             setNotice("");
-            updateAIProcessing({ status: terminalStatus, currentStage: run.status, errorCategory: "AI processing failed", errorMessage: message });
+            updateAIProcessing({ status: terminalStatus, currentStage: run.status, errorCategory: agentRunErrorCategory(message), errorMessage: message });
             await loadData();
             throw new Error(message);
           }
