@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -32,12 +32,14 @@ import {
   SlidersHorizontal,
   Sparkles,
   Target,
+  TerminalSquare,
   TestTube2,
   Users,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { navigationApi } from "@/lib/api";
 
 type NavItem = {
   label: string;
@@ -98,6 +100,33 @@ const NAV_ITEMS: NavGroup[] = [
     ],
   },
   {
+    // Separate module. Visible only to the Test_Automation_Users global role
+    // and to platform admins — the server decides via /users/me/navigation and
+    // this list is filtered against its answer, so the group never renders for
+    // a role whose requests the backend would 404 anyway.
+    group: "Test Automation Studio",
+    icon: TerminalSquare,
+    defaultExpanded: true,
+    dividerBefore: true,
+    items: [
+      {
+        label: "Requirement Coverage Assessment",
+        href: "/test-automation-studio?view=coverage",
+        icon: FileText,
+      },
+      {
+        label: "Automation TC Coverage",
+        href: "/test-automation-studio?view=test-cases",
+        icon: TestTube2,
+      },
+      {
+        label: "Automation Script Lab",
+        href: "/test-automation-studio?view=script-lab",
+        icon: Cpu,
+      },
+    ],
+  },
+  {
     group: "Operations",
     icon: Activity,
     dividerBefore: true,
@@ -135,6 +164,14 @@ const NAV_ITEMS: NavGroup[] = [
     ],
   },
 ];
+
+// Which groups render before the server has answered. Everything except the
+// Test Automation Studio: showing the studio optimistically would flash a
+// module at users who may not have it, and hiding the rest would blank the
+// sidebar for the majority on every page load.
+const DEFAULT_VISIBLE_GROUPS = NAV_ITEMS.map((group) => group.group).filter(
+  (group) => group !== "Test Automation Studio",
+);
 
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-items";
 // Versioned so the new compact information architecture gets its intended
@@ -184,6 +221,31 @@ function SidebarContent() {
   const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(DEFAULT_EXPANDED_GROUPS);
+  const [visibleGroups, setVisibleGroups] = useState<string[]>(DEFAULT_VISIBLE_GROUPS);
+
+  useEffect(() => {
+    let active = true;
+    navigationApi
+      .get()
+      .then((response) => {
+        if (active && Array.isArray(response.data?.nav_groups)) {
+          setVisibleGroups(response.data.nav_groups);
+        }
+      })
+      .catch(() => {
+        // An unreachable or older backend leaves the default in place: today's
+        // menu, without the new module. Failing closed on the studio and open
+        // on everything else keeps the sidebar usable during an outage.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const navItems = useMemo(
+    () => NAV_ITEMS.filter((group) => visibleGroups.includes(group.group)),
+    [visibleGroups],
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -214,7 +276,7 @@ function SidebarContent() {
     setExpanded((previous) => {
       const next = { ...previous };
       let changed = false;
-      for (const group of NAV_ITEMS) {
+      for (const group of navItems) {
         for (const item of group.items) {
           if (item.children && isParentActive(pathname, currentQuery, item) && !next[item.href]) {
             next[item.href] = true;
@@ -225,7 +287,7 @@ function SidebarContent() {
       if (changed) localStorage.setItem(EXPANDED_STORAGE_KEY, JSON.stringify(next));
       return changed ? next : previous;
     });
-  }, [pathname, currentQuery, mounted]);
+  }, [pathname, currentQuery, mounted, navItems]);
 
   const toggleCollapse = () => {
     const next = !collapsed;
@@ -289,7 +351,7 @@ function SidebarContent() {
 
       <nav aria-label="Primary navigation" className="relative z-10 min-h-0 flex-1 overflow-y-auto px-3 py-4 no-scrollbar">
         <div className="space-y-1">
-          {NAV_ITEMS.map((group) => {
+          {navItems.map((group) => {
             const groupActive = isGroupActive(pathname, currentQuery, group);
             const groupExpanded = isGroupExpanded(group.group);
             const groupId = `navgroup-${group.group.replace(/\s+/g, "-").toLowerCase()}`;

@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     applications, reviews, playwright_studio, mcp_connections, video,
     grounded_poc, automation_classification, discovery, taxonomy, application_models, network_events,
     automation_suites, recorder, automation_assets, suite_executions,
+    test_automation_studio,
 )
 
 api_router = APIRouter()
@@ -88,3 +89,11 @@ api_router.include_router(
     suite_executions.router, prefix="/lab/suite-executions", tags=["Suite Execution"]
 )
 
+# Test Automation Studio (separate module) — isolated namespace; every route
+# 404s unless TEST_AUTOMATION_STUDIO_ENABLED=true, and additionally 404s for
+# any global role outside admin / Test_Automation_Users.
+api_router.include_router(
+    test_automation_studio.router,
+    prefix="/lab/test-automation-studio",
+    tags=["Test Automation Studio"],
+)

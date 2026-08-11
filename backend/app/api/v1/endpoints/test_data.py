@@ -68,10 +68,15 @@ async def _serialize_item(db, current_user, item: TestData) -> TestDataOut:
         version=item.version,
         tags=item.tags,
         template_id=item.template_id,
-        linked_requirement_id=item.linked_requirement_id,
+        # The API contract exposes these links as `linked_*`, but the columns
+        # they map to are named without the prefix. The write paths already
+        # translate (see test_data_import_service / test_data_generation_service);
+        # reading them straight off the model raised AttributeError and made
+        # every list/detail response 500 as soon as a project had one row.
+        linked_requirement_id=item.requirement_id,
         linked_requirement_key=item.linked_requirement_key,
-        linked_test_case_id=item.linked_test_case_id,
-        linked_execution_run_id=item.linked_execution_run_id,
+        linked_test_case_id=item.test_case_id,
+        linked_execution_run_id=item.execution_run_id,
         linked_jira_issue_key=item.linked_jira_issue_key,
         linked_jira_url=item.linked_jira_url,
         linked_defect_id=item.linked_defect_id,

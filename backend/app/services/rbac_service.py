@@ -9,6 +9,14 @@ from app.models.user import User
 
 Permission = str
 
+# The Test Automation Studio role. One string used in two places, which is
+# why it is a constant rather than a literal: it is a *global* role on
+# `users.role` (it decides which navigation groups the user sees) and a
+# *project* role in ROLE_PERMISSIONS (it decides what they may do inside a
+# project). Assigning it in one place without the other leaves a user who can
+# see the studio but cannot act in it, or vice versa.
+TEST_AUTOMATION_USER_ROLE = "Test_Automation_Users"
+
 VIEW_PROJECT = "view_project"
 MANAGE_PROJECT = "manage_project"
 SYNC_JIRA = "sync_jira"
@@ -212,6 +220,37 @@ _GRANULAR_RECORDER_PERMISSIONS: frozenset[str] = frozenset(
     }
 )
 
+# ─── Test Automation Studio (separate module) ────────────────────────────────
+# The studio's own keys. They are deliberately distinct from the AUTOMATION_*
+# and AUTOMATION_ASSET_* families above: those govern the existing AI
+# Automation Studio's assets, and a deployment must be able to grant somebody
+# the new studio without also handing them the old one.
+TAS_VIEW = "tas.view"
+TAS_INTAKE = "tas.intake"
+TAS_ASSESS_COVERAGE = "tas.assess_coverage"
+TAS_APPROVE_REQUIREMENT = "tas.approve_requirement"
+TAS_REFINE_TEST_CASES = "tas.refine_test_cases"
+TAS_CLASSIFY = "tas.classify"
+TAS_APPROVE_TEST_CASE = "tas.approve_test_case"
+TAS_GENERATE_SCRIPT = "tas.generate_script"
+TAS_EDIT_SCRIPT = "tas.edit_script"
+TAS_EXPORT = "tas.export"
+
+_GRANULAR_TAS_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        TAS_VIEW,
+        TAS_INTAKE,
+        TAS_ASSESS_COVERAGE,
+        TAS_APPROVE_REQUIREMENT,
+        TAS_REFINE_TEST_CASES,
+        TAS_CLASSIFY,
+        TAS_APPROVE_TEST_CASE,
+        TAS_GENERATE_SCRIPT,
+        TAS_EDIT_SCRIPT,
+        TAS_EXPORT,
+    }
+)
+
 _GRANULAR_AUTOMATION_SUITE_PERMISSIONS: frozenset[str] = frozenset(
     {
         AUTOMATION_SUITE_VIEW,
@@ -266,6 +305,7 @@ GRANULAR_PERMISSIONS: frozenset[str] = (
     | _GRANULAR_AUTOMATION_SUITE_PERMISSIONS
     | _GRANULAR_RECORDER_PERMISSIONS
     | _GRANULAR_AUTOMATION_ASSET_PERMISSIONS
+    | _GRANULAR_TAS_PERMISSIONS
 )
 
 ALL_PERMISSIONS: frozenset[Permission] = frozenset(
@@ -314,6 +354,10 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             AUTOMATION_SUITE_VIEW, AUTOMATION_SUITE_EXPORT, AUTOMATION_SUITE_VIEW_AUDIT,
             RECORDER_VIEW,
             AUTOMATION_ASSET_VIEW,
+            # Reading the studio is reading project artifacts. Everything that
+            # changes state in it needs one of the branches below.
+            TAS_VIEW,
+            TAS_EXPORT,
         })
     if GENERATE_AUTOMATION in base:
         extra.update({
@@ -357,6 +401,17 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             AUTOMATION_ASSET_EDIT_IR,
             AUTOMATION_ASSET_COMPILE,
             AUTOMATION_ASSET_DRY_RUN,
+            # Test Automation Studio authoring: uploading intake documents,
+            # running the coverage assessment, refining test cases and
+            # generating/editing scripts are all engineering work producing
+            # unapproved drafts. The approval gates ride with the branches
+            # below instead.
+            TAS_INTAKE,
+            TAS_ASSESS_COVERAGE,
+            TAS_REFINE_TEST_CASES,
+            TAS_CLASSIFY,
+            TAS_GENERATE_SCRIPT,
+            TAS_EDIT_SCRIPT,
         })
     if APPROVE_TEST_CASES in base:
         extra.update({
@@ -379,7 +434,15 @@ def _expand_role_permissions(base: frozenset[Permission]) -> frozenset[Permissio
             AUTOMATION_ASSET_ACCEPT_EXCEPTION,
             AUTOMATION_ASSET_FINAL_APPROVE,
             AUTOMATION_ASSET_OVERRIDE_AUTONOMY,
+            # Approving a refined test case in the studio is the same class of
+            # decision as approving a test case anywhere else.
+            TAS_APPROVE_TEST_CASE,
         })
+    if APPROVE_REQUIREMENTS in base:
+        # Screen 1's bulk approve promotes studio requirements into the
+        # generation flow, so it rides with requirement approval rather than
+        # with test-case approval.
+        extra.add(TAS_APPROVE_REQUIREMENT)
     if EXECUTE_TESTS in base:
         extra.update({EXECUTION_RUN_AUTOMATION, EXECUTION_RUN_AI_ASSISTED})
         # Pausing and gracefully stopping a run you are permitted to start is
@@ -466,6 +529,34 @@ _BASE_ROLE_PERMISSIONS: dict[str, frozenset[Permission]] = {
     "Defect Manager": frozenset({VIEW_PROJECT, VIEW_TEST_DATA, RAISE_DEFECTS, PUSH_DEFECTS_TO_JIRA, VIEW_AUDIT_LOGS}),
     "Business Analyst": frozenset({VIEW_PROJECT, VIEW_TEST_DATA, APPROVE_REQUIREMENTS}),
     "Viewer/Auditor": frozenset({VIEW_PROJECT, VIEW_AUDIT_LOGS}),
+    # The Test Automation Studio's own role. It owns the studio end to end —
+    # intake, coverage approval, test-case approval, script generation — but
+    # deliberately holds neither MANAGE_PROJECT nor EXECUTE_TESTS: this role
+    # produces automation assets, it does not administer the project or run
+    # suites against an environment.
+    #
+    # APPROVE_REQUIREMENTS and APPROVE_TEST_CASES are granted because Screens 1
+    # and 2 are approval screens and a role that cannot approve cannot use
+    # them. The coarse grants also expand (via _expand_role_permissions) into
+    # the AUTOMATION_*/AUTOMATION_ASSET_* keys, which is intended: this role is
+    # an automation role, and withholding them would leave the studio's
+    # generated assets unusable everywhere else in the platform.
+    TEST_AUTOMATION_USER_ROLE: frozenset(
+        {
+            VIEW_PROJECT,
+            APPROVE_REQUIREMENTS,
+            APPROVE_TEST_CASES,
+            VIEW_TEST_DATA,
+            CREATE_TEST_DATA,
+            EDIT_TEST_DATA,
+            GENERATE_TEST_DATA,
+            IMPORT_TEST_DATA,
+            APPROVE_TEST_DATA,
+            RESERVE_TEST_DATA,
+            CONSUME_TEST_DATA,
+            GENERATE_AUTOMATION,
+        }
+    ),
 }
 
 # Phase 5: expand every role with derived granular permissions in one place.
@@ -481,6 +572,74 @@ GLOBAL_ADMIN_ROLES = {"admin", "platform_admin", "Platform Admin"}
 
 def is_platform_admin(user: User) -> bool:
     return bool(user.is_superuser or user.role in GLOBAL_ADMIN_ROLES)
+
+
+# ─── Navigation visibility ───────────────────────────────────────────────────
+# Which sidebar groups a global role may see. The frontend renders from this
+# rather than deciding for itself, so hiding a group is a server decision that
+# a modified client cannot undo — and so the rule lives next to the role that
+# motivates it.
+#
+# These are the group labels in frontend/src/components/layout/Sidebar.tsx.
+# A label added there must be added here too, or it will not render for
+# anyone.
+NAV_GROUP_OVERVIEW = "Overview"
+NAV_GROUP_PLANNING = "AI Planning & Test Lab"
+NAV_GROUP_AUTOMATION_LAB = "AI Automation Lab"
+NAV_GROUP_EXECUTION_LAB = "AI Execution Lab"
+NAV_GROUP_TEST_AUTOMATION_STUDIO = "Test Automation Studio"
+NAV_GROUP_OPERATIONS = "Operations"
+NAV_GROUP_KNOWLEDGE_BASE = "RAG & Knowledge Base"
+NAV_GROUP_SETTINGS = "Settings"
+NAV_GROUP_OTHERS = "Others"
+
+ALL_NAV_GROUPS: tuple[str, ...] = (
+    NAV_GROUP_OVERVIEW,
+    NAV_GROUP_PLANNING,
+    NAV_GROUP_AUTOMATION_LAB,
+    NAV_GROUP_EXECUTION_LAB,
+    NAV_GROUP_TEST_AUTOMATION_STUDIO,
+    NAV_GROUP_OPERATIONS,
+    NAV_GROUP_KNOWLEDGE_BASE,
+    NAV_GROUP_SETTINGS,
+    NAV_GROUP_OTHERS,
+)
+
+# The studio role's whole surface: its own studio, plus the three groups the
+# requirement names. Notably absent are the Planning, Automation Lab and
+# Execution Lab groups — this role works in the studio, not in the classic
+# lifecycle screens.
+_TEST_AUTOMATION_USER_NAV_GROUPS: tuple[str, ...] = (
+    NAV_GROUP_TEST_AUTOMATION_STUDIO,
+    NAV_GROUP_OPERATIONS,
+    NAV_GROUP_SETTINGS,
+    NAV_GROUP_OTHERS,
+)
+
+# Everyone who is neither an admin nor a studio user keeps exactly today's
+# menu: every group except the new one.
+_DEFAULT_NAV_GROUPS: tuple[str, ...] = tuple(
+    group for group in ALL_NAV_GROUPS if group != NAV_GROUP_TEST_AUTOMATION_STUDIO
+)
+
+
+def navigation_groups_for_user(user: User) -> list[str]:
+    """Sidebar groups this user may see, in ALL_NAV_GROUPS order."""
+    if is_platform_admin(user):
+        return list(ALL_NAV_GROUPS)
+    if user.role == TEST_AUTOMATION_USER_ROLE:
+        return list(_TEST_AUTOMATION_USER_NAV_GROUPS)
+    return list(_DEFAULT_NAV_GROUPS)
+
+
+def can_access_test_automation_studio(user: User) -> bool:
+    """Whether the studio's routes are reachable for this user at all.
+
+    Project-level `tas.*` permissions still gate each individual action; this
+    is the coarse gate that keeps the module invisible to roles that have no
+    business in it.
+    """
+    return is_platform_admin(user) or user.role == TEST_AUTOMATION_USER_ROLE
 
 
 async def get_project_membership(

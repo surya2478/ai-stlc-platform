@@ -18,9 +18,13 @@ settings = get_settings()
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.rbac_service import (
+    ALL_NAV_GROUPS,
     GLOBAL_ADMIN_ROLES,
     MANAGE_PROJECT,
+    TEST_AUTOMATION_USER_ROLE,
+    can_access_test_automation_studio,
     list_user_memberships,
+    navigation_groups_for_user,
     permissions_for_role,
     user_has_permission,
 )
@@ -29,7 +33,7 @@ from app.core import audit_logger as audit
 
 router = APIRouter()
 
-GLOBAL_ROLES = ["admin", "qa_engineer", "qa_lead", "viewer"]
+GLOBAL_ROLES = ["admin", "qa_engineer", "qa_lead", "viewer", TEST_AUTOMATION_USER_ROLE]
 logger = logging.getLogger(__name__)
 
 # In-memory account lockout tracker: {username: {"attempts": int, "lockout_until": datetime}}
@@ -370,3 +374,23 @@ async def refresh_session(request: Request, response: Response, db: DBSession):
 @router.get("/me", response_model=UserRead)
 async def get_me(current_user: CurrentUser):
     return current_user
+
+
+@router.get("/me/navigation")
+async def get_my_navigation(current_user: CurrentUser):
+    """Which sidebar groups this user may see.
+
+    The sidebar renders from this rather than deciding locally, so a client
+    that ignores the rule still cannot reach a hidden module's data — the
+    module's own routes enforce the same check.
+    """
+    return {
+        "global_role": current_user.role,
+        "is_platform_admin": bool(current_user.is_superuser or current_user.role in GLOBAL_ADMIN_ROLES),
+        "nav_groups": navigation_groups_for_user(current_user),
+        "all_nav_groups": list(ALL_NAV_GROUPS),
+        "test_automation_studio_enabled": settings.test_automation_studio_enabled,
+        "can_access_test_automation_studio": (
+            settings.test_automation_studio_enabled and can_access_test_automation_studio(current_user)
+        ),
+    }

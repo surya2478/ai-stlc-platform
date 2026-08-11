@@ -33,6 +33,10 @@ const GLOBAL_ROLES = [
   { value: "qa_engineer", label: "QA Engineer" },
   { value: "qa_lead", label: "QA Lead" },
   { value: "viewer", label: "Viewer/Auditor" },
+  // Sees only the Test Automation Studio, Operations, Settings and Others
+  // navigation groups. Assign the matching project role of the same name too,
+  // or the user reaches the studio with no permission to act in it.
+  { value: "Test_Automation_Users", label: "Test Automation User" },
 ];
 
 const PASSWORD_HINT = "Use 8-72 characters. Bcrypt rejects passwords longer than 72 bytes.";

@@ -111,3 +111,12 @@ from app.models.recording_session import (  # noqa: F401
 )
 
 
+from app.models.test_automation_studio import (  # noqa: F401
+    TasIntakeBatch,
+    TasIntakeDocument,
+    TasCoverageAssessment,
+    TasDerivedRequirement,
+    TasSourceTestCase,
+    TasRefinedTestCase,
+    TasScriptAsset,
+)

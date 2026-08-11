@@ -1,5 +1,10 @@
 .env
-# Allow environment templates (no real secrets — see .env.development/staging/production)
+# `.env` alone did not cover a copy of it. A `.env.backup-<timestamp>` sitting
+# in the working tree was untracked but committable, so a blanket `git add`
+# would have published the real API keys, database password and JIRA token it
+# holds. Anything derived from .env is ignored, and the templates are then
+# allowed back explicitly.
+.env.*
 !.env.development
 !.env.staging
 !.env.production

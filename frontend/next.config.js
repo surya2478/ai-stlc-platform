@@ -13,6 +13,10 @@ const nextConfig = {
   output: "standalone",
   optimizeFonts: false,
   skipTrailingSlashRedirect: true,
+  // Hides the floating "N" dev tools button Next 15 shows in `next dev`. It
+  // never rendered in a production build; this just keeps it out of the way
+  // while working on the app's own chrome.
+  devIndicators: false,
   async headers() {
     return [
       {

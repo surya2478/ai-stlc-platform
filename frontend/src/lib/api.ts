@@ -5848,3 +5848,563 @@ export const suiteExecutionApi = {
       responseType: "blob",
     }),
 };
+
+// â”€â”€ Test Automation Studio â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// A separate module: its own /lab/test-automation-studio namespace, its own
+// tas_* tables, and no overlap with the Requirements / Test Cases / Automation
+// clients above. Every route 404s when the module is disabled or when the
+// caller's global role is outside admin / Test_Automation_Users.
+
+const TAS_BASE = "/lab/test-automation-studio";
+
+export type TasDocRole = "brd" | "srd" | "test_cases" | "other";
+export type TasApprovalStatus = "draft" | "pending_approval" | "approved" | "rejected";
+export type TasCoverageState = "covered" | "partially_covered" | "uncovered";
+export type TasClassification = "automation" | "manual" | "undecided";
+export type TasTestDataStatus =
+  | "not_required"
+  | "agent_provided"
+  | "needs_user_action"
+  | "user_provided";
+export type TasFramework = "playwright" | "katalon" | "appium";
+
+export const TAS_FRAMEWORKS: TasFramework[] = ["playwright", "katalon", "appium"];
+
+export const TAS_FRAMEWORK_LABELS: Record<TasFramework, string> = {
+  playwright: "Playwright",
+  katalon: "Katalon",
+  appium: "Appium",
+};
+
+export interface TasIntakeDocument {
+  id: number;
+  batch_id: number;
+  document_id: number;
+  doc_role: TasDocRole;
+  extraction_status: string;
+  extraction_error?: string | null;
+  /** The uploaded document's own status. Extraction is a background job, so a
+   *  just-uploaded document is attached but not yet assessable. */
+  document_status: string;
+  text_available: boolean;
+  ready_for_assessment: boolean;
+  extracted_requirement_count: number;
+  extracted_test_case_count: number;
+  original_filename?: string | null;
+  file_type?: string | null;
+  file_size_bytes?: number | null;
+  created_at: string;
+}
+
+export interface TasIntakeBatch {
+  id: number;
+  project_id: number;
+  name: string;
+  description?: string | null;
+  application_id?: number | null;
+  application_url?: string | null;
+  application_environment: string;
+  status: string;
+  status_error?: string | null;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+  documents: TasIntakeDocument[];
+}
+
+export interface TasCoverageAssessment {
+  id: number;
+  project_id: number;
+  batch_id: number;
+  version: number;
+  is_current: boolean;
+  status: string;
+  error?: string | null;
+  total_requirements: number;
+  covered_requirements: number;
+  partially_covered_requirements: number;
+  uncovered_requirements: number;
+  existing_test_case_count: number;
+  derived_requirement_count: number;
+  coverage_percent: number;
+  coverage_rows: Array<Record<string, unknown>>;
+  extracted_test_cases: Array<Record<string, unknown>>;
+  gap_summary: Record<string, unknown>;
+  agent_run_id?: number | null;
+  created_at: string;
+}
+
+export interface TasDerivedRequirement {
+  id: number;
+  project_id: number;
+  batch_id: number;
+  assessment_id?: number | null;
+  requirement_key: string;
+  title: string;
+  summary?: string | null;
+  acceptance_criteria: string[];
+  business_rules: string[];
+  ui_pages: string[];
+  apis: string[];
+  test_data_needs: string[];
+  origin: "extracted" | "derived";
+  coverage_state: TasCoverageState;
+  gap_reason?: string | null;
+  source_refs: string[];
+  covering_test_case_refs: string[];
+  automation_relevance?: string | null;
+  priority: string;
+  status: TasApprovalStatus;
+  decision_reason?: string | null;
+  approved_by?: number | null;
+  approved_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TasRefinedStep {
+  step_number: number;
+  action: string;
+  target?: string | null;
+  test_data_ref?: string | null;
+  expected_result?: string | null;
+}
+
+export interface TasTestDataRequirement {
+  key: string;
+  description?: string | null;
+  example_value?: string | null;
+  sensitive?: boolean;
+  resolution: "agent_generated" | "existing_record" | "user_required";
+  test_data_id?: number | null;
+}
+
+/** A test case read off an uploaded test case document, ID and name verbatim. */
+export interface TasSourceTestCase {
+  id: number;
+  project_id: number;
+  batch_id: number;
+  assessment_id?: number | null;
+  tc_display_id: string;
+  title: string;
+  summary?: string | null;
+  steps: string[];
+  source_document_id?: number | null;
+  source_ref?: string | null;
+  matched_platform_test_case_id?: number | null;
+  covers_requirement_ids: number[];
+  refined_test_case_id?: number | null;
+  refined_status?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TasRefinedTestCase {
+  id: number;
+  project_id: number;
+  batch_id?: number | null;
+  derived_requirement_id?: number | null;
+  source_test_case_id?: number | null;
+  source_uploaded_test_case_id?: number | null;
+  origin: "existing" | "imported" | "derived";
+  tc_display_id: string;
+  title: string;
+  objective?: string | null;
+  preconditions: string[];
+  steps: TasRefinedStep[];
+  expected_result?: string | null;
+  bdd_scenario?: string | null;
+  application_id?: number | null;
+  application_url?: string | null;
+  priority: string;
+  test_type?: string | null;
+  classification: TasClassification;
+  classification_source?: string | null;
+  classification_reason?: string | null;
+  manual_only_reasons: Array<Record<string, unknown>>;
+  test_data_required: boolean;
+  test_data_status: TasTestDataStatus;
+  test_data_notes?: string | null;
+  test_data_requirements: TasTestDataRequirement[];
+  test_data_ids: number[];
+  status: TasApprovalStatus;
+  decision_reason?: string | null;
+  approved_by?: number | null;
+  approved_at?: string | null;
+  version: number;
+  is_current: boolean;
+  edited_by_user: boolean;
+  agent_run_id?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TasScriptAsset {
+  id: number;
+  project_id: number;
+  refined_test_case_id: number;
+  framework: TasFramework;
+  language: string;
+  script_key: string;
+  code: string;
+  files: Record<string, string>;
+  execution_command?: string | null;
+  setup_notes: string[];
+  status: string;
+  version: number;
+  is_current: boolean;
+  edited_by_user: boolean;
+  generation_error?: string | null;
+  agent_run_id?: number | null;
+  created_at: string;
+  updated_at: string;
+  test_case_display_id?: string | null;
+  test_case_title?: string | null;
+}
+
+export interface TasStudioSummary {
+  batches: number;
+  requirements_pending: number;
+  requirements_approved: number;
+  test_cases_total: number;
+  test_cases_pending: number;
+  test_cases_approved: number;
+  test_cases_automation: number;
+  test_cases_manual: number;
+  test_cases_needing_test_data: number;
+  scripts_total: number;
+  scripts_by_framework: Record<string, number>;
+}
+
+export interface TasSkipped {
+  requirement_key?: string | null;
+  test_case_id?: number | string | null;
+  tc_display_id?: string | null;
+  reason?: string | null;
+}
+
+export interface TasBlocked {
+  test_case_id: number;
+  tc_display_id: string;
+  code: string;
+  message: string;
+}
+
+/** Acknowledgement for a queued studio job.
+ *
+ *  The three heavy studio operations return this instead of their results:
+ *  each runs one or more LLM calls over minutes, which no HTTP hop will hold
+ *  open. Poll the agent run, then re-read the screen's own list endpoint. */
+export interface TasJob {
+  agent_run_id: number;
+  task_id?: string | null;
+  status: string;
+  message: string;
+}
+
+/** Progress of a queued studio job. */
+export interface TasJobStatus {
+  agent_run_id: number;
+  agent_name: string;
+  status: string;
+  progress_percent: number;
+  progress_message?: string | null;
+  error_message?: string | null;
+  output_data?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  /** Server-decided: true once the run has stopped, whatever the outcome.
+   *  Polling stops on this rather than on a status list held here, so a status
+   *  the client has never heard of ends the poll instead of spinning. */
+  finished: boolean;
+}
+
+export interface TasJobProgress {
+  status: string;
+  percent: number;
+  message: string;
+}
+
+/** Poll a queued studio job until it stops, reporting progress as it goes.
+ *
+ *  Resolves with the finished job rather than throwing when it failed: a job
+ *  that died after generating three of ten scripts still changed the project,
+ *  so the caller must refresh and then report, not just report. */
+export async function waitForTasJob(
+  agentRunId: number,
+  onProgress?: (progress: TasJobProgress) => void,
+  options?: { intervalMs?: number; timeoutMs?: number },
+): Promise<TasJobStatus> {
+  const intervalMs = options?.intervalMs ?? 2000;
+  // Generous: a full wave is one LLM call per item. The server-side per-run
+  // limit bounds this well below the ceiling.
+  const timeoutMs = options?.timeoutMs ?? 30 * 60 * 1000;
+  const deadline = Date.now() + timeoutMs;
+  // A dropped poll is a blip; repeated failures mean the job is unreachable
+  // and pretending otherwise spins the UI forever.
+  const maxConsecutiveErrors = 5;
+  let consecutiveErrors = 0;
+  let last: TasJobStatus | null = null;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    try {
+      const job = (await testAutomationStudioApi.jobStatus(agentRunId)).data;
+      consecutiveErrors = 0;
+      last = job;
+      onProgress?.({
+        status: job.status,
+        percent: job.progress_percent ?? 0,
+        message: job.progress_message ?? "",
+      });
+      if (job.finished) return job;
+    } catch {
+      consecutiveErrors += 1;
+      if (consecutiveErrors >= maxConsecutiveErrors) {
+        throw new Error(
+          `Lost contact with job ${agentRunId}. It may still be running - refresh in a moment.`,
+        );
+      }
+    }
+  }
+
+  throw new Error(
+    `Job ${agentRunId} did not finish within ${Math.round(timeoutMs / 60000)} minutes. ` +
+      `Last status: ${last?.progress_message ?? last?.status ?? "unknown"}.`,
+  );
+}
+
+export interface TasNavigation {
+  global_role: string;
+  is_platform_admin: boolean;
+  nav_groups: string[];
+  all_nav_groups: string[];
+  test_automation_studio_enabled: boolean;
+  can_access_test_automation_studio: boolean;
+}
+
+/** Server-decided sidebar visibility. The sidebar renders from this rather
+ *  than inferring from a locally cached role, so a stale login profile cannot
+ *  reveal a module the server would refuse anyway. */
+export const navigationApi = {
+  get: () => api.get<TasNavigation>("/users/me/navigation"),
+};
+
+export const testAutomationStudioApi = {
+  summary: (projectId: number) =>
+    api.get<TasStudioSummary>(`${TAS_BASE}/projects/${projectId}/summary`),
+  frameworks: () => api.get<{ frameworks: TasFramework[] }>(`${TAS_BASE}/frameworks`),
+  /** Progress of a queued job. Not the platform's /agent-runs/{id}: that is
+   *  gated on VIEW_AUDIT_LOGS, which the studio role does not hold. */
+  jobStatus: (agentRunId: number) =>
+    api.get<TasJobStatus>(`${TAS_BASE}/jobs/${agentRunId}`),
+
+  // Screen 1 â€” Requirement Coverage Assessment
+  listBatches: (projectId: number) =>
+    api.get<TasIntakeBatch[]>(`${TAS_BASE}/projects/${projectId}/batches`),
+  createBatch: (
+    projectId: number,
+    body: {
+      name: string;
+      description?: string;
+      application_id?: number | null;
+      application_url?: string | null;
+      application_environment?: string;
+    },
+  ) => api.post<TasIntakeBatch>(`${TAS_BASE}/projects/${projectId}/batches`, body),
+  getBatch: (batchId: number) => api.get<TasIntakeBatch>(`${TAS_BASE}/batches/${batchId}`),
+  updateBatch: (
+    batchId: number,
+    body: {
+      name?: string;
+      description?: string;
+      application_id?: number | null;
+      application_url?: string | null;
+      application_environment?: string;
+    },
+  ) => api.patch<TasIntakeBatch>(`${TAS_BASE}/batches/${batchId}`, body),
+  deleteBatch: (batchId: number) => api.delete(`${TAS_BASE}/batches/${batchId}`),
+  /** Upload one document straight into a batch.
+   *
+   *  Deliberately not documentsApi.upload: that route is gated on
+   *  MANAGE_PROJECT, which Test_Automation_Users does not hold. This one is
+   *  gated on tas.intake and runs the same storage and extraction pipeline. */
+  uploadDocument: (batchId: number, file: File, docRole: TasDocRole) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<TasIntakeBatch>(
+      `${TAS_BASE}/batches/${batchId}/upload?doc_role=${docRole}`,
+      form,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+  },
+  /** Attach documents already uploaded elsewhere in the platform. */
+  attachDocuments: (
+    batchId: number,
+    documents: Array<{ document_id: number; doc_role: TasDocRole }>,
+  ) => api.post<TasIntakeBatch>(`${TAS_BASE}/batches/${batchId}/documents`, { documents }),
+  setDocumentRole: (batchId: number, linkId: number, docRole: TasDocRole) =>
+    api.patch<TasIntakeBatch>(
+      `${TAS_BASE}/batches/${batchId}/documents/${linkId}?doc_role=${docRole}`,
+    ),
+  detachDocument: (batchId: number, linkId: number) =>
+    api.delete<TasIntakeBatch>(`${TAS_BASE}/batches/${batchId}/documents/${linkId}`),
+  assessCoverage: (
+    batchId: number,
+    body: {
+      application_id?: number | null;
+      application_url?: string | null;
+      application_environment?: string | null;
+      derive_gap_requirements?: boolean;
+    },
+  ) => api.post<TasJob>(`${TAS_BASE}/batches/${batchId}/assess`, body),
+  /**
+   * Reads the uploaded test cases into refinable rows without assessing
+   * coverage. Needs only a `test_cases` document — no BRD or SRD.
+   */
+  extractTestCases: (batchId: number) =>
+    api.post<TasJob>(`${TAS_BASE}/batches/${batchId}/extract-test-cases`),
+  getAssessment: (batchId: number) =>
+    api.get<TasCoverageAssessment | null>(`${TAS_BASE}/batches/${batchId}/assessment`),
+  listRequirements: (projectId: number, params?: { batch_id?: number; status?: string[] }) => {
+    const query = new URLSearchParams();
+    if (params?.batch_id != null) query.set("batch_id", String(params.batch_id));
+    for (const value of params?.status ?? []) query.append("status", value);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api.get<TasDerivedRequirement[]>(
+      `${TAS_BASE}/projects/${projectId}/requirements${suffix}`,
+    );
+  },
+  updateRequirement: (
+    requirementId: number,
+    body: {
+      title?: string;
+      summary?: string;
+      acceptance_criteria?: string[];
+      priority?: string;
+      automation_relevance?: string;
+    },
+  ) => api.patch<TasDerivedRequirement>(`${TAS_BASE}/requirements/${requirementId}`, body),
+  decideRequirements: (
+    projectId: number,
+    body: { requirement_ids: number[]; decision: "approve" | "reject"; reason?: string },
+  ) =>
+    api.post<TasDerivedRequirement[]>(
+      `${TAS_BASE}/projects/${projectId}/requirements/decide`,
+      body,
+    ),
+
+  // Screen 2 â€” Automation TC Coverage Assessment
+  listSourceTestCases: (projectId: number, params?: { batch_id?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.batch_id != null) query.set("batch_id", String(params.batch_id));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api.get<TasSourceTestCase[]>(
+      `${TAS_BASE}/projects/${projectId}/source-test-cases${suffix}`,
+    );
+  },
+  /**
+   * Two entry points, at least one required. `source_test_case_ids` refines
+   * uploaded test cases in place, keeping their ID and name;
+   * `requirement_ids` creates new test cases for coverage gaps.
+   */
+  generateTestCases: (
+    projectId: number,
+    body: {
+      requirement_ids?: number[];
+      source_test_case_ids?: number[];
+      application_id?: number | null;
+      application_environment?: string | null;
+      include_existing_test_cases?: boolean;
+      regenerate?: boolean;
+    },
+  ) => api.post<TasJob>(`${TAS_BASE}/projects/${projectId}/test-cases/generate`, body),
+  listTestCases: (
+    projectId: number,
+    params?: { batch_id?: number; status?: string[]; classification?: string[] },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.batch_id != null) query.set("batch_id", String(params.batch_id));
+    for (const value of params?.status ?? []) query.append("status", value);
+    for (const value of params?.classification ?? []) query.append("classification", value);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api.get<TasRefinedTestCase[]>(
+      `${TAS_BASE}/projects/${projectId}/test-cases${suffix}`,
+    );
+  },
+  getTestCase: (testCaseId: number) =>
+    api.get<TasRefinedTestCase>(`${TAS_BASE}/test-cases/${testCaseId}`),
+  updateTestCase: (testCaseId: number, body: Partial<TasRefinedTestCase>) =>
+    api.patch<TasRefinedTestCase>(`${TAS_BASE}/test-cases/${testCaseId}`, body),
+  bulkClassify: (
+    projectId: number,
+    body: { test_case_ids: number[]; classification?: TasClassification; reason?: string },
+  ) =>
+    api.post<{
+      updated: TasRefinedTestCase[];
+      policy_id?: number | null;
+      policy_version?: number | null;
+      unresolved: Array<Record<string, unknown>>;
+    }>(`${TAS_BASE}/projects/${projectId}/test-cases/classify`, body),
+  decideTestCases: (
+    projectId: number,
+    body: { test_case_ids: number[]; decision: "approve" | "reject"; reason?: string },
+  ) =>
+    api.post<{ updated: TasRefinedTestCase[]; blocked: TasBlocked[] }>(
+      `${TAS_BASE}/projects/${projectId}/test-cases/decide`,
+      body,
+    ),
+  reopenTestCase: (testCaseId: number) =>
+    api.post<TasRefinedTestCase>(`${TAS_BASE}/test-cases/${testCaseId}/reopen`),
+  /** Manual and Automation downloads are separate by design â€” xlsx returns a
+   *  sheet per classification, csv must name one. */
+  exportTestCasesUrl: (
+    projectId: number,
+    params: {
+      format: "xlsx" | "csv";
+      classification: "all" | "automation" | "manual";
+      batch_id?: number;
+    },
+  ) => {
+    const query = new URLSearchParams({
+      format: params.format,
+      classification: params.classification,
+    });
+    if (params.batch_id != null) query.set("batch_id", String(params.batch_id));
+    return `/api/v1${TAS_BASE}/projects/${projectId}/test-cases/export?${query.toString()}`;
+  },
+
+  // Screen 3 â€” Automation Script Lab
+  generateScripts: (
+    projectId: number,
+    body: { test_case_ids: number[]; framework: TasFramework; regenerate?: boolean },
+  ) => api.post<TasJob>(`${TAS_BASE}/projects/${projectId}/scripts/generate`, body),
+  listScripts: (
+    projectId: number,
+    params?: { framework?: TasFramework; test_case_id?: number },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.framework) query.set("framework", params.framework);
+    if (params?.test_case_id != null) query.set("test_case_id", String(params.test_case_id));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api.get<TasScriptAsset[]>(`${TAS_BASE}/projects/${projectId}/scripts${suffix}`);
+  },
+  getScript: (scriptId: number) => api.get<TasScriptAsset>(`${TAS_BASE}/scripts/${scriptId}`),
+  updateScript: (
+    scriptId: number,
+    body: {
+      code?: string;
+      files?: Record<string, string>;
+      execution_command?: string;
+      setup_notes?: string[];
+    },
+  ) => api.patch<TasScriptAsset>(`${TAS_BASE}/scripts/${scriptId}`, body),
+  decideScript: (scriptId: number, body: { decision: "approve" | "reopen"; reason?: string }) =>
+    api.post<TasScriptAsset>(`${TAS_BASE}/scripts/${scriptId}/decide`, body),
+  downloadScriptUrl: (scriptId: number) => `/api/v1${TAS_BASE}/scripts/${scriptId}/download`,
+  downloadScriptsUrl: (projectId: number, framework?: TasFramework) =>
+    `/api/v1${TAS_BASE}/projects/${projectId}/scripts/download${
+      framework ? `?framework=${framework}` : ""
+    }`,
+};
+

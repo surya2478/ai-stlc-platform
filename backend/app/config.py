@@ -458,6 +458,19 @@ class Settings(BaseSettings):
     # rejected rather than allowed to fan out unboundedly.
     automation_suite_max_members: int = 500
 
+    # ── Test Automation Studio (separate module) ─────────────────────────────
+    # Master switch: every /lab/test-automation-studio route 404s when off,
+    # same isolation pattern as automation_suite_enabled. The module owns its
+    # own tas_* tables and never writes to requirements/test_cases, so the
+    # classic Requirements, Test Cases and Automation modules behave
+    # identically whether this is on or off.
+    test_automation_studio_enabled: bool = False
+    # Bounds one intake batch. A coverage assessment reads every uploaded
+    # document in full, so an unbounded batch is an unbounded LLM spend.
+    tas_max_documents_per_batch: int = 25
+    # Bounds one refinement/generation fan-out, for the same reason.
+    tas_max_test_cases_per_run: int = 200
+
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days
     retention_rag_events_days: int = 180      # purge RAG retrieval audit events older than N days

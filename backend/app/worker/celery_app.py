@@ -21,6 +21,7 @@ celery_app = Celery(
         "app.worker.tasks.rag_tasks",
         "app.worker.tasks.retention_tasks",
         "app.worker.tasks.suite_execution_tasks",
+        "app.worker.tasks.test_automation_studio_tasks",
     ],
 )
 
