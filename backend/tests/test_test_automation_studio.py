@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import sys
 import traceback
+from datetime import datetime, timezone
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _BACKEND_ROOT = os.path.dirname(_HERE)
@@ -1431,6 +1432,115 @@ def test_a_delete_reports_what_else_it_removed():
         check("tas.delete_rejects_empty_ids", False, "an empty id list was accepted")
     except Exception:
         check("tas.delete_rejects_empty_ids", True)
+
+
+# ─── Losing the source a test case was refined from ──────────────────────────
+
+def test_a_refined_test_case_reports_when_its_source_is_gone():
+    """Both source links are SET NULL, so deletion strands the refined row.
+
+    Observed live: five refined test cases sat in a project with every source
+    link null. The grid showed them as ordinary rows, and because the
+    "already refined" check reads that same nulled column they no longer
+    counted as done — the next run would have built a second test case for
+    each. The state is legitimate and not worth blocking, but it has to be
+    visible.
+    """
+    from app.schemas.test_automation_studio import RefinedTestCaseOut
+
+    def _out(**overrides) -> RefinedTestCaseOut:
+        payload = dict(
+            id=1,
+            project_id=5,
+            origin="imported",
+            tc_display_id="TC-01",
+            title="Validate legacy redirect",
+            priority="Medium",
+            classification="automation",
+            test_data_required=False,
+            test_data_status="not_required",
+            status="approved",
+            version=1,
+            is_current=True,
+            edited_by_user=False,
+            created_at=datetime(2026, 8, 11, tzinfo=timezone.utc),
+            updated_at=datetime(2026, 8, 11, tzinfo=timezone.utc),
+        )
+        payload.update(overrides)
+        return RefinedTestCaseOut(**payload)
+
+    check(
+        "tas.source_missing_when_uploaded_row_deleted",
+        _out(source_uploaded_test_case_id=None, source_test_case_id=None).source_missing,
+        "an imported test case with no source link is not reported as orphaned",
+    )
+    check(
+        "tas.source_present_is_not_flagged",
+        not _out(source_uploaded_test_case_id=55).source_missing,
+        "a linked test case was wrongly flagged as orphaned",
+    )
+    check(
+        "tas.platform_source_present_is_not_flagged",
+        not _out(origin="existing", source_test_case_id=12).source_missing,
+        "a test case linked to a platform row was wrongly flagged",
+    )
+    # A gap-derived test case never had a source, so it is not orphaned.
+    check(
+        "tas.derived_is_never_orphaned",
+        not _out(origin="derived").source_missing,
+        "a gap-derived test case was reported as having lost a source",
+    )
+    check(
+        "tas.source_missing_is_serialised",
+        "source_missing" in _out().model_dump(),
+        "source_missing is computed but never reaches the client",
+    )
+
+
+def test_refinement_recognises_an_orphaned_test_case_by_its_id():
+    """The duplicate guard cannot rest on the FK alone.
+
+    Re-extracting a document mints new source rows. If the refined test case
+    for that ID lost its link when the old rows went, matching only on
+    `source_uploaded_test_case_id` makes every row look unrefined and the run
+    produces a second test case per behaviour.
+    """
+    import inspect
+
+    from app.services.test_automation_studio import refinement_service
+
+    source = inspect.getsource(refinement_service.generate_refined_test_cases)
+    check(
+        "tas.dedupe_matches_display_id",
+        "already_display_ids" in source,
+        "generation no longer falls back to the display ID - orphans will duplicate",
+    )
+
+
+def test_an_unmatched_agent_row_is_reported_not_dropped():
+    """A returned row nobody asked for must not vanish in silence.
+
+    The loop that persists the agent's output skips any row whose `source_ref`
+    does not resolve. Continuing without a word would leave the run reporting
+    a clean success while the grid is short an item and nothing anywhere says
+    why.
+    """
+    import inspect
+
+    from app.services.test_automation_studio import refinement_service
+
+    source = inspect.getsource(refinement_service.generate_refined_test_cases)
+    marker = "entry = context.get(str(row.get(\"source_ref\")))"
+    check("tas.persist_loop_found", marker in source, "the persistence loop moved")
+    if marker in source:
+        tail = source.split(marker, 1)[1]
+        # Whatever the branch does, it must record something before moving on.
+        branch = tail.split("continue", 1)[0]
+        check(
+            "tas.unmatched_row_is_recorded",
+            "skipped.append" in branch,
+            "an unresolvable agent row is still dropped without a skipped entry",
+        )
 
 
 # Functions only, and only ones defined here: `test_data_bridge` is an

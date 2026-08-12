@@ -4,7 +4,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 
 DocRole = Literal["brd", "srd", "test_cases", "other"]
 RequirementOrigin = Literal["extracted", "derived"]
@@ -312,6 +319,28 @@ class RefinedTestCaseOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def source_missing(self) -> bool:
+        """The row this was refined from has since been deleted.
+
+        Both source links are ON DELETE SET NULL, so deleting an uploaded test
+        case (or the platform test case behind it) leaves the refined row
+        alive with nothing to point at. Nothing recorded that, so the grid
+        showed an ordinary row and the "already refined" check — which reads
+        the same nulled column — stopped recognising it, quietly refining the
+        same behaviour a second time on the next run.
+
+        Derived rather than stored: `tc_display_id` is copied from the source
+        and never regenerated, so the row already carries the identity of what
+        it came from. Only the fact that the link is gone was missing.
+        """
+        return (
+            self.origin in ("imported", "existing")
+            and self.source_uploaded_test_case_id is None
+            and self.source_test_case_id is None
+        )
 
 
 class GenerateRefinedTestCasesRequest(BaseModel):

@@ -414,7 +414,9 @@ export function TestCaseWorkbenchView({
         "These are the rows read off the uploaded document, not the document itself.",
         "Running Extract Test Cases on that document again brings them back.",
         ...(refined
-          ? [`${refined} have already been refined - the refined test case stays.`]
+          ? [
+              `${refined} have already been refined. The refined test case stays, flagged "Source deleted" — refining that ID again needs "Regenerate existing", or it builds a second one.`,
+            ]
           : []),
       ],
     };
@@ -859,6 +861,14 @@ export function TestCaseWorkbenchView({
                     </td>
                     <td className="py-2 pr-3">
                       <OriginBadge origin={testCase.origin} />
+                      {testCase.source_missing && (
+                        <p
+                          className="mt-0.5 max-w-[160px] text-[10px] text-amber-700"
+                          title="Generating again would build a second test case alongside this one unless you tick Regenerate existing."
+                        >
+                          Source deleted
+                        </p>
+                      )}
                     </td>
                     <td className="py-2 pr-3 text-gray-600">{testCase.steps.length}</td>
                     <td className="py-2 pr-3">

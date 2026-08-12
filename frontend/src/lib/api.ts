@@ -6037,6 +6037,11 @@ export interface TasRefinedTestCase {
   agent_run_id?: number | null;
   created_at: string;
   updated_at: string;
+  /** Server-derived: the uploaded or platform test case this was refined from
+   *  has since been deleted. The refined test case is still valid work - it
+   *  keeps the ID and title it inherited - but its provenance is gone and
+   *  re-running generation would build a second one alongside it. */
+  source_missing: boolean;
 }
 
 export interface TasScriptAsset {

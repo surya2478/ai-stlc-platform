@@ -350,6 +350,14 @@ async def generate_refined_test_cases(
         for row in current_rows
         if row.source_uploaded_test_case_id is not None
     }
+    # The FK above is ON DELETE SET NULL, so a refined test case whose source
+    # row was deleted no longer answers to it. Matching the display ID as well
+    # keeps that row recognised: without it, re-extracting a document mints new
+    # source ids, every one looks unrefined, and the run silently produces a
+    # second refined test case for a behaviour that already has one.
+    already_display_ids = {
+        row.tc_display_id.strip().casefold() for row in current_rows if row.tc_display_id
+    }
 
     items: list[dict] = []
     context: dict[str, dict] = {}
@@ -412,6 +420,18 @@ async def generate_refined_test_cases(
                 {
                     "test_case_id": source.tc_display_id,
                     "reason": "Already refined - pass regenerate=true to rebuild it.",
+                }
+            )
+            continue
+        if not body.regenerate and source.tc_display_id.strip().casefold() in already_display_ids:
+            skipped.append(
+                {
+                    "test_case_id": source.tc_display_id,
+                    "reason": (
+                        "A refined test case already carries this ID, though the source it was "
+                        "refined from has since been deleted. Pass regenerate=true to rebuild it "
+                        "as a new version rather than a second test case."
+                    ),
                 }
             )
             continue
@@ -646,6 +666,19 @@ async def generate_refined_test_cases(
     for row in result.data.get("refined", []):
         entry = context.get(str(row.get("source_ref")))
         if entry is None:
+            # A refined test case that cannot be traced back to what was
+            # requested. Dropping it silently would leave the run reporting a
+            # success the grid does not show, with nothing anywhere saying an
+            # item went missing — so it is reported as skipped instead.
+            skipped.append(
+                {
+                    "test_case_id": row.get("test_case_id") or row.get("title"),
+                    "reason": (
+                        "The refinement agent returned a test case that does not match anything "
+                        f"in this request (ref {row.get('source_ref')!r}). It was not saved."
+                    ),
+                }
+            )
             continue
         req: TasDerivedRequirement | None = entry["requirement"]
         source_tc: TestCase | None = entry["test_case"]
