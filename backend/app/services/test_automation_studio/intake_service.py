@@ -19,6 +19,7 @@ from app.schemas.test_automation_studio import (
     IntakeBatchUpdate,
     IntakeDocumentAttach,
 )
+from app.services.test_automation_studio import discovery_service
 
 settings = get_settings()
 
@@ -118,6 +119,16 @@ async def create_batch(
         created_by=user_id,
         updated_by=user_id,
     )
+    discovery_service.apply_auth_settings(
+        batch,
+        {
+            "auth_mode": body.auth_mode,
+            "auth_config": body.auth_config.model_dump() if body.auth_config else None,
+            "auth_username": body.auth_username,
+            "auth_password": body.auth_password,
+        },
+        user_id=user_id,
+    )
     db.add(batch)
     await _sync_application_url(
         db,
@@ -130,16 +141,58 @@ async def create_batch(
     return await get_batch_or_404(db, batch.id)
 
 
+# Columns a PATCH may set to null, because null is a meaningful value for
+# them: unlink the application, drop the description, clear the crawl target.
+NULLABLE_BATCH_FIELDS = ("description", "application_id", "application_url")
+# NOT NULL columns. A null cannot mean "clear it" — there is nothing to clear
+# them to — so one is ignored rather than allowed to fail at the database.
+REQUIRED_BATCH_FIELDS = ("name", "application_environment")
+
+
+def apply_batch_fields(batch: TasIntakeBatch, body: IntakeBatchUpdate) -> None:
+    """Apply a PATCH body to a batch, honouring explicitly-sent nulls.
+
+    "Provided" is decided by what the caller actually sent, not by whether the
+    value happens to be null. Treating null as "leave alone" made a nullable
+    field impossible to clear: blanking the application URL and saving looked
+    like it worked, and the old value came back on the next read.
+    `model_fields_set` is the only thing that separates "sent null" from
+    "omitted", so a PATCH that omits a field still leaves it untouched.
+
+    Pure and separate from `update_batch` so this rule can be tested without a
+    database — it is the kind of logic that silently regresses.
+    """
+    provided = body.model_fields_set
+    for field in REQUIRED_BATCH_FIELDS:
+        if field in provided:
+            value = getattr(body, field)
+            if value is not None:
+                # `name` also carries a min_length, so a blank one is rejected
+                # by the schema before it ever reaches here.
+                setattr(batch, field, value.strip() if field == "name" else value)
+    for field in NULLABLE_BATCH_FIELDS:
+        if field in provided:
+            setattr(batch, field, getattr(body, field))
+
+
 async def update_batch(
     db: AsyncSession, *, batch: TasIntakeBatch, body: IntakeBatchUpdate, user_id: int
 ) -> TasIntakeBatch:
     if body.application_id is not None:
         await _resolve_application(db, project_id=batch.project_id, application_id=body.application_id)
 
-    for field in ("name", "description", "application_id", "application_url", "application_environment"):
-        value = getattr(body, field)
-        if value is not None:
-            setattr(batch, field, value.strip() if isinstance(value, str) and field == "name" else value)
+    apply_batch_fields(batch, body)
+
+    discovery_service.apply_auth_settings(
+        batch,
+        {
+            "auth_mode": body.auth_mode,
+            "auth_config": body.auth_config.model_dump() if body.auth_config else None,
+            "auth_username": body.auth_username,
+            "auth_password": body.auth_password,
+        },
+        user_id=user_id,
+    )
 
     batch.updated_by = user_id
     db.add(batch)
@@ -318,6 +371,12 @@ def serialize_batch(batch: TasIntakeBatch) -> dict:
         "application_environment": batch.application_environment,
         "status": batch.status,
         "status_error": batch.status_error,
+        "auth_mode": batch.auth_mode,
+        "auth_config": batch.auth_config or {},
+        # The stored password is never serialized, only its existence. This is
+        # the single place a route could have leaked it, so the check is on the
+        # column being non-null rather than on any decrypted value.
+        "has_credentials": bool(batch.auth_secret_encrypted),
         "created_by": batch.created_by,
         "created_at": batch.created_at,
         "updated_at": batch.updated_at,

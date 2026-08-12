@@ -14,8 +14,15 @@ Flow across the three screens:
       └ tas_coverage_assessments    the assessment run over that batch
       └ tas_derived_requirements    requirements extracted + gap-derived
       └ tas_source_test_cases       the TCs read out of the uploaded TC sheet
+      └ tas_discovery_runs          one live crawl of the application
+          └ tas_discovered_elements   the real elements that crawl found
     tas_refined_test_cases        Screen 2 — automation-shaped TCs
     tas_script_assets             Screen 3 — generated framework scripts
+
+Documents describe what the application should do; discovery records what it
+actually renders. Both are needed: a test case written from a BRD names
+"the Submit button", and only a crawl can say that this is
+`getByRole('button', { name: 'Continue' })` on the real page.
 
 Screen 2 has two entry points and needs both. An uploaded test case is
 refined in place and keeps its ID and name; a coverage gap has no test case
@@ -58,6 +65,19 @@ class TasIntakeBatch(TimestampMixin, Base):
     application_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     application_environment: Mapped[str] = mapped_column(String(50), nullable=False, default="qa")
 
+    # How discovery signs in before crawling. `none` crawls the URL as an
+    # anonymous visitor; `form` fills a login form first.
+    #
+    # The split is deliberate. `auth_config` holds the shape of the login form
+    # — its URL and field labels — which is ordinary configuration and is
+    # returned by the API. The username and password live in
+    # `auth_secret_encrypted` as a single Fernet blob and are never returned
+    # by any route; the read model exposes only whether credentials are set.
+    # Nothing else in this module may read that column.
+    auth_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
+    auth_config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    auth_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # status: draft | assessing | assessed | failed
     # `draft` = documents attached, assessment not run yet.
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft", index=True)
@@ -71,6 +91,9 @@ class TasIntakeBatch(TimestampMixin, Base):
     )
     assessments: Mapped[list["TasCoverageAssessment"]] = relationship(
         "TasCoverageAssessment", back_populates="batch", cascade="all, delete-orphan", lazy="select"
+    )
+    discovery_runs: Mapped[list["TasDiscoveryRun"]] = relationship(
+        "TasDiscoveryRun", back_populates="batch", cascade="all, delete-orphan", lazy="select"
     )
 
 
@@ -277,6 +300,112 @@ class TasSourceTestCase(TimestampMixin, Base):
     updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
 
+class TasDiscoveryRun(TimestampMixin, Base):
+    """One live crawl of the batch's application.
+
+    This is the studio's evidence that the application exists and looks a
+    particular way. Without it every locator downstream is a guess: a test
+    case says "click Submit" and the generator invents
+    `getByRole('button', { name: 'Submit' })` for a page whose button is
+    actually labelled "Continue".
+
+    Deliberately a studio-owned table rather than rows in the shared
+    `locator_map`: that catalog is keyed by `application_id` and is read by
+    the classic Automation module's generation and healing paths, so writing
+    to it would make this module mutate state another module consumes.
+    Promotion into `locator_map` stays a separate, explicit action, the same
+    shape as `TasDerivedRequirement.promoted_requirement_id`.
+
+    Superseded runs are kept (`is_current=False`) rather than deleted: a
+    refined test case records which run it was grounded against, and losing
+    that row would leave the grounding evidence pointing at nothing.
+    """
+
+    __tablename__ = "tas_discovery_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("tas_intake_batches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+
+    # status: running | completed | failed
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="running", index=True)
+    application_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    application_environment: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # auth_mode: none | form   auth_status: not_required | succeeded | failed | skipped
+    #
+    # A crawl that never got past the login page still "succeeds" as a crawl —
+    # it just returns a catalog of login-form controls. Recording the auth
+    # outcome separately is what lets Screen 1 say "12 elements, but sign-in
+    # failed" instead of reporting a number that looks like success.
+    auth_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
+    auth_status: Mapped[str] = mapped_column(String(30), nullable=False, default="not_required")
+    auth_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    pages_discovered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    elements_discovered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # [{"url": ..., "title": ..., "element_count": n}] — the pages the crawl
+    # actually reached, which is also what URL grounding is checked against.
+    explored_pages: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # Readiness blockers that stopped the crawl before it opened a browser.
+    blockers: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    agent_run_id: Mapped[int | None] = mapped_column(ForeignKey("agent_runs.id"), nullable=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+
+    batch: Mapped["TasIntakeBatch"] = relationship("TasIntakeBatch", back_populates="discovery_runs")
+    elements: Mapped[list["TasDiscoveredElement"]] = relationship(
+        "TasDiscoveredElement", back_populates="run", cascade="all, delete-orphan", lazy="select"
+    )
+
+
+class TasDiscoveredElement(TimestampMixin, Base):
+    """One real, interactive element the crawl found on a real page.
+
+    `element_name` is the join key for grounding, and it is produced by the
+    same slugify/bounded_name convention the classic discovery agent uses —
+    matching by name only works if both sides name things identically.
+    """
+
+    __tablename__ = "tas_discovered_elements"
+    __table_args__ = (
+        UniqueConstraint("discovery_run_id", "page_url", "element_name", name="uq_tas_discovered_element"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    batch_id: Mapped[int] = mapped_column(
+        ForeignKey("tas_intake_batches.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    discovery_run_id: Mapped[int] = mapped_column(
+        ForeignKey("tas_discovery_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    page_url: Mapped[str] = mapped_column(String(1000), nullable=False)
+    page_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    element_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    role: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    accessible_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    business_meaning: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    recommended_locator: Mapped[str] = mapped_column(Text, nullable=False)
+    recommended_strategy: Mapped[str] = mapped_column(String(20), nullable=False, default="role")
+    confidence_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    href: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    run: Mapped["TasDiscoveryRun"] = relationship("TasDiscoveryRun", back_populates="elements")
+
+
 class TasRefinedTestCase(TimestampMixin, Base):
     """An automation-shaped test case (Screen 2).
 
@@ -361,6 +490,26 @@ class TasRefinedTestCase(TimestampMixin, Base):
     # IDs of rows in the shared `test_data` table this test case binds to.
     test_data_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
+    # Requirement: a step must resolve to an element that really exists.
+    #
+    # grounding_status: not_checked | grounded | partially_grounded | ungrounded
+    # `grounding_summary` carries the per-step evidence:
+    #   {"matched": [{"step_index", "element_name", "locator", "confidence"}],
+    #    "unresolved": [{"step_index", "action", "target", "reason"}],
+    #    "total_steps": n, "matched_steps": n, "discovery_run_id": n}
+    #
+    # Held as JSONB rather than its own table for the same reason coverage
+    # rows are: it is evidence for one grounding pass, replaced wholesale by
+    # the next, and never queried across test cases.
+    grounding_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="not_checked", index=True
+    )
+    grounding_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    grounded_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    discovery_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tas_discovery_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
     # status: draft | pending_approval | approved | rejected
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft", index=True)
     decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -418,6 +567,35 @@ class TasScriptAsset(TimestampMixin, Base):
     files: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     execution_command: Mapped[str | None] = mapped_column(Text, nullable=True)
     setup_notes: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    # generation_mode: compiled | freeform
+    #
+    # `compiled` means an LLM emitted an AutomationGenerationContract and the
+    # deterministic Script Compiler rendered the code — ADR-001's rule, and
+    # the only mode whose locators can be force-corrected from the discovered
+    # catalog. `freeform` means the LLM wrote the code itself; it is what
+    # Katalon and Appium still use, because no compiler backend exists for
+    # them. The column exists so the screen never has to infer which happened.
+    generation_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="freeform", server_default="freeform"
+    )
+    # Entry file within the bundle ("specs/tc-0007.spec.ts"). `script_key` is a
+    # download filename, not a path into the bundle, so the runner cannot use it.
+    entry_path: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    contract: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    static_gate_result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # {"catalog_size": n, "grounded_elements": n, "ungrounded_elements": [...],
+    #  "discovery_run_id": n} — how much of this script rests on real evidence.
+    grounding: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # dry_run_status: not_run | queued | running | passed | failed | blocked
+    # `blocked` is not a failure: it is a framework with no runner registered
+    # (Katalon, Appium), and `dry_run_summary.reason` says so.
+    dry_run_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="not_run", server_default="not_run", index=True
+    )
+    dry_run_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    dry_run_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # status: draft | edited | approved
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft", index=True)

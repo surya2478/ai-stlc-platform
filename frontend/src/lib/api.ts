@@ -5896,6 +5896,18 @@ export interface TasIntakeDocument {
   created_at: string;
 }
 
+export type TasAuthMode = "none" | "form";
+
+/** The non-secret shape of the application's login form. Field *labels*, not
+ *  selectors: discovery matches these against the live accessibility tree,
+ *  which is what a person reads off the screen. */
+export interface TasBatchAuthConfig {
+  login_url?: string | null;
+  username_label?: string | null;
+  password_label?: string | null;
+  submit_label?: string | null;
+}
+
 export interface TasIntakeBatch {
   id: number;
   project_id: number;
@@ -5906,10 +5918,57 @@ export interface TasIntakeBatch {
   application_environment: string;
   status: string;
   status_error?: string | null;
+  auth_mode: TasAuthMode;
+  auth_config: TasBatchAuthConfig;
+  /** Whether credentials are stored. The password itself is never sent to the
+   *  client in any direction but up. */
+  has_credentials: boolean;
   created_by: number;
   created_at: string;
   updated_at: string;
   documents: TasIntakeDocument[];
+}
+
+export type TasDiscoveryStatus = "running" | "completed" | "failed";
+export type TasAuthStatus = "not_required" | "succeeded" | "failed" | "skipped";
+
+/** One live crawl of the batch's application — the evidence every locator
+ *  downstream is grounded against. */
+export interface TasDiscoveryRun {
+  id: number;
+  project_id: number;
+  batch_id: number;
+  version: number;
+  is_current: boolean;
+  status: TasDiscoveryStatus;
+  application_url?: string | null;
+  application_environment?: string | null;
+  auth_mode: TasAuthMode;
+  /** Tracked separately from `status`: a crawl that never got past the login
+   *  page still completed, it just catalogued the wrong page. */
+  auth_status: TasAuthStatus;
+  auth_detail?: string | null;
+  pages_discovered: number;
+  elements_discovered: number;
+  explored_pages: Array<{ url?: string; title?: string | null; element_count?: number }>;
+  blockers: Array<{ name?: string; detail?: string }>;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TasDiscoveredElement {
+  id: number;
+  page_url: string;
+  page_title?: string | null;
+  element_name: string;
+  role?: string | null;
+  accessible_name?: string | null;
+  business_meaning?: string | null;
+  recommended_locator: string;
+  recommended_strategy: string;
+  confidence_score: number;
+  href?: string | null;
 }
 
 export interface TasCoverageAssessment {
@@ -5999,6 +6058,41 @@ export interface TasSourceTestCase {
   updated_at: string;
 }
 
+export type TasGroundingStatus =
+  | "not_checked"
+  | "grounded"
+  | "partially_grounded"
+  | "ungrounded";
+
+export interface TasGroundingMatch {
+  step_number?: number;
+  target?: string | null;
+  element_name?: string;
+  locator?: string;
+  page?: string;
+  confidence?: number;
+}
+
+export interface TasGroundingGap {
+  step_number?: number;
+  action?: string | null;
+  target?: string | null;
+  /** Always actionable — "no element matches X", or "matches more than one".
+   *  This is what the grounding drawer shows per unresolved step. */
+  reason?: string;
+}
+
+export interface TasGroundingSummary {
+  total_steps?: number;
+  groundable_steps?: number;
+  matched_steps?: number;
+  skipped_steps?: number;
+  matched?: TasGroundingMatch[];
+  unresolved?: TasGroundingGap[];
+  note?: string | null;
+  discovery_run_id?: number | null;
+}
+
 export interface TasRefinedTestCase {
   id: number;
   project_id: number;
@@ -6027,6 +6121,13 @@ export interface TasRefinedTestCase {
   test_data_notes?: string | null;
   test_data_requirements: TasTestDataRequirement[];
   test_data_ids: number[];
+  /** Whether each step resolved to an element discovery actually found.
+   *  `not_checked` (grounding never ran) is a different statement from
+   *  `ungrounded` (it ran and nothing matched). */
+  grounding_status: TasGroundingStatus;
+  grounding_summary?: TasGroundingSummary | null;
+  grounded_at?: string | null;
+  discovery_run_id?: number | null;
   status: TasApprovalStatus;
   decision_reason?: string | null;
   approved_by?: number | null;
@@ -6044,6 +6145,57 @@ export interface TasRefinedTestCase {
   source_missing: boolean;
 }
 
+export type TasDryRunStatus =
+  | "not_run"
+  | "queued"
+  | "running"
+  | "passed"
+  | "failed"
+  | "blocked";
+
+/** One test's outcome inside a dry run, straight from the Playwright JSON
+ *  reporter. `error_message` is what makes a failure actionable — it names the
+ *  locator that did not resolve. */
+export interface TasDryRunResult {
+  name?: string;
+  status?: string;
+  duration_ms?: number | null;
+  error_message?: string | null;
+  stack_trace?: string | null;
+  screenshot_path?: string | null;
+  video_path?: string | null;
+  trace_path?: string | null;
+}
+
+export interface TasDryRunSummary {
+  run_status?: string | null;
+  passed?: boolean;
+  results?: TasDryRunResult[];
+  log_path?: string | null;
+  error_message?: string | null;
+  /** Set only for `blocked` — the framework has no runner here, which is not
+   *  a failure of the script. */
+  reason?: string | null;
+}
+
+export interface TasScriptGrounding {
+  catalog_size?: number;
+  grounded_elements?: number;
+  ungrounded_elements?: string[];
+  discovery_run_id?: number | null;
+  /** False for free-form frameworks: the catalog was offered to the model,
+   *  not substituted into the output. */
+  enforced?: boolean;
+}
+
+export interface TasStaticGateResult {
+  passed?: boolean;
+  violations?: Array<{ code?: string; message?: string; severity?: string }>;
+  warnings?: Array<{ code?: string; message?: string; severity?: string }>;
+  syntax_check?: string;
+  type_check?: string;
+}
+
 export interface TasScriptAsset {
   id: number;
   project_id: number;
@@ -6055,6 +6207,17 @@ export interface TasScriptAsset {
   files: Record<string, string>;
   execution_command?: string | null;
   setup_notes: string[];
+  /** `compiled` went through the Script Compiler with its locators
+   *  substituted from the discovered catalog; `freeform` is LLM-authored code
+   *  that was merely shown the catalog. Very different guarantees. */
+  generation_mode: "compiled" | "freeform";
+  entry_path?: string | null;
+  static_gate_result?: TasStaticGateResult | null;
+  grounding?: TasScriptGrounding | null;
+  dry_run_status: TasDryRunStatus;
+  dry_run_summary?: TasDryRunSummary | null;
+  dry_run_at?: string | null;
+  contract_present: boolean;
   status: string;
   version: number;
   is_current: boolean;
@@ -6231,6 +6394,10 @@ export const testAutomationStudioApi = {
       application_id?: number | null;
       application_url?: string | null;
       application_environment?: string;
+      auth_mode?: TasAuthMode;
+      auth_config?: TasBatchAuthConfig;
+      auth_username?: string | null;
+      auth_password?: string | null;
     },
   ) => api.post<TasIntakeBatch>(`${TAS_BASE}/projects/${projectId}/batches`, body),
   getBatch: (batchId: number) => api.get<TasIntakeBatch>(`${TAS_BASE}/batches/${batchId}`),
@@ -6242,8 +6409,33 @@ export const testAutomationStudioApi = {
       application_id?: number | null;
       application_url?: string | null;
       application_environment?: string;
+      auth_mode?: TasAuthMode;
+      auth_config?: TasBatchAuthConfig;
+      /** Omit to keep the stored credentials. Send both to replace them.
+       *  Setting auth_mode to "none" clears them outright. */
+      auth_username?: string | null;
+      auth_password?: string | null;
     },
   ) => api.patch<TasIntakeBatch>(`${TAS_BASE}/batches/${batchId}`, body),
+
+  /** Open the batch's application in a real browser and catalogue what is on
+   *  the page. Never automatic: it hits a live environment and may sign in. */
+  discoverApplication: (batchId: number) =>
+    api.post<TasJob>(`${TAS_BASE}/batches/${batchId}/discover`),
+  getDiscovery: (batchId: number) =>
+    api.get<TasDiscoveryRun | null>(`${TAS_BASE}/batches/${batchId}/discovery`),
+  listDiscoveredElements: (batchId: number, params?: { page_url?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page_url) query.set("page_url", params.page_url);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return api.get<TasDiscoveredElement[]>(
+      `${TAS_BASE}/batches/${batchId}/discovery/elements${suffix}`,
+    );
+  },
+  /** Discard every discovery run for a batch. Grounded test cases keep their
+   *  summaries but lose the link to the evidence behind them. */
+  deleteDiscovery: (batchId: number) =>
+    api.delete<TasDeletionSummary>(`${TAS_BASE}/batches/${batchId}/discovery`),
   deleteBatch: (batchId: number) => api.delete(`${TAS_BASE}/batches/${batchId}`),
   /** Upload one document straight into a batch.
    *
@@ -6388,6 +6580,19 @@ export const testAutomationStudioApi = {
       `${TAS_BASE}/projects/${projectId}/test-cases/decide`,
       body,
     ),
+  /** Match each step's target against the discovered element catalog.
+   *
+   *  Synchronous, unlike the other studio actions: it is string matching over
+   *  rows already stored, with no LLM and no browser. Advisory — an
+   *  ungrounded test case can still be approved and generated. */
+  groundTestCases: (
+    projectId: number,
+    body: { test_case_ids?: number[]; batch_id?: number },
+  ) =>
+    api.post<{ updated: TasRefinedTestCase[]; skipped: TasSkipped[] }>(
+      `${TAS_BASE}/projects/${projectId}/test-cases/ground`,
+      body,
+    ),
   reopenTestCase: (testCaseId: number) =>
     api.post<TasRefinedTestCase>(`${TAS_BASE}/test-cases/${testCaseId}/reopen`),
   /** Delete refined test cases. Every version of each goes, and the database
@@ -6415,8 +6620,22 @@ export const testAutomationStudioApi = {
   // Screen 3 â€” Automation Script Lab
   generateScripts: (
     projectId: number,
-    body: { test_case_ids: number[]; framework: TasFramework; regenerate?: boolean },
+    body: {
+      test_case_ids: number[];
+      framework: TasFramework;
+      regenerate?: boolean;
+      /** Force the old LLM-writes-the-code path for Playwright instead of
+       *  contract + Script Compiler. An escape hatch, not a routine option. */
+      freeform?: boolean;
+      environment_profile?: string;
+    },
   ) => api.post<TasJob>(`${TAS_BASE}/projects/${projectId}/scripts/generate`, body),
+  /** Execute the selected scripts once, for real. The only step that turns
+   *  "should run" into "did run". */
+  dryRunScripts: (projectId: number, scriptIds: number[]) =>
+    api.post<TasJob>(`${TAS_BASE}/projects/${projectId}/scripts/dry-run`, {
+      script_ids: scriptIds,
+    }),
   listScripts: (
     projectId: number,
     params?: { framework?: TasFramework; test_case_id?: number },

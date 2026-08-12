@@ -54,17 +54,50 @@ def normalize_application_url(value: str | None) -> str | None:
     return trimmed
 
 
+class BatchAuthConfig(BaseModel):
+    """The non-secret shape of the application's login form.
+
+    Field labels rather than selectors: discovery matches these against the
+    live accessibility tree, which is the same thing a human reads off the
+    screen. Asking for a CSS selector would require the user to already know
+    what discovery is supposed to find out.
+    """
+
+    login_url: str | None = None
+    username_label: str | None = None
+    password_label: str | None = None
+    submit_label: str | None = None
+
+    @field_validator("login_url")
+    @classmethod
+    def _validate_login_url(cls, value: str | None) -> str | None:
+        return normalize_application_url(value)
+
+
 class IntakeBatchCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
     application_id: int | None = None
     application_url: str | None = None
     application_environment: str = "qa"
+    # Credentials discovery uses to sign in before crawling. `auth_password`
+    # is write-only in every direction: it is accepted here, encrypted at
+    # rest, and never appears in any response model.
+    auth_mode: Literal["none", "form"] = "none"
+    auth_config: BatchAuthConfig | None = None
+    auth_username: str | None = None
+    auth_password: str | None = None
 
     @field_validator("application_url")
     @classmethod
     def _validate_url(cls, value: str | None) -> str | None:
         return normalize_application_url(value)
+
+    @model_validator(mode="after")
+    def _credentials_complete(self) -> "IntakeBatchCreate":
+        if self.auth_mode == "form" and bool(self.auth_username) != bool(self.auth_password):
+            raise ValueError("Provide both a username and a password, or neither.")
+        return self
 
 
 class IntakeBatchUpdate(BaseModel):
@@ -73,11 +106,21 @@ class IntakeBatchUpdate(BaseModel):
     application_id: int | None = None
     application_url: str | None = None
     application_environment: str | None = None
+    auth_mode: Literal["none", "form"] | None = None
+    auth_config: BatchAuthConfig | None = None
+    auth_username: str | None = None
+    auth_password: str | None = None
 
     @field_validator("application_url")
     @classmethod
     def _validate_url(cls, value: str | None) -> str | None:
         return normalize_application_url(value)
+
+    @model_validator(mode="after")
+    def _credentials_complete(self) -> "IntakeBatchUpdate":
+        if bool(self.auth_username) != bool(self.auth_password):
+            raise ValueError("Provide both a username and a password, or neither.")
+        return self
 
 
 class IntakeDocumentAttach(BaseModel):
@@ -128,10 +171,56 @@ class IntakeBatchOut(BaseModel):
     application_environment: str
     status: str
     status_error: str | None = None
+    auth_mode: Literal["none", "form"] = "none"
+    auth_config: dict = Field(default_factory=dict)
+    # Whether credentials are stored — never what they are. This is the only
+    # thing any route may say about the encrypted secret.
+    has_credentials: bool = False
     created_by: int
     created_at: datetime
     updated_at: datetime
     documents: list[IntakeDocumentOut] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Screen 1: application discovery ──────────────────────────────────────────
+
+class DiscoveryRunOut(BaseModel):
+    id: int
+    project_id: int
+    batch_id: int
+    version: int
+    is_current: bool
+    status: Literal["running", "completed", "failed"]
+    application_url: str | None = None
+    application_environment: str | None = None
+    auth_mode: Literal["none", "form"]
+    auth_status: Literal["not_required", "succeeded", "failed", "skipped"]
+    auth_detail: str | None = None
+    pages_discovered: int
+    elements_discovered: int
+    explored_pages: list = Field(default_factory=list)
+    blockers: list = Field(default_factory=list)
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DiscoveredElementOut(BaseModel):
+    id: int
+    page_url: str
+    page_title: str | None = None
+    element_name: str
+    role: str | None = None
+    accessible_name: str | None = None
+    business_meaning: str | None = None
+    recommended_locator: str
+    recommended_strategy: str
+    confidence_score: int
+    href: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -307,6 +396,15 @@ class RefinedTestCaseOut(BaseModel):
     test_data_notes: str | None = None
     test_data_requirements: list = Field(default_factory=list)
     test_data_ids: list = Field(default_factory=list)
+    # Whether each step resolved to an element discovery actually found.
+    # `not_checked` means grounding has never run for this test case, which is
+    # a different statement from "ran and found nothing" (`ungrounded`).
+    grounding_status: Literal["not_checked", "grounded", "partially_grounded", "ungrounded"] = (
+        "not_checked"
+    )
+    grounding_summary: dict | None = None
+    grounded_at: datetime | None = None
+    discovery_run_id: int | None = None
     status: ApprovalStatus
     decision_reason: str | None = None
     approved_by: int | None = None
@@ -455,6 +553,19 @@ class ScriptAssetOut(BaseModel):
     files: dict = Field(default_factory=dict)
     execution_command: str | None = None
     setup_notes: list = Field(default_factory=list)
+    # `compiled` went through the Script Compiler and had its locators
+    # substituted from the discovered catalog; `freeform` is LLM-authored code
+    # that was merely shown the catalog. The screen reports which, because the
+    # two carry very different guarantees.
+    generation_mode: Literal["compiled", "freeform"] = "freeform"
+    entry_path: str | None = None
+    static_gate_result: dict | None = None
+    grounding: dict | None = None
+    dry_run_status: Literal["not_run", "queued", "running", "passed", "failed", "blocked"] = (
+        "not_run"
+    )
+    dry_run_summary: dict | None = None
+    dry_run_at: datetime | None = None
     status: str
     version: int
     is_current: bool
@@ -469,17 +580,61 @@ class ScriptAssetOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def contract_present(self) -> bool:
+        """Whether a contract backs this script, without shipping the whole
+        contract to a grid that only needs to know it exists."""
+        return self.generation_mode == "compiled"
+
 
 class GenerateScriptsRequest(BaseModel):
     test_case_ids: list[int] = Field(min_length=1)
     framework: Framework
     regenerate: bool = False
+    # Playwright compiles through the Script Compiler by default (ADR-001).
+    # This forces the old free-form path instead — kept as an explicit escape
+    # hatch for a test case the contract vocabulary genuinely cannot express,
+    # not as a routine option.
+    freeform: bool = False
+    environment_profile: Literal["DEV", "SIT", "QA", "UAT", "PREPROD", "PROD_SANITY"] = "QA"
 
 
 class GenerateScriptsResponse(BaseModel):
     generated: list[ScriptAssetOut]
     skipped: list[dict] = Field(default_factory=list)
     agent_run_id: int | None = None
+
+
+class GroundTestCasesRequest(BaseModel):
+    """Match refined test case steps against the discovered element catalog.
+
+    Runs synchronously: it is string matching over rows already in the
+    database, with no LLM call and no browser, so the 202-and-poll contract
+    the other studio actions use would add latency and a spinner for work
+    that finishes in milliseconds.
+    """
+
+    test_case_ids: list[int] | None = None
+    batch_id: int | None = None
+
+    @model_validator(mode="after")
+    def _needs_a_selection(self) -> "GroundTestCasesRequest":
+        if not self.test_case_ids and self.batch_id is None:
+            raise ValueError("Provide test_case_ids, a batch_id, or both.")
+        return self
+
+
+class GroundTestCasesResponse(BaseModel):
+    updated: list[RefinedTestCaseOut] = Field(default_factory=list)
+    # Test cases that could not be grounded and why — almost always "no
+    # discovery run for this batch yet", which is a fixable state rather than
+    # an error.
+    skipped: list[dict] = Field(default_factory=list)
+
+
+class DryRunRequest(BaseModel):
+    script_ids: list[int] = Field(min_length=1)
 
 
 class ScriptAssetUpdate(BaseModel):

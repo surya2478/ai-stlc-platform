@@ -263,10 +263,19 @@ def test_studio_owns_its_job_status_route():
         "role cannot poll its own jobs",
     )
     # The route must not be a window onto every agent run in the platform.
+    # Pinned as an exact set, not a prefix rule: the whole control is that only
+    # the studio's own agents are readable, and a `startswith("tas_")` check
+    # would silently admit any future agent that happened to be named that way.
     check(
         "tas.job_status_scoped_to_studio",
         tas_endpoints.STUDIO_AGENT_NAMES
-        == {"tas_coverage_assessment", "tas_test_case_refinement", "tas_script_generation"},
+        == {
+            "tas_coverage_assessment",
+            "tas_test_case_refinement",
+            "tas_script_generation",
+            "tas_application_discovery",
+            "tas_dry_run",
+        },
         f"unexpected readable agent names: {tas_endpoints.STUDIO_AGENT_NAMES}",
     )
 
@@ -276,7 +285,13 @@ def test_celery_tasks_are_registered_and_included():
 
     import app.worker.tasks.test_automation_studio_tasks  # noqa: F401
 
-    for name in ("tas.assess_coverage", "tas.generate_test_cases", "tas.generate_scripts"):
+    for name in (
+        "tas.assess_coverage",
+        "tas.generate_test_cases",
+        "tas.generate_scripts",
+        "tas.discover_application",
+        "tas.dry_run_scripts",
+    ):
         check(f"tas.task_registered:{name}", name in celery_app.tasks, f"{name} not registered")
 
     # A task the worker never imports is a job that queues and never runs.

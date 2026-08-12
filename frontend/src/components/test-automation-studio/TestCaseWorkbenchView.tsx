@@ -27,8 +27,10 @@ import {
   type TasRefinedTestCase,
   type TasSourceTestCase,
 } from "@/lib/api";
+import { GroundingDrawer } from "./GroundingDrawer";
 import {
   ClassificationBadge,
+  GroundingBadge,
   ConfirmDeleteDialog,
   EmptyState,
   JobProgress,
@@ -82,6 +84,13 @@ export function TestCaseWorkbenchView({
   const [deciding, setDeciding] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
+  // The test case whose grounding evidence is open in the drawer. Read-only
+  // here: the check itself is run from the Automation Script Lab, since
+  // crawling and matching against a live application is engineering work.
+  // The badge stays on this screen because an author who can see that their
+  // step names a control the application does not have can fix the wording,
+  // which is exactly this screen's job.
+  const [groundingDetail, setGroundingDetail] = useState<TasRefinedTestCase | null>(null);
 
   const [applicationId, setApplicationId] = useState<string>("");
   const [regenerate, setRegenerate] = useState(false);
@@ -823,6 +832,7 @@ export function TestCaseWorkbenchView({
                   <th className="py-2 pr-3 font-semibold">Origin</th>
                   <th className="py-2 pr-3 font-semibold">Steps</th>
                   <th className="py-2 pr-3 font-semibold">Classification</th>
+                  <th className="py-2 pr-3 font-semibold">Grounding</th>
                   <th className="py-2 pr-3 font-semibold">Test Data Required</th>
                   <th className="py-2 pr-3 font-semibold">Status</th>
                   <th className="py-2 pr-3 font-semibold" />
@@ -876,6 +886,23 @@ export function TestCaseWorkbenchView({
                       {testCase.classification_reason && (
                         <p className="mt-0.5 line-clamp-2 max-w-[220px] text-[10px] text-gray-500">
                           {testCase.classification_reason}
+                        </p>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {/* The badge is the button: its whole value is the
+                          per-step evidence one click behind it. */}
+                      <button
+                        type="button"
+                        onClick={() => setGroundingDetail(testCase)}
+                        className="rounded focus:outline-none focus:ring-2 focus:ring-gray-300"
+                        title="See which steps resolved to a real element"
+                      >
+                        <GroundingBadge status={testCase.grounding_status} />
+                      </button>
+                      {testCase.grounding_status === "partially_grounded" && (
+                        <p className="mt-0.5 text-[10px] text-amber-700">
+                          {testCase.grounding_summary?.unresolved?.length ?? 0} step(s) unmatched
                         </p>
                       )}
                     </td>
@@ -953,6 +980,15 @@ export function TestCaseWorkbenchView({
           busy={deleting}
           onCancel={() => setPendingDelete(null)}
           onConfirm={handleDelete}
+        />
+      )}
+
+      {/* No re-check action: grounding is triggered from the Automation
+          Script Lab, so there is exactly one place it happens. */}
+      {groundingDetail && (
+        <GroundingDrawer
+          testCase={groundingDetail}
+          onClose={() => setGroundingDetail(null)}
         />
       )}
     </div>

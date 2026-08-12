@@ -32,8 +32,13 @@ from app.schemas.test_automation_studio import (
     DeletionSummary,
     DerivedRequirementOut,
     DerivedRequirementUpdate,
+    DiscoveredElementOut,
+    DiscoveryRunOut,
+    DryRunRequest,
     GenerateRefinedTestCasesRequest,
     GenerateScriptsRequest,
+    GroundTestCasesRequest,
+    GroundTestCasesResponse,
     IntakeBatchCreate,
     IntakeBatchOut,
     IntakeBatchUpdate,
@@ -64,13 +69,18 @@ from app.services.rbac_service import (
 from app.services import agent_run_service, document_service
 from app.worker.tasks.test_automation_studio_tasks import (
     tas_assess_coverage,
+    tas_discover_application,
+    tas_dry_run_scripts,
     tas_extract_test_cases,
     tas_generate_scripts,
     tas_generate_test_cases,
 )
 from app.services.test_automation_studio import (
     coverage_service,
+    discovery_service,
+    dry_run_service,
     export_service,
+    grounding_service,
     intake_service,
     refinement_service,
     script_lab_service,
@@ -162,7 +172,13 @@ def _script_out(asset: TasScriptAsset, test_case: TasRefinedTestCase | None) -> 
 # Only runs this module starts are readable here. Without the filter this would
 # be a way to read any project's agent runs while holding only `tas.view`.
 STUDIO_AGENT_NAMES = frozenset(
-    {"tas_coverage_assessment", "tas_test_case_refinement", "tas_script_generation"}
+    {
+        "tas_coverage_assessment",
+        "tas_test_case_refinement",
+        "tas_script_generation",
+        "tas_application_discovery",
+        "tas_dry_run",
+    }
 )
 TERMINAL_RUN_STATUSES = frozenset({"completed", "failed", "cancelled", "error", "timeout"})
 
@@ -382,6 +398,88 @@ async def extract_test_cases(batch_id: int, db: DBSession, current_user: Current
     )
 
 
+@router.post("/batches/{batch_id}/discover", response_model=StudioJobOut, status_code=202)
+async def discover_application(batch_id: int, db: DBSession, current_user: CurrentUser):
+    """Screen 1's "Discover Application".
+
+    Opens the batch's application in a real browser and records what is on the
+    page. Deliberately never automatic: it points a browser at a live
+    environment and may sign in with stored credentials, which is a thing a
+    person should choose to do, per environment, rather than something that
+    happens as a side effect of uploading a document.
+
+    Gated on `tas.assess_coverage` — the same authority as the other Screen 1
+    analysis action, since this is analysis of the application rather than a
+    change to any artefact.
+    """
+    batch = await _batch_for_user(batch_id, TAS_ASSESS_COVERAGE, current_user, db)
+    await discovery_service.prepare_discovery(db, batch=batch)
+    run = await agent_run_service.start_agent_run(
+        db,
+        project_id=batch.project_id,
+        user_id=current_user.id,
+        agent_name="tas_application_discovery",
+        # Deliberately records only the target, never the credentials: agent
+        # run input is readable wherever the run is.
+        input_data={"batch_id": batch.id, "application_url": batch.application_url},
+        status="pending",
+        progress_percent=0,
+        progress_message="Queued",
+    )
+    task_id = _enqueue(
+        tas_discover_application, run, db, args=(run.id, batch.id, current_user.id)
+    )
+    await db.commit()
+    return StudioJobOut(
+        agent_run_id=run.id, task_id=task_id, status="queued", message="Application discovery queued"
+    )
+
+
+@router.get("/batches/{batch_id}/discovery", response_model=DiscoveryRunOut | None)
+async def get_discovery(batch_id: int, db: DBSession, current_user: CurrentUser):
+    """The most recent discovery run for a batch, successful or not."""
+    batch = await _batch_for_user(batch_id, TAS_VIEW, current_user, db)
+    run = await discovery_service.latest_run(db, batch.id)
+    return DiscoveryRunOut.model_validate(run) if run else None
+
+
+@router.get("/batches/{batch_id}/discovery/elements", response_model=list[DiscoveredElementOut])
+async def list_discovered_elements(
+    batch_id: int,
+    db: DBSession,
+    current_user: CurrentUser,
+    page_url: str | None = None,
+):
+    """The element catalog the latest discovery run produced.
+
+    This is what the discovery drawer shows and what grounding matches
+    against, so it is served in full rather than paged — a bounded crawl
+    produces a bounded catalog, and hiding half of it would make the drawer
+    unable to answer "why did my step not match".
+    """
+    batch = await _batch_for_user(batch_id, TAS_VIEW, current_user, db)
+    run = await discovery_service.latest_run(db, batch.id)
+    if run is None:
+        return []
+    rows = await discovery_service.list_elements(
+        db, discovery_run_id=run.id, page_url=page_url
+    )
+    return [DiscoveredElementOut.model_validate(row) for row in rows]
+
+
+@router.delete("/batches/{batch_id}/discovery", response_model=DeletionSummary)
+async def delete_discovery(batch_id: int, db: DBSession, current_user: CurrentUser):
+    """Discard every discovery run for this batch, catalog included.
+
+    Grounded test cases keep their summaries but lose the link to the
+    evidence behind them, which re-running discovery and re-grounding
+    restores.
+    """
+    batch = await _batch_for_user(batch_id, TAS_ASSESS_COVERAGE, current_user, db)
+    removed = await discovery_service.delete_runs(db, batch_id=batch.id)
+    return DeletionSummary(versions_deleted=removed)
+
+
 @router.get("/batches/{batch_id}/assessment", response_model=CoverageAssessmentOut | None)
 async def get_assessment(batch_id: int, db: DBSession, current_user: CurrentUser):
     batch = await _batch_for_user(batch_id, TAS_VIEW, current_user, db)
@@ -583,6 +681,34 @@ async def update_test_case(
     return RefinedTestCaseOut.model_validate(updated)
 
 
+@router.post("/projects/{project_id}/test-cases/ground", response_model=GroundTestCasesResponse)
+async def ground_test_cases(
+    project_id: int, body: GroundTestCasesRequest, db: DBSession, current_user: CurrentUser
+):
+    """Screen 2's "Check Grounding".
+
+    Matches every step's target against the elements discovery found for its
+    batch, and records which resolved. Synchronous: it is string matching over
+    rows already in the database — no LLM, no browser — so returning a job to
+    poll would add a spinner to work that finishes immediately.
+
+    Advisory by design. An ungrounded test case can still be approved and
+    still have a script generated; the result is a badge and a drawer, not a
+    gate. Blocking approval on it would make an unreachable environment stop
+    the studio entirely.
+    """
+    await _guard(TAS_REFINE_TEST_CASES, project_id, current_user, db)
+    updated, skipped = await grounding_service.ground_batch(
+        db,
+        project_id=project_id,
+        test_case_ids=body.test_case_ids,
+        batch_id=body.batch_id,
+    )
+    return GroundTestCasesResponse(
+        updated=[RefinedTestCaseOut.model_validate(row) for row in updated], skipped=skipped
+    )
+
+
 @router.post("/projects/{project_id}/test-cases/classify", response_model=BulkClassifyResponse)
 async def bulk_classify(
     project_id: int, body: BulkClassifyRequest, db: DBSession, current_user: CurrentUser
@@ -738,6 +864,45 @@ async def generate_scripts(
     await db.commit()
     return StudioJobOut(
         agent_run_id=run.id, task_id=task_id, status="queued", message="Script generation queued"
+    )
+
+
+@router.post("/projects/{project_id}/scripts/dry-run", response_model=StudioJobOut, status_code=202)
+async def dry_run_scripts(
+    project_id: int, body: DryRunRequest, db: DBSession, current_user: CurrentUser
+):
+    """Screen 3's "Dry Run" — execute the generated scripts once.
+
+    This is the only step that turns "should run" into "did run". Each script
+    starts a real browser against the application, so the batch size is capped
+    well below generation's and the action stays user-triggered.
+
+    Gated on `tas.generate_script`: whoever can produce a script may verify it.
+    """
+    await _guard(TAS_GENERATE_SCRIPT, project_id, current_user, db)
+    await dry_run_service.validate_dry_run_request(
+        db, project_id=project_id, script_ids=body.script_ids
+    )
+    run = await agent_run_service.start_agent_run(
+        db,
+        project_id=project_id,
+        user_id=current_user.id,
+        agent_name="tas_dry_run",
+        input_data={"script_ids": body.script_ids},
+        status="pending",
+        progress_percent=0,
+        progress_message="Queued",
+    )
+    task_id = _enqueue(
+        tas_dry_run_scripts, run, db, args=(run.id, project_id, body.script_ids)
+    )
+    await db.commit()
+    # After the enqueue commits, so a broker refusal leaves every script at
+    # its previous status rather than stuck on "queued" for a job that was
+    # never accepted.
+    await dry_run_service.mark_queued(db, project_id=project_id, script_ids=body.script_ids)
+    return StudioJobOut(
+        agent_run_id=run.id, task_id=task_id, status="queued", message="Dry run queued"
     )
 
 

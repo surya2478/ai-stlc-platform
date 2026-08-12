@@ -1,15 +1,35 @@
-"""Screen 3: script generation, editing and packaging."""
+"""Screen 3: script generation, editing and packaging.
+
+Generation has two paths, and which one runs is a property of the framework:
+
+  playwright  LLM emits an AutomationGenerationContract, the deterministic
+              Script Compiler renders the code, locators are force-corrected
+              from the discovered catalog, and the Static Quality Gate runs
+              before the script is ever persisted. This is ADR-001's rule.
+  katalon     LLM writes the code, with the discovered catalog supplied as
+  appium      data in the prompt. No compiler backend exists for either, so
+              the catalog is a request rather than a guarantee.
+
+Both paths read the same element catalog, produced by a discovery run on the
+test case's intake batch. When no discovery has run the catalog is empty and
+generation still proceeds — ungrounded, and recorded as such, rather than
+blocked. Refusing to generate would be the stricter choice, but it would also
+make the studio unusable against an application nobody can point a browser
+at, which is a real situation for offline and pre-deployment work.
+"""
 from __future__ import annotations
 
 import io
 import re
 import zipfile
+from types import SimpleNamespace
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.test_automation_studio.contract_agent import TasContractAgent
 from app.agents.test_automation_studio.script_agent import ScriptGenerationAgent
 from app.config import get_settings
 from app.models.test_automation_studio import TasRefinedTestCase, TasScriptAsset
@@ -20,7 +40,8 @@ from app.schemas.test_automation_studio import (
     GenerateScriptsRequest,
     ScriptAssetUpdate,
 )
-from app.services import agent_run_service
+from app.services import agent_run_service, static_quality_gate
+from app.services.test_automation_studio import discovery_service
 from app.services.test_automation_studio.progress import ProgressCallback
 from app.services.test_automation_studio.progress import report as _report
 
@@ -31,6 +52,11 @@ FRAMEWORK_EXTENSIONS = {
     "katalon": ".groovy",
     "appium": ".py",
 }
+
+# Only Playwright has a compiler backend in `script_compiler`. Adding a
+# framework here without a renderer would route it into a compile that
+# cannot succeed.
+COMPILED_FRAMEWORKS = frozenset({"playwright"})
 
 
 def _safe_slug(value: str) -> str:
@@ -52,7 +78,7 @@ def _script_filename(test_case: TasRefinedTestCase, framework: str) -> str:
 
 
 def _test_case_payload(test_case: TasRefinedTestCase) -> dict:
-    return {
+    payload = {
         "tc_display_id": test_case.tc_display_id,
         "title": test_case.title,
         "objective": test_case.objective,
@@ -64,6 +90,64 @@ def _test_case_payload(test_case: TasRefinedTestCase) -> dict:
         "test_type": test_case.test_type,
         "test_data_requirements": test_case.test_data_requirements or [],
     }
+    # The grounding pass already worked out which real element each step
+    # refers to. Handing that to the generator is strictly better than making
+    # it repeat the matching from scratch — it is the difference between
+    # "find something plausible for 'Login button'" and "this step uses
+    # signin_button".
+    matched = ((test_case.grounding_summary or {}).get("matched")) or []
+    if matched:
+        payload["resolved_elements"] = [
+            {
+                "step_number": entry.get("step_number"),
+                "target": entry.get("target"),
+                "element_name": entry.get("element_name"),
+                "locator": entry.get("locator"),
+            }
+            for entry in matched
+        ]
+    return payload
+
+
+async def _catalog_for(
+    db: AsyncSession, test_case: TasRefinedTestCase, cache: dict
+) -> tuple[list[dict], list[str], int | None]:
+    """(catalog, explored page paths, discovery_run_id) for a test case.
+
+    Cached per batch: a run over 40 test cases from one batch would otherwise
+    reload the same catalog 40 times.
+    """
+    if test_case.batch_id is None:
+        return [], [], None
+    if test_case.batch_id not in cache:
+        run, catalog = await discovery_service.current_catalog(db, test_case.batch_id)
+        paths = [
+            page.get("url")
+            for page in ((run.explored_pages if run else None) or [])
+            if page.get("url")
+        ]
+        cache[test_case.batch_id] = (catalog, paths, run.id if run else None)
+    return cache[test_case.batch_id]
+
+
+def _gate_subject(asset_id: int | None, framework: str, code: str, files: dict, entry_path: str | None):
+    """A duck-typed stand-in for `AutomationScript`, which the shared static
+    gate is written against.
+
+    The gate only reads id/framework/code/compiled_files/file_path/metadata_,
+    so a namespace satisfies it without this module importing — or worse,
+    writing to — the shared automation model. `compiled_files` carries the
+    WHOLE bundle including the entry file, because locators live in the page
+    objects and a gate that saw only the spec would miss every one of them.
+    """
+    return SimpleNamespace(
+        id=asset_id,
+        framework=framework,
+        code=code,
+        compiled_files={**(files or {}), **({entry_path: code} if entry_path else {})},
+        file_path=entry_path,
+        metadata_=None,
+    )
 
 
 async def validate_generation_request(
@@ -186,7 +270,9 @@ async def generate_scripts(
             },
         )
 
-    agent = ScriptGenerationAgent()
+    compiled = body.framework in COMPILED_FRAMEWORKS and not body.freeform
+    agent = TasContractAgent() if compiled else ScriptGenerationAgent()
+    catalog_cache: dict = {}
     total = len(eligible)
 
     for index, test_case in enumerate(eligible):
@@ -220,7 +306,21 @@ async def generate_scripts(
             )
             continue
 
-        result = await agent.run(test_case=_test_case_payload(test_case), framework=body.framework)
+        catalog, explored_paths, discovery_run_id = await _catalog_for(db, test_case, catalog_cache)
+        payload = _test_case_payload(test_case)
+
+        if compiled:
+            result = await agent.run(
+                test_case=payload,
+                catalog=catalog,
+                explored_page_paths=explored_paths,
+                environment_profile=body.environment_profile,
+            )
+        else:
+            result = await agent.run(
+                test_case=payload, framework=body.framework, catalog=catalog
+            )
+
         if not result.success:
             skipped.append(
                 {
@@ -236,16 +336,41 @@ async def generate_scripts(
             existing.is_current = False
             db.add(existing)
 
+        code = result.data["code"]
+        files = result.data.get("files") or {}
+        entry_path = result.data.get("entry_path")
+        grounding = dict(result.data.get("grounding") or {})
+        if discovery_run_id is not None:
+            grounding["discovery_run_id"] = discovery_run_id
+
+        # The gate runs at persistence time, not when someone later clicks
+        # something: a script that violates the locator policy or lost its
+        # generation header should be marked the moment it exists, so the
+        # screen never shows an unassessed script as if it were clean. Only
+        # the code-level checks run here — the syntax and type checks need a
+        # materialised workspace, which the dry run provides.
+        gate_result = None
+        if compiled:
+            gate_result = static_quality_gate.run_static_quality_gate(
+                _gate_subject(None, body.framework, code, files, entry_path)
+            ).as_dict()
+
         asset = TasScriptAsset(
             project_id=project_id,
             refined_test_case_id=test_case.id,
             framework=body.framework,
             language=FRAMEWORK_LANGUAGES.get(body.framework, "text"),
             script_key=_script_filename(test_case, body.framework),
-            code=result.data["code"],
-            files=result.data.get("files") or {},
+            code=code,
+            files=files,
             execution_command=result.data.get("execution_command"),
             setup_notes=result.data.get("setup_notes") or [],
+            generation_mode="compiled" if compiled else "freeform",
+            entry_path=entry_path,
+            contract=result.data.get("contract"),
+            static_gate_result=gate_result,
+            grounding=grounding,
+            dry_run_status="not_run",
             status="draft",
             version=version,
             is_current=True,
@@ -318,6 +443,19 @@ async def update_script(
     asset.edited_by_user = True
     asset.status = "edited"
     asset.updated_by = user_id
+
+    if "code" in updates or "files" in updates:
+        # A dry run describes the code that ran, not the code that now exists.
+        # Leaving a green badge on a hand-edited script would be a claim the
+        # evidence no longer supports, so the result is cleared rather than
+        # carried forward — the same reasoning applies to the static gate.
+        asset.dry_run_status = "not_run"
+        asset.dry_run_summary = None
+        asset.dry_run_at = None
+        if asset.generation_mode == "compiled":
+            asset.static_gate_result = static_quality_gate.run_static_quality_gate(
+                _gate_subject(asset.id, asset.framework, asset.code, asset.files, asset.entry_path)
+            ).as_dict()
     db.add(asset)
     await db.commit()
     await db.refresh(asset)
@@ -403,6 +541,10 @@ async def delete_scripts(
     )
 
 
+def _safe_relative(path: str) -> str:
+    return "/".join(_safe_slug(part) for part in str(path).split("/") if part)
+
+
 def build_zip(pairs: list[tuple[TasScriptAsset, TasRefinedTestCase]]) -> bytes:
     """Package scripts as a zip, one folder per framework."""
     buffer = io.BytesIO()
@@ -410,10 +552,20 @@ def build_zip(pairs: list[tuple[TasScriptAsset, TasRefinedTestCase]]) -> bytes:
         manifest: list[str] = ["framework,test_case_id,title,file,execution_command"]
         for asset, test_case in pairs:
             folder = _safe_slug(asset.framework)
-            primary = f"{folder}/{_safe_slug(asset.script_key)}"
+            # A compiled bundle's entry file must keep its path inside the
+            # bundle ("specs/x.spec.ts"), because its sibling page objects
+            # import it by relative path and its execution_command names it.
+            # Flattening it to the display filename produced a zip that could
+            # not run — the imports resolved to nothing.
+            entry_relative = (
+                _safe_relative(asset.entry_path)
+                if asset.entry_path
+                else _safe_slug(asset.script_key)
+            )
+            primary = f"{folder}/{entry_relative}"
             archive.writestr(primary, asset.code)
             for path, contents in (asset.files or {}).items():
-                safe_path = "/".join(_safe_slug(part) for part in str(path).split("/") if part)
+                safe_path = _safe_relative(path)
                 if safe_path:
                     archive.writestr(f"{folder}/{safe_path}", str(contents))
             if asset.setup_notes:

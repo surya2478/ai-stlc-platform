@@ -470,6 +470,13 @@ class Settings(BaseSettings):
     tas_max_documents_per_batch: int = 25
     # Bounds one refinement/generation fan-out, for the same reason.
     tas_max_test_cases_per_run: int = 200
+    # Bounds one dry-run batch. Much tighter than generation because each
+    # entry is a real browser process against a real environment, not an LLM
+    # call — the runner already fans out five at a time.
+    tas_max_dry_runs_per_run: int = 25
+    # Per-script wall clock for a dry run. Matches the classic dry run's own
+    # default; a studio script is an ordinary Playwright bundle once compiled.
+    tas_dry_run_timeout_seconds: int = 180
 
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days

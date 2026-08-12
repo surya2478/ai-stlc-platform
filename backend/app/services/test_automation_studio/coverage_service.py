@@ -382,17 +382,23 @@ async def prepare_assessment(
     caller gets a 4xx immediately instead of a queued job that fails a minute
     later in a worker they cannot see.
     """
-    if body.application_id is not None or body.application_url is not None:
+    # Forward only the settings this request actually carried.
+    #
+    # `update_batch` now distinguishes "sent null" from "omitted", so building
+    # the patch from every attribute would turn every unmentioned field into an
+    # explicit null — an assess call that named a URL would silently unlink the
+    # application. Rebuilding it from `model_fields_set` keeps an omitted field
+    # omitted, while still letting a caller that deliberately sent null clear
+    # the value.
+    settings_fields = ("application_id", "application_url", "application_environment")
+    patch = {field: getattr(body, field) for field in settings_fields if field in body.model_fields_set}
+    if patch:
         from app.schemas.test_automation_studio import IntakeBatchUpdate
 
         batch = await intake_service.update_batch(
             db,
             batch=batch,
-            body=IntakeBatchUpdate(
-                application_id=body.application_id,
-                application_url=body.application_url,
-                application_environment=body.application_environment,
-            ),
+            body=IntakeBatchUpdate(**patch),
             user_id=user_id,
         )
 

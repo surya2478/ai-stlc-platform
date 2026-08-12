@@ -695,6 +695,17 @@ export function CoverageAssessmentView({
                   </p>
                 </div>
 
+                {/* Discovery and its sign-in credentials deliberately live on
+                    the Automation Script Lab, not here: crawling a running
+                    application is engineering work, and this screen is about
+                    the documents.
+
+                    The URL and environment above are editable in both places
+                    on purpose — an engineer correcting a crawl target should
+                    not have to come back here. They are one row in one table
+                    behind one endpoint, and each view re-fetches its batches
+                    on mount, so the two cannot show different values. */}
+
                 <div className="flex flex-wrap items-center gap-3 border-t border-gray-200 pt-3">
                   <label className="flex items-center gap-1.5 text-xs text-gray-600">
                     <input
@@ -941,6 +952,7 @@ export function CoverageAssessmentView({
           onConfirm={handleDelete}
         />
       )}
+
     </div>
   );
 }

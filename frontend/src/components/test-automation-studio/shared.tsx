@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, Loader2, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,8 @@ import type {
   TasClassification,
   TasCoverageState,
   TasDeletionSummary,
+  TasDryRunStatus,
+  TasGroundingStatus,
   TasTestDataStatus,
 } from "@/lib/api";
 
@@ -276,6 +278,104 @@ export function TestDataBadge({
   if (status === "agent_provided") return <Badge variant="success">No - agent provided</Badge>;
   if (status === "user_provided") return <Badge variant="success">No - user provided</Badge>;
   return <Badge variant="secondary">No</Badge>;
+}
+
+/** Whether a test case's steps resolve to elements that really exist.
+ *
+ *  `not_checked` is deliberately neutral rather than a warning: it means
+ *  grounding has never run, which is the state every test case starts in and
+ *  says nothing about the test case's quality. Only a grounding pass that ran
+ *  and found nothing earns a red badge. */
+export function GroundingBadge({ status }: { status: TasGroundingStatus }) {
+  if (status === "grounded") return <Badge variant="success">Grounded</Badge>;
+  if (status === "partially_grounded") return <Badge variant="warning">Partly grounded</Badge>;
+  if (status === "ungrounded") return <Badge variant="destructive">Not grounded</Badge>;
+  return <Badge variant="secondary">Not checked</Badge>;
+}
+
+/** Whether the generated script has actually been executed.
+ *
+ *  `blocked` is styled neutrally, not as a failure: it means this deployment
+ *  has no runner for the framework (Katalon needs Katalon Studio, Appium needs
+ *  a device), which is a property of the environment rather than a defect in
+ *  the script. */
+export function DryRunBadge({ status }: { status: TasDryRunStatus }) {
+  if (status === "passed") return <Badge variant="success">Dry run passed</Badge>;
+  if (status === "failed") return <Badge variant="destructive">Dry run failed</Badge>;
+  if (status === "running") {
+    return (
+      <Badge variant="info">
+        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+        Running
+      </Badge>
+    );
+  }
+  if (status === "queued") return <Badge variant="info">Queued</Badge>;
+  if (status === "blocked") return <Badge variant="outline">Not runnable here</Badge>;
+  return <Badge variant="secondary">Not run</Badge>;
+}
+
+/** How a script's code was produced.
+ *
+ *  Worth its own badge because the two modes carry genuinely different
+ *  guarantees: a compiled script had its locators substituted from discovered
+ *  evidence, a free-form one was only shown that evidence and asked nicely. */
+export function GenerationModeBadge({ mode }: { mode: "compiled" | "freeform" }) {
+  return mode === "compiled" ? (
+    <Badge variant="info">Compiled</Badge>
+  ) : (
+    <Badge variant="outline">LLM-authored</Badge>
+  );
+}
+
+/** Right-hand slide-over used by the discovery, grounding and dry-run
+ *  detail panels.
+ *
+ *  A drawer rather than a route: all three answer "why does this row say
+ *  that?", which is a question about a row and belongs beside it. Navigating
+ *  away to answer it would lose the grid's selection and filters. */
+export function SideDrawer({
+  title,
+  subtitle,
+  onClose,
+  footer,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  footer?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" role="dialog" aria-modal="true">
+      {/* Backdrop closes the drawer; the panel stops the click so an
+          interaction inside it never dismisses what it is interacting with. */}
+      <button
+        type="button"
+        aria-label="Close"
+        className="absolute inset-0 h-full w-full cursor-default"
+        onClick={onClose}
+      />
+      <aside className="relative flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-3">
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-gray-900">{title}</h3>
+            {subtitle && <p className="mt-0.5 truncate text-xs text-gray-500">{subtitle}</p>}
+          </div>
+          <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close panel">
+            <X className="h-4 w-4" />
+          </Button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        {footer && (
+          <footer className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
+            {footer}
+          </footer>
+        )}
+      </aside>
+    </div>
+  );
 }
 
 export function OriginBadge({
