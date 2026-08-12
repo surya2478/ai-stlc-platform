@@ -1306,6 +1306,133 @@ def test_application_url_rejects_non_http_schemes():
             check(f"tas.url_rejects_{bad[:12]}", True)
 
 
+# ─── Deleting generated artefacts ────────────────────────────────────────────
+
+DELETE_ROUTES = {
+    # path -> the permission constant that also produces the artefact
+    "/projects/{project_id}/requirements/delete": "TAS_ASSESS_COVERAGE",
+    "/projects/{project_id}/source-test-cases/delete": "TAS_INTAKE",
+    "/projects/{project_id}/test-cases/delete": "TAS_REFINE_TEST_CASES",
+    "/projects/{project_id}/scripts/delete": "TAS_GENERATE_SCRIPT",
+}
+
+
+def test_every_generated_artefact_can_be_deleted():
+    """All four artefact families the studio generates must have a delete.
+
+    Without one, the only way out of a bad generation run is a DBA: the
+    screens regenerate into new versions rather than replacing, so mistakes
+    accumulate.
+    """
+    from app.main import app
+
+    paths = app.openapi()["paths"]
+    for path in DELETE_ROUTES:
+        full = f"/api/v1/lab/test-automation-studio{path}"
+        check(f"tas.delete_route_exists:{path}", full in paths, f"{full} missing")
+
+
+def test_deleting_an_artefact_needs_the_permission_that_generated_it():
+    """Delete is gated as tightly as generation, and never on `tas.view`.
+
+    Binding each delete to the permission that produces that artefact is what
+    keeps a role admitted to the studio to read or approve from emptying the
+    workspace.
+    """
+    import inspect
+
+    from app.api.v1.endpoints import test_automation_studio as tas_endpoints
+
+    by_path = {route.path: route for route in tas_endpoints.router.routes}
+    for path, permission in DELETE_ROUTES.items():
+        route = by_path.get(path)
+        check(f"tas.delete_route_registered:{path}", route is not None)
+        if route is None:
+            continue
+        source = inspect.getsource(route.endpoint)
+        check(
+            f"tas.delete_guarded_by:{path}",
+            f"_guard({permission}" in source,
+            f"{path} is not guarded by {permission}",
+        )
+
+    # And no read-only or execution-only role may hold any of them.
+    for role in ("Viewer/Auditor", "Tester", "Business Analyst"):
+        held = rbac_service.ROLE_PERMISSIONS[role]
+        for permission in sorted(set(DELETE_ROUTES.values())):
+            check(
+                f"tas.{role}_cannot_delete:{permission}",
+                getattr(rbac_service, permission) not in held,
+                f"{role} holds {permission} - it could delete generated artefacts",
+            )
+
+
+def test_deleting_a_test_case_takes_its_scripts_with_it():
+    """The cascade the delete relies on lives on the foreign key.
+
+    `delete_test_cases` issues a Core DELETE (an ORM cascade would have to
+    lazy-load `scripts` mid-flush, which raises under asyncio), so the
+    database is what actually removes the scripts. If this FK ever loses its
+    ON DELETE CASCADE the delete starts failing on a constraint violation
+    instead.
+    """
+    from app.models.test_automation_studio import TasScriptAsset
+
+    column = TasScriptAsset.__table__.c.refined_test_case_id
+    foreign_key = next(iter(column.foreign_keys))
+    check(
+        "tas.script_fk_cascades",
+        foreign_key.ondelete == "CASCADE",
+        f"scripts FK ondelete is {foreign_key.ondelete!r} - a test case delete would be blocked",
+    )
+    check("tas.script_fk_not_nullable", column.nullable is False)
+
+
+def test_delete_services_exist_for_every_artefact():
+    from app.services.test_automation_studio import (
+        coverage_service,
+        refinement_service,
+        script_lab_service,
+    )
+
+    for fn, name in (
+        (coverage_service.delete_requirements, "delete_requirements"),
+        (coverage_service.delete_source_test_cases, "delete_source_test_cases"),
+        (refinement_service.delete_test_cases, "delete_test_cases"),
+        (script_lab_service.delete_scripts, "delete_scripts"),
+    ):
+        check(f"tas.{name}_callable", callable(fn))
+
+
+def test_a_delete_reports_what_else_it_removed():
+    """The summary must carry the collateral, not just a count.
+
+    Deleting a refined test case also removes superseded versions and
+    cascades scripts. The screens tell the user that after the fact, so the
+    contract has to have somewhere to say it.
+    """
+    from app.schemas.test_automation_studio import BulkDeleteRequest, DeletionSummary
+
+    summary = DeletionSummary()
+    for field in (
+        "deleted",
+        "not_found",
+        "versions_deleted",
+        "scripts_deleted",
+        "test_cases_unlinked",
+        "approved_deleted",
+    ):
+        check(f"tas.deletion_summary_has_{field}", hasattr(summary, field))
+
+    # An empty request would delete nothing and is almost always a bug in the
+    # caller, so it is refused at the contract.
+    try:
+        BulkDeleteRequest(ids=[])
+        check("tas.delete_rejects_empty_ids", False, "an empty id list was accepted")
+    except Exception:
+        check("tas.delete_rejects_empty_ids", True)
+
+
 # Functions only, and only ones defined here: `test_data_bridge` is an
 # imported module whose name also starts with "test_".
 TESTS = [

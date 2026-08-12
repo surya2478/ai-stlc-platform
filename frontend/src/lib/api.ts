@@ -6090,6 +6090,22 @@ export interface TasBlocked {
   message: string;
 }
 
+/** What a delete actually removed.
+ *
+ *  Deleting a studio artefact is never only the row that was clicked:
+ *  superseded versions go with it and scripts cascade off a refined test case.
+ *  The screens report these counts so the user is told what left with it. */
+export interface TasDeletionSummary {
+  deleted: number[];
+  /** Requested ids the project no longer has - a stale grid, usually. */
+  not_found: number[];
+  versions_deleted: number;
+  scripts_deleted: number;
+  /** Artefacts kept, but no longer linked to what produced them. */
+  test_cases_unlinked: number;
+  approved_deleted: number;
+}
+
 /** Acknowledgement for a queued studio job.
  *
  *  The three heavy studio operations return this instead of their results:
@@ -6293,6 +6309,12 @@ export const testAutomationStudioApi = {
       `${TAS_BASE}/projects/${projectId}/requirements/decide`,
       body,
     ),
+  /** Delete derived requirements. Any test case already generated from one
+   *  survives but loses the link back to it - the count is in the summary. */
+  deleteRequirements: (projectId: number, ids: number[]) =>
+    api.post<TasDeletionSummary>(`${TAS_BASE}/projects/${projectId}/requirements/delete`, {
+      ids,
+    }),
 
   // Screen 2 â€” Automation TC Coverage Assessment
   listSourceTestCases: (projectId: number, params?: { batch_id?: number }) => {
@@ -6303,6 +6325,13 @@ export const testAutomationStudioApi = {
       `${TAS_BASE}/projects/${projectId}/source-test-cases${suffix}`,
     );
   },
+  /** Delete test cases read off an uploaded document. The refined version of
+   *  one, if it exists, stays - re-extracting the document brings the source
+   *  row back. */
+  deleteSourceTestCases: (projectId: number, ids: number[]) =>
+    api.post<TasDeletionSummary>(`${TAS_BASE}/projects/${projectId}/source-test-cases/delete`, {
+      ids,
+    }),
   /**
    * Two entry points, at least one required. `source_test_case_ids` refines
    * uploaded test cases in place, keeping their ID and name;
@@ -6356,6 +6385,10 @@ export const testAutomationStudioApi = {
     ),
   reopenTestCase: (testCaseId: number) =>
     api.post<TasRefinedTestCase>(`${TAS_BASE}/test-cases/${testCaseId}/reopen`),
+  /** Delete refined test cases. Every version of each goes, and the database
+   *  cascades away any script generated from them. */
+  deleteTestCases: (projectId: number, ids: number[]) =>
+    api.post<TasDeletionSummary>(`${TAS_BASE}/projects/${projectId}/test-cases/delete`, { ids }),
   /** Manual and Automation downloads are separate by design â€” xlsx returns a
    *  sheet per classification, csv must name one. */
   exportTestCasesUrl: (
@@ -6401,6 +6434,10 @@ export const testAutomationStudioApi = {
   ) => api.patch<TasScriptAsset>(`${TAS_BASE}/scripts/${scriptId}`, body),
   decideScript: (scriptId: number, body: { decision: "approve" | "reopen"; reason?: string }) =>
     api.post<TasScriptAsset>(`${TAS_BASE}/scripts/${scriptId}/decide`, body),
+  /** Delete generated scripts, version history included. The test case is
+   *  untouched, so the script can be generated again. */
+  deleteScripts: (projectId: number, ids: number[]) =>
+    api.post<TasDeletionSummary>(`${TAS_BASE}/projects/${projectId}/scripts/delete`, { ids }),
   downloadScriptUrl: (scriptId: number) => `/api/v1${TAS_BASE}/scripts/${scriptId}/download`,
   downloadScriptsUrl: (projectId: number, framework?: TasFramework) =>
     `/api/v1${TAS_BASE}/projects/${projectId}/scripts/download${

@@ -8,6 +8,7 @@ import {
   Loader2,
   Pencil,
   Sparkles,
+  Trash2,
   Undo2,
   Wand2,
   X,
@@ -28,6 +29,7 @@ import {
 } from "@/lib/api";
 import {
   ClassificationBadge,
+  ConfirmDeleteDialog,
   EmptyState,
   JobProgress,
   OriginBadge,
@@ -35,6 +37,7 @@ import {
   StatTile,
   StatusBadge,
   TestDataBadge,
+  describeDeletion,
   skippedEntries,
 } from "./shared";
 
@@ -65,12 +68,19 @@ export function TestCaseWorkbenchView({
   const [selectedRequirementIds, setSelectedRequirementIds] = useState<Set<number>>(new Set());
   const [selectedTestCaseIds, setSelectedTestCaseIds] = useState<Set<number>>(new Set());
   const [editing, setEditing] = useState<TasRefinedTestCase | null>(null);
+  // What the confirmation dialog is about to delete. Held as ids rather than
+  // rows so a reload between opening the dialog and confirming cannot leave it
+  // acting on a stale copy.
+  const [pendingDelete, setPendingDelete] = useState<
+    { kind: "refined" | "source"; ids: number[] } | null
+  >(null);
 
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<{ percent: number; message: string } | null>(null);
   const [classifying, setClassifying] = useState(false);
   const [deciding, setDeciding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [applicationId, setApplicationId] = useState<string>("");
@@ -249,6 +259,38 @@ export function TestCaseWorkbenchView({
     }
   };
 
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    const { kind, ids } = pendingDelete;
+    setDeleting(true);
+    try {
+      const response =
+        kind === "refined"
+          ? await testAutomationStudioApi.deleteTestCases(projectId, ids)
+          : await testAutomationStudioApi.deleteSourceTestCases(projectId, ids);
+      setPendingDelete(null);
+      if (kind === "refined") setSelectedTestCaseIds(new Set());
+      else setSelectedSourceIds(new Set());
+      await load();
+      onChanged();
+      toast({
+        title: `${response.data.deleted.length} ${
+          kind === "refined" ? "refined" : "uploaded"
+        } test case(s) deleted`,
+        description: describeDeletion(response.data),
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: "Could not delete",
+        description: errorMessage(error, "Please try again."),
+        variant: "error",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleReopen = async (testCase: TasRefinedTestCase) => {
     try {
       await testAutomationStudioApi.reopenTestCase(testCase.id);
@@ -310,7 +352,73 @@ export function TestCaseWorkbenchView({
       return next;
     });
 
+  const allSourcesSelected =
+    sourceTestCases.length > 0 &&
+    sourceTestCases.every((source) => selectedSourceIds.has(source.id));
+  const someSourcesSelected = selectedSourceIds.size > 0;
+  const allRequirementsSelected =
+    requirements.length > 0 &&
+    requirements.every((requirement) => selectedRequirementIds.has(requirement.id));
+  const someRequirementsSelected = selectedRequirementIds.size > 0;
+
+  const toggleAllSources = (checked: boolean) =>
+    setSelectedSourceIds(checked ? new Set(sourceTestCases.map((source) => source.id)) : new Set());
+
+  const toggleAllRequirements = (checked: boolean) =>
+    setSelectedRequirementIds(
+      checked ? new Set(requirements.map((requirement) => requirement.id)) : new Set(),
+    );
+
   const selectedForGeneration = selectedSourceIds.size + selectedRequirementIds.size;
+
+  // Everything the confirmation needs to say, read off the rows the ids point
+  // at. What goes with a delete differs per artefact, so the dialog states it
+  // rather than asking a generic "are you sure?".
+  const deleteDialog = useMemo(() => {
+    if (!pendingDelete) return null;
+    const ids = new Set(pendingDelete.ids);
+
+    if (pendingDelete.kind === "refined") {
+      const rows = testCases.filter((testCase) => ids.has(testCase.id));
+      const approved = rows.filter((testCase) => testCase.status === "approved").length;
+      const fromUpload = rows.filter((testCase) => testCase.origin !== "derived").length;
+      return {
+        title: "Delete refined test cases?",
+        target:
+          rows.length === 1
+            ? `${rows[0].tc_display_id} - ${rows[0].title}`
+            : `${ids.size} refined test case(s)`,
+        confirmLabel: `Delete ${ids.size} test case(s)`,
+        consequences: [
+          "Every version is removed, not only the one listed here.",
+          "Any Playwright, Katalon or Appium script generated from them goes too.",
+          ...(approved ? [`${approved} of them are approved.`] : []),
+          ...(fromUpload
+            ? ["The uploaded test cases they were refined from stay, so they can be refined again."]
+            : []),
+          "Test data held in the Test Data module is left in place.",
+        ],
+      };
+    }
+
+    const rows = sourceTestCases.filter((source) => ids.has(source.id));
+    const refined = rows.filter((source) => source.refined_test_case_id).length;
+    return {
+      title: "Delete uploaded test cases?",
+      target:
+        rows.length === 1
+          ? `${rows[0].tc_display_id} - ${rows[0].title}`
+          : `${ids.size} uploaded test case(s)`,
+      confirmLabel: `Delete ${ids.size} test case(s)`,
+      consequences: [
+        "These are the rows read off the uploaded document, not the document itself.",
+        "Running Extract Test Cases on that document again brings them back.",
+        ...(refined
+          ? [`${refined} have already been refined - the refined test case stays.`]
+          : []),
+      ],
+    };
+  }, [pendingDelete, testCases, sourceTestCases]);
 
   const toggleTestCase = (id: number) =>
     setSelectedTestCaseIds((current) => {
@@ -398,13 +506,46 @@ export function TestCaseWorkbenchView({
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="min-w-0">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <h4 className="text-xs font-semibold text-gray-900">
-                Uploaded test cases
-                <span className="ml-1.5 font-normal text-gray-500">
-                  ({sourceTestCases.length})
-                </span>
-              </h4>
-              <span className="text-[11px] text-gray-500">ID and name preserved</span>
+              <label className="flex min-w-0 cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allSourcesSelected}
+                  ref={(node) => {
+                    // Some-but-not-all reads as "clicking this clears the
+                    // selection", which an unticked box does not convey.
+                    if (node) node.indeterminate = someSourcesSelected && !allSourcesSelected;
+                  }}
+                  onChange={(event) => toggleAllSources(event.target.checked)}
+                  disabled={sourceTestCases.length === 0}
+                  className="h-3.5 w-3.5"
+                  aria-label="Select all uploaded test cases"
+                />
+                <h4 className="truncate text-xs font-semibold text-gray-900">
+                  Uploaded test cases
+                  <span className="ml-1.5 font-normal text-gray-500">
+                    ({sourceTestCases.length})
+                  </span>
+                </h4>
+              </label>
+              {selectedSourceIds.size > 0 ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="text-[11px] text-gray-500">
+                    {selectedSourceIds.size} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPendingDelete({ kind: "source", ids: Array.from(selectedSourceIds) })
+                    }
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                </div>
+              ) : (
+                <span className="shrink-0 text-[11px] text-gray-500">ID and name preserved</span>
+              )}
             </div>
             {sourceTestCases.length === 0 ? (
               <EmptyState
@@ -414,31 +555,42 @@ export function TestCaseWorkbenchView({
             ) : (
               <div className="max-h-64 space-y-1 overflow-y-auto">
                 {sourceTestCases.map((source) => (
-                  <label
+                  <div
                     key={source.id}
-                    className="flex cursor-pointer items-start gap-2 rounded-lg border border-transparent px-2 py-1.5 text-xs hover:border-gray-200 hover:bg-gray-50"
+                    className="group flex items-start gap-2 rounded-lg border border-transparent px-2 py-1.5 text-xs hover:border-gray-200 hover:bg-gray-50"
                   >
-                    <input
-                      type="checkbox"
-                      checked={selectedSourceIds.has(source.id)}
-                      onChange={() => toggleSource(source.id)}
-                      className="mt-0.5 h-3.5 w-3.5"
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="font-mono text-[11px] text-gray-500">
-                        {source.tc_display_id}
-                      </span>
-                      <span className="ml-2 font-medium text-gray-900">{source.title}</span>
-                      {source.covers_requirement_ids.length > 0 && (
-                        <span className="ml-2 text-[11px] text-gray-500">
-                          covers {source.covers_requirement_ids.length} requirement(s)
+                    <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedSourceIds.has(source.id)}
+                        onChange={() => toggleSource(source.id)}
+                        className="mt-0.5 h-3.5 w-3.5"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="font-mono text-[11px] text-gray-500">
+                          {source.tc_display_id}
                         </span>
-                      )}
-                    </span>
+                        <span className="ml-2 font-medium text-gray-900">{source.title}</span>
+                        {source.covers_requirement_ids.length > 0 && (
+                          <span className="ml-2 text-[11px] text-gray-500">
+                            covers {source.covers_requirement_ids.length} requirement(s)
+                          </span>
+                        )}
+                      </span>
+                    </label>
                     {source.refined_test_case_id ? (
                       <Badge variant="outline">Refined</Badge>
                     ) : null}
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete({ kind: "source", ids: [source.id] })}
+                      className="rounded p-0.5 text-gray-300 hover:bg-red-50 hover:text-red-600 group-hover:text-gray-400"
+                      title={`Delete ${source.tc_display_id}`}
+                      aria-label={`Delete ${source.tc_display_id}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -446,11 +598,32 @@ export function TestCaseWorkbenchView({
 
           <div className="min-w-0">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <h4 className="text-xs font-semibold text-gray-900">
-                Approved requirements
-                <span className="ml-1.5 font-normal text-gray-500">({requirements.length})</span>
-              </h4>
-              <span className="text-[11px] text-gray-500">creates new test cases</span>
+              <label className="flex min-w-0 cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={allRequirementsSelected}
+                  ref={(node) => {
+                    if (node) {
+                      node.indeterminate = someRequirementsSelected && !allRequirementsSelected;
+                    }
+                  }}
+                  onChange={(event) => toggleAllRequirements(event.target.checked)}
+                  disabled={requirements.length === 0}
+                  className="h-3.5 w-3.5"
+                  aria-label="Select all approved requirements"
+                />
+                <h4 className="truncate text-xs font-semibold text-gray-900">
+                  Approved requirements
+                  <span className="ml-1.5 font-normal text-gray-500">({requirements.length})</span>
+                </h4>
+              </label>
+              {selectedRequirementIds.size > 0 ? (
+                <span className="shrink-0 text-[11px] text-gray-500">
+                  {selectedRequirementIds.size} selected
+                </span>
+              ) : (
+                <span className="shrink-0 text-[11px] text-gray-500">creates new test cases</span>
+              )}
             </div>
             {requirements.length === 0 ? (
               <EmptyState
@@ -540,6 +713,19 @@ export function TestCaseWorkbenchView({
             >
               <X className="h-3.5 w-3.5" />
               Reject
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                setPendingDelete({ kind: "refined", ids: Array.from(selectedTestCaseIds) })
+              }
+              disabled={!selectedTestCaseIds.size || deleting}
+              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              title="Delete the selected test cases and any scripts generated from them"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
             </Button>
             <Button
               size="sm"
@@ -697,26 +883,39 @@ export function TestCaseWorkbenchView({
                     <td className="py-2 pr-3">
                       <StatusBadge status={testCase.status} />
                     </td>
-                    <td className="py-2 pr-3 text-right">
-                      {testCase.status === "approved" ? (
+                    <td className="py-2 pr-3">
+                      <div className="flex items-center justify-end gap-0.5">
+                        {testCase.status === "approved" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleReopen(testCase)}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                            title="Reopen for editing"
+                          >
+                            <Undo2 className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditing(testCase)}
+                            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                            title="Edit"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleReopen(testCase)}
-                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                          title="Reopen for editing"
+                          onClick={() =>
+                            setPendingDelete({ kind: "refined", ids: [testCase.id] })
+                          }
+                          className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                          title={`Delete ${testCase.tc_display_id}`}
+                          aria-label={`Delete ${testCase.tc_display_id}`}
                         >
-                          <Undo2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setEditing(testCase)}
-                          className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                          title="Edit"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -732,6 +931,18 @@ export function TestCaseWorkbenchView({
           saving={saving}
           onCancel={() => setEditing(null)}
           onSave={handleSaveEdit}
+        />
+      )}
+
+      {deleteDialog && (
+        <ConfirmDeleteDialog
+          title={deleteDialog.title}
+          target={deleteDialog.target}
+          consequences={deleteDialog.consequences}
+          confirmLabel={deleteDialog.confirmLabel}
+          busy={deleting}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={handleDelete}
         />
       )}
     </div>

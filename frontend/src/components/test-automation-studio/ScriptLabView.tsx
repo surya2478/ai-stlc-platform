@@ -8,6 +8,7 @@ import {
   Loader2,
   Save,
   Sparkles,
+  Trash2,
   Undo2,
   X,
 } from "lucide-react";
@@ -23,7 +24,15 @@ import {
   type TasRefinedTestCase,
   type TasScriptAsset,
 } from "@/lib/api";
-import { EmptyState, JobProgress, SectionCard, StatTile, skippedEntries } from "./shared";
+import {
+  ConfirmDeleteDialog,
+  EmptyState,
+  JobProgress,
+  SectionCard,
+  StatTile,
+  describeDeletion,
+  skippedEntries,
+} from "./shared";
 
 function errorMessage(error: unknown, fallback: string): string {
   const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
@@ -55,6 +64,9 @@ export function ScriptLabView({
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState<{ percent: number; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // The script ids the confirmation dialog is about to delete.
+  const [pendingDelete, setPendingDelete] = useState<number[] | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -198,6 +210,33 @@ export function ScriptLabView({
     }
   };
 
+  const handleDelete = async () => {
+    if (!pendingDelete?.length) return;
+    setDeleting(true);
+    try {
+      const response = await testAutomationStudioApi.deleteScripts(projectId, pendingDelete);
+      setPendingDelete(null);
+      // The open script may be one of the deleted ones, and there is nothing
+      // left behind it to show.
+      if (openScript && pendingDelete.includes(openScript.id)) setOpenScript(null);
+      await load();
+      onChanged();
+      toast({
+        title: `${response.data.deleted.length} script(s) deleted`,
+        description: describeDeletion(response.data),
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: "Could not delete the scripts",
+        description: errorMessage(error, "Please try again."),
+        variant: "error",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const toggle = (id: number) =>
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -205,6 +244,33 @@ export function ScriptLabView({
       else next.add(id);
       return next;
     });
+
+  /** Every script generated for the currently selected test cases. */
+  const selectedScriptIds = useMemo(
+    () => scripts.filter((script) => selectedIds.has(script.refined_test_case_id)).map((s) => s.id),
+    [scripts, selectedIds],
+  );
+
+  const deleteDialog = useMemo(() => {
+    if (!pendingDelete?.length) return null;
+    const ids = new Set(pendingDelete);
+    const rows = scripts.filter((script) => ids.has(script.id));
+    const approved = rows.filter((script) => script.status === "approved").length;
+    const edited = rows.filter((script) => script.edited_by_user).length;
+    return {
+      target:
+        rows.length === 1
+          ? `${rows[0].test_case_display_id} - ${TAS_FRAMEWORK_LABELS[rows[0].framework]} v${rows[0].version}`
+          : `${ids.size} script(s)`,
+      confirmLabel: `Delete ${ids.size} script(s)`,
+      consequences: [
+        "Every version of each script goes, not only the current one.",
+        ...(approved ? [`${approved} of them are approved.`] : []),
+        ...(edited ? [`${edited} were edited by hand - those edits are not recoverable.`] : []),
+        "The test cases stay, so the scripts can be generated again.",
+      ],
+    };
+  }, [pendingDelete, scripts]);
 
   if (loading) {
     return (
@@ -276,6 +342,22 @@ export function ScriptLabView({
                 <Download className="h-3.5 w-3.5" />
                 {TAS_FRAMEWORK_LABELS[framework]} only
               </a>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPendingDelete(selectedScriptIds)}
+              disabled={!selectedScriptIds.length || deleting}
+              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              title={
+                selectedScriptIds.length
+                  ? "Delete every script generated for the selected test cases"
+                  : "Select a test case that has generated scripts"
+              }
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete scripts
+              {selectedScriptIds.length ? ` (${selectedScriptIds.length})` : ""}
             </Button>
           </div>
         }
@@ -392,6 +474,15 @@ export function ScriptLabView({
                     Download
                   </a>
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPendingDelete([openScript.id])}
+                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </Button>
                 {openScript.status === "approved" ? (
                   <Button size="sm" variant="outline" onClick={() => handleDecide("reopen")}>
                     <Undo2 className="h-3.5 w-3.5" />
@@ -465,6 +556,18 @@ export function ScriptLabView({
             </div>
           </div>
         </div>
+      )}
+
+      {deleteDialog && (
+        <ConfirmDeleteDialog
+          title="Delete generated scripts?"
+          target={deleteDialog.target}
+          consequences={deleteDialog.consequences}
+          confirmLabel={deleteDialog.confirmLabel}
+          busy={deleting}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={handleDelete}
+        />
       )}
     </div>
   );

@@ -5,6 +5,7 @@ import re
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,10 +15,15 @@ from app.models.test_automation_studio import (
     TasDerivedRequirement,
     TasIntakeBatch,
     TasIntakeDocument,
+    TasRefinedTestCase,
     TasSourceTestCase,
 )
 from app.models.test_case import TestCase
-from app.schemas.test_automation_studio import AssessCoverageRequest, BulkRequirementDecision
+from app.schemas.test_automation_studio import (
+    AssessCoverageRequest,
+    BulkRequirementDecision,
+    DeletionSummary,
+)
 from app.services import agent_run_service
 from app.services.test_automation_studio import intake_service, sheet_import
 from app.services.test_automation_studio.progress import ProgressCallback
@@ -801,3 +807,108 @@ async def decide_requirements(
     for row in rows:
         await db.refresh(row)
     return rows
+
+
+# ── Deleting generated artefacts ─────────────────────────────────────────────
+
+async def delete_requirements(
+    db: AsyncSession, *, project_id: int, requirement_ids: list[int]
+) -> DeletionSummary:
+    """Remove derived requirements the assessment produced.
+
+    Any refined test case generated from one survives — the FK is ON DELETE
+    SET NULL — because the test case is a separately approved artefact with
+    its own delete. It does lose the link back to the requirement, so the
+    count is reported and the screen warns before the delete: a later
+    regeneration can no longer recognise it as the same test case and would
+    mint a new ID.
+    """
+    rows = list(
+        (
+            await db.execute(
+                select(TasDerivedRequirement).where(
+                    TasDerivedRequirement.id.in_(requirement_ids),
+                    TasDerivedRequirement.project_id == project_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found_ids = {row.id for row in rows}
+    not_found = [rid for rid in requirement_ids if rid not in found_ids]
+    if not rows:
+        return DeletionSummary(not_found=not_found)
+
+    unlinked = (
+        await db.execute(
+            select(func.count(TasRefinedTestCase.id)).where(
+                TasRefinedTestCase.derived_requirement_id.in_(found_ids)
+            )
+        )
+    ).scalar_one() or 0
+    approved_deleted = sum(1 for row in rows if row.status == "approved")
+
+    await db.execute(
+        sql_delete(TasDerivedRequirement)
+        .where(TasDerivedRequirement.id.in_(found_ids))
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+
+    return DeletionSummary(
+        deleted=sorted(found_ids),
+        not_found=not_found,
+        test_cases_unlinked=unlinked,
+        approved_deleted=approved_deleted,
+    )
+
+
+async def delete_source_test_cases(
+    db: AsyncSession, *, project_id: int, source_ids: list[int]
+) -> DeletionSummary:
+    """Remove test cases read off an uploaded document.
+
+    The refined version of one, if it has been refined, stays: it is the
+    automation artefact the rest of the studio works from, and its ID and
+    title are already copies rather than references. Deleting the source only
+    removes the intake evidence, so re-extracting the same document brings it
+    back.
+    """
+    rows = list(
+        (
+            await db.execute(
+                select(TasSourceTestCase).where(
+                    TasSourceTestCase.id.in_(source_ids),
+                    TasSourceTestCase.project_id == project_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found_ids = {row.id for row in rows}
+    not_found = [sid for sid in source_ids if sid not in found_ids]
+    if not rows:
+        return DeletionSummary(not_found=not_found)
+
+    unlinked = (
+        await db.execute(
+            select(func.count(TasRefinedTestCase.id)).where(
+                TasRefinedTestCase.source_uploaded_test_case_id.in_(found_ids)
+            )
+        )
+    ).scalar_one() or 0
+
+    await db.execute(
+        sql_delete(TasSourceTestCase)
+        .where(TasSourceTestCase.id.in_(found_ids))
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+
+    return DeletionSummary(
+        deleted=sorted(found_ids),
+        not_found=not_found,
+        test_cases_unlinked=unlinked,
+    )

@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,12 +18,14 @@ from app.models.test_automation_studio import (
     TasDerivedRequirement,
     TasIntakeBatch,
     TasRefinedTestCase,
+    TasScriptAsset,
     TasSourceTestCase,
 )
 from app.models.test_case import TestCase
 from app.schemas.test_automation_studio import (
     BulkClassifyRequest,
     BulkTestCaseDecision,
+    DeletionSummary,
     GenerateRefinedTestCasesRequest,
     RefinedTestCaseUpdate,
 )
@@ -1015,6 +1018,85 @@ async def reopen_test_case(
     await db.commit()
     await db.refresh(test_case)
     return test_case
+
+
+async def delete_test_cases(
+    db: AsyncSession, *, project_id: int, test_case_ids: list[int]
+) -> DeletionSummary:
+    """Remove refined test cases and everything generated off them.
+
+    Two things go beyond the rows named in the request, and both are
+    deliberate:
+
+    * every version sharing a `tc_display_id` goes, not just the current one.
+      Versions are separate rows and only the current one is listed, so
+      deleting that one alone would leave invisible history behind and the
+      next generation run would resurrect the ID at version n+1.
+    * scripts cascade at the database (`ondelete="CASCADE"`), because a script
+      generated against a test case that no longer exists cannot be traced,
+      regenerated or approved.
+
+    Test data bound in the shared Test Data module is left alone: it is
+    another module's data, and may be bound by test cases outside the studio.
+    """
+    named = list(
+        (
+            await db.execute(
+                select(TasRefinedTestCase).where(
+                    TasRefinedTestCase.id.in_(test_case_ids),
+                    TasRefinedTestCase.project_id == project_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found_ids = {row.id for row in named}
+    not_found = [tc_id for tc_id in test_case_ids if tc_id not in found_ids]
+    if not named:
+        return DeletionSummary(not_found=not_found)
+
+    display_ids = {row.tc_display_id for row in named}
+    every_version = list(
+        (
+            await db.execute(
+                select(TasRefinedTestCase).where(
+                    TasRefinedTestCase.project_id == project_id,
+                    TasRefinedTestCase.tc_display_id.in_(display_ids),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    doomed_ids = [row.id for row in every_version]
+    approved_deleted = sum(1 for row in every_version if row.status == "approved")
+
+    scripts_deleted = (
+        await db.execute(
+            select(func.count(TasScriptAsset.id)).where(
+                TasScriptAsset.refined_test_case_id.in_(doomed_ids)
+            )
+        )
+    ).scalar_one() or 0
+
+    # A Core DELETE rather than db.delete(row): the ORM cascade would have to
+    # lazy-load `scripts` for each row mid-flush, which raises under asyncio.
+    # The FK is ON DELETE CASCADE, so the database removes them either way.
+    await db.execute(
+        sql_delete(TasRefinedTestCase)
+        .where(TasRefinedTestCase.id.in_(doomed_ids))
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+
+    return DeletionSummary(
+        deleted=sorted(found_ids),
+        not_found=not_found,
+        versions_deleted=len(doomed_ids) - len(found_ids),
+        scripts_deleted=scripts_deleted,
+        approved_deleted=approved_deleted,
+    )
 
 
 async def summary(db: AsyncSession, project_id: int) -> dict:

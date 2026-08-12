@@ -467,6 +467,42 @@ class ScriptDecision(BaseModel):
 
 # ── Shared ───────────────────────────────────────────────────────────────────
 
+class BulkDeleteRequest(BaseModel):
+    """The ids of the generated artefacts to remove.
+
+    One shape for all four artefact families — derived requirements, uploaded
+    test cases, refined test cases and scripts — because the screens all do the
+    same thing with it: delete the current selection.
+    """
+
+    ids: list[int] = Field(min_length=1)
+
+
+class DeletionSummary(BaseModel):
+    """What a delete actually removed.
+
+    Deleting one of these artefacts is never only the row the user clicked:
+    superseded versions go with it, and the database cascades scripts off a
+    refined test case. The screens report these numbers rather than a bare
+    "deleted", so the user is told what left with it.
+    """
+
+    deleted: list[int] = Field(default_factory=list)
+    # Requested ids that are not in this project (already deleted, or another
+    # project's). Reported rather than raising: a stale grid is the usual
+    # cause and the rest of the selection should still go.
+    not_found: list[int] = Field(default_factory=list)
+    # Superseded versions removed alongside the current ones.
+    versions_deleted: int = 0
+    # Scripts the database cascaded away with their test case.
+    scripts_deleted: int = 0
+    # Refined test cases left in place but no longer linked to the artefact
+    # that produced them (the FK is ON DELETE SET NULL).
+    test_cases_unlinked: int = 0
+    # How many of the deleted rows had been approved.
+    approved_deleted: int = 0
+
+
 class StudioJobOut(BaseModel):
     """Acknowledgement for a queued studio job.
 

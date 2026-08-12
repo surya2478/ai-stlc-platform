@@ -25,6 +25,7 @@ import {
   type TasIntakeBatch,
 } from "@/lib/api";
 import {
+  ConfirmDeleteDialog,
   CoverageBadge,
   EmptyState,
   JobProgress,
@@ -32,6 +33,7 @@ import {
   SectionCard,
   StatTile,
   StatusBadge,
+  describeDeletion,
 } from "./shared";
 
 const DOC_ROLE_OPTIONS: Array<{ value: TasDocRole; label: string }> = [
@@ -81,6 +83,9 @@ export function CoverageAssessmentView({
   const [progress, setProgress] = useState<{ percent: number; message: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deciding, setDeciding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  // The requirement ids the confirmation dialog is about to delete.
+  const [pendingDelete, setPendingDelete] = useState<number[] | null>(null);
 
   const [creating, setCreating] = useState(false);
   const [newBatchName, setNewBatchName] = useState("");
@@ -378,6 +383,31 @@ export function CoverageAssessmentView({
     }
   };
 
+  const handleDelete = async () => {
+    if (!pendingDelete?.length) return;
+    setDeleting(true);
+    try {
+      const response = await testAutomationStudioApi.deleteRequirements(projectId, pendingDelete);
+      setPendingDelete(null);
+      setSelectedIds(new Set());
+      if (selectedBatchId != null) await loadBatchDetail(selectedBatchId);
+      onChanged();
+      toast({
+        title: `${response.data.deleted.length} requirement(s) deleted`,
+        description: describeDeletion(response.data),
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: "Could not delete the requirements",
+        description: errorMessage(error, "Please try again."),
+        variant: "error",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const toggle = (id: number) =>
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -386,10 +416,40 @@ export function CoverageAssessmentView({
       return next;
     });
 
-  const pendingIds = requirements
-    .filter((requirement) => requirement.status === "pending_approval")
-    .map((requirement) => requirement.id);
-  const allPendingSelected = pendingIds.length > 0 && pendingIds.every((id) => selectedIds.has(id));
+  // What deleting the pending selection actually costs, read off the rows.
+  const deleteDialog = useMemo(() => {
+    if (!pendingDelete?.length) return null;
+    const ids = new Set(pendingDelete);
+    const rows = requirements.filter((requirement) => ids.has(requirement.id));
+    const approved = rows.filter((requirement) => requirement.status === "approved").length;
+    const extracted = rows.filter((requirement) => requirement.origin === "extracted").length;
+    return {
+      target:
+        rows.length === 1
+          ? `${rows[0].requirement_key} - ${rows[0].title}`
+          : `${ids.size} requirement(s)`,
+      confirmLabel: `Delete ${ids.size} requirement(s)`,
+      consequences: [
+        ...(approved ? [`${approved} of them are approved.`] : []),
+        ...(extracted
+          ? [
+              `${extracted} were read out of an attached document - assessing this batch again re-derives them.`,
+            ]
+          : []),
+        "Test cases already generated from them are kept, but lose the link back to the requirement.",
+        "The coverage assessment's own figures are not recalculated.",
+      ],
+    };
+  }, [pendingDelete, requirements]);
+
+  // Every row, not only the pending ones. Approve/Reject skip or re-apply
+  // harmlessly on a row already in that state, and Delete has to be able to
+  // reach an approved requirement — a select-all that quietly excluded them
+  // left no way to clear an approved row in bulk.
+  const allSelected =
+    requirements.length > 0 &&
+    requirements.every((requirement) => selectedIds.has(requirement.id));
+  const someSelected = selectedIds.size > 0;
 
   const requirementDocs =
     selectedBatch?.documents.filter((doc) => doc.doc_role === "brd" || doc.doc_role === "srd") ?? [];
@@ -743,6 +803,17 @@ export function CoverageAssessmentView({
               <X className="h-3.5 w-3.5" />
               Reject
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPendingDelete(Array.from(selectedIds))}
+              disabled={!selectedIds.size || deleting}
+              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              title="Delete the selected requirements"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </Button>
             <Button size="sm" onClick={() => handleDecide("approve")} disabled={!selectedIds.size || deciding}>
               {deciding ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -767,12 +838,21 @@ export function CoverageAssessmentView({
                   <th className="py-2 pr-3">
                     <input
                       type="checkbox"
-                      checked={allPendingSelected}
+                      checked={allSelected}
+                      ref={(node) => {
+                        // Some-but-not-all reads as "clicking this clears the
+                        // selection", which an unticked box does not convey.
+                        if (node) node.indeterminate = someSelected && !allSelected;
+                      }}
                       onChange={(event) =>
-                        setSelectedIds(event.target.checked ? new Set(pendingIds) : new Set())
+                        setSelectedIds(
+                          event.target.checked
+                            ? new Set(requirements.map((requirement) => requirement.id))
+                            : new Set(),
+                        )
                       }
                       className="h-3.5 w-3.5"
-                      aria-label="Select all pending requirements"
+                      aria-label="Select all requirements"
                     />
                   </th>
                   <th className="py-2 pr-3 font-semibold">Key</th>
@@ -781,6 +861,7 @@ export function CoverageAssessmentView({
                   <th className="py-2 pr-3 font-semibold">Coverage</th>
                   <th className="py-2 pr-3 font-semibold">Automation fit</th>
                   <th className="py-2 pr-3 font-semibold">Status</th>
+                  <th className="py-2 pr-3 font-semibold" />
                 </tr>
               </thead>
               <tbody>
@@ -830,6 +911,17 @@ export function CoverageAssessmentView({
                     <td className="py-2 pr-3">
                       <StatusBadge status={requirement.status} />
                     </td>
+                    <td className="py-2 pr-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setPendingDelete([requirement.id])}
+                        className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                        title={`Delete ${requirement.requirement_key}`}
+                        aria-label={`Delete ${requirement.requirement_key}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -837,6 +929,18 @@ export function CoverageAssessmentView({
           </div>
         )}
       </SectionCard>
+
+      {deleteDialog && (
+        <ConfirmDeleteDialog
+          title="Delete requirements?"
+          target={deleteDialog.target}
+          consequences={deleteDialog.consequences}
+          confirmLabel={deleteDialog.confirmLabel}
+          busy={deleting}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={handleDelete}
+        />
+      )}
     </div>
   );
 }

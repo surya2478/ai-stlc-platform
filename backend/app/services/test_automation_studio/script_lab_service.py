@@ -6,7 +6,8 @@ import re
 import zipfile
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.test_automation_studio.script_agent import ScriptGenerationAgent
@@ -15,6 +16,7 @@ from app.models.test_automation_studio import TasRefinedTestCase, TasScriptAsset
 from app.schemas.test_automation_studio import (
     FRAMEWORK_LANGUAGES,
     SUPPORTED_FRAMEWORKS,
+    DeletionSummary,
     GenerateScriptsRequest,
     ScriptAssetUpdate,
 )
@@ -331,6 +333,74 @@ async def decide_script(
     await db.commit()
     await db.refresh(asset)
     return asset
+
+
+async def delete_scripts(
+    db: AsyncSession, *, project_id: int, script_ids: list[int]
+) -> DeletionSummary:
+    """Remove generated scripts, version history included.
+
+    A script is one (test case, framework) artefact; its earlier versions are
+    superseded rows of the same thing and only the current one is listed.
+    Deleting the current version alone would hide the artefact while leaving
+    the history, and the next generation run would continue numbering from it
+    rather than starting again at v1. The refined test case is untouched, so
+    the script can simply be generated again.
+    """
+    rows = list(
+        (
+            await db.execute(
+                select(TasScriptAsset).where(
+                    TasScriptAsset.id.in_(script_ids),
+                    TasScriptAsset.project_id == project_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    found_ids = {row.id for row in rows}
+    not_found = [sid for sid in script_ids if sid not in found_ids]
+    if not rows:
+        return DeletionSummary(not_found=not_found)
+
+    keys = {(row.refined_test_case_id, row.framework) for row in rows}
+    every_version = list(
+        (
+            await db.execute(
+                select(TasScriptAsset).where(
+                    TasScriptAsset.project_id == project_id,
+                    or_(
+                        *[
+                            and_(
+                                TasScriptAsset.refined_test_case_id == test_case_id,
+                                TasScriptAsset.framework == framework,
+                            )
+                            for test_case_id, framework in keys
+                        ]
+                    ),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    doomed_ids = [row.id for row in every_version]
+    approved_deleted = sum(1 for row in every_version if row.status == "approved")
+
+    await db.execute(
+        sql_delete(TasScriptAsset)
+        .where(TasScriptAsset.id.in_(doomed_ids))
+        .execution_options(synchronize_session=False)
+    )
+    await db.commit()
+
+    return DeletionSummary(
+        deleted=sorted(found_ids),
+        not_found=not_found,
+        versions_deleted=len(doomed_ids) - len(found_ids),
+        approved_deleted=approved_deleted,
+    )
 
 
 def build_zip(pairs: list[tuple[TasScriptAsset, TasRefinedTestCase]]) -> bytes:

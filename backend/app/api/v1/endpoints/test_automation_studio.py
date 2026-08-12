@@ -25,9 +25,11 @@ from app.schemas.test_automation_studio import (
     BulkClassifyRequest,
     BulkClassifyResponse,
     BulkDecisionResponse,
+    BulkDeleteRequest,
     BulkRequirementDecision,
     BulkTestCaseDecision,
     CoverageAssessmentOut,
+    DeletionSummary,
     DerivedRequirementOut,
     DerivedRequirementUpdate,
     GenerateRefinedTestCasesRequest,
@@ -435,6 +437,23 @@ async def decide_requirements(
     return [DerivedRequirementOut.model_validate(row) for row in rows]
 
 
+@router.post(
+    "/projects/{project_id}/requirements/delete", response_model=DeletionSummary
+)
+async def delete_requirements(
+    project_id: int, body: BulkDeleteRequest, db: DBSession, current_user: CurrentUser
+):
+    """Delete derived requirements — Screen 1's row and bulk delete.
+
+    POST rather than DELETE for the same reason /decide is: it carries a body
+    of ids, and one selection is one call.
+    """
+    await _guard(TAS_ASSESS_COVERAGE, project_id, current_user, db)
+    return await coverage_service.delete_requirements(
+        db, project_id=project_id, requirement_ids=body.ids
+    )
+
+
 @router.get("/projects/{project_id}/source-test-cases", response_model=list[SourceTestCaseOut])
 async def list_source_test_cases(
     project_id: int,
@@ -472,6 +491,23 @@ async def list_source_test_cases(
             out.refined_status = refined.status
         payload.append(out)
     return payload
+
+
+@router.post(
+    "/projects/{project_id}/source-test-cases/delete", response_model=DeletionSummary
+)
+async def delete_source_test_cases(
+    project_id: int, body: BulkDeleteRequest, db: DBSession, current_user: CurrentUser
+):
+    """Delete test cases read off an uploaded document.
+
+    Gated on `tas.intake`: these rows are intake evidence, produced and
+    refreshed by the same extraction the upload owns.
+    """
+    await _guard(TAS_INTAKE, project_id, current_user, db)
+    return await coverage_service.delete_source_test_cases(
+        db, project_id=project_id, source_ids=body.ids
+    )
 
 
 # ── Screen 2: Automation TC Coverage Assessment ──────────────────────────────
@@ -584,6 +620,24 @@ async def reopen_test_case(test_case_id: int, db: DBSession, current_user: Curre
         db, test_case=test_case, user_id=current_user.id
     )
     return RefinedTestCaseOut.model_validate(updated)
+
+
+@router.post("/projects/{project_id}/test-cases/delete", response_model=DeletionSummary)
+async def delete_test_cases(
+    project_id: int, body: BulkDeleteRequest, db: DBSession, current_user: CurrentUser
+):
+    """Delete refined test cases — Screen 2's row and bulk delete.
+
+    Gated on the permission that generates them: whoever can produce a refined
+    test case can discard it. Approved ones are included; the studio's approval
+    is a working gate on generating scripts, not a records-retention control,
+    and the response reports how many approved rows went so the screen can say
+    so.
+    """
+    await _guard(TAS_REFINE_TEST_CASES, project_id, current_user, db)
+    return await refinement_service.delete_test_cases(
+        db, project_id=project_id, test_case_ids=body.ids
+    )
 
 
 @router.get("/projects/{project_id}/test-cases/export")
@@ -731,6 +785,22 @@ async def decide_script(
     )
     test_case = await refinement_service.get_test_case_or_404(db, updated.refined_test_case_id)
     return _script_out(updated, test_case)
+
+
+@router.post("/projects/{project_id}/scripts/delete", response_model=DeletionSummary)
+async def delete_scripts(
+    project_id: int, body: BulkDeleteRequest, db: DBSession, current_user: CurrentUser
+):
+    """Delete generated scripts — Screen 3's delete.
+
+    Gated on the permission that generates them, matching the test case
+    delete: the test case survives, so a deleted script can be generated
+    again from the same source.
+    """
+    await _guard(TAS_GENERATE_SCRIPT, project_id, current_user, db)
+    return await script_lab_service.delete_scripts(
+        db, project_id=project_id, script_ids=body.ids
+    )
 
 
 @router.get("/scripts/{script_id}/download")
