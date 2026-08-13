@@ -41,6 +41,7 @@ import {
   TestDataBadge,
   describeDeletion,
   skippedEntries,
+  tasButtonTone,
 } from "./shared";
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -689,6 +690,7 @@ export function TestCaseWorkbenchView({
             <Button
               size="sm"
               variant="outline"
+              className={tasButtonTone.agentSoft}
               onClick={() => handleClassify()}
               disabled={!selectedTestCaseIds.size || classifying}
               title="Classify using the project's published automation classification policy"
@@ -703,6 +705,7 @@ export function TestCaseWorkbenchView({
             <Button
               size="sm"
               variant="outline"
+              className={tasButtonTone.automation}
               onClick={() => handleClassify("automation")}
               disabled={!selectedTestCaseIds.size || classifying}
             >
@@ -711,6 +714,7 @@ export function TestCaseWorkbenchView({
             <Button
               size="sm"
               variant="outline"
+              className={tasButtonTone.manual}
               onClick={() => handleClassify("manual")}
               disabled={!selectedTestCaseIds.size || classifying}
             >
@@ -719,6 +723,7 @@ export function TestCaseWorkbenchView({
             <Button
               size="sm"
               variant="outline"
+              className={tasButtonTone.reject}
               onClick={() => handleDecide("reject")}
               disabled={!selectedTestCaseIds.size || deciding}
             >
@@ -732,7 +737,7 @@ export function TestCaseWorkbenchView({
                 setPendingDelete({ kind: "refined", ids: Array.from(selectedTestCaseIds) })
               }
               disabled={!selectedTestCaseIds.size || deleting}
-              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              className={tasButtonTone.danger}
               title="Delete the selected test cases and any scripts generated from them"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -740,6 +745,7 @@ export function TestCaseWorkbenchView({
             </Button>
             <Button
               size="sm"
+              className={tasButtonTone.approve}
               onClick={() => handleDecide("approve")}
               disabled={!selectedTestCaseIds.size || deciding}
             >
@@ -757,7 +763,7 @@ export function TestCaseWorkbenchView({
           <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             Download
           </span>
-          <Button size="sm" variant="outline" asChild>
+          <Button size="sm" variant="outline" className={tasButtonTone.export} asChild>
             <a
               href={testAutomationStudioApi.exportTestCasesUrl(projectId, {
                 format: "xlsx",
@@ -768,7 +774,7 @@ export function TestCaseWorkbenchView({
               Workbook (both sheets)
             </a>
           </Button>
-          <Button size="sm" variant="outline" asChild>
+          <Button size="sm" variant="outline" className={tasButtonTone.export} asChild>
             <a
               href={testAutomationStudioApi.exportTestCasesUrl(projectId, {
                 format: "csv",
@@ -779,7 +785,7 @@ export function TestCaseWorkbenchView({
               Automation CSV
             </a>
           </Button>
-          <Button size="sm" variant="outline" asChild>
+          <Button size="sm" variant="outline" className={tasButtonTone.export} asChild>
             <a
               href={testAutomationStudioApi.exportTestCasesUrl(projectId, {
                 format: "csv",
@@ -1203,7 +1209,7 @@ function TestCaseEditor({
         </div>
 
         <footer className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
-          <Button size="sm" variant="outline" onClick={onCancel}>
+          <Button size="sm" variant="outline" className={tasButtonTone.neutral} onClick={onCancel}>
             Cancel
           </Button>
           <Button size="sm" onClick={() => onSave(draft)} disabled={saving}>

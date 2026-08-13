@@ -10,7 +10,7 @@ import {
   type TasDiscoveredElement,
   type TasDiscoveryRun,
 } from "@/lib/api";
-import { EmptyState, SideDrawer } from "./shared";
+import { EmptyState, SideDrawer, tasButtonTone } from "./shared";
 
 /** What the crawl found, and — when it found nothing useful — why.
  *
@@ -84,7 +84,7 @@ export function DiscoveryDrawer({
       subtitle={run.application_url ?? undefined}
       onClose={onClose}
       footer={
-        <Button size="sm" variant="outline" onClick={onClose}>
+        <Button size="sm" variant="outline" className={tasButtonTone.neutral} onClick={onClose}>
           Close
         </Button>
       }

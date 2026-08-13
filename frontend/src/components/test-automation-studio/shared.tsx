@@ -14,6 +14,57 @@ import type {
   TasTestDataStatus,
 } from "@/lib/api";
 
+/** Button tints for the studio, keyed by what the action *does*.
+ *
+ *  The Script Lab already spoke in colour — a cyan-to-violet gradient for the
+ *  agent run, red for the delete — while every other action on all three
+ *  screens was the same grey outline, so a row of eight buttons read as one
+ *  undifferentiated block. These extend that existing language rather than
+ *  replace it: the gradient still marks a headline agent run (`variant="ai"`)
+ *  and the brand red still marks the primary commit (`variant="default"`);
+ *  everything else takes a soft tint from the same family as the badge that
+ *  describes its result, so the button and the state it produces agree.
+ *
+ *  Applied as a `className` over `variant="outline"` (or `"default"` for the
+ *  two solid tones) — `cn` runs through tailwind-merge, so the tone's border,
+ *  background and text simply win over the variant's neutrals. Purely
+ *  presentational: no tone changes what a button is wired to, and disabled
+ *  buttons keep the variant's `disabled:opacity-50`. */
+export const tasButtonTone = {
+  /** Runs against the live application — Discover, Check Grounding, Dry run. */
+  live: "border-cyan-200 bg-cyan-50 text-cyan-700 hover:border-cyan-300 hover:bg-cyan-100 hover:text-cyan-800",
+  /** A secondary agent job: the gradient of `variant="ai"`, softened so it
+   *  reads as "same kind of work, not the headline action". */
+  agentSoft:
+    "border-violet-200 bg-gradient-to-r from-cyan-50 to-violet-50 text-violet-700 hover:from-cyan-100 hover:to-violet-100 hover:text-violet-800",
+  /** Feeds the studio or saves its configuration — the brand colour, softened
+   *  so it sits beside the solid brand primary without competing with it. */
+  brandSoft:
+    "border-[#B71920]/25 bg-[#B71920]/5 text-[#B71920] hover:border-[#B71920]/40 hover:bg-[#B71920]/10 hover:text-[#B71920]",
+  /** Takes something out of the studio — every download and export. */
+  export:
+    "border-indigo-200 bg-indigo-50 text-indigo-700 hover:border-indigo-300 hover:bg-indigo-100 hover:text-indigo-800",
+  /** Matches the Automation classification badge (`info`). */
+  automation:
+    "border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800",
+  /** Matches the Manual classification badge (`purple`). */
+  manual:
+    "border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-300 hover:bg-purple-100 hover:text-purple-800",
+  /** Solid, on `variant="default"`. Approve was the brand red, which is also
+   *  the delete colour — two opposite outcomes in one hue. Emerald is what the
+   *  Approved badge already uses. */
+  approve: "bg-emerald-600 text-white hover:bg-emerald-700 hover:text-white",
+  /** Sends something back rather than destroying it — Reject, Reopen. Amber,
+   *  as the warning badges use. */
+  reject:
+    "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300 hover:bg-amber-100 hover:text-amber-800",
+  /** Not undoable. Already the convention here; now stated once. */
+  danger: "border-red-200 bg-red-50 text-red-600 hover:border-red-300 hover:bg-red-100 hover:text-red-700",
+  /** Low-emphasis utility that changes nothing — Refresh. */
+  neutral:
+    "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-slate-100 hover:text-slate-800",
+} as const;
+
 export function StatTile({
   label,
   value,
@@ -177,7 +228,13 @@ export function ConfirmDeleteDialog({
           <p className="mt-3 text-[11px] font-medium text-red-700">This cannot be undone.</p>
         </div>
         <footer className="flex items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
-          <Button size="sm" variant="outline" onClick={onCancel} disabled={busy}>
+          <Button
+            size="sm"
+            variant="outline"
+            className={tasButtonTone.neutral}
+            onClick={onCancel}
+            disabled={busy}
+          >
             Cancel
           </Button>
           <Button size="sm" variant="destructive" onClick={onConfirm} disabled={busy}>

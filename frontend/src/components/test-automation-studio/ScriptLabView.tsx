@@ -42,6 +42,7 @@ import {
   StatTile,
   describeDeletion,
   skippedEntries,
+  tasButtonTone,
 } from "./shared";
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -642,6 +643,7 @@ export function ScriptLabView({
             <Button
               size="sm"
               variant="outline"
+              className={tasButtonTone.live}
               onClick={handleDiscover}
               disabled={discovering || !batch?.application_url}
               title={
@@ -660,6 +662,7 @@ export function ScriptLabView({
             <Button
               size="sm"
               variant="outline"
+              className={tasButtonTone.live}
               onClick={handleGround}
               disabled={grounding || batchId == null || !discovery}
               title={
@@ -846,7 +849,13 @@ export function ScriptLabView({
                   </div>
                 )}
 
-                <Button size="sm" variant="outline" onClick={handleSaveTarget} disabled={savingAuth}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={tasButtonTone.brandSoft}
+                  onClick={handleSaveTarget}
+                  disabled={savingAuth}
+                >
                   {savingAuth ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
@@ -903,6 +912,7 @@ export function ScriptLabView({
             <Button
               size="sm"
               variant="outline"
+              className={tasButtonTone.live}
               onClick={() => handleDryRun()}
               disabled={!selectedScriptIds.length || dryRunning || generating}
               title={
@@ -919,13 +929,13 @@ export function ScriptLabView({
               Dry run
               {selectedScriptIds.length ? ` (${selectedScriptIds.length})` : ""}
             </Button>
-            <Button size="sm" variant="outline" asChild>
+            <Button size="sm" variant="outline" className={tasButtonTone.export} asChild>
               <a href={testAutomationStudioApi.downloadScriptsUrl(projectId)}>
                 <Download className="h-3.5 w-3.5" />
                 Download all
               </a>
             </Button>
-            <Button size="sm" variant="outline" asChild>
+            <Button size="sm" variant="outline" className={tasButtonTone.export} asChild>
               <a href={testAutomationStudioApi.downloadScriptsUrl(projectId, framework)}>
                 <Download className="h-3.5 w-3.5" />
                 {TAS_FRAMEWORK_LABELS[framework]} only
@@ -936,7 +946,7 @@ export function ScriptLabView({
               variant="outline"
               onClick={() => setPendingDelete(selectedScriptIds)}
               disabled={!selectedScriptIds.length || deleting}
-              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              className={tasButtonTone.danger}
               title={
                 selectedScriptIds.length
                   ? "Delete every script generated for the selected test cases"
@@ -1069,7 +1079,7 @@ export function ScriptLabView({
                 <Badge variant={openScript.status === "approved" ? "success" : "secondary"}>
                   {openScript.status}
                 </Badge>
-                <Button size="sm" variant="outline" asChild>
+                <Button size="sm" variant="outline" className={tasButtonTone.export} asChild>
                   <a href={testAutomationStudioApi.downloadScriptUrl(openScript.id)}>
                     <Download className="h-3.5 w-3.5" />
                     Download
@@ -1079,19 +1089,30 @@ export function ScriptLabView({
                   size="sm"
                   variant="outline"
                   onClick={() => setPendingDelete([openScript.id])}
-                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                  className={tasButtonTone.danger}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   Delete
                 </Button>
                 {openScript.status === "approved" ? (
-                  <Button size="sm" variant="outline" onClick={() => handleDecide("reopen")}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={tasButtonTone.reject}
+                    onClick={() => handleDecide("reopen")}
+                  >
                     <Undo2 className="h-3.5 w-3.5" />
                     Reopen
                   </Button>
                 ) : (
                   <>
-                    <Button size="sm" variant="outline" onClick={handleSave} disabled={saving}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className={tasButtonTone.brandSoft}
+                      onClick={handleSave}
+                      disabled={saving}
+                    >
                       {saving ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
@@ -1099,7 +1120,11 @@ export function ScriptLabView({
                       )}
                       Save
                     </Button>
-                    <Button size="sm" onClick={() => handleDecide("approve")}>
+                    <Button
+                      size="sm"
+                      className={tasButtonTone.approve}
+                      onClick={() => handleDecide("approve")}
+                    >
                       <CheckCheck className="h-3.5 w-3.5" />
                       Approve
                     </Button>

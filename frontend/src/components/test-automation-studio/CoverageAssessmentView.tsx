@@ -34,6 +34,7 @@ import {
   StatTile,
   StatusBadge,
   describeDeletion,
+  tasButtonTone,
 } from "./shared";
 
 const DOC_ROLE_OPTIONS: Array<{ value: TasDocRole; label: string }> = [
@@ -559,6 +560,7 @@ export function CoverageAssessmentView({
                   <Button
                     size="sm"
                     variant="outline"
+                    className={tasButtonTone.brandSoft}
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
                   >
@@ -736,6 +738,7 @@ export function CoverageAssessmentView({
                   <Button
                     size="sm"
                     variant="outline"
+                    className={tasButtonTone.agentSoft}
                     onClick={handleExtractTestCases}
                     disabled={assessing || extracting || !canExtractTestCases}
                     title={
@@ -752,7 +755,8 @@ export function CoverageAssessmentView({
                   </Button>
                   <Button
                     size="sm"
-                    variant="ghost"
+                    variant="outline"
+                    className={tasButtonTone.neutral}
                     onClick={() => loadBatches(selectedBatch.id)}
                     title="Refresh extraction status"
                   >
@@ -808,6 +812,7 @@ export function CoverageAssessmentView({
             <Button
               size="sm"
               variant="outline"
+              className={tasButtonTone.reject}
               onClick={() => handleDecide("reject")}
               disabled={!selectedIds.size || deciding}
             >
@@ -819,13 +824,18 @@ export function CoverageAssessmentView({
               variant="outline"
               onClick={() => setPendingDelete(Array.from(selectedIds))}
               disabled={!selectedIds.size || deleting}
-              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              className={tasButtonTone.danger}
               title="Delete the selected requirements"
             >
               <Trash2 className="h-3.5 w-3.5" />
               Delete
             </Button>
-            <Button size="sm" onClick={() => handleDecide("approve")} disabled={!selectedIds.size || deciding}>
+            <Button
+              size="sm"
+              className={tasButtonTone.approve}
+              onClick={() => handleDecide("approve")}
+              disabled={!selectedIds.size || deciding}
+            >
               {deciding ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (

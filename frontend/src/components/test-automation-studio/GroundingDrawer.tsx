@@ -3,7 +3,7 @@
 import { CheckCircle2, CircleSlash, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { TasRefinedTestCase } from "@/lib/api";
-import { EmptyState, GroundingBadge, SideDrawer } from "./shared";
+import { EmptyState, GroundingBadge, SideDrawer, tasButtonTone } from "./shared";
 
 /** Per-step evidence for one test case's grounding result.
  *
@@ -36,11 +36,17 @@ export function GroundingDrawer({
       footer={
         <>
           {onReground && (
-            <Button size="sm" variant="outline" onClick={onReground} disabled={regrounding}>
+            <Button
+              size="sm"
+              variant="outline"
+              className={tasButtonTone.live}
+              onClick={onReground}
+              disabled={regrounding}
+            >
               {regrounding ? "Checking..." : "Check again"}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={onClose}>
+          <Button size="sm" variant="outline" className={tasButtonTone.neutral} onClick={onClose}>
             Close
           </Button>
         </>

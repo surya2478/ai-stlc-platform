@@ -4,7 +4,13 @@ import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { TasScriptAsset } from "@/lib/api";
-import { DryRunBadge, EmptyState, GenerationModeBadge, SideDrawer } from "./shared";
+import {
+  DryRunBadge,
+  EmptyState,
+  GenerationModeBadge,
+  SideDrawer,
+  tasButtonTone,
+} from "./shared";
 
 /** Everything known about whether one generated script actually works.
  *
@@ -41,11 +47,17 @@ export function DryRunDrawer({
       footer={
         <>
           {onRerun && script.dry_run_status !== "blocked" && (
-            <Button size="sm" variant="outline" onClick={onRerun} disabled={rerunning}>
+            <Button
+              size="sm"
+              variant="outline"
+              className={tasButtonTone.live}
+              onClick={onRerun}
+              disabled={rerunning}
+            >
               {rerunning ? "Queuing..." : "Run again"}
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={onClose}>
+          <Button size="sm" variant="outline" className={tasButtonTone.neutral} onClick={onClose}>
             Close
           </Button>
         </>
