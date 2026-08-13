@@ -83,16 +83,34 @@ def _json_error_message(exc: json.JSONDecodeError, cleaned: str) -> str:
     return f"LLM output is not valid JSON: {exc}"
 
 
+def _loads(cleaned: str) -> Any:
+    """Decode a model's JSON, tolerating raw control characters in strings.
+
+    `strict=False` is the whole point. A refinement run lost a test case to
+    "Invalid control character at: line 12 column 33" — the model had written a
+    literal newline inside a string value instead of the `\\n` escape. Strict
+    mode is right for a document written by a program; a model writing prose
+    into a JSON string is a different source, and rejecting the entire response
+    over a byte that carries no ambiguity discards work that parses perfectly
+    well without it.
+
+    Nothing else is loosened: malformed structure, a truncated document or an
+    unterminated string still fail, and still get named by
+    `_json_error_message`.
+    """
+    return json.loads(cleaned, strict=False)
+
+
 def parse_and_validate_llm_output(text: str, schema: type[T]) -> T:
     """Parse JSON string and validate against Pydantic schema."""
     if text and len(text) > 500000:
         raise ValueError("LLM output length exceeds safety limit of 500,000 characters.")
     cleaned = clean_json_text(text)
     try:
-        raw = json.loads(cleaned)
+        raw = _loads(cleaned)
     except json.JSONDecodeError as exc:
         raise ValueError(_json_error_message(exc, cleaned))
-    
+
     # Content safety check on raw values
     check_content_safety(raw)
 
@@ -108,10 +126,10 @@ def parse_and_validate_llm_list(text: str, schema: type[T]) -> list[dict[str, An
         raise ValueError("LLM output length exceeds safety limit of 500,000 characters.")
     cleaned = clean_json_text(text)
     try:
-        raw = json.loads(cleaned)
+        raw = _loads(cleaned)
     except json.JSONDecodeError as exc:
         raise ValueError(_json_error_message(exc, cleaned))
-    
+
     # Content safety check on raw values
     check_content_safety(raw)
 
