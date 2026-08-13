@@ -12,8 +12,10 @@ Usage:
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
+import time
 import traceback
 from datetime import datetime, timezone
 
@@ -1056,6 +1058,247 @@ def test_refinement_batch_size_stays_modest():
 
     check("tas.refine_batch_bounded", 1 <= REFINE_BATCH_SIZE <= 3, f"got {REFINE_BATCH_SIZE}")
     check("tas.refine_budget", REFINE_MAX_TOKENS >= 4000, f"got {REFINE_MAX_TOKENS}")
+
+
+def test_refinement_calls_overlap_and_still_return_in_input_order():
+    """Refining strictly in order left the run waiting on one round trip at a
+    time — fifteen test cases took nine and a half minutes.
+
+    Two properties, because the fix trades one for the other if done carelessly:
+    the calls must actually overlap, and the results must still come back in
+    input order regardless of which call finishes first. The fake provider
+    below makes the first item the slowest, so an implementation that appended
+    results as they arrived would return them reordered.
+    """
+    import asyncio
+
+    from app.agents.test_automation_studio.refinement_agent import TestCaseRefinementAgent
+
+    in_flight = 0
+    peak_in_flight = 0
+
+    class _FakeLLM:
+        async def generate(self, system, user, **kwargs):
+            nonlocal in_flight, peak_in_flight
+            in_flight += 1
+            peak_in_flight = max(peak_in_flight, in_flight)
+            try:
+                payload = json.loads(user.split("<user_content>")[1].split("</user_content>")[0])
+                ref = payload["items"][0]["ref"]
+                # Earlier items answer slower, so completion order is reversed.
+                await asyncio.sleep(0.05 * (5 - int(ref[1:])))
+                return json.dumps([{"ref": ref, "title": f"title {ref}", "steps": []}])
+            finally:
+                in_flight -= 1
+
+    agent = TestCaseRefinementAgent.__new__(TestCaseRefinementAgent)
+    agent._logs = []
+    agent.llm = _FakeLLM()
+
+    items = [{"ref": f"r{n}", "mode": "create", "title": f"title {n}"} for n in range(1, 5)]
+    reports: list[tuple[int, int]] = []
+
+    async def _on_item(done: int, total: int, label: str) -> None:
+        reports.append((done, total))
+
+    result = asyncio.run(agent.run(items=items, on_item=_on_item, concurrency=4))
+
+    check("tas.refine_concurrent_success", result.success is True, str(result.error))
+    check(
+        "tas.refine_calls_overlap",
+        peak_in_flight > 1,
+        f"peak in-flight was {peak_in_flight} - the calls ran one at a time",
+    )
+    check(
+        "tas.refine_order_preserved",
+        [row["ref"] for row in result.data["refined"]] == ["r1", "r2", "r3", "r4"],
+        str([row["ref"] for row in result.data["refined"]]),
+    )
+    check(
+        "tas.refine_progress_counts_completions",
+        [done for done, _ in reports] == [1, 2, 3, 4],
+        str(reports),
+    )
+
+
+def test_refinement_concurrency_is_bounded_by_configuration():
+    """Unbounded fan-out would trade one bottleneck for a rate-limit wall, so
+    the semaphore must honour the configured ceiling."""
+    import asyncio
+
+    from app.agents.test_automation_studio.refinement_agent import TestCaseRefinementAgent
+
+    in_flight = 0
+    peak_in_flight = 0
+
+    class _FakeLLM:
+        async def generate(self, system, user, **kwargs):
+            nonlocal in_flight, peak_in_flight
+            in_flight += 1
+            peak_in_flight = max(peak_in_flight, in_flight)
+            try:
+                await asyncio.sleep(0.02)
+                payload = json.loads(user.split("<user_content>")[1].split("</user_content>")[0])
+                ref = payload["items"][0]["ref"]
+                return json.dumps([{"ref": ref, "title": "t", "steps": []}])
+            finally:
+                in_flight -= 1
+
+    agent = TestCaseRefinementAgent.__new__(TestCaseRefinementAgent)
+    agent._logs = []
+    agent.llm = _FakeLLM()
+
+    items = [{"ref": f"r{n}", "mode": "create", "title": "t"} for n in range(1, 11)]
+    result = asyncio.run(agent.run(items=items, concurrency=2))
+
+    check("tas.refine_bounded_success", len(result.data["refined"]) == 10, str(result.data))
+    check(
+        "tas.refine_respects_limit",
+        peak_in_flight <= 2,
+        f"{peak_in_flight} calls were in flight with a limit of 2",
+    )
+
+
+def test_a_raw_control_character_does_not_discard_the_response():
+    """Regression: a run lost TC-05 to "Invalid control character at: line 12
+    column 33". The model had written a literal newline inside a string value
+    instead of the \\n escape.
+
+    Strict decoding is right for a document written by a program. A model
+    writing prose into a JSON string is a different source, and the byte
+    carries no ambiguity — rejecting the whole response over it discarded work
+    that parses fine without strict mode.
+    """
+    from pydantic import BaseModel
+
+    from app.llm.structured import parse_and_validate_llm_list
+
+    class _Row(BaseModel):
+        ref: str
+        title: str
+
+    rows = parse_and_validate_llm_list('[{"ref": "r5", "title": "line one\nline two"}]', _Row)
+    check("tas.json_control_char_tolerated", len(rows) == 1, str(rows))
+    check("tas.json_control_char_value_kept", "line one" in rows[0]["title"], str(rows))
+
+    # Loosened for control characters only — a genuinely broken document must
+    # still fail, or the parser would start inventing structure.
+    try:
+        parse_and_validate_llm_list('[{"ref": "r5", "title": "unterminated', _Row)
+        check("tas.json_truncation_still_fails", False, "a cut-off document parsed")
+    except ValueError as exc:
+        check("tas.json_truncation_still_fails", "truncated" in str(exc).lower(), str(exc))
+
+
+def test_a_call_that_never_returns_is_cut_off_and_named():
+    """Nothing else bounds one call: the client timeout is httpx's per-read
+    value, and the studio bypasses BaseAgent's asyncio.wait_for. One call ran
+    six minutes past its last activity and held the run open at 61%.
+
+    The cancelled batch must also explain itself — a bare TimeoutError
+    stringifies to nothing, and that empty string is what the user would read
+    in the run's skipped list.
+    """
+    import asyncio
+
+    from app.agents.test_automation_studio.refinement_agent import TestCaseRefinementAgent
+
+    class _FakeLLM:
+        async def generate(self, system, user, **kwargs):
+            payload = json.loads(user.split("<user_content>")[1].split("</user_content>")[0])
+            ref = payload["items"][0]["ref"]
+            if ref == "r2":
+                await asyncio.sleep(30)  # never returns within the budget
+            return json.dumps([{"ref": ref, "title": "t", "steps": []}])
+
+    agent = TestCaseRefinementAgent.__new__(TestCaseRefinementAgent)
+    agent._logs = []
+    agent.llm = _FakeLLM()
+
+    items = [{"ref": f"r{n}", "mode": "create", "title": "t"} for n in range(1, 4)]
+    started = time.monotonic()
+    result = asyncio.run(agent.run(items=items, concurrency=3, call_timeout=0.2))
+    elapsed = time.monotonic() - started
+
+    check("tas.refine_timeout_bounded", elapsed < 5, f"run took {elapsed:.1f}s - the ceiling did not fire")
+    check(
+        "tas.refine_timeout_keeps_others",
+        [row["ref"] for row in result.data["refined"]] == ["r1", "r3"],
+        str([row["ref"] for row in result.data["refined"]]),
+    )
+    failures = result.data["failures"]
+    check("tas.refine_timeout_reported", [f["ref"] for f in failures] == ["r2"], str(failures))
+    check(
+        "tas.refine_timeout_has_a_reason",
+        "did not finish" in (failures[0]["error"] or ""),
+        f"unhelpful reason: {failures[0]['error']!r}",
+    )
+
+
+def test_the_call_ceiling_excludes_time_spent_queued():
+    """The budget is per call, not per batch-including-its-wait. With the
+    ceiling around the semaphore instead of the request, a batch queued behind
+    slower siblings would be failed for waiting its turn."""
+    import asyncio
+
+    from app.agents.test_automation_studio.refinement_agent import TestCaseRefinementAgent
+
+    class _FakeLLM:
+        async def generate(self, system, user, **kwargs):
+            payload = json.loads(user.split("<user_content>")[1].split("</user_content>")[0])
+            ref = payload["items"][0]["ref"]
+            await asyncio.sleep(0.15)
+            return json.dumps([{"ref": ref, "title": "t", "steps": []}])
+
+    agent = TestCaseRefinementAgent.__new__(TestCaseRefinementAgent)
+    agent._logs = []
+    agent.llm = _FakeLLM()
+
+    # Six items, one slot: the last waits ~0.75s to start while each call takes
+    # 0.15s. A 0.4s budget must pass all six.
+    items = [{"ref": f"r{n}", "mode": "create", "title": "t"} for n in range(1, 7)]
+    result = asyncio.run(agent.run(items=items, concurrency=1, call_timeout=0.4))
+
+    check(
+        "tas.refine_queue_time_not_charged",
+        len(result.data["refined"]) == 6,
+        f"{len(result.data['failures'])} batch(es) failed for time spent queued",
+    )
+
+
+def test_one_failing_refinement_does_not_disturb_the_calls_beside_it():
+    """The whole reason for one test case per call is blast radius. Running
+    them concurrently must not turn one raised exception into a lost run."""
+    import asyncio
+
+    from app.agents.test_automation_studio.refinement_agent import TestCaseRefinementAgent
+
+    class _FakeLLM:
+        async def generate(self, system, user, **kwargs):
+            payload = json.loads(user.split("<user_content>")[1].split("</user_content>")[0])
+            ref = payload["items"][0]["ref"]
+            if ref == "r2":
+                raise RuntimeError("output truncated")
+            return json.dumps([{"ref": ref, "title": "t", "steps": []}])
+
+    agent = TestCaseRefinementAgent.__new__(TestCaseRefinementAgent)
+    agent._logs = []
+    agent.llm = _FakeLLM()
+
+    items = [{"ref": f"r{n}", "mode": "create", "title": "t"} for n in range(1, 5)]
+    result = asyncio.run(agent.run(items=items, concurrency=4))
+
+    check("tas.refine_partial_success", result.success is True, str(result.error))
+    check(
+        "tas.refine_survivors_kept",
+        [row["ref"] for row in result.data["refined"]] == ["r1", "r3", "r4"],
+        str([row["ref"] for row in result.data["refined"]]),
+    )
+    check(
+        "tas.refine_failure_reported",
+        [f["ref"] for f in result.data["failures"]] == ["r2"],
+        str(result.data["failures"]),
+    )
 
 
 # ─── Script generation guards ────────────────────────────────────────────────

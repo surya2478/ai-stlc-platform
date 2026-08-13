@@ -19,6 +19,7 @@ while the step is being written.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -26,6 +27,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
+from app.config import get_settings
 from app.llm.provider import get_llm_for_role
 from app.llm.structured import parse_and_validate_llm_list
 from app.security.prompt_guard import detect_prompt_injection
@@ -42,6 +44,12 @@ from app.security.prompt_guard import detect_prompt_injection
 # Now that the work runs on a worker, the extra round trips cost nothing a user
 # waits on, and one item per call means one item's worth of blast radius plus
 # honest per-item progress.
+#
+# The round trips did cost something a user waits on, because they were also
+# made strictly in order: fifteen test cases at a median 33s each ran for nine
+# and a half minutes. They are now issued concurrently up to
+# `tas_refine_concurrency`, which leaves this constant meaning what it says —
+# how much work one call risks — rather than doubling as a throughput knob.
 REFINE_BATCH_SIZE = 1
 
 # Output budget for one batch. Every agent in this codebase passes its own —
@@ -196,6 +204,8 @@ class TestCaseRefinementAgent(BaseAgent):
         application_url: str | None = None,
         application_name: str | None = None,
         on_item: Callable[[int, int, str], Awaitable[None]] | None = None,
+        concurrency: int | None = None,
+        call_timeout: float | None = None,
     ) -> AgentRunResult:
         self._logs.clear()
         self.log("info", "start", f"Refining {len(items)} test case(s)")
@@ -213,52 +223,116 @@ class TestCaseRefinementAgent(BaseAgent):
                 logs=self._logs,
             )
 
+        chunks = [items[start : start + REFINE_BATCH_SIZE] for start in range(0, len(items), REFINE_BATCH_SIZE)]
+        total_batches = len(chunks)
+
+        # Batches are independent — each is its own call, and the model's
+        # output is matched back by the opaque `ref` rather than by arrival
+        # order — so waiting for one before starting the next bought nothing
+        # but wall clock. Bounded rather than unbounded: the ceiling here is
+        # the provider's rate limit, not the event loop's patience.
+        settings = get_settings()
+        limit = concurrency if concurrency is not None else settings.tas_refine_concurrency
+        semaphore = asyncio.Semaphore(max(1, int(limit)))
+
+        # The only wall clock on a single call. Applied around the request
+        # alone, not around the wait for a semaphore slot, so a batch is never
+        # failed for the time it spent queued behind its siblings.
+        budget = call_timeout if call_timeout is not None else settings.tas_refine_call_timeout_seconds
+        budget = float(budget) if budget and float(budget) > 0 else None
+
+        # `on_item` ultimately writes progress onto the agent run and commits,
+        # on the AsyncSession the caller is using for everything else. A
+        # session is not safe for concurrent use, so reports are serialised —
+        # cheap, because a report is one UPDATE while the work it describes is
+        # a round trip to an LLM.
+        progress_lock = asyncio.Lock()
+        completed = 0
+
+        # Indexed, not appended: results must land in input order regardless of
+        # which call finishes first, or the same run over the same test cases
+        # would produce a differently-ordered set each time.
+        outcomes: list[tuple[list[dict], list[dict]]] = [([], []) for _ in chunks]
+
+        async def _refine_chunk(position: int, chunk: list[dict[str, Any]]) -> None:
+            nonlocal completed
+            refined_rows: list[dict] = []
+            failed_rows: list[dict] = []
+            batch_no = position + 1
+
+            async with semaphore:
+                try:
+                    call = self.llm.generate(
+                        REFINEMENT_SYSTEM,
+                        _wrap(
+                            json.dumps(
+                                {
+                                    "application_url": application_url,
+                                    "application_name": application_name,
+                                    "items": chunk,
+                                },
+                                ensure_ascii=False,
+                                default=str,
+                            )
+                        ),
+                        max_tokens=REFINE_MAX_TOKENS,
+                    )
+                    raw = await (asyncio.wait_for(call, timeout=budget) if budget else call)
+                    produced = parse_and_validate_llm_list(raw, RefinedTestCaseLLM)
+
+                    by_ref = {str(row.get("ref")): row for row in produced}
+                    for item in chunk:
+                        ref = str(item.get("ref"))
+                        row = by_ref.get(ref)
+                        if row is None:
+                            failed_rows.append(
+                                {"ref": ref, "error": "The model returned no output for this test case."}
+                            )
+                            continue
+                        refined_rows.append(self._normalise(row, item))
+                    self.log("info", "refine", f"Batch {batch_no}: {len(produced)} refined")
+                except Exception as exc:
+                    # One bad batch must not lose the batches that succeeded —
+                    # the caller reports these as skipped and the user retries
+                    # just those. Catching here rather than letting it reach
+                    # gather() also keeps one failure from disturbing the calls
+                    # still in flight beside it.
+                    #
+                    # A cancelled call reaches here as a bare TimeoutError,
+                    # whose str() is empty — the reason lands in a toast and in
+                    # the run's skipped list, so it has to say something.
+                    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+                        reason = (
+                            # :g not :.0f — a sub-second budget (tests use one)
+                            # rounded to "within 0s", which reads as a bug.
+                            f"The model did not finish this test case within {budget:g}s and the "
+                            "call was cancelled. Re-run it, or raise "
+                            "TAS_REFINE_CALL_TIMEOUT_SECONDS if the test case is genuinely this large."
+                        )
+                    else:
+                        reason = str(exc)
+                    self.log("error", "refine", f"Batch {batch_no} failed — {reason}")
+                    refined_rows = []
+                    failed_rows = [{"ref": item.get("ref"), "error": reason} for item in chunk]
+
+            outcomes[position] = (refined_rows, failed_rows)
+
+            # Reported on completion, not on start: with calls overlapping,
+            # "starting number 7" says nothing about how much is done, whereas
+            # a count of finished batches still rises by one each time.
+            async with progress_lock:
+                completed += 1
+                if on_item is not None:
+                    label = str(chunk[0].get("title") or chunk[0].get("ref") or "")[:80]
+                    await on_item(completed, total_batches, label)
+
+        await asyncio.gather(*(_refine_chunk(index, chunk) for index, chunk in enumerate(chunks)))
+
         refined: list[dict] = []
         failures: list[dict] = []
-
-        total_batches = (len(items) + REFINE_BATCH_SIZE - 1) // REFINE_BATCH_SIZE
-        for start in range(0, len(items), REFINE_BATCH_SIZE):
-            chunk = items[start : start + REFINE_BATCH_SIZE]
-            batch_no = start // REFINE_BATCH_SIZE + 1
-            if on_item is not None:
-                label = str(chunk[0].get("title") or chunk[0].get("ref") or "")[:80]
-                await on_item(batch_no, total_batches, label)
-            try:
-                raw = await self.llm.generate(
-                    REFINEMENT_SYSTEM,
-                    _wrap(
-                        json.dumps(
-                            {
-                                "application_url": application_url,
-                                "application_name": application_name,
-                                "items": chunk,
-                            },
-                            ensure_ascii=False,
-                            default=str,
-                        )
-                    ),
-                    max_tokens=REFINE_MAX_TOKENS,
-                )
-                produced = parse_and_validate_llm_list(raw, RefinedTestCaseLLM)
-            except Exception as exc:
-                # One bad batch must not lose the batches that succeeded —
-                # the caller reports these as skipped and the user retries
-                # just those.
-                self.log("error", "refine", f"Batch {batch_no} failed — {exc}")
-                for item in chunk:
-                    failures.append({"ref": item.get("ref"), "error": str(exc)})
-                continue
-
-            by_ref = {str(row.get("ref")): row for row in produced}
-            for item in chunk:
-                ref = str(item.get("ref"))
-                row = by_ref.get(ref)
-                if row is None:
-                    failures.append({"ref": ref, "error": "The model returned no output for this test case."})
-                    continue
-                refined.append(self._normalise(row, item))
-
-            self.log("info", "refine", f"Batch {batch_no}: {len(produced)} refined")
+        for chunk_refined, chunk_failed in outcomes:
+            refined.extend(chunk_refined)
+            failures.extend(chunk_failed)
 
         self.log("info", "complete", f"{len(refined)} refined, {len(failures)} failed")
         return AgentRunResult(

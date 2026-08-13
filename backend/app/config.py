@@ -477,6 +477,30 @@ class Settings(BaseSettings):
     # Per-script wall clock for a dry run. Matches the classic dry run's own
     # default; a studio script is an ordinary Playwright bundle once compiled.
     tas_dry_run_timeout_seconds: int = 180
+    # How many refinement calls may be in flight at once. One test case is one
+    # LLM call, and the calls are independent, so refining them strictly in
+    # order left the run waiting on a single round trip at a time — fifteen
+    # test cases took nine and a half minutes at a median of 33s each.
+    #
+    # Configurable because the right number is a property of the deployment,
+    # not the code: it is bounded by the provider's rate limit, and the
+    # provider is whatever this install has routed the "coding" role to. Set
+    # to 1 to restore the old strictly-sequential behaviour.
+    tas_refine_concurrency: int = 4
+    # Wall clock for one refinement call, enforced by the agent.
+    #
+    # Nothing else bounds one: the client's `timeout` is httpx's per-operation
+    # value, where "read" is the longest gap between chunks rather than the
+    # total, so a reply that trickles steadily never trips it. The studio also
+    # calls the agent's own `run()` rather than `BaseAgent.run`, so the latter's
+    # `asyncio.wait_for` does not apply either. One call ran for roughly six
+    # minutes past its last logged activity and held a whole run open at 61%
+    # while the other fourteen test cases sat finished.
+    #
+    # 240s against an observed median of 33s and a legitimate slow call of
+    # 110s — headroom for a genuinely large generation, while still ending a
+    # call that is never coming back. Set to 0 to disable the ceiling.
+    tas_refine_call_timeout_seconds: int = 240
 
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days

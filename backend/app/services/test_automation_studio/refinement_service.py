@@ -618,12 +618,17 @@ async def generate_refined_test_cases(
 
     await _report(on_progress, 10, f"Refining {len(items)} test case(s)")
 
-    async def _on_item(index: int, total: int, label: str) -> None:
+    async def _on_item(done: int, total: int, label: str) -> None:
+        # Counts what has finished, not what is starting: the agent refines
+        # several test cases at once, so there is no single "current" one. The
+        # label names the test case this report is for, which is the one that
+        # just completed rather than the one furthest along.
+        #
         # 10..65, leaving room for the persistence phase that follows.
         await _report(
             on_progress,
-            10 + int(((index - 1) / max(total, 1)) * 55),
-            f"Refining test case {index} of {total}" + (f" - {label}" if label else ""),
+            10 + int((done / max(total, 1)) * 55),
+            f"Refined {done} of {total} test case(s)" + (f" - {label}" if label else ""),
         )
 
     agent = TestCaseRefinementAgent()
