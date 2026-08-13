@@ -47,7 +47,19 @@ REFINE_BATCH_SIZE = 1
 # Output budget for one batch. Every agent in this codebase passes its own —
 # the provider treats an unset value as "whatever the route configured", which
 # was low enough here to truncate two test cases mid-object and fail the batch.
-REFINE_MAX_TOKENS = 8000
+#
+# 8000 was still not enough for one test case in fifteen. A requirement scoped
+# across two channels and several request types ("validate consistency across
+# USP Direct and USP Indirect") makes the model enumerate that matrix as steps
+# plus a test data key per value, and the reply ran past the cap and was cut
+# mid-JSON. Truncation is not retriable — the same request against the same cap
+# truncates identically — so that test case was simply dropped from the run.
+#
+# The cost of headroom is asymmetric. max_tokens is a ceiling, not a target:
+# an unused budget is not billed, while a budget one token short discards a
+# whole item. The batch is one test case, so even a full 16000-token reply is
+# one item's worth of output, well inside the model's context.
+REFINE_MAX_TOKENS = 16000
 
 
 class RefinedStepLLM(BaseModel):
