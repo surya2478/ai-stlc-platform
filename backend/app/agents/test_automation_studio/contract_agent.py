@@ -42,6 +42,8 @@ from app.agents.automation.automation_agent import (
 )
 from app.agents.automation.generation_contract import AutomationGenerationContract
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
+from app.agents.test_automation_studio import call_budget
+from app.config import get_settings
 from app.llm.provider import get_llm_for_role
 from app.llm.structured import parse_and_validate_llm_output
 from app.security.prompt_guard import detect_prompt_injection
@@ -74,6 +76,7 @@ class TasContractAgent(BaseAgent):
         catalog: list[dict] | None = None,
         explored_page_paths: list[str] | None = None,
         environment_profile: str = "QA",
+        call_timeout: float | None = None,
     ) -> AgentRunResult:
         self._logs.clear()
         display_id = test_case.get("tc_display_id") or test_case.get("id")
@@ -107,7 +110,12 @@ class TasContractAgent(BaseAgent):
             )
 
         try:
-            raw = await self.llm.generate(system, _wrap(payload), max_tokens=CONTRACT_MAX_TOKENS)
+            raw = await call_budget.with_ceiling(
+                self.llm.generate(system, _wrap(payload), max_tokens=CONTRACT_MAX_TOKENS),
+                call_budget.resolve(call_timeout, get_settings().tas_script_call_timeout_seconds),
+                what="this script contract",
+                setting="TAS_SCRIPT_CALL_TIMEOUT_SECONDS",
+            )
             contract = parse_and_validate_llm_output(raw, AutomationGenerationContract)
         except Exception as exc:
             self.log("error", "contract", f"{display_id}: {exc}")

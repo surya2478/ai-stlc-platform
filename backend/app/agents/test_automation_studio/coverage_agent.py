@@ -18,6 +18,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
+from app.agents.test_automation_studio import call_budget
+from app.config import get_settings
 from app.llm.provider import get_llm_for_role
 from app.llm.structured import parse_and_validate_llm_list
 from app.security.prompt_guard import detect_prompt_injection
@@ -279,12 +281,21 @@ class CoverageAssessmentAgent(BaseAgent):
 
     name = "tas_coverage_assessment"
 
+    # Class-level default so an instance built with __new__ — which the tests
+    # do, to skip provider construction — has no ceiling rather than an
+    # AttributeError at the call site.
+    _call_budget: float | int | None = None
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Reading documents and judging coverage is reasoning work, not code
         # generation, so it takes the reasoning route like the other intake
         # agents rather than the coding one.
         self.llm = kwargs.get("llm") or get_llm_for_role("reasoning")
+        # Held on the instance because this agent's three calls live in three
+        # different methods, and threading a budget argument through all of
+        # them would say nothing a single attribute does not.
+        self._call_budget = get_settings().tas_coverage_call_timeout_seconds
 
     async def run(
         self,
@@ -293,6 +304,7 @@ class CoverageAssessmentAgent(BaseAgent):
         test_case_documents: list[dict[str, Any]],
         derive_gap_requirements: bool = True,
         preparsed_test_cases: list[dict[str, Any]] | None = None,
+        call_timeout: float | None = None,
     ) -> AgentRunResult:
         """`preparsed_test_cases` are rows already read straight from a sheet.
 
@@ -302,6 +314,11 @@ class CoverageAssessmentAgent(BaseAgent):
         covered against — so they join the extracted ones here.
         """
         self._logs.clear()
+        # Re-resolved from settings rather than from the current attribute, so
+        # a reused instance cannot inherit a previous run's explicit budget.
+        self._call_budget = call_budget.resolve(
+            call_timeout, get_settings().tas_coverage_call_timeout_seconds
+        )
         self.log(
             "info",
             "start",
@@ -495,8 +512,13 @@ class CoverageAssessmentAgent(BaseAgent):
                 chunk if index == 1 or not header else f"{header}\n...\n{chunk}"
             )
             try:
-                raw = await self.llm.generate(
-                    system, _wrap(body_for_call), max_tokens=EXTRACTION_MAX_TOKENS
+                raw = await call_budget.with_ceiling(
+                    self.llm.generate(
+                        system, _wrap(body_for_call), max_tokens=EXTRACTION_MAX_TOKENS
+                    ),
+                    self._call_budget,
+                    what=f"segment {index} of {filename}",
+                    setting="TAS_COVERAGE_CALL_TIMEOUT_SECONDS",
                 )
                 items.extend(parse_and_validate_llm_list(raw, schema))
             except Exception as exc:  # noqa: BLE001 - one bad segment must not lose the rest
@@ -566,10 +588,15 @@ class CoverageAssessmentAgent(BaseAgent):
         import json
 
         try:
-            raw = await self.llm.generate(
-                COVERAGE_MATCH_SYSTEM,
-                _wrap(json.dumps(payload, ensure_ascii=False)),
-                max_tokens=COVERAGE_MAX_TOKENS,
+            raw = await call_budget.with_ceiling(
+                self.llm.generate(
+                    COVERAGE_MATCH_SYSTEM,
+                    _wrap(json.dumps(payload, ensure_ascii=False)),
+                    max_tokens=COVERAGE_MAX_TOKENS,
+                ),
+                self._call_budget,
+                what="the coverage match",
+                setting="TAS_COVERAGE_CALL_TIMEOUT_SECONDS",
             )
             rows = parse_and_validate_llm_list(raw, CoverageRowLLM)
         except Exception as exc:
@@ -645,10 +672,15 @@ class CoverageAssessmentAgent(BaseAgent):
             ]
         }
         try:
-            raw = await self.llm.generate(
-                GAP_DERIVATION_SYSTEM,
-                _wrap(json.dumps(payload, ensure_ascii=False)),
-                max_tokens=EXTRACTION_MAX_TOKENS,
+            raw = await call_budget.with_ceiling(
+                self.llm.generate(
+                    GAP_DERIVATION_SYSTEM,
+                    _wrap(json.dumps(payload, ensure_ascii=False)),
+                    max_tokens=EXTRACTION_MAX_TOKENS,
+                ),
+                self._call_budget,
+                what="the gap requirement derivation",
+                setting="TAS_COVERAGE_CALL_TIMEOUT_SECONDS",
             )
             return parse_and_validate_llm_list(raw, DerivedRequirementLLM)
         except Exception as exc:

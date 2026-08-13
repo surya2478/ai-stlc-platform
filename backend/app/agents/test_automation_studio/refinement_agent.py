@@ -27,6 +27,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
+from app.agents.test_automation_studio import call_budget
 from app.config import get_settings
 from app.llm.provider import get_llm_for_role
 from app.llm.structured import parse_and_validate_llm_list
@@ -238,8 +239,7 @@ class TestCaseRefinementAgent(BaseAgent):
         # The only wall clock on a single call. Applied around the request
         # alone, not around the wait for a semaphore slot, so a batch is never
         # failed for the time it spent queued behind its siblings.
-        budget = call_timeout if call_timeout is not None else settings.tas_refine_call_timeout_seconds
-        budget = float(budget) if budget and float(budget) > 0 else None
+        budget = call_budget.resolve(call_timeout, settings.tas_refine_call_timeout_seconds)
 
         # `on_item` ultimately writes progress onto the agent run and commits,
         # on the AsyncSession the caller is using for everything else. A
@@ -262,22 +262,26 @@ class TestCaseRefinementAgent(BaseAgent):
 
             async with semaphore:
                 try:
-                    call = self.llm.generate(
-                        REFINEMENT_SYSTEM,
-                        _wrap(
-                            json.dumps(
-                                {
-                                    "application_url": application_url,
-                                    "application_name": application_name,
-                                    "items": chunk,
-                                },
-                                ensure_ascii=False,
-                                default=str,
-                            )
+                    raw = await call_budget.with_ceiling(
+                        self.llm.generate(
+                            REFINEMENT_SYSTEM,
+                            _wrap(
+                                json.dumps(
+                                    {
+                                        "application_url": application_url,
+                                        "application_name": application_name,
+                                        "items": chunk,
+                                    },
+                                    ensure_ascii=False,
+                                    default=str,
+                                )
+                            ),
+                            max_tokens=REFINE_MAX_TOKENS,
                         ),
-                        max_tokens=REFINE_MAX_TOKENS,
+                        budget,
+                        what="this test case",
+                        setting="TAS_REFINE_CALL_TIMEOUT_SECONDS",
                     )
-                    raw = await (asyncio.wait_for(call, timeout=budget) if budget else call)
                     produced = parse_and_validate_llm_list(raw, RefinedTestCaseLLM)
 
                     by_ref = {str(row.get("ref")): row for row in produced}
@@ -298,19 +302,10 @@ class TestCaseRefinementAgent(BaseAgent):
                     # gather() also keeps one failure from disturbing the calls
                     # still in flight beside it.
                     #
-                    # A cancelled call reaches here as a bare TimeoutError,
-                    # whose str() is empty — the reason lands in a toast and in
-                    # the run's skipped list, so it has to say something.
-                    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
-                        reason = (
-                            # :g not :.0f — a sub-second budget (tests use one)
-                            # rounded to "within 0s", which reads as a bug.
-                            f"The model did not finish this test case within {budget:g}s and the "
-                            "call was cancelled. Re-run it, or raise "
-                            "TAS_REFINE_CALL_TIMEOUT_SECONDS if the test case is genuinely this large."
-                        )
-                    else:
-                        reason = str(exc)
+                    # `call_budget` already turns a cancelled call into a
+                    # readable message, so str(exc) is safe to hand to the user
+                    # here — a bare TimeoutError would have stringified to "".
+                    reason = str(exc)
                     self.log("error", "refine", f"Batch {batch_no} failed — {reason}")
                     refined_rows = []
                     failed_rows = [{"ref": item.get("ref"), "error": reason} for item in chunk]

@@ -501,6 +501,17 @@ class Settings(BaseSettings):
     # 110s — headroom for a genuinely large generation, while still ending a
     # call that is never coming back. Set to 0 to disable the ceiling.
     tas_refine_call_timeout_seconds: int = 240
+    # The same wall clock for one generated script, covering both the compiled
+    # path (the contract agent, which is what Playwright takes) and the
+    # free-form one. Observed at around 11s per script, so 240s is generous;
+    # the point is a ceiling, not a target. Set to 0 to disable.
+    tas_script_call_timeout_seconds: int = 240
+    # And for the coverage agent's three calls — document extraction, coverage
+    # matching, gap derivation. Higher than the others because extraction
+    # reads a whole document segment rather than one test case, and a large
+    # BRD segment is legitimately the slowest call the studio makes. Set to 0
+    # to disable.
+    tas_coverage_call_timeout_seconds: int = 300
 
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days

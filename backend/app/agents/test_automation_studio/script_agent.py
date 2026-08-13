@@ -39,6 +39,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
+from app.agents.test_automation_studio import call_budget
+from app.config import get_settings
 from app.llm.provider import get_llm_for_role
 from app.llm.structured import parse_and_validate_llm_output
 from app.security.prompt_guard import detect_prompt_injection
@@ -214,6 +216,7 @@ class ScriptGenerationAgent(BaseAgent):
         test_case: dict[str, Any],
         framework: str,
         catalog: list[dict] | None = None,
+        call_timeout: float | None = None,
     ) -> AgentRunResult:
         self._logs.clear()
         normalized = (framework or "").strip().lower()
@@ -251,7 +254,12 @@ class ScriptGenerationAgent(BaseAgent):
             system += GROUNDED_CATALOG_INSTRUCTION.format(catalog=_format_catalog(scoped))
 
         try:
-            raw = await self.llm.generate(system, _wrap(payload), max_tokens=SCRIPT_MAX_TOKENS)
+            raw = await call_budget.with_ceiling(
+                self.llm.generate(system, _wrap(payload), max_tokens=SCRIPT_MAX_TOKENS),
+                call_budget.resolve(call_timeout, get_settings().tas_script_call_timeout_seconds),
+                what="this script",
+                setting="TAS_SCRIPT_CALL_TIMEOUT_SECONDS",
+            )
             result = parse_and_validate_llm_output(raw, GeneratedScriptLLM)
         except Exception as exc:
             self.log("error", "generate", f"{display_id}: {exc}")

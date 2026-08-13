@@ -1266,6 +1266,109 @@ def test_the_call_ceiling_excludes_time_spent_queued():
     )
 
 
+def test_every_studio_llm_call_sits_under_a_wall_clock():
+    """The ceiling is only worth having if no call site is left outside it.
+
+    Read from the source, like the max_tokens guard above: the invariant is
+    "no generate() call in this package is awaited bare", which is a property
+    of the call sites rather than of any one execution path. The contract
+    agent matters most — Playwright is the compiled framework, so it is the
+    default script path, and a ceiling that skipped it would leave the busiest
+    call unbounded.
+    """
+    import ast
+    import inspect
+
+    from app.agents.test_automation_studio import (
+        contract_agent,
+        coverage_agent,
+        refinement_agent,
+        script_agent,
+    )
+
+    for module in (contract_agent, coverage_agent, refinement_agent, script_agent):
+        short = module.__name__.rsplit(".", 1)[-1]
+        tree = ast.parse(inspect.getsource(module))
+
+        # A generate() call is bounded when it is an argument to
+        # with_ceiling(...) rather than the thing being awaited directly.
+        bounded = set()
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "with_ceiling"
+            ):
+                for inner in ast.walk(node):
+                    if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute):
+                        if inner.func.attr in {"generate", "achat", "acomplete"}:
+                            bounded.add(inner.lineno)
+
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"generate", "achat", "acomplete"}
+        ]
+        check(f"tas.{short}_has_calls", bool(calls), "no LLM calls found - check would pass vacuously")
+        for call in calls:
+            check(
+                f"tas.{short}_line{call.lineno}_bounded",
+                call.lineno in bounded,
+                f"LLM call at line {call.lineno} in {short} is awaited with no wall clock",
+            )
+
+
+def test_a_timed_out_call_says_so_in_every_agent():
+    """A bare TimeoutError stringifies to "", and these handlers put str(exc)
+    into a toast, an agent-run error or a skipped-item reason."""
+    import asyncio
+
+    from app.agents.test_automation_studio.call_budget import LLMCallTimedOut, with_ceiling
+
+    async def _hang():
+        await asyncio.sleep(30)
+
+    async def _drive():
+        try:
+            await with_ceiling(_hang(), 0.05, what="this script", setting="TAS_X_SECONDS")
+        except LLMCallTimedOut as exc:
+            return str(exc)
+        return ""
+
+    started = time.monotonic()
+    message = asyncio.run(_drive())
+    elapsed = time.monotonic() - started
+
+    check("tas.ceiling_fires", elapsed < 5, f"took {elapsed:.1f}s")
+    check("tas.ceiling_names_the_work", "this script" in message, message)
+    check("tas.ceiling_names_the_setting", "TAS_X_SECONDS" in message, message)
+    check("tas.ceiling_message_not_empty", len(message) > 40, repr(message))
+
+    # A cancelled call has already spent its whole budget, so re-issuing it
+    # buys another budget's worth of waiting. It must not look retriable.
+    check(
+        "tas.ceiling_not_a_timeout_subclass",
+        not issubclass(LLMCallTimedOut, TimeoutError),
+        "LLMCallTimedOut subclasses TimeoutError and would be retried as transient",
+    )
+
+
+def test_a_disabled_ceiling_awaits_normally():
+    """Every one of these settings documents "set to 0 to disable"."""
+    import asyncio
+
+    from app.agents.test_automation_studio.call_budget import with_ceiling
+
+    async def _quick():
+        return "done"
+
+    for budget in (0, None):
+        result = asyncio.run(with_ceiling(_quick(), budget, what="x", setting="Y"))
+        check(f"tas.ceiling_disabled_{budget}", result == "done", str(result))
+
+
 def test_one_failing_refinement_does_not_disturb_the_calls_beside_it():
     """The whole reason for one test case per call is blast radius. Running
     them concurrently must not turn one raised exception into a lost run."""
