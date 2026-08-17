@@ -314,6 +314,79 @@ def test_relabelling_keeps_stored_credentials():
     )
 
 
+def test_moving_the_sign_in_target_drops_stored_credentials():
+    """Retargeting sign-in must not carry someone else's password along.
+
+    The secret is write-only: no route returns it, readers see only
+    `has_credentials`. So if it survived an edit to `login_url`, anyone who
+    could edit the batch could have the worker type a password they never knew
+    into a page they control. Re-entering the credentials is the proof of
+    knowledge that makes the move legitimate, which is why the third case
+    below keeps them.
+    """
+    from app.models.test_automation_studio import TasIntakeBatch
+
+    def batch_with_secret() -> "TasIntakeBatch":
+        batch = TasIntakeBatch(
+            project_id=1, name="b", application_environment="qa", auth_mode="form", created_by=1
+        )
+        batch.application_url = "https://app.example.com"
+        batch.auth_config = {"login_url": "https://app.example.com/login"}
+        batch.auth_secret_encrypted = discovery_service.encrypt_credentials(
+            {"username": "u", "password": "p"}
+        )
+        return batch
+
+    batch = batch_with_secret()
+    discovery_service.apply_auth_settings(
+        batch,
+        {"auth_mode": "form", "auth_config": {"login_url": "https://evil.example/login"}},
+        user_id=1,
+        previous_login_url="https://app.example.com/login",
+        previous_application_url="https://app.example.com",
+    )
+    check(
+        "credentials.retarget_login_url_clears",
+        batch.auth_secret_encrypted is None,
+        "moving login_url must drop credentials the editor never supplied",
+    )
+
+    batch = batch_with_secret()
+    batch.application_url = "https://evil.example"
+    discovery_service.apply_auth_settings(
+        batch,
+        {"auth_mode": "form"},
+        user_id=1,
+        previous_login_url="https://app.example.com/login",
+        previous_application_url="https://app.example.com",
+    )
+    check(
+        "credentials.retarget_application_url_clears",
+        batch.auth_secret_encrypted is None,
+        "sign-in falls back to application_url, so moving it must drop them too",
+    )
+
+    batch = batch_with_secret()
+    discovery_service.apply_auth_settings(
+        batch,
+        {
+            "auth_mode": "form",
+            "auth_config": {"login_url": "https://staging.example.com/login"},
+            "auth_username": "u2",
+            "auth_password": "p2",
+        },
+        user_id=1,
+        previous_login_url="https://app.example.com/login",
+        previous_application_url="https://app.example.com",
+    )
+    check(
+        "credentials.retarget_with_new_credentials_keeps",
+        discovery_service.decrypt_credentials(batch.auth_secret_encrypted)
+        == {"username": "u2", "password": "p2"},
+        "re-supplying credentials while moving the target is the legitimate path",
+    )
+
+
 # ── Login form detection ─────────────────────────────────────────────────────
 
 _LOGIN_SNAPSHOT = """### Page

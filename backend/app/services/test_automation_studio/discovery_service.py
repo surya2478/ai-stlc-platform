@@ -86,7 +86,14 @@ def decrypt_credentials(value: str | None) -> dict[str, str]:
 
 # ── Batch credential configuration ───────────────────────────────────────────
 
-def apply_auth_settings(batch: TasIntakeBatch, updates: dict, *, user_id: int) -> None:
+def apply_auth_settings(
+    batch: TasIntakeBatch,
+    updates: dict,
+    *,
+    user_id: int,
+    previous_login_url: str | None = None,
+    previous_application_url: str | None = None,
+) -> None:
     """Apply the batch form's credentials block.
 
     `auth_mode="none"` clears the stored secret rather than orphaning it —
@@ -94,6 +101,16 @@ def apply_auth_settings(batch: TasIntakeBatch, updates: dict, *, user_id: int) -
     using it. A `form` update that omits the password keeps whatever was
     already stored, so re-saving the form to change a field label does not
     silently wipe the credentials.
+
+    That retention is scoped to the destination the credentials were entered
+    for. The secret is write-only — no route returns it, and `has_credentials`
+    is all a reader ever sees — so if the sign-in target could be moved while
+    the secret stayed put, anyone who could edit the batch could have the
+    worker type someone else's password into a page of their choosing. Moving
+    `login_url` or `application_url` therefore drops the stored secret: the
+    credentials must be re-entered by someone who already knows them. The
+    caller passes the pre-edit values because `apply_batch_fields` has already
+    written the new `application_url` onto the batch by the time we run.
     """
     if "auth_mode" in updates and updates["auth_mode"] is not None:
         batch.auth_mode = updates["auth_mode"]
@@ -108,6 +125,10 @@ def apply_auth_settings(batch: TasIntakeBatch, updates: dict, *, user_id: int) -
     if batch.auth_mode == "none":
         batch.auth_secret_encrypted = None
         return
+
+    login_url = (batch.auth_config or {}).get("login_url")
+    if (login_url, batch.application_url) != (previous_login_url, previous_application_url):
+        batch.auth_secret_encrypted = None
 
     username = updates.get("auth_username")
     password = updates.get("auth_password")

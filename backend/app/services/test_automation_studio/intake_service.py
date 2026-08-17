@@ -181,6 +181,12 @@ async def update_batch(
     if body.application_id is not None:
         await _resolve_application(db, project_id=batch.project_id, application_id=body.application_id)
 
+    # Captured before the PATCH lands: `apply_auth_settings` drops the stored
+    # credentials when the sign-in destination moves, and by the time it runs
+    # `apply_batch_fields` has already overwritten `application_url`.
+    previous_login_url = (batch.auth_config or {}).get("login_url")
+    previous_application_url = batch.application_url
+
     apply_batch_fields(batch, body)
 
     discovery_service.apply_auth_settings(
@@ -192,6 +198,8 @@ async def update_batch(
             "auth_password": body.auth_password,
         },
         user_id=user_id,
+        previous_login_url=previous_login_url,
+        previous_application_url=previous_application_url,
     )
 
     batch.updated_by = user_id
