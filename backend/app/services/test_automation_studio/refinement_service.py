@@ -139,14 +139,68 @@ async def _display_id_allocator(db: AsyncSession, project_id: int):
     return allocate
 
 
+async def _application_in_project(
+    db: AsyncSession, *, project_id: int, application_id: int | None
+) -> ProjectApplication | None:
+    """Load an application by id, refusing one from another project.
+
+    `application_id` arrives on the generation request body, and the name and
+    environment URL it resolves to are written onto the refined test case,
+    returned by the read model and included in the export — so a lookup by
+    primary key alone would hand a member of one project the application
+    inventory of every other. Screen 1 already resolves it this way
+    (`intake_service._resolve_application`); Screen 2 has to match.
+    """
+    if application_id is None:
+        return None
+    return (
+        await db.execute(
+            select(ProjectApplication).where(
+                ProjectApplication.id == application_id,
+                ProjectApplication.project_id == project_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def _require_application_in_project(
+    db: AsyncSession, *, project_id: int, application_id: int | None
+) -> ProjectApplication | None:
+    application = await _application_in_project(
+        db, project_id=project_id, application_id=application_id
+    )
+    if application_id is not None and application is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="The selected application does not belong to this project",
+        )
+    return application
+
+
 async def _resolve_application_url(
-    db: AsyncSession, *, batch: TasIntakeBatch | None, application_id: int | None, environment: str
+    db: AsyncSession,
+    *,
+    project_id: int,
+    batch: TasIntakeBatch | None,
+    application_id: int | None,
+    environment: str,
 ) -> tuple[int | None, str | None, str | None]:
     """Resolve (application_id, url, application_name) for generation."""
     app_id = application_id or (batch.application_id if batch else None)
     application: ProjectApplication | None = None
     if app_id is not None:
-        application = await db.get(ProjectApplication, app_id)
+        # A caller-supplied id is rejected outright when it is not this
+        # project's; one inherited from the batch degrades to "no application"
+        # the way it always has, since the batch may simply have been unlinked.
+        application = (
+            await _require_application_in_project(
+                db, project_id=project_id, application_id=app_id
+            )
+            if application_id is not None
+            else await _application_in_project(
+                db, project_id=project_id, application_id=app_id
+            )
+        )
     url = resolve_environment_url(application, environment) if application else None
     # The batch-level URL is the value the user typed on Screen 1. It wins
     # only when the application has nothing configured for this environment,
@@ -243,6 +297,10 @@ async def validate_generation_request(
     db: AsyncSession, *, project_id: int, body: GenerateRefinedTestCasesRequest
 ) -> None:
     """Request-time checks, so a doomed job is refused before it is queued."""
+    await _require_application_in_project(
+        db, project_id=project_id, application_id=body.application_id
+    )
+
     requirements = await _load_requirements(
         db, project_id=project_id, requirement_ids=body.requirement_ids
     )
@@ -321,7 +379,11 @@ async def generate_refined_test_cases(
     batch = await db.get(TasIntakeBatch, anchor_batch_id)
     environment = body.application_environment or (batch.application_environment if batch else "qa")
     app_id, app_url, app_name = await _resolve_application_url(
-        db, batch=batch, application_id=body.application_id, environment=environment
+        db,
+        project_id=project_id,
+        batch=batch,
+        application_id=body.application_id,
+        environment=environment,
     )
 
     existing_map = (
