@@ -2999,6 +2999,100 @@ def test_a_resolved_url_strips_the_no_url_precondition_the_model_wrote_anyway():
         )
 
 
+def test_the_studio_navigates_to_the_page_the_crawl_actually_found():
+    """Entry-route grounding existed only in the classic path.
+
+    The studio compiled whatever route the model invented. Project 11's
+    contract carried navigate target "HomePage" -- the page object's own name --
+    and the spec opened with `await page.goto('HomePage')`, an address that
+    resolves against baseURL to nothing. The schema now refuses to keep a page
+    object name as a path, which makes it harmless; grounding it against the
+    crawl is what makes it right.
+    """
+    from app.agents.automation.automation_agent import _ground_entry_route
+    from app.agents.automation.generation_contract import AutomationGenerationContract
+    from app.agents.test_automation_studio.contract_agent import _entry_page_url
+    from app.services.script_compiler.compiler import compile_contract
+
+    app_url = "https://arenaplay.ae/"
+    catalog = [
+        {"element_name": "subscribeButton", "page": "https://arenaplay.ae/packages?tab=daily"},
+        {"element_name": "subscriptionPackage", "page": "https://arenaplay.ae/packages?tab=daily"},
+        # The same name on a second page: a header link present throughout.
+        {"element_name": "subscriptionPackage", "page": "https://arenaplay.ae/help"},
+    ]
+    explored = ["https://arenaplay.ae/packages?tab=daily", "https://arenaplay.ae/help"]
+
+    def build():
+        return AutomationGenerationContract.model_validate({
+            "contractVersion": "1.0",
+            "testCaseId": "TC001",
+            "pageObjects": [{"name": "HomePage", "elements": [
+                {"name": "subscriptionPackage", "locatorStrategy": "role",
+                 "locatorValue": "Arena Play Daily", "roleHint": "link"},
+                {"name": "subscribeButton", "locatorStrategy": "role",
+                 "locatorValue": "Subscribe", "roleHint": "button"},
+            ]}],
+            "steps": [
+                {"phase": "arrange", "action": "navigate", "target": "HomePage"},
+                {"phase": "act", "action": "click", "target": "HomePage.subscribeButton"},
+            ],
+        })
+
+    def goto_lines(contract):
+        bundle = compile_contract(contract)
+        return [
+            line.strip()
+            for line in bundle.files[bundle.entry_path].splitlines()
+            if "goto" in line
+        ]
+
+    # The page carrying MOST of the first page object's elements wins, so a
+    # name that also appears elsewhere does not drag the entry page with it.
+    grounded = build()
+    page = _entry_page_url(grounded, catalog, explored)
+    check(
+        "tas.entry_page_is_the_modal_page",
+        page == "https://arenaplay.ae/packages?tab=daily",
+        str(page),
+    )
+    _ground_entry_route(grounded, page, app_url)
+    check(
+        "tas.entry_route_reaches_the_spec",
+        goto_lines(grounded) == ["await page.goto('/packages?tab=daily');"],
+        str(goto_lines(grounded)),
+    )
+
+    # A single-page crawl has no ambiguity to resolve.
+    single = build()
+    check(
+        "tas.single_explored_page_is_the_entry",
+        _entry_page_url(single, [], ["https://arenaplay.ae/only"]) == "https://arenaplay.ae/only",
+        "single page not chosen",
+    )
+
+    # No discovery at all: nothing is invented, the root fallback stands.
+    ungrounded = build()
+    check(
+        "tas.no_crawl_derives_no_page",
+        _entry_page_url(ungrounded, [], []) is None,
+        "a page was guessed with no crawl",
+    )
+    check(
+        "tas.no_crawl_falls_back_to_root",
+        goto_lines(ungrounded) == ["await page.goto('/');"],
+        str(goto_lines(ungrounded)),
+    )
+
+    # A cross-origin entry is never forced onto the application.
+    cross = build()
+    check(
+        "tas.cross_origin_entry_refused",
+        _ground_entry_route(cross, "https://other.example/x", app_url) is False,
+        "cross-origin page was forced as the entry route",
+    )
+
+
 TESTS = [
     value
     for name, value in list(globals().items())

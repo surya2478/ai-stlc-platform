@@ -39,6 +39,7 @@ from app.agents.automation.automation_agent import (
     _check_grounding,
     _format_explored_pages,
     _format_locator_catalog,
+    _ground_entry_route,
 )
 from app.agents.automation.generation_contract import AutomationGenerationContract
 from app.agents.base.base_agent import AgentRunResult, BaseAgent
@@ -60,6 +61,48 @@ CONTRACT_MAX_TOKENS = 9000
 # materially different result on every run. Pinned low for the same reason
 # every other agent family in this codebase pins one.
 CONTRACT_TEMPERATURE = 0.0
+
+
+def _entry_page_url(
+    contract: AutomationGenerationContract,
+    catalog: list[dict] | None,
+    explored_page_paths: list[str] | None,
+) -> str | None:
+    """The live page this test starts on, derived from the crawl.
+
+    The classic path takes `page_url` from the planner, which records the exact
+    page it captured a test's elements on. The studio has no planner, but it
+    holds the same evidence: every discovered element carries the page it was
+    found on (`current_catalog` puts it in the row's "page" key). So the entry
+    page is the page holding the elements of the contract's FIRST page object —
+    the one step 1 navigates to.
+
+    An element name can legitimately appear on several pages (a header link
+    present on all of them), so the page carrying MOST of that page object's
+    elements wins rather than the first one seen.
+
+    Falls back to the only page the crawl reached when there is exactly one:
+    a single-page crawl has no ambiguity to resolve. Returns None when the
+    crawl reached several pages and none of them can be tied to this test —
+    guessing an entry page is the failure `_ground_entry_route` exists to stop.
+    """
+    pages = [path for path in (explored_page_paths or []) if path]
+    only_page = pages[0] if len(pages) == 1 else None
+
+    if not contract.page_objects or not catalog:
+        return only_page
+    wanted = {element.name for element in contract.page_objects[0].elements}
+    if not wanted:
+        return only_page
+
+    counts: dict[str, int] = {}
+    for row in catalog:
+        page = row.get("page")
+        if page and row.get("element_name") in wanted:
+            counts[page] = counts.get(page, 0) + 1
+    if not counts:
+        return only_page
+    return max(counts.items(), key=lambda item: item[1])[0]
 
 
 def _wrap(text: str) -> str:
@@ -138,6 +181,26 @@ class TasContractAgent(BaseAgent):
         # produces a locator matching nothing, and does it confidently.
         if scoped:
             locator_policy.ground_page_object_elements(contract, scoped)
+
+        # The navigation counterpart of the element grounding above, and it was
+        # missing here entirely — the studio compiled whatever route the model
+        # invented. Observed on project 11: the contract's navigate step carried
+        # target "HomePage", the page object's own name, and the spec opened
+        # with `await page.goto('HomePage')`. The contract schema now refuses to
+        # keep a page object name as a path, but that only makes the address
+        # harmless; this is what makes it correct.
+        #
+        # Uses the full catalog rather than `scoped`, which is narrowed to the
+        # entries relevant to this one test case: the entry page is a property
+        # of where the crawl found things, not of what the prompt was shown.
+        entry_page_url = _entry_page_url(contract, catalog, explored_page_paths)
+        if _ground_entry_route(contract, entry_page_url, test_case.get("application_url")):
+            entry_step = next((s for s in contract.steps if s.action == "navigate"), None)
+            self.log(
+                "info",
+                "grounding",
+                f"{display_id}: entry route grounded to {entry_step.value if entry_step else '/'}",
+            )
 
         grounded_count, ungrounded = _check_grounding(contract, scoped)
         ungrounded += locator_policy.check_url_targets_grounded(contract, explored_page_paths)
