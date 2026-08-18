@@ -5985,6 +5985,11 @@ export interface TasCoverageAssessment {
   uncovered_requirements: number;
   existing_test_case_count: number;
   derived_requirement_count: number;
+  // The criterion-level numerator and denominator behind coverage_percent.
+  // Both are 0 on assessments recorded before coverage was scored this way,
+  // whose percent was a share of requirements instead.
+  total_criteria: number;
+  covered_criteria: number;
   coverage_percent: number;
   coverage_rows: Array<Record<string, unknown>>;
   extracted_test_cases: Array<Record<string, unknown>>;
@@ -6011,6 +6016,8 @@ export interface TasDerivedRequirement {
   gap_reason?: string | null;
   source_refs: string[];
   covering_test_case_refs: string[];
+  total_criteria: number;
+  covered_criteria: number;
   automation_relevance?: string | null;
   priority: string;
   status: TasApprovalStatus;

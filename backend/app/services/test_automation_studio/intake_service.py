@@ -19,6 +19,7 @@ from app.schemas.test_automation_studio import (
     IntakeBatchUpdate,
     IntakeDocumentAttach,
 )
+from app.services.project_application_service import resolve_environment_url
 from app.services.test_automation_studio import discovery_service
 
 settings = get_settings()
@@ -93,9 +94,13 @@ async def _sync_application_url(
     """
     if application is None or not url:
         return
-    urls = dict(application.environment_urls or {})
-    if urls.get(environment):
+    # Case-insensitively, so typing "sit" against an application configured for
+    # "SIT" leaves it alone instead of adding a second key for the same
+    # environment — after which which URL resolved depended on how the
+    # environment happened to be capitalised on the screen that asked.
+    if resolve_environment_url(application, environment):
         return
+    urls = dict(application.environment_urls or {})
     urls[environment] = url
     application.environment_urls = urls
     application.updated_by = user_id

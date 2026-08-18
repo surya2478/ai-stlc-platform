@@ -1885,6 +1885,125 @@ def test_coverage_samples_survive_one_bad_call():
     check("tas.all_samples_failing_is_uncovered", rows[0]["coverage_state"] == "uncovered", str(rows[0]))
 
 
+def test_an_application_url_resolves_whatever_the_environment_is_capitalised_as():
+    """The environment key was matched exactly, and nothing typed it the same way.
+
+    Observed on project 12: the application "WebAPP" holds a URL for "SIT",
+    every intake batch starts on the column default "qa", and the lookup found
+    nothing. The URL box stayed empty, and the refined test cases came out with
+    "Application URL not configured" as their first precondition — for an
+    application that had a URL configured all along. Thirteen of the fourteen
+    applications in the platform are configured under "SIT", so this was every
+    project.
+    """
+    from app.services.project_application_service import (
+        configured_environments,
+        resolve_environment_url,
+    )
+
+    class _App:
+        def __init__(self, urls):
+            self.environment_urls = urls
+
+    app = _App({"SIT": "https://devnew.eand.ae/ecare", "Regression": "   "})
+
+    check("tas.env_url_exact", resolve_environment_url(app, "SIT") == "https://devnew.eand.ae/ecare")
+    check("tas.env_url_lowercase", resolve_environment_url(app, "sit") == "https://devnew.eand.ae/ecare")
+    check("tas.env_url_mixed_case", resolve_environment_url(app, "Sit") == "https://devnew.eand.ae/ecare")
+    check("tas.env_url_trims", resolve_environment_url(app, "  sit  ") == "https://devnew.eand.ae/ecare")
+
+    # An environment that genuinely has no URL must still resolve to nothing.
+    # Falling back to whatever else was configured would run a QA suite against
+    # SIT, which is worse than reporting that nothing is set.
+    check("tas.env_url_absent_is_none", resolve_environment_url(app, "qa") is None)
+    check("tas.env_url_blank_is_none", resolve_environment_url(app, "Regression") is None)
+    check("tas.env_url_no_environment", resolve_environment_url(app, "") is None)
+    check("tas.env_url_no_application", resolve_environment_url(None, "SIT") is None)
+
+    # What the screen names when the environment asked for has none.
+    check("tas.env_list_only_configured", configured_environments(app) == ["SIT"], str(configured_environments(app)))
+    check("tas.env_list_empty", configured_environments(_App({})) == [])
+    check("tas.env_list_none", configured_environments(None) == [])
+
+
+def test_typing_a_url_does_not_duplicate_a_configured_environment():
+    """Screen 1 writes the URL back into the application when that environment
+    has none. Deciding "has none" by exact key meant typing "sit" against an
+    application configured for "SIT" added a second key for one environment —
+    after which which URL resolved depended on the capitalisation used by
+    whichever screen happened to ask."""
+    import inspect
+
+    from app.services.test_automation_studio import intake_service
+
+    source = inspect.getsource(intake_service)
+    write_back = source[source.index("def _write_back") :] if "def _write_back" in source else source
+    write_back = write_back[: write_back.index("async def create_batch")]
+    check(
+        "tas.write_back_is_case_insensitive",
+        "resolve_environment_url(application, environment)" in write_back,
+        "the write-back decides 'already configured' by exact key",
+    )
+    check(
+        "tas.write_back_no_longer_uses_exact_get",
+        "urls.get(environment)" not in write_back,
+        "the exact-key check is still there",
+    )
+
+
+def test_screen_two_can_choose_the_environment_it_generates_against():
+    """Picking the application on Screen 2 was not enough to resolve a URL.
+
+    The screen sent `application_id` and no environment, so refinement fell
+    back to the intake batch's — which starts on the column default "qa" while
+    applications are configured for "SIT". Every generated test case then
+    carried "Application URL not configured" as its first precondition, the run
+    reported success, and the only way to find out was to open one and read it.
+    Reproduced on project 11: application "WebApp" holds a URL for SIT, batch 17
+    sits on "qa", and refining uploaded test cases alone hit it exactly the same
+    way as refining from requirements — there is one resolution path for both.
+    """
+    from app.schemas.test_automation_studio import GenerateRefinedTestCasesRequest
+
+    # The request has always carried the field; the screen simply never set it.
+    body = GenerateRefinedTestCasesRequest(
+        source_test_case_ids=[1], application_id=13, application_environment="SIT"
+    )
+    check("tas.generate_request_takes_environment", body.application_environment == "SIT")
+    check(
+        "tas.generate_request_environment_optional",
+        GenerateRefinedTestCasesRequest(source_test_case_ids=[1]).application_environment is None,
+        "omitting it must still inherit the batch's",
+    )
+
+    # Uploaded test cases alone are a legitimate input — the "refine what we
+    # already have" case, with no BRD anywhere — and must reach the same
+    # resolution as requirements do.
+    check(
+        "tas.generate_accepts_sources_only",
+        GenerateRefinedTestCasesRequest(source_test_case_ids=[1]).requirement_ids == [],
+    )
+    try:
+        GenerateRefinedTestCasesRequest()
+        neither_rejected = False
+    except Exception:
+        neither_rejected = True
+    check("tas.generate_needs_a_source", neither_rejected, "an empty request was accepted")
+
+    # And one resolution path serves both inputs, so a fix to it cannot reach
+    # one entry point and miss the other.
+    import inspect
+
+    from app.services.test_automation_studio import refinement_service
+
+    source = inspect.getsource(refinement_service.generate_refined_test_cases)
+    check(
+        "tas.one_url_resolution_for_both_inputs",
+        source.count("_resolve_application_url(") == 1,
+        "the two entry points resolve the application URL separately",
+    )
+
+
 def test_refinement_batch_size_stays_modest():
     """A batch is discarded whole when its response is truncated, so the batch
     size is a blast radius as much as a throughput knob."""

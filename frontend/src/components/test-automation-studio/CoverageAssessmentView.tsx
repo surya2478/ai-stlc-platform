@@ -79,6 +79,7 @@ export function CoverageAssessmentView({
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [assessing, setAssessing] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [progress, setProgress] = useState<{ percent: number; message: string } | null>(null);
@@ -159,12 +160,88 @@ export function CoverageAssessmentView({
     void loadBatchDetail(selectedBatchId);
   }, [selectedBatchId, loadBatchDetail]);
 
+  // A quiet re-fetch for the documents table. Text extraction runs on the
+  // worker after upload, so the "Extracting..." badges have to be able to catch
+  // up on their own - loadBatches() cannot do it here because it raises the
+  // full-view loading spinner and takes the table off screen mid-read.
+  const refreshDocuments = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) setRefreshing(true);
+      try {
+        const response = await testAutomationStudioApi.listBatches(projectId);
+        setBatches(response.data);
+      } catch (error) {
+        // A failed background poll is not worth a toast - the next tick retries.
+        if (!silent) {
+          toast({
+            title: "Could not refresh the documents",
+            description: errorMessage(error, "Please try again."),
+            variant: "error",
+          });
+        }
+      } finally {
+        if (!silent) setRefreshing(false);
+      }
+    },
+    [projectId, toast],
+  );
+
+  const hasExtractingDocument = useMemo(
+    () =>
+      (selectedBatch?.documents ?? []).some(
+        (doc) => !doc.text_available && doc.document_status !== "failed",
+      ),
+    [selectedBatch],
+  );
+
+  // There is no push channel for the extraction job, so poll while one is
+  // outstanding. The interval stops as soon as every row reads Ready or failed.
+  useEffect(() => {
+    if (!hasExtractingDocument) return;
+    const timer = window.setInterval(() => void refreshDocuments({ silent: true }), 5000);
+    return () => window.clearInterval(timer);
+  }, [hasExtractingDocument, refreshDocuments]);
+
   useEffect(() => {
     if (!selectedBatch) return;
     setApplicationId(selectedBatch.application_id ? String(selectedBatch.application_id) : "");
     setApplicationUrl(selectedBatch.application_url ?? "");
     setEnvironment(selectedBatch.application_environment || "qa");
   }, [selectedBatch]);
+
+  const selectedApplication = useMemo(
+    () => applications.find((application) => String(application.id) === applicationId) ?? null,
+    [applications, applicationId],
+  );
+
+  // The URL the linked application already holds for this environment. Matched
+  // without regard to case, the same way the backend resolves it — an
+  // application configured for "SIT" answers to "sit" there, and a screen that
+  // disagreed about that would show "not configured" for a URL generation then
+  // used anyway.
+  const inheritedUrl = useMemo(() => {
+    if (!selectedApplication) return null;
+    const wanted = environment.trim().toLowerCase();
+    if (!wanted) return null;
+    const match = Object.entries(selectedApplication.environment_urls ?? {}).find(
+      ([name, url]) => name.trim().toLowerCase() === wanted && url?.trim(),
+    );
+    return match ? match[1].trim() : null;
+  }, [selectedApplication, environment]);
+
+  // Environments this application does have a URL for. Named on screen when
+  // the typed one has none: the batch defaults to "qa" while applications are
+  // routinely configured only for "SIT", so the field sat empty and refined
+  // test cases came out with "Application URL not configured" as their first
+  // precondition, with nothing on the screen saying a URL existed at all.
+  const configuredEnvironments = useMemo(
+    () =>
+      Object.entries(selectedApplication?.environment_urls ?? {})
+        .filter(([, url]) => url?.trim())
+        .map(([name]) => name)
+        .sort(),
+    [selectedApplication],
+  );
 
   const handleCreateBatch = async () => {
     const name = newBatchName.trim();
@@ -576,86 +653,116 @@ export function CoverageAssessmentView({
                   </p>
                 </div>
 
-                {selectedBatch.documents.length === 0 ? (
-                  <p className="text-xs text-gray-500">No documents attached yet.</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[640px] text-xs">
-                      <thead>
-                        <tr className="border-b border-gray-200 text-left text-[11px] uppercase tracking-wide text-gray-500">
-                          <th className="py-2 pr-3 font-semibold">Document</th>
-                          <th className="py-2 pr-3 font-semibold">Type</th>
-                          {/* "Text" is the upload-time docx/pdf -> text job.
-                              "Requirements found" is the LLM pass that only
-                              runs on assessment. Two different steps, so two
-                              differently-named columns. */}
-                          <th className="py-2 pr-3 font-semibold">Text</th>
-                          <th className="py-2 pr-3 font-semibold">Requirements found</th>
-                          <th className="py-2 pr-3 font-semibold" />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedBatch.documents.map((doc) => (
-                          <tr key={doc.id} className="border-b border-gray-100">
-                            <td className="py-2 pr-3">
-                              <span className="inline-flex items-center gap-1.5 text-gray-800">
-                                <FileText className="h-3.5 w-3.5 text-gray-400" />
-                                {doc.original_filename ?? `Document ${doc.document_id}`}
-                              </span>
-                            </td>
-                            <td className="py-2 pr-3">
-                              <select
-                                value={doc.doc_role}
-                                onChange={(event) =>
-                                  handleRoleChange(doc.id, event.target.value as TasDocRole)
-                                }
-                                className="h-7 rounded border border-gray-200 bg-white px-1.5 text-xs"
-                              >
-                                {DOC_ROLE_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="py-2 pr-3">
-                              {doc.text_available ? (
-                                <Badge variant="success">Ready</Badge>
-                              ) : doc.document_status === "failed" ? (
-                                <Badge variant="destructive">Extraction failed</Badge>
-                              ) : (
-                                <Badge variant="warning">Extracting...</Badge>
-                              )}
-                            </td>
-                            <td className="py-2 pr-3 text-gray-600">
-                              {/* Requirement extraction happens during the
-                                  assessment, not on upload. Showing a bare "0"
-                                  beforehand reads as "the document yielded
-                                  nothing" when nothing has run yet. */}
-                              {doc.extraction_status === "pending" ? (
-                                <span className="text-gray-400">Not assessed yet</span>
-                              ) : doc.doc_role === "test_cases" ? (
-                                `${doc.extracted_test_case_count} test case(s)`
-                              ) : (
-                                `${doc.extracted_requirement_count} requirement(s)`
-                              )}
-                            </td>
-                            <td className="py-2 pr-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => handleDetach(doc.id)}
-                                className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
-                                aria-label="Remove document"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                      Attached documents
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {hasExtractingDocument && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-amber-700">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Text extraction still running
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className={tasButtonTone.neutral}
+                        onClick={() => void refreshDocuments()}
+                        disabled={refreshing}
+                        title="Re-check the extraction status of the attached documents"
+                      >
+                        {refreshing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                        Refresh
+                      </Button>
+                    </div>
                   </div>
-                )}
+                  {selectedBatch.documents.length === 0 ? (
+                    <p className="text-xs text-gray-500">No documents attached yet.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[640px] text-xs">
+                        <thead>
+                          <tr className="border-b border-gray-200 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                            <th className="py-2 pr-3 font-semibold">Document</th>
+                            <th className="py-2 pr-3 font-semibold">Type</th>
+                            {/* "Text" is the upload-time docx/pdf -> text job.
+                                "Requirements found" is the LLM pass that only
+                                runs on assessment. Two different steps, so two
+                                differently-named columns. */}
+                            <th className="py-2 pr-3 font-semibold">Text</th>
+                            <th className="py-2 pr-3 font-semibold">Requirements found</th>
+                            <th className="py-2 pr-3 font-semibold" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedBatch.documents.map((doc) => (
+                            <tr key={doc.id} className="border-b border-gray-100">
+                              <td className="py-2 pr-3">
+                                <span className="inline-flex items-center gap-1.5 text-gray-800">
+                                  <FileText className="h-3.5 w-3.5 text-gray-400" />
+                                  {doc.original_filename ?? `Document ${doc.document_id}`}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-3">
+                                <select
+                                  value={doc.doc_role}
+                                  onChange={(event) =>
+                                    handleRoleChange(doc.id, event.target.value as TasDocRole)
+                                  }
+                                  className="h-7 rounded border border-gray-200 bg-white px-1.5 text-xs"
+                                >
+                                  {DOC_ROLE_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="py-2 pr-3">
+                                {doc.text_available ? (
+                                  <Badge variant="success">Ready</Badge>
+                                ) : doc.document_status === "failed" ? (
+                                  <Badge variant="destructive">Extraction failed</Badge>
+                                ) : (
+                                  <Badge variant="warning">Extracting...</Badge>
+                                )}
+                              </td>
+                              <td className="py-2 pr-3 text-gray-600">
+                                {/* Requirement extraction happens during the
+                                    assessment, not on upload. Showing a bare "0"
+                                    beforehand reads as "the document yielded
+                                    nothing" when nothing has run yet. */}
+                                {doc.extraction_status === "pending" ? (
+                                  <span className="text-gray-400">Not assessed yet</span>
+                                ) : doc.doc_role === "test_cases" ? (
+                                  `${doc.extracted_test_case_count} test case(s)`
+                                ) : (
+                                  `${doc.extracted_requirement_count} requirement(s)`
+                                )}
+                              </td>
+                              <td className="py-2 pr-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDetach(doc.id)}
+                                  className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                  aria-label="Remove document"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
 
                 <div className="grid gap-3 border-t border-gray-200 pt-3 sm:grid-cols-3">
                   <label className="text-xs">
@@ -680,20 +787,57 @@ export function CoverageAssessmentView({
                       onChange={(event) => setEnvironment(event.target.value)}
                       className="h-8 w-full rounded-lg border border-gray-200 px-2 text-xs"
                       placeholder="qa"
+                      // Free text still, because a batch may name an
+                      // environment the application has not been configured
+                      // for yet — but the ones it has are offered, so the
+                      // common case is picked rather than guessed at.
+                      list="tas-configured-environments"
                     />
+                    <datalist id="tas-configured-environments">
+                      {configuredEnvironments.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
                   </label>
                   <label className="text-xs">
                     <span className="mb-1 block font-medium text-gray-600">Application URL</span>
+                    {/* Read-only while the application supplies one, because
+                        that is exactly when generation ignores anything typed
+                        here: the application's own setting wins, and an
+                        editable box that silently has no effect is worse than
+                        no box. It becomes editable — and is written back to the
+                        application — only when this environment has none. */}
                     <input
-                      value={applicationUrl}
+                      value={inheritedUrl ?? applicationUrl}
                       onChange={(event) => setApplicationUrl(event.target.value)}
-                      className="h-8 w-full rounded-lg border border-gray-200 px-2 text-xs"
+                      readOnly={Boolean(inheritedUrl)}
+                      className={`h-8 w-full rounded-lg border border-gray-200 px-2 text-xs ${
+                        inheritedUrl ? "bg-gray-50 text-gray-600" : ""
+                      }`}
                       placeholder="https://app.example.internal"
                     />
                   </label>
                   <p className="text-[11px] text-gray-500 sm:col-span-3">
-                    The URL is written into the linked application&apos;s environment settings when that
-                    environment has none, so the rest of the platform resolves the same value.
+                    {inheritedUrl ? (
+                      <>
+                        From <span className="font-medium">{selectedApplication?.name}</span> ·{" "}
+                        {environment.trim()}. Change it in Project Settings so every module resolves
+                        the same value.
+                      </>
+                    ) : selectedApplication && configuredEnvironments.length > 0 ? (
+                      <span className="text-amber-700">
+                        <span className="font-medium">{selectedApplication.name}</span> has no URL for
+                        &quot;{environment.trim() || "\u2014"}&quot;. It is configured for{" "}
+                        {configuredEnvironments.map((name) => `"${name}"`).join(", ")} — use one of
+                        those, or enter a URL here to configure this environment.
+                      </span>
+                    ) : (
+                      <>
+                        The URL is written into the linked application&apos;s environment settings when
+                        that environment has none, so the rest of the platform resolves the same
+                        value.
+                      </>
+                    )}
                   </p>
                 </div>
 
@@ -753,16 +897,6 @@ export function CoverageAssessmentView({
                     )}
                     Extract Test Cases
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className={tasButtonTone.neutral}
-                    onClick={() => loadBatches(selectedBatch.id)}
-                    title="Refresh extraction status"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Refresh
-                  </Button>
                   {assessBlockedReason && canExtractTestCases && (
                     <span className="inline-flex items-center gap-1 text-[11px] text-gray-600">
                       <FileText className="h-3.5 w-3.5" />
@@ -790,7 +924,20 @@ export function CoverageAssessmentView({
 
       {assessment && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-          <StatTile label="Coverage" value={`${assessment.coverage_percent}%`} tone="success" />
+          <StatTile
+            label="Coverage"
+            value={`${assessment.coverage_percent}%`}
+            tone="success"
+            // The percentage is a share of acceptance criteria, not of
+            // requirements, so the counts behind it are shown: a document that
+            // extracts as one requirement would otherwise only ever read 0,
+            // 50 or 100 with nothing to explain why.
+            hint={
+              assessment.total_criteria > 0
+                ? `${assessment.covered_criteria} of ${assessment.total_criteria} acceptance criteria`
+                : "Scored by requirement - assessed before criterion-level scoring"
+            }
+          />
           <StatTile label="Requirements" value={assessment.total_requirements} />
           <StatTile label="Covered" value={assessment.covered_requirements} />
           <StatTile label="Partial" value={assessment.partially_covered_requirements} tone="warning" />
@@ -913,6 +1060,12 @@ export function CoverageAssessmentView({
                       {requirement.covering_test_case_refs.length > 0 && (
                         <p className="mt-1 text-[11px] text-gray-500">
                           Covered by: {requirement.covering_test_case_refs.join(", ")}
+                        </p>
+                      )}
+                      {requirement.total_criteria > 0 && (
+                        <p className="mt-1 text-[11px] text-gray-500">
+                          {requirement.covered_criteria} of {requirement.total_criteria} acceptance
+                          criteria exercised
                         </p>
                       )}
                     </td>

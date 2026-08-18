@@ -168,10 +168,51 @@ async def resolve_default_application(db: AsyncSession, project_id: int) -> Proj
     return result.scalar_one_or_none()
 
 
+def configured_environments(application: ProjectApplication | None) -> list[str]:
+    """Environment names this application actually has a URL for.
+
+    Callers report this when the environment asked for has none: "no URL is
+    configured" leaves a user hunting through project settings, while "no URL
+    for 'qa'; this application has one for 'SIT'" names the fix.
+    """
+    if not application or not application.environment_urls:
+        return []
+    return sorted(
+        str(name)
+        for name, url in application.environment_urls.items()
+        if isinstance(url, str) and url.strip()
+    )
+
+
 def resolve_environment_url(application: ProjectApplication | None, environment: str | None) -> str | None:
+    """The application's URL for one environment, matched without regard to case.
+
+    An exact-key lookup meant "sit" found nothing while "SIT" resolved, which
+    is not a distinction anyone types deliberately. Environment names are
+    entered free-form in several places in the platform and stored as the user
+    wrote them, so the same environment reaches this function capitalised
+    differently depending on which screen set it.
+
+    Deliberately still fails when the environment is genuinely absent: falling
+    back to some other environment's URL would run a QA suite against whatever
+    happened to be configured, which is worse than reporting that nothing is.
+    """
     if not application or not application.environment_urls or not environment:
         return None
-    url = application.environment_urls.get(environment)
+    urls = application.environment_urls
+    url = urls.get(environment)
+    if not (isinstance(url, str) and url.strip()):
+        wanted = environment.strip().casefold()
+        url = next(
+            (
+                value
+                for name, value in urls.items()
+                if str(name).strip().casefold() == wanted
+                and isinstance(value, str)
+                and value.strip()
+            ),
+            None,
+        )
     return url.strip() if isinstance(url, str) and url.strip() else None
 
 

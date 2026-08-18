@@ -25,6 +25,7 @@ import {
   type TasDerivedRequirement,
   type TasRefinedStep,
   type TasRefinedTestCase,
+  type TasIntakeBatch,
   type TasSourceTestCase,
 } from "@/lib/api";
 import { GroundingDrawer } from "./GroundingDrawer";
@@ -94,20 +95,31 @@ export function TestCaseWorkbenchView({
   const [groundingDetail, setGroundingDetail] = useState<TasRefinedTestCase | null>(null);
 
   const [applicationId, setApplicationId] = useState<string>("");
+  // The environment decides which of the application's URLs the generated test
+  // cases are grounded in, and this screen used to send none — so refinement
+  // fell back to the intake batch's, which starts on "qa" while applications
+  // are routinely configured only for "SIT". Picking the application here was
+  // not enough to resolve a URL, and the only sign of it was "Application URL
+  // not configured" turning up as a precondition on every generated test case.
+  const [environment, setEnvironment] = useState<string>("");
+  const [batches, setBatches] = useState<TasIntakeBatch[]>([]);
   const [regenerate, setRegenerate] = useState(false);
   const [classificationFilter, setClassificationFilter] = useState<"all" | TasClassification>("all");
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [requirementsResponse, sourcesResponse, testCasesResponse] = await Promise.all([
-        testAutomationStudioApi.listRequirements(projectId, { status: ["approved"] }),
-        testAutomationStudioApi.listSourceTestCases(projectId),
-        testAutomationStudioApi.listTestCases(projectId),
-      ]);
+      const [requirementsResponse, sourcesResponse, testCasesResponse, batchesResponse] =
+        await Promise.all([
+          testAutomationStudioApi.listRequirements(projectId, { status: ["approved"] }),
+          testAutomationStudioApi.listSourceTestCases(projectId),
+          testAutomationStudioApi.listTestCases(projectId),
+          testAutomationStudioApi.listBatches(projectId),
+        ]);
       setRequirements(requirementsResponse.data);
       setSourceTestCases(sourcesResponse.data);
       setTestCases(testCasesResponse.data);
+      setBatches(batchesResponse.data);
     } catch (error) {
       toast({
         title: "Could not load the workbench",
@@ -144,6 +156,45 @@ export function TestCaseWorkbenchView({
     [testCases],
   );
 
+  // The batch refinement will anchor on: the one the selection belongs to,
+  // chosen exactly as the backend chooses it, so this screen cannot show a
+  // different application or environment from the one generation uses.
+  const anchorBatch = useMemo(() => {
+    const requirement = requirements.find((row) => selectedRequirementIds.has(row.id));
+    const source = sourceTestCases.find((row) => selectedSourceIds.has(row.id));
+    const batchId = requirement?.batch_id ?? source?.batch_id;
+    return batches.find((batch) => batch.id === batchId) ?? null;
+  }, [requirements, sourceTestCases, selectedRequirementIds, selectedSourceIds, batches]);
+
+  // Blank means "inherit", so the placeholder has to show what would be
+  // inherited rather than leaving the field looking unset.
+  const effectiveEnvironment = environment.trim() || anchorBatch?.application_environment || "qa";
+
+  const effectiveApplication = useMemo(() => {
+    const id = applicationId ? Number(applicationId) : anchorBatch?.application_id ?? null;
+    return applications.find((application) => application.id === id) ?? null;
+  }, [applicationId, anchorBatch, applications]);
+
+  // Mirrors `_resolve_application_url`: the application's own URL for this
+  // environment wins, and the batch's one-off URL is the fallback. Matched
+  // without regard to case, as the backend now does.
+  const resolvedUrl = useMemo(() => {
+    const wanted = effectiveEnvironment.trim().toLowerCase();
+    const match = Object.entries(effectiveApplication?.environment_urls ?? {}).find(
+      ([name, url]) => name.trim().toLowerCase() === wanted && url?.trim(),
+    );
+    return match ? match[1].trim() : anchorBatch?.application_url?.trim() || null;
+  }, [effectiveApplication, effectiveEnvironment, anchorBatch]);
+
+  const configuredEnvironments = useMemo(
+    () =>
+      Object.entries(effectiveApplication?.environment_urls ?? {})
+        .filter(([, url]) => url?.trim())
+        .map(([name]) => name)
+        .sort(),
+    [effectiveApplication],
+  );
+
   const handleGenerate = async () => {
     if (!selectedRequirementIds.size && !selectedSourceIds.size) return;
     setGenerating(true);
@@ -157,6 +208,7 @@ export function TestCaseWorkbenchView({
         requirement_ids: Array.from(selectedRequirementIds),
         source_test_case_ids: Array.from(selectedSourceIds),
         application_id: applicationId ? Number(applicationId) : null,
+        application_environment: effectiveEnvironment,
         include_existing_test_cases: true,
         regenerate,
       });
@@ -480,6 +532,19 @@ export function TestCaseWorkbenchView({
                 </option>
               ))}
             </select>
+            <input
+              value={environment}
+              onChange={(event) => setEnvironment(event.target.value)}
+              className="h-8 w-28 rounded-lg border border-gray-200 px-2 text-xs"
+              placeholder={anchorBatch?.application_environment || "qa"}
+              aria-label="Environment"
+              list="tas-workbench-environments"
+            />
+            <datalist id="tas-workbench-environments">
+              {configuredEnvironments.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
             <label className="flex items-center gap-1.5 text-[11px] text-gray-600">
               <input
                 type="checkbox"
@@ -514,6 +579,34 @@ export function TestCaseWorkbenchView({
             <JobProgress percent={progress.percent} message={progress.message} />
           </div>
         )}
+
+        {/* Said before generating, not discovered afterwards. Without a URL the
+            refinement agent writes "Application URL not configured" into the
+            first precondition of every test case it produces, and the run still
+            reports success — so the only way to find out was to open one and
+            read it, then regenerate the lot. */}
+        {selectedForGeneration > 0 &&
+          (resolvedUrl ? (
+            <p className="mb-3 text-[11px] text-gray-500">
+              Grounding in <span className="font-medium">{resolvedUrl}</span>
+              {effectiveApplication ? ` (${effectiveApplication.name} · ${effectiveEnvironment})` : null}
+            </p>
+          ) : (
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-[11px] text-amber-800">
+              No application URL resolves for{" "}
+              <span className="font-medium">
+                {effectiveApplication ? `${effectiveApplication.name} · ` : ""}
+                {effectiveEnvironment}
+              </span>
+              , so every generated test case will carry &quot;Application URL not configured&quot; as
+              its first precondition.{" "}
+              {configuredEnvironments.length > 0
+                ? `${effectiveApplication?.name} is configured for ${configuredEnvironments
+                    .map((name) => `"${name}"`)
+                    .join(", ")} — set the environment above to one of those.`
+                : "Set a URL on the Requirement Coverage Assessment screen, or in Project Settings."}
+            </p>
+          ))}
 
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="min-w-0">
