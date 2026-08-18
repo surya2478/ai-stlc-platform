@@ -3093,6 +3093,62 @@ def test_the_studio_navigates_to_the_page_the_crawl_actually_found():
     )
 
 
+def test_a_compiled_bundle_names_the_application_it_runs_against():
+    """The downloaded bundle named the application nowhere.
+
+    A compiled spec navigates with `await page.goto('/')` -- relative, because
+    baking the host into every spec is the anti-pattern the free-form path
+    shipped. But `use.baseURL` lived only in the workspace the runner
+    materialises, so asset 37's bundle was specs/pages/fixtures/utils and
+    nothing else: no config, no URL, and nothing that would run outside this
+    platform.
+    """
+    import json as _json
+
+    from app.services.test_automation_studio.script_lab_service import _with_runnable_config
+
+    bundle = _with_runnable_config(
+        {"specs/tc003.spec.ts": "// spec", "pages/HomePage.ts": "// page"},
+        "https://arenaplay.ae/",
+    )
+    check(
+        "tas.bundle_gains_a_config",
+        "playwright.config.ts" in bundle and "storageState.json" in bundle,
+        str(sorted(bundle)),
+    )
+    config = bundle["playwright.config.ts"]
+    check(
+        "tas.config_carries_the_application_url",
+        '"https://arenaplay.ae/"' in config,
+        "baseURL missing from the config",
+    )
+    check(
+        "tas.config_points_at_the_bundle_layout",
+        "testDir: 'specs'" in config,
+        "testDir does not match the compiled bundle tree",
+    )
+    check(
+        "tas.storage_state_is_valid_json",
+        isinstance(_json.loads(bundle["storageState.json"]).get("cookies"), list),
+        "storageState.json is not the shape Playwright reads",
+    )
+
+    # The generated sources are never touched -- only added to.
+    check(
+        "tas.existing_files_untouched",
+        bundle["specs/tc003.spec.ts"] == "// spec" and bundle["pages/HomePage.ts"] == "// page",
+        "compiler output was modified",
+    )
+
+    # With no resolved URL there is nothing truthful to write, so nothing is.
+    check(
+        "tas.no_url_writes_no_config",
+        sorted(_with_runnable_config({"specs/tc003.spec.ts": "// spec"}, None))
+        == ["specs/tc003.spec.ts"],
+        "a config was invented without an application URL",
+    )
+
+
 TESTS = [
     value
     for name, value in list(globals().items())

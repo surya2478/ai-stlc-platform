@@ -20,6 +20,7 @@ at, which is a real situation for offline and pre-deployment work.
 from __future__ import annotations
 
 import io
+import json
 import re
 import zipfile
 from types import SimpleNamespace
@@ -41,6 +42,10 @@ from app.schemas.test_automation_studio import (
     ScriptAssetUpdate,
 )
 from app.services import agent_run_service, static_quality_gate
+from app.services.automation_runner.workspace import (
+    _render_playwright_config,
+    google_locale_cookie,
+)
 from app.services.test_automation_studio import discovery_service
 from app.services.test_automation_studio.progress import ProgressCallback
 from app.services.test_automation_studio.progress import report as _report
@@ -128,6 +133,37 @@ async def _catalog_for(
         ]
         cache[test_case.batch_id] = (catalog, paths, run.id if run else None)
     return cache[test_case.batch_id]
+
+
+def _with_runnable_config(files: dict, application_url: str | None) -> dict:
+    """Give the bundle the two files that make its relative paths resolve.
+
+    A compiled spec navigates with `await page.goto('/')` — relative, because
+    hardcoding the host into every spec is the anti-pattern the free-form path
+    shipped (`const BASE_URL = 'https://rankix.ai/'` baked into the test).
+    Playwright resolves that against `use.baseURL`, which lived only in the
+    workspace the RUNNER materialises — so the bundle a user downloaded named
+    the application nowhere and could not run outside this platform.
+
+    Rendered from the runner's own template rather than a second copy, so the
+    timeouts, reporters and trace settings a downloaded bundle runs under are
+    the ones the dry run used. The runner still rewrites both files at
+    execution with the URL resolved for that run, so this never competes with
+    it — it makes the artefact self-contained, it does not decide anything.
+    """
+    if not application_url:
+        return files
+    return {
+        **files,
+        "playwright.config.ts": _render_playwright_config(application_url, "specs"),
+        "storageState.json": json.dumps(
+            {
+                "cookies": [c for c in [google_locale_cookie(application_url)] if c],
+                "origins": [],
+            },
+            indent=2,
+        ),
+    }
 
 
 def _gate_subject(asset_id: int | None, framework: str, code: str, files: dict, entry_path: str | None):
@@ -339,6 +375,8 @@ async def generate_scripts(
         code = result.data["code"]
         files = result.data.get("files") or {}
         entry_path = result.data.get("entry_path")
+        if compiled:
+            files = _with_runnable_config(files, test_case.application_url)
         grounding = dict(result.data.get("grounding") or {})
         if discovery_run_id is not None:
             grounding["discovery_run_id"] = discovery_run_id
