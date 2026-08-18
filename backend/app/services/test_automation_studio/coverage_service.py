@@ -1,6 +1,7 @@
 """Screen 1's "Assess Coverage for Automation" action and its results."""
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime, timezone
 
@@ -407,6 +408,122 @@ async def prepare_assessment(
     return batch
 
 
+def requirement_fingerprint(requirement_documents: list[dict]) -> str:
+    """Identity of the requirement documents this batch will be assessed from.
+
+    Two assessments share a fingerprint exactly when they would be reading the
+    same words, so it is what decides whether the previous run's requirements
+    can be carried over or the documents have to be read again.
+    """
+    parts = [
+        f"{doc.get('document_id')}:{hashlib.sha256((doc.get('text') or '').encode()).hexdigest()}"
+        for doc in sorted(requirement_documents, key=lambda d: str(d.get("document_id")))
+    ]
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()
+
+
+async def carried_over_requirements(
+    db: AsyncSession, *, batch_id: int, fingerprint: str
+) -> list[dict]:
+    """The requirements a previous assessment read from these same documents.
+
+    Re-extracting on every assessment is what made the score move. A hosted
+    model is not deterministic even at temperature 0: the same BRD split into
+    5, 8 and 6 acceptance criteria across three consecutive runs, and a
+    percentage cannot be stable while its own denominator is re-sampled each
+    time. Reading a document once and re-judging coverage against what it said
+    is both stabler and closer to what a reviewer expects — an approved
+    requirement should not silently reword itself because the screen was run
+    again.
+
+    Returns nothing when the documents have changed, when no previous
+    assessment of them exists, or when that assessment extracted nothing — all
+    of which mean the documents genuinely have to be read.
+    """
+    previous = (
+        await db.execute(
+            select(TasCoverageAssessment)
+            .where(
+                TasCoverageAssessment.batch_id == batch_id,
+                TasCoverageAssessment.status == "completed",
+                TasCoverageAssessment.gap_summary["requirement_fingerprint"].astext == fingerprint,
+            )
+            .order_by(TasCoverageAssessment.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if previous is None:
+        return []
+
+    rows = list(
+        (
+            await db.execute(
+                select(TasDerivedRequirement)
+                .where(
+                    TasDerivedRequirement.batch_id == batch_id,
+                    TasDerivedRequirement.assessment_id == previous.id,
+                    TasDerivedRequirement.origin == "extracted",
+                )
+                .order_by(TasDerivedRequirement.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [
+        {
+            "title": row.title,
+            "summary": row.summary,
+            "acceptance_criteria": list(row.acceptance_criteria or []),
+            "business_rules": list(row.business_rules or []),
+            "ui_pages": list(row.ui_pages or []),
+            "apis": list(row.apis or []),
+            "test_data_needs": list(row.test_data_needs or []),
+            "priority": row.priority,
+            "automation_relevance": row.automation_relevance,
+            "source_ref": (row.source_refs or [None])[0],
+        }
+        for row in rows
+    ]
+
+
+def score_coverage(coverage_rows: list[dict], total_requirements: int) -> tuple[int, int, int]:
+    """Coverage percent, and the criterion counts behind it.
+
+    Scored over acceptance criteria rather than requirements. Counting
+    requirements made the figure a function of how the model chose to split the
+    document: a BRD that extracts as a single requirement can only ever score
+    0, 50 or 100, so one untested criterion out of five was reported as a 50%
+    gap — while the same two documents assessed on another project, where the
+    model happened to fold that behaviour into a broader criterion, reported
+    100% and no gaps. A criterion is the unit a test case actually exercises,
+    so it is the unit the score counts.
+
+    Falls back to the requirement-level share when no requirement listed a
+    criterion, which is the only case where there is nothing finer to count.
+    """
+    total_criteria = sum(int(row.get("total_criteria") or 0) for row in coverage_rows)
+    covered_criteria = sum(int(row.get("covered_criteria_count") or 0) for row in coverage_rows)
+    if total_criteria:
+        return (
+            int(round((covered_criteria / total_criteria) * 100)),
+            total_criteria,
+            covered_criteria,
+        )
+
+    # Partial coverage counts as half here: counting it as covered would report
+    # a gap-free project that still has untested behaviour, and counting it as
+    # uncovered would erase real work already done.
+    covered = sum(1 for row in coverage_rows if row.get("coverage_state") == "covered")
+    partial = sum(1 for row in coverage_rows if row.get("coverage_state") == "partially_covered")
+    percent = (
+        int(round(((covered + partial * 0.5) / total_requirements) * 100))
+        if total_requirements
+        else 0
+    )
+    return percent, 0, 0
+
+
 async def execute_assessment(
     db: AsyncSession,
     *,
@@ -451,12 +568,24 @@ async def execute_assessment(
     # on one upload — and lost every column but four.
     parsed_test_cases, remaining_test_case_docs = parse_template_test_cases(test_case_docs)
 
+    fingerprint = requirement_fingerprint(requirement_docs)
+    carried_over = await carried_over_requirements(
+        db, batch_id=batch.id, fingerprint=fingerprint
+    )
+    if carried_over:
+        await _report(
+            on_progress,
+            35,
+            f"Re-using {len(carried_over)} requirement(s) from the unchanged documents",
+        )
+
     agent = CoverageAssessmentAgent()
     result = await agent.run(
         requirement_documents=requirement_docs,
         test_case_documents=remaining_test_case_docs,
         derive_gap_requirements=derive_gap_requirements,
         preparsed_test_cases=parsed_test_cases,
+        preextracted_requirements=carried_over,
     )
 
     if not result.success:
@@ -484,10 +613,7 @@ async def execute_assessment(
     partial = sum(1 for row in coverage_rows if row.get("coverage_state") == "partially_covered")
     uncovered = sum(1 for row in coverage_rows if row.get("coverage_state") == "uncovered")
     total = len(requirements)
-    # Partial coverage counts as half. Counting it as covered would report a
-    # gap-free project that still has untested criteria; counting it as
-    # uncovered would erase real work already done.
-    coverage_percent = int(round(((covered + partial * 0.5) / total) * 100)) if total else 0
+    coverage_percent, total_criteria, covered_criteria = score_coverage(coverage_rows, total)
 
     # Only one assessment per batch is "current" — the grid reads the current
     # one, and leaving two marked current would make which results appear
@@ -510,10 +636,14 @@ async def execute_assessment(
         uncovered_requirements=uncovered,
         existing_test_case_count=len(existing_cases),
         derived_requirement_count=len(derived),
+        total_criteria=total_criteria,
+        covered_criteria=covered_criteria,
         coverage_percent=coverage_percent,
         coverage_rows=coverage_rows,
         extracted_test_cases=existing_cases,
         gap_summary={
+            "requirement_fingerprint": fingerprint,
+            "requirements_carried_over": bool(carried_over),
             "document_errors": data.get("document_errors", []),
             "requirement_documents": len(requirement_docs),
             "test_case_documents": len(test_case_docs),
@@ -587,6 +717,8 @@ async def execute_assessment(
                 test_data_needs=req.get("test_data_needs") or [],
                 origin="extracted",
                 coverage_state=row.get("coverage_state") or "uncovered",
+                total_criteria=int(row.get("total_criteria") or 0),
+                covered_criteria=int(row.get("covered_criteria_count") or 0),
                 gap_reason=row.get("gap_reason"),
                 source_refs=[
                     ref
@@ -627,6 +759,10 @@ async def execute_assessment(
                 test_data_needs=req.get("test_data_needs") or [],
                 origin="derived",
                 coverage_state="uncovered",
+                # A derived requirement exists because nothing exercises it, so
+                # none of its criteria are covered by definition.
+                total_criteria=len(req.get("acceptance_criteria") or []),
+                covered_criteria=0,
                 gap_reason=req.get("gap_reason"),
                 source_refs=[req.get("covers_requirement_title")] if req.get("covers_requirement_title") else [],
                 covering_test_case_refs=[],

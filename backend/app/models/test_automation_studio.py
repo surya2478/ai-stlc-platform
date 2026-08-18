@@ -153,6 +153,19 @@ class TasCoverageAssessment(TimestampMixin, Base):
     uncovered_requirements: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     existing_test_case_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     derived_requirement_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # `coverage_percent` is covered_criteria/total_criteria. The requirement
+    # counts above stay because the grid bands requirements by state, but they
+    # are too coarse to score: a document that extracts as one requirement can
+    # only ever be 0, 50 or 100 percent covered. Both are zero on assessments
+    # written before criterion-level scoring existed, whose percent was
+    # computed the old way and is left as it was recorded.
+    total_criteria: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    covered_criteria: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     coverage_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Per-requirement coverage rows and the extracted existing test cases, kept
@@ -211,6 +224,17 @@ class TasDerivedRequirement(TimestampMixin, Base):
     gap_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_refs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     covering_test_case_refs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    # How much of this requirement the supplied test cases exercise, denormalised
+    # from the assessment's coverage row alongside `coverage_state` above. The
+    # grid reads requirements, not coverage rows, and "partially covered" on its
+    # own does not say whether one criterion is missing or nine.
+    total_criteria: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    covered_criteria: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     automation_relevance: Mapped[str | None] = mapped_column(String(20), nullable=True)
     priority: Mapped[str] = mapped_column(String(20), nullable=False, default="Medium")

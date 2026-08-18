@@ -12,11 +12,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
-from typing import Any, Awaitable, Callable, Protocol, TypeVar
+from typing import Any, Awaitable, Callable, Iterator, Protocol, TypeVar
 
 from app.config import get_settings
 from app.llm.roles import role_default_route
@@ -78,6 +79,47 @@ class LLMRouteOverride:
 _circuits: dict[str, _CircuitState] = {}
 _latest_rate_limits: dict[str, _RateLimitSnapshot] = {}
 _route_override: ContextVar[LLMRouteOverride | None] = ContextVar("llm_route_override", default=None)
+
+# Models that actually served a call inside the active `observe_served_models`
+# block. The model requested is not always the model that answers: OpenRouter
+# reroutes to OPENROUTER_FALLBACK_MODELS when the primary is rate-limited or
+# errors, and gateways substitute too. `agent_runs.llm_model` records only what
+# was asked for, so two runs of one document that were answered by different
+# models were indistinguishable afterwards — while differing precisely because
+# of it. A ContextVar rather than a global: several runs share a worker
+# process, and a global would attribute one run's model to another.
+_served_models: ContextVar[tuple[set[str], ...]] = ContextVar("llm_served_models", default=())
+
+
+@contextmanager
+def observe_served_models() -> Iterator[set[str]]:
+    """Collect the models that answer inside this block.
+
+    The set is live: read it after the block to see everything observed.
+
+    A stack rather than a single slot, so every enclosing observer records too.
+    An inner block that captured calls for itself alone would silently blind
+    the outer one — the run wrapping it would report no model at all, which is
+    the failure this whole mechanism exists to end. A model that answered
+    inside a nested block did answer during the outer run as well.
+    """
+    observed: set[str] = set()
+    token = _served_models.set(_served_models.get() + (observed,))
+    try:
+        yield observed
+    finally:
+        _served_models.reset(token)
+
+
+def _record_served_model(model: Any) -> None:
+    observers = _served_models.get()
+    if not observers:
+        return
+    name = str(model or "").strip()
+    if not name:
+        return
+    for observed in observers:
+        observed.add(name)
 _role_route_overrides: ContextVar[dict[str, LLMRouteOverride] | None] = ContextVar(
     "llm_role_route_overrides", default=None
 )
@@ -469,6 +511,7 @@ class OllamaProvider:
                 resp = await client.post(f"{self.base_url}/api/generate", json=payload)
                 resp.raise_for_status()
                 data = resp.json()
+                _record_served_model(data.get("model") or self.model)
                 if data.get("done_reason") == "length":
                     raise _truncation_error(self.model, options)
                 return data.get("response", "")
@@ -493,6 +536,7 @@ class OllamaProvider:
                 resp = await client.post(f"{self.base_url}/api/chat", json=payload)
                 resp.raise_for_status()
                 data = resp.json()
+                _record_served_model(data.get("model") or self.model)
                 if data.get("done_reason") == "length":
                     raise _truncation_error(self.model, options)
                 return data["message"]["content"]
@@ -575,6 +619,8 @@ class OpenAICompatibleProvider:
                 status_code=getattr(raw_resp, "status_code", None),
             )
             resp = raw_resp.parse()
+            # What answered, which is not always what was asked for.
+            _record_served_model(getattr(resp, "model", None))
             choice = resp.choices[0]
             # finish_reason used to be dropped on the floor, so a response the
             # model cut short at the token cap was returned as if complete and

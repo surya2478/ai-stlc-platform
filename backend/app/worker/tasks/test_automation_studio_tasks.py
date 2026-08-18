@@ -18,9 +18,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
+from app.llm.provider import observe_served_models
 from app.models.agent import AgentRun
 from app.services import agent_run_service
 from app.services.test_automation_studio.progress import db_progress_callback
@@ -38,6 +42,29 @@ async def _load_run(db, agent_run_id: int) -> AgentRun:
     run.progress_message = "Started"
     await db.commit()
     return run
+
+
+@asynccontextmanager
+async def _agent_run(agent_run_id: int) -> AsyncIterator[tuple[AsyncSession, AgentRun]]:
+    """Session and run for one studio task, with the models that served it.
+
+    Every task in this module opened a session, marked its run running, and did
+    its work. The prologue is here so the epilogue can be too: the model that
+    answers is not always the model requested — OpenRouter reroutes to
+    OPENROUTER_FALLBACK_MODELS when the primary is rate-limited — and nothing
+    recorded which one did, so two runs of one document that disagreed because
+    different models answered them looked identical in the audit trail.
+
+    Recorded only when the task completes. A failure is marked on the run from
+    a separate session (see `_fail`), because the session here may be in a
+    broken transaction by then.
+    """
+    async with AsyncSessionLocal() as db:
+        run = await _load_run(db, agent_run_id)
+        with observe_served_models() as served:
+            yield db, run
+        await agent_run_service.record_served_models(db, run, served)
+        await db.commit()
 
 
 async def _fail(agent_run_id: int, error: str) -> None:
@@ -65,8 +92,7 @@ def _detail(exc: Exception) -> str:
 # ── Screen 1: coverage assessment ────────────────────────────────────────────
 
 async def _assess_coverage(agent_run_id: int, batch_id: int, user_id: int, payload: dict[str, Any]):
-    async with AsyncSessionLocal() as db:
-        run = await _load_run(db, agent_run_id)
+    async with _agent_run(agent_run_id) as (db, run):
         from app.services.test_automation_studio import coverage_service
 
         assessment = await coverage_service.execute_assessment(
@@ -94,8 +120,7 @@ def tas_assess_coverage(self, agent_run_id: int, batch_id: int, user_id: int, pa
 
 
 async def _extract_test_cases(agent_run_id: int, batch_id: int, user_id: int):
-    async with AsyncSessionLocal() as db:
-        run = await _load_run(db, agent_run_id)
+    async with _agent_run(agent_run_id) as (db, run):
         from app.services.test_automation_studio import coverage_service
 
         rows = await coverage_service.execute_test_case_extraction(
@@ -124,8 +149,7 @@ def tas_extract_test_cases(self, agent_run_id: int, batch_id: int, user_id: int)
 # ── Screen 1: application discovery ──────────────────────────────────────────
 
 async def _discover_application(agent_run_id: int, batch_id: int, user_id: int):
-    async with AsyncSessionLocal() as db:
-        run = await _load_run(db, agent_run_id)
+    async with _agent_run(agent_run_id) as (db, run):
         from app.services.test_automation_studio import discovery_service
 
         discovery_run = await discovery_service.execute_discovery(
@@ -166,8 +190,7 @@ def tas_discover_application(self, agent_run_id: int, batch_id: int, user_id: in
 # ── Screen 2: refined test case generation ───────────────────────────────────
 
 async def _generate_test_cases(agent_run_id: int, project_id: int, user_id: int, payload: dict[str, Any]):
-    async with AsyncSessionLocal() as db:
-        run = await _load_run(db, agent_run_id)
+    async with _agent_run(agent_run_id) as (db, run):
         from app.schemas.test_automation_studio import GenerateRefinedTestCasesRequest
         from app.services.test_automation_studio import refinement_service
 
@@ -202,8 +225,7 @@ def tas_generate_test_cases(self, agent_run_id: int, project_id: int, user_id: i
 # ── Screen 3: script generation ──────────────────────────────────────────────
 
 async def _generate_scripts(agent_run_id: int, project_id: int, user_id: int, payload: dict[str, Any]):
-    async with AsyncSessionLocal() as db:
-        run = await _load_run(db, agent_run_id)
+    async with _agent_run(agent_run_id) as (db, run):
         from app.schemas.test_automation_studio import GenerateScriptsRequest
         from app.services.test_automation_studio import script_lab_service
 
@@ -236,8 +258,7 @@ def tas_generate_scripts(self, agent_run_id: int, project_id: int, user_id: int,
 
 
 async def _dry_run_scripts(agent_run_id: int, project_id: int, script_ids: list[int]):
-    async with AsyncSessionLocal() as db:
-        run = await _load_run(db, agent_run_id)
+    async with _agent_run(agent_run_id) as (db, run):
         from app.services.test_automation_studio import dry_run_service
 
         updated, blocked = await dry_run_service.execute_dry_runs(

@@ -1048,6 +1048,843 @@ def test_every_studio_llm_call_sets_its_own_output_budget():
             )
 
 
+def test_every_studio_llm_call_pins_a_temperature():
+    """The same document must not read differently on every run.
+
+    None of these agents passed a temperature, so every call sampled at the
+    provider's default — 1.0 on an OpenAI-compatible endpoint. Two coverage
+    assessments of a byte-identical BRD and test case sheet then split the same
+    behaviour into different acceptance criteria and disagreed about whether it
+    was covered: one project reported 100% coverage and no gaps, another
+    reported 50% and derived a requirement, from the same two files.
+
+    Asserted over the call sites for the same reason as the max_tokens check
+    above: the invariant is a property of the calls, not of one execution path.
+    """
+    import ast
+    import inspect
+
+    from app.agents.test_automation_studio import (
+        contract_agent,
+        coverage_agent,
+        refinement_agent,
+        script_agent,
+    )
+
+    for module in (contract_agent, coverage_agent, refinement_agent, script_agent):
+        short = module.__name__.rsplit(".", 1)[-1]
+        tree = ast.parse(inspect.getsource(module))
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"generate", "achat", "acomplete"}
+        ]
+        check(
+            f"tas.{short}_has_calls_for_temperature",
+            bool(calls),
+            "no LLM calls found - the check would pass vacuously",
+        )
+        for index, call in enumerate(calls):
+            kwargs = {kw.arg for kw in call.keywords}
+            check(
+                f"tas.{short}_call{index}_sets_temperature",
+                "temperature" in kwargs,
+                f"LLM call at line {call.lineno} in {short} omits temperature",
+            )
+
+    # Reading a document is extraction, not invention: the coverage passes take
+    # the lowest setting available, and a later edit raising it would restore
+    # the spread this fixed.
+    check(
+        "tas.coverage_temperature_is_lowest",
+        coverage_agent.EXTRACTION_TEMPERATURE == 0.0,
+        f"got {coverage_agent.EXTRACTION_TEMPERATURE}",
+    )
+
+
+def test_covering_ids_resolve_to_test_cases_that_were_actually_supplied():
+    """The matching prompt says copy IDs verbatim; the model does not always.
+
+    Asked about "TC-01_USP Direct_eLife (Fixed)" it answered "TC-01", and
+    nothing downstream tolerated that: `covering_test_case_refs` is matched
+    against `test_cases.test_case_id` by exact string, so the requirement
+    reached Screen 2 with no link to the test case covering it, while the
+    coverage screen displayed the shortened ID as though it named something.
+    """
+    from app.agents.test_automation_studio.coverage_agent import (
+        _is_boundary_prefix,
+        _resolve_case_ids,
+    )
+
+    supplied = [
+        {"test_case_id": f"TC-{n:02d}_USP Direct/Indirect_eLife (Fixed)", "title": f"Case {n}"}
+        for n in range(1, 16)
+    ]
+
+    # The exact shortening observed in assessment 14.
+    resolved = _resolve_case_ids(["TC-01", "TC-04", "TC-12"], supplied)
+    check(
+        "tas.covering_ids_restore_full_id",
+        resolved
+        == [
+            "TC-01_USP Direct/Indirect_eLife (Fixed)",
+            "TC-04_USP Direct/Indirect_eLife (Fixed)",
+            "TC-12_USP Direct/Indirect_eLife (Fixed)",
+        ],
+        str(resolved),
+    )
+
+    # A verbatim answer — the documented contract — must pass through unchanged.
+    verbatim = ["TC-07_USP Direct/Indirect_eLife (Fixed)"]
+    check("tas.covering_ids_pass_verbatim", _resolve_case_ids(verbatim, supplied) == verbatim)
+
+    # "TC-1" prefixes TC-10 through TC-15. Guessing one would credit a
+    # requirement to a test case nobody assessed, so it resolves to nothing.
+    check("tas.covering_ids_reject_ambiguous", _resolve_case_ids(["TC-1"], supplied) == [])
+
+    # An ID naming no supplied test case is worse than an absent one: on screen
+    # it reads as evidence.
+    check("tas.covering_ids_drop_unknown", _resolve_case_ids(["TC-99", "", "  "], supplied) == [])
+
+    # Case differences and repeats collapse to one reference.
+    check(
+        "tas.covering_ids_dedupe",
+        _resolve_case_ids(["TC-02", "tc-02"], supplied)
+        == ["TC-02_USP Direct/Indirect_eLife (Fixed)"],
+    )
+
+    # A sheet whose rows carry no ID column is still addressable by title.
+    untitled = [{"test_case_id": None, "title": "Verify offer description"}]
+    check(
+        "tas.covering_ids_fall_back_to_title",
+        _resolve_case_ids(["verify offer description"], untitled)
+        == ["Verify offer description"],
+    )
+
+    check("tas.boundary_prefix_at_separator", _is_boundary_prefix("TC-01", "TC-01_USP"))
+    check("tas.boundary_prefix_rejects_mid_token", not _is_boundary_prefix("TC-1", "TC-15"))
+    check("tas.boundary_prefix_allows_equal", _is_boundary_prefix("TC-01", "TC-01"))
+
+
+def test_coverage_state_is_not_claimed_without_evidence():
+    """A requirement called "covered" by IDs that resolve to nothing has no
+    evidence behind it, and reporting it as covered hides a real gap from the
+    derivation pass that exists to close it.
+
+    The downgrade itself is asserted behaviourally in
+    `test_coverage_state_follows_the_criteria_the_model_named`. What is checked
+    here is that the match pass resolves the IDs at all — the step everything
+    downstream depends on, and the one an edit could drop without any single
+    row looking wrong.
+    """
+    import inspect
+
+    from app.agents.test_automation_studio.coverage_agent import CoverageAssessmentAgent
+
+    source = inspect.getsource(CoverageAssessmentAgent._assess_coverage)
+    check(
+        "tas.coverage_resolves_ids",
+        "_resolve_case_ids(" in source,
+        "the match pass stores the model's IDs without resolving them",
+    )
+
+
+def test_coverage_is_scored_over_acceptance_criteria():
+    """The percentage must not be an artifact of how the model split the document.
+
+    Scoring by requirement made it exactly that. The regression case: one BRD
+    and one test case sheet, byte-identical across two projects. One assessment
+    folded a behaviour into a broader acceptance criterion and reported 100%
+    coverage with no gaps; the other stated it as its own criterion, found
+    nothing exercising it, and reported a 50% gap — because a single extracted
+    requirement can only ever score 0, 50 or 100. Counting criteria, the same
+    finding is 80%: four of five exercised.
+    """
+    from app.services.test_automation_studio.coverage_service import score_coverage
+
+    percent, total, covered = score_coverage(
+        [{"total_criteria": 5, "covered_criteria_count": 4, "coverage_state": "partially_covered"}],
+        1,
+    )
+    check(
+        "tas.score_counts_criteria",
+        (percent, total, covered) == (80, 5, 4),
+        str((percent, total, covered)),
+    )
+
+    # Across requirements it is the criteria that add up, not the requirements:
+    # a requirement with nine criteria weighs more than one with a single
+    # criterion, which is the whole point of counting them.
+    percent, total, covered = score_coverage(
+        [
+            {"total_criteria": 9, "covered_criteria_count": 9, "coverage_state": "covered"},
+            {"total_criteria": 1, "covered_criteria_count": 0, "coverage_state": "uncovered"},
+        ],
+        2,
+    )
+    check("tas.score_weighs_by_criteria", percent == 90, f"got {percent}")
+
+    check(
+        "tas.score_all_covered",
+        score_coverage([{"total_criteria": 3, "covered_criteria_count": 3}], 1)[0] == 100,
+    )
+    check(
+        "tas.score_none_covered",
+        score_coverage([{"total_criteria": 3, "covered_criteria_count": 0}], 1)[0] == 0,
+    )
+
+    # No requirement listed a criterion: nothing finer to count, so the old
+    # requirement-level share stands rather than reporting a false 0%.
+    percent, total, covered = score_coverage(
+        [
+            {"coverage_state": "covered", "total_criteria": 0},
+            {"coverage_state": "partially_covered", "total_criteria": 0},
+        ],
+        2,
+    )
+    check(
+        "tas.score_falls_back_by_requirement",
+        (percent, total, covered) == (75, 0, 0),
+        str(percent),
+    )
+    check("tas.score_empty_is_zero", score_coverage([], 0) == (0, 0, 0))
+
+
+def test_criterion_numbers_are_validated_against_the_requirement():
+    """A criterion number the requirement does not have would inflate the score.
+
+    That is the one direction a coverage figure must never drift: reporting
+    more tested than was judged sends untested behaviour to automation as
+    though it were covered.
+    """
+    from app.agents.test_automation_studio.coverage_agent import (
+        _resolve_criteria,
+        _state_from_criteria,
+    )
+
+    check("tas.criteria_keep_valid", _resolve_criteria([1, 3], 5) == [1, 3])
+    check("tas.criteria_drop_past_end", _resolve_criteria([1, 9], 5) == [1])
+    check("tas.criteria_drop_zero_and_negative", _resolve_criteria([0, -1, 2], 5) == [2])
+    check("tas.criteria_dedupe", _resolve_criteria([2, 2, 2], 5) == [2])
+    check("tas.criteria_sorted", _resolve_criteria([4, 1, 3], 5) == [1, 3, 4])
+    check("tas.criteria_ignore_non_numbers", _resolve_criteria(["x", None, 1], 5) == [1])
+    check("tas.criteria_none_when_no_criteria", _resolve_criteria([1, 2], 0) == [])
+
+    # State is a function of the counts, not a separate opinion the model can
+    # disagree with itself about.
+    check("tas.state_all", _state_from_criteria(5, 5) == "covered")
+    check("tas.state_none", _state_from_criteria(0, 5) == "uncovered")
+    check("tas.state_some", _state_from_criteria(4, 5) == "partially_covered")
+    # More covered than exist can only be a bug upstream; it must still not
+    # read as anything other than fully covered.
+    check("tas.state_over", _state_from_criteria(7, 5) == "covered")
+
+
+def test_coverage_state_follows_the_criteria_the_model_named():
+    """End to end through the matching pass, because the failure was the two
+    disagreeing: the model emitted a coverage_state and a criteria judgement
+    independently, so a row could read "covered" while naming a gap."""
+    import asyncio
+
+    from app.agents.test_automation_studio.coverage_agent import CoverageAssessmentAgent
+
+    requirements = [
+        {
+            "title": "Update eContract offer description",
+            "acceptance_criteria": ["one", "two", "three", "four", "five"],
+        }
+    ]
+    existing = [
+        {"test_case_id": f"TC-{n:02d}_USP Direct_eLife (Fixed)", "title": f"case {n}"}
+        for n in range(1, 4)
+    ]
+
+    class _FakeLLM:
+        def __init__(self, payload):
+            self.payload = payload
+
+        async def generate(self, system, user, **kwargs):
+            return json.dumps(self.payload)
+
+    def _assess(payload):
+        agent = CoverageAssessmentAgent.__new__(CoverageAssessmentAgent)
+        agent._logs = []
+        agent.llm = _FakeLLM(payload)
+        return asyncio.run(agent._assess_coverage(requirements, existing))
+
+    # The model claims full coverage while naming only four of five criteria.
+    # The criteria win.
+    rows = _assess(
+        [
+            {
+                "requirement_title": "Update eContract offer description",
+                "coverage_state": "covered",
+                "covered_criteria": [1, 2, 3, 4],
+                "covering_test_case_ids": ["TC-01", "TC-02"],
+            }
+        ]
+    )
+    check(
+        "tas.state_derived_not_claimed",
+        rows[0]["coverage_state"] == "partially_covered",
+        str(rows[0]),
+    )
+    check(
+        "tas.row_reports_totals",
+        (rows[0]["covered_criteria_count"], rows[0]["total_criteria"]) == (4, 5),
+        str(rows[0]),
+    )
+    check("tas.row_states_the_gap", bool(rows[0]["gap_reason"]), "a gap row with no reason")
+    # And the shortened IDs still resolve to the test cases actually supplied.
+    check(
+        "tas.row_resolves_ids",
+        rows[0]["covering_test_case_ids"]
+        == ["TC-01_USP Direct_eLife (Fixed)", "TC-02_USP Direct_eLife (Fixed)"],
+        str(rows[0]["covering_test_case_ids"]),
+    )
+
+    # Every criterion named, and the row reads covered with no gap reason left
+    # over from a previous state.
+    rows = _assess(
+        [
+            {
+                "requirement_title": "Update eContract offer description",
+                "coverage_state": "partially_covered",
+                "covered_criteria": [1, 2, 3, 4, 5],
+                "covering_test_case_ids": ["TC-01"],
+                "gap_reason": "stale reason",
+            }
+        ]
+    )
+    check("tas.state_covered_when_all_named", rows[0]["coverage_state"] == "covered", str(rows[0]))
+    check(
+        "tas.covered_row_has_no_gap_reason",
+        rows[0]["gap_reason"] is None,
+        str(rows[0]["gap_reason"]),
+    )
+
+    # Criteria credited to test cases that do not exist are not credited at all.
+    rows = _assess(
+        [
+            {
+                "requirement_title": "Update eContract offer description",
+                "coverage_state": "covered",
+                "covered_criteria": [1, 2, 3, 4, 5],
+                "covering_test_case_ids": ["TC-99", "SOMETHING-ELSE"],
+            }
+        ]
+    )
+    check("tas.no_evidence_no_coverage", rows[0]["coverage_state"] == "uncovered", str(rows[0]))
+    check("tas.no_evidence_no_criteria", rows[0]["covered_criteria_count"] == 0, str(rows[0]))
+
+
+def test_gap_derivation_is_told_which_criteria_are_missing():
+    """Sending the whole criteria list made the derivation pass re-derive which
+    were missing — work the matching pass had already done — and it proposed
+    requirements for behaviour that was already tested."""
+    from app.agents.test_automation_studio.coverage_agent import CoverageAssessmentAgent
+
+    payload = CoverageAssessmentAgent._gap_payload(
+        {
+            "requirement_title": "R",
+            "coverage_state": "partially_covered",
+            "covered_criteria": [1, 3],
+        },
+        {"r": {"acceptance_criteria": ["one", "two", "three", "four"]}},
+    )
+    check(
+        "tas.gap_lists_uncovered",
+        [item["text"] for item in payload["uncovered_acceptance_criteria"]] == ["two", "four"],
+        str(payload["uncovered_acceptance_criteria"]),
+    )
+    check(
+        "tas.gap_lists_covered",
+        [item["text"] for item in payload["already_covered_acceptance_criteria"]]
+        == ["one", "three"],
+        str(payload["already_covered_acceptance_criteria"]),
+    )
+    check(
+        "tas.gap_keeps_numbering",
+        [item["n"] for item in payload["uncovered_acceptance_criteria"]] == [2, 4],
+        str(payload["uncovered_acceptance_criteria"]),
+    )
+
+
+def test_the_model_that_answered_a_run_is_the_one_recorded():
+    """`agent_runs.llm_model` recorded what was requested, never what answered.
+
+    OpenRouter reroutes to OPENROUTER_FALLBACK_MODELS when the primary is rate
+    limited or errors, so a run could be served by a different model entirely —
+    which is one reason two assessments of one document disagreed — and the
+    audit trail showed the same model for both.
+    """
+    import asyncio
+
+    from app.llm.provider import _record_served_model, observe_served_models
+
+    # Outside a block, recording is a no-op rather than an error: most callers
+    # are not being observed.
+    _record_served_model("nobody-is-listening")
+
+    with observe_served_models() as served:
+        _record_served_model("deepseek/deepseek-v4-flash")
+        _record_served_model("deepseek/deepseek-v4-flash")
+        _record_served_model("anthropic/claude-sonnet-4.6")
+        _record_served_model(None)
+        _record_served_model("   ")
+    check(
+        "tas.served_models_collected",
+        served == {"deepseek/deepseek-v4-flash", "anthropic/claude-sonnet-4.6"},
+        str(served),
+    )
+
+    # Nesting records into every enclosing observer. The inner block keeps its
+    # own view, and the outer one still sees what answered inside it — an inner
+    # block that captured calls for itself alone would leave the run wrapping
+    # it reporting no model at all.
+    with observe_served_models() as outer:
+        _record_served_model("outer-model")
+        with observe_served_models() as inner:
+            _record_served_model("inner-model")
+        _record_served_model("outer-again")
+    check("tas.served_models_nest_inner", inner == {"inner-model"}, str(inner))
+    check(
+        "tas.served_models_nest_outer",
+        outer == {"outer-model", "inner-model", "outer-again"},
+        str(outer),
+    )
+
+    # The collector is per-context, so concurrent runs in one worker process
+    # cannot attribute one run's model to another.
+    async def _one(name: str) -> set[str]:
+        with observe_served_models() as observed:
+            await asyncio.sleep(0)
+            _record_served_model(name)
+            await asyncio.sleep(0)
+        return observed
+
+    async def _both():
+        return await asyncio.gather(_one("model-a"), _one("model-b"))
+
+    first, second = asyncio.run(_both())
+    check(
+        "tas.served_models_isolated_per_task",
+        (first, second) == ({"model-a"}, {"model-b"}),
+        str((first, second)),
+    )
+
+
+def test_every_studio_task_records_what_served_it():
+    """The observation is worth nothing if the tasks do not enter it. Asserted
+    over the module because the invariant is "every task", and a seventh added
+    later without it would report a model it never used."""
+    import ast
+    import inspect
+
+    from app.worker.tasks import test_automation_studio_tasks as tasks
+
+    tree = ast.parse(inspect.getsource(tasks))
+    entered = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef)
+        and any(
+            isinstance(item, ast.Call)
+            and isinstance(item.func, ast.Name)
+            and item.func.id == "_agent_run"
+            for item in ast.walk(node)
+        )
+    ]
+    # Every coroutine that owns a run takes the session from _agent_run, which
+    # is what enters the observation and writes the result back.
+    owners = [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and "agent_run_id" in
+        [arg.arg for arg in node.args.args]
+        and node.name not in {"_load_run", "_fail", "_agent_run"}
+    ]
+    check("tas.tasks_found", len(owners) >= 6, f"found {owners}")
+    check(
+        "tas.every_task_observes_its_models",
+        {node.name for node in entered} >= set(owners),
+        f"tasks not observing served models: {set(owners) - {node.name for node in entered}}",
+    )
+
+
+def test_unchanged_documents_are_not_read_again():
+    """Re-extracting on every assessment is what kept the score moving.
+
+    Pinning the temperature narrowed the spread but could not close it: a
+    hosted model is not deterministic even at 0, and three consecutive runs
+    over one byte-identical BRD split it into 5, 8 and 6 acceptance criteria.
+    A percentage cannot settle while its own denominator is re-sampled. With
+    the requirements carried over, five consecutive runs of the real batch
+    returned 80% and the same four criteria every time.
+    """
+    import asyncio
+
+    from app.agents.test_automation_studio.coverage_agent import CoverageAssessmentAgent
+    from app.services.test_automation_studio.coverage_service import requirement_fingerprint
+
+    # The fingerprint is what decides. Same words, same fingerprint; a changed
+    # document, a new one — otherwise an edited BRD would never be re-read.
+    docs = [{"document_id": 1, "text": "the requirement"}, {"document_id": 2, "text": "another"}]
+    check(
+        "tas.fingerprint_is_stable",
+        requirement_fingerprint(docs) == requirement_fingerprint(docs),
+    )
+    check(
+        "tas.fingerprint_ignores_order",
+        requirement_fingerprint(docs) == requirement_fingerprint(list(reversed(docs))),
+        "the same documents in a different order must not read as a change",
+    )
+    check(
+        "tas.fingerprint_follows_the_text",
+        requirement_fingerprint(docs)
+        != requirement_fingerprint(
+            [{"document_id": 1, "text": "the requirement, amended"}, docs[1]]
+        ),
+        "an edited document must be read again",
+    )
+    check(
+        "tas.fingerprint_follows_the_document_set",
+        requirement_fingerprint(docs) != requirement_fingerprint(docs[:1]),
+        "a removed document must be read again",
+    )
+
+    # Given requirements, the extraction pass must not run at all: re-reading
+    # would replace the stable set with a freshly sampled one.
+    extraction_calls = 0
+
+    class _FakeLLM:
+        async def generate(self, system, user, **kwargs):
+            nonlocal extraction_calls
+            if "business analyst" in system:
+                extraction_calls += 1
+                return json.dumps([{"title": "freshly sampled", "acceptance_criteria": ["x"]}])
+            if "assessing whether a set of existing test cases" in system:
+                return json.dumps(
+                    [
+                        {
+                            "requirement_title": "carried over",
+                            "covered_criteria": [1],
+                            "covering_test_case_ids": ["TC-01"],
+                        }
+                    ]
+                )
+            return json.dumps([])
+
+    agent = CoverageAssessmentAgent.__new__(CoverageAssessmentAgent)
+    agent._logs = []
+    agent.llm = _FakeLLM()
+    agent._call_budget = None
+
+    result = asyncio.run(
+        agent.run(
+            requirement_documents=[{"document_id": 1, "filename": "brd.docx", "text": "words"}],
+            test_case_documents=[],
+            preparsed_test_cases=[{"test_case_id": "TC-01", "title": "a case"}],
+            preextracted_requirements=[
+                {"title": "carried over", "acceptance_criteria": ["one", "two"]}
+            ],
+            derive_gap_requirements=False,
+        )
+    )
+
+    check("tas.carryover_succeeds", result.success is True, str(result.error))
+    check(
+        "tas.carryover_skips_extraction",
+        extraction_calls == 0,
+        f"the BRD was read again ({extraction_calls} extraction call(s))",
+    )
+    check(
+        "tas.carryover_keeps_the_requirements",
+        [req["title"] for req in result.data["requirements"]] == ["carried over"],
+        str(result.data["requirements"]),
+    )
+    # And the carried-over criteria are what coverage is then scored against.
+    row = result.data["coverage_rows"][0]
+    check(
+        "tas.carryover_scores_against_them",
+        (row["covered_criteria_count"], row["total_criteria"]) == (1, 2),
+        str(row),
+    )
+
+    # Without them the document is read as before — the fallback that keeps a
+    # first assessment, or one whose documents changed, working.
+    agent = CoverageAssessmentAgent.__new__(CoverageAssessmentAgent)
+    agent._logs = []
+    agent.llm = _FakeLLM()
+    agent._call_budget = None
+    asyncio.run(
+        agent.run(
+            requirement_documents=[{"document_id": 1, "filename": "brd.docx", "text": "words"}],
+            test_case_documents=[],
+            preparsed_test_cases=[{"test_case_id": "TC-01", "title": "a case"}],
+            derive_gap_requirements=False,
+        )
+    )
+    check(
+        "tas.no_carryover_still_extracts",
+        extraction_calls == 1,
+        f"expected one extraction call, got {extraction_calls}",
+    )
+
+
+def test_coverage_is_the_majority_judgement_not_one_sample():
+    """Judging coverage is an opinion, and a hosted model does not hold one still.
+
+    Measured on the real batch, with the requirement set already fixed so the
+    denominator could not move: asked eight times about one requirement of five
+    acceptance criteria, the model answered "four covered" five times, "two"
+    twice and "all five" once — 40%, 80% and 100% from identical input. Neither
+    the pinned temperature nor the carried-over requirements close that, because
+    the variance is in the judgement itself. Taking each criterion by majority
+    does: the three samples below are the three answers actually observed.
+    """
+    from app.agents.test_automation_studio.coverage_agent import _vote
+
+    observed = [
+        {
+            "requirement_title": "Update Offer Description Source in eContract from ECM",
+            "covered_criteria": [1, 2, 3, 4],
+            "covering_test_case_ids": ["TC-01", "TC-02"],
+            "coverage_state": "partially_covered",
+            "gap_reason": "criterion 5 is not exercised",
+        },
+        {
+            "requirement_title": "Update Offer Description Source in eContract from ECM",
+            "covered_criteria": [3, 4],
+            "covering_test_case_ids": ["TC-01"],
+            "coverage_state": "partially_covered",
+            "gap_reason": "criteria 1, 2 and 5 are not exercised",
+        },
+        {
+            "requirement_title": "Update Offer Description Source in eContract from ECM",
+            "covered_criteria": [1, 2, 3, 4, 5],
+            "covering_test_case_ids": ["TC-01", "TC-02", "TC-09"],
+            "coverage_state": "covered",
+            "gap_reason": None,
+        },
+    ]
+    row = _vote([[sample] for sample in observed])[0]
+
+    check(
+        "tas.vote_takes_the_majority",
+        row["covered_criteria"] == [1, 2, 3, 4],
+        str(row["covered_criteria"]),
+    )
+    # An ID only one sample of three named is not evidence, it is noise.
+    check(
+        "tas.vote_drops_minority_ids",
+        row["covering_test_case_ids"] == ["TC-01", "TC-02"],
+        str(row["covering_test_case_ids"]),
+    )
+    check("tas.vote_takes_state_by_majority", row["coverage_state"] == "partially_covered", str(row))
+    # The sentence on the row has to describe the row, not a sample that lost.
+    check(
+        "tas.vote_reason_matches_the_verdict",
+        row["gap_reason"] == "criterion 5 is not exercised",
+        str(row["gap_reason"]),
+    )
+
+    # Unanimity is unchanged, and a single sample is passed through untouched
+    # so setting the sample count to 1 costs nothing but the extra calls.
+    unanimous = [[{"requirement_title": "R", "covered_criteria": [1, 2]}]] * 3
+    check("tas.vote_unanimous", _vote(unanimous)[0]["covered_criteria"] == [1, 2])
+    single = [{"requirement_title": "R", "covered_criteria": [1], "coverage_state": "x"}]
+    check("tas.vote_single_sample_untouched", _vote([single]) == single)
+
+    # A minority never wins. With an odd number of samples a tie cannot arise
+    # at all, which is why the vote is always taken over one — see
+    # `test_an_even_number_of_samples_still_has_a_majority`.
+    minority = [
+        [{"requirement_title": "R", "covered_criteria": [1, 2]}],
+        [{"requirement_title": "R", "covered_criteria": [1]}],
+        [{"requirement_title": "R", "covered_criteria": [1]}],
+    ]
+    check(
+        "tas.vote_minority_loses",
+        _vote(minority)[0]["covered_criteria"] == [1],
+        str(_vote(minority)[0]["covered_criteria"]),
+    )
+
+    # A sample that omits a requirement must not shift the others: rows are
+    # keyed by title, and the missing vote simply is not cast.
+    partial = [
+        [
+            {"requirement_title": "A", "covered_criteria": [1]},
+            {"requirement_title": "B", "covered_criteria": [1]},
+        ],
+        [{"requirement_title": "A", "covered_criteria": [1]}],
+        [
+            {"requirement_title": "A", "covered_criteria": [1]},
+            {"requirement_title": "B", "covered_criteria": [2]},
+        ],
+    ]
+    merged = {row["requirement_title"]: row["covered_criteria"] for row in _vote(partial)}
+    check("tas.vote_keeps_rows_independent", merged == {"A": [1], "B": []}, str(merged))
+    check("tas.vote_keeps_every_requirement", len(_vote(partial)) == 2, str(_vote(partial)))
+
+    # Titles differing only in case are one requirement, matching how the rest
+    # of this module decides identity.
+    cased = [
+        [{"requirement_title": "Same Thing", "covered_criteria": [1]}],
+        [{"requirement_title": "same thing", "covered_criteria": [1]}],
+        [{"requirement_title": "SAME THING", "covered_criteria": [1]}],
+    ]
+    check("tas.vote_matches_titles_case_insensitively", len(_vote(cased)) == 1, str(_vote(cased)))
+
+
+def test_the_merged_answer_has_one_order():
+    """The merge counted votes through a set, so the order of the covering IDs
+    followed string hashing and differed between processes — in the one
+    function whose entire purpose is an answer that repeats. Two IDs on equal
+    votes must come back in the order they were proposed, every time.
+    """
+    from app.agents.test_automation_studio.coverage_agent import _vote
+
+    samples = [
+        [
+            {
+                "requirement_title": "R",
+                "covered_criteria": [1],
+                "covering_test_case_ids": ["TC-01", "TC-02", "TC-03"],
+            }
+        ]
+    ] * 3
+    first = _vote(samples)[0]["covering_test_case_ids"]
+    check(
+        "tas.vote_order_follows_proposal",
+        first == ["TC-01", "TC-02", "TC-03"],
+        str(first),
+    )
+    check(
+        "tas.vote_order_is_repeatable",
+        all(_vote(samples)[0]["covering_test_case_ids"] == first for _ in range(20)),
+        "the merged order changed between identical calls",
+    )
+    # More votes still outrank an earlier proposal.
+    ranked = _vote(
+        [
+            [{"requirement_title": "R", "covering_test_case_ids": ["TC-09", "TC-01"]}],
+            [{"requirement_title": "R", "covering_test_case_ids": ["TC-01"]}],
+            [{"requirement_title": "R", "covering_test_case_ids": ["TC-01"]}],
+        ]
+    )[0]["covering_test_case_ids"]
+    check("tas.vote_order_prefers_more_votes", ranked == ["TC-01"], str(ranked))
+
+    # A sample repeating one ID must not thereby out-vote the others.
+    repeated = _vote(
+        [
+            [{"requirement_title": "R", "covering_test_case_ids": ["TC-07", "TC-07", "TC-07"]}],
+            [{"requirement_title": "R", "covering_test_case_ids": ["TC-08"]}],
+            [{"requirement_title": "R", "covering_test_case_ids": ["TC-08"]}],
+        ]
+    )[0]["covering_test_case_ids"]
+    check("tas.vote_counts_one_per_sample", repeated == ["TC-08"], str(repeated))
+
+
+def test_an_even_number_of_samples_still_has_a_majority():
+    """Observed live: of three samples one was truncated and discarded, and the
+    two survivors — [1,2,3,4] and [] — merged to [], reporting 0% coverage that
+    neither sample had reported. "More than half of two" is unanimity, not a
+    majority. Voting over an odd number keeps the answer to something a sample
+    actually said.
+    """
+    from app.agents.test_automation_studio.coverage_agent import _vote
+
+    two = [
+        [{"requirement_title": "R", "covered_criteria": [1, 2, 3, 4]}],
+        [{"requirement_title": "R", "covered_criteria": []}],
+    ]
+    check(
+        "tas.vote_even_is_not_intersection",
+        _vote(two)[0]["covered_criteria"] == [1, 2, 3, 4],
+        str(_vote(two)[0]["covered_criteria"]),
+    )
+
+    # Four samples vote as three, so the result stays a real majority rather
+    # than a tie broken by nothing.
+    four = [
+        [{"requirement_title": "R", "covered_criteria": [1]}],
+        [{"requirement_title": "R", "covered_criteria": [1]}],
+        [{"requirement_title": "R", "covered_criteria": [2]}],
+        [{"requirement_title": "R", "covered_criteria": [2]}],
+    ]
+    check("tas.vote_even_reduces_to_odd", _vote(four)[0]["covered_criteria"] == [1], str(_vote(four)))
+
+
+def test_coverage_samples_survive_one_bad_call():
+    """Two agreeing answers still decide. Failing the pass because one of three
+    samples timed out would trade the variance this fixes for an outage."""
+    import asyncio
+
+    from app.agents.test_automation_studio.coverage_agent import CoverageAssessmentAgent
+
+    calls = 0
+
+    class _FlakyLLM:
+        async def generate(self, system, user, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("upstream hiccup")
+            return json.dumps(
+                [
+                    {
+                        "requirement_title": "R",
+                        "covered_criteria": [1, 2],
+                        "covering_test_case_ids": ["TC-01"],
+                    }
+                ]
+            )
+
+    agent = CoverageAssessmentAgent.__new__(CoverageAssessmentAgent)
+    agent._logs = []
+    agent.llm = _FlakyLLM()
+    agent._call_budget = None
+
+    rows = asyncio.run(
+        agent._assess_coverage(
+            [{"title": "R", "acceptance_criteria": ["one", "two", "three"]}],
+            [{"test_case_id": "TC-01", "title": "a case"}],
+        )
+    )
+    check("tas.samples_run_more_than_once", calls > 1, f"only {calls} call(s) - not sampled")
+    check(
+        "tas.samples_tolerate_one_failure",
+        rows[0]["covered_criteria_count"] == 2,
+        str(rows[0]),
+    )
+    check(
+        "tas.samples_survive_to_a_real_state",
+        rows[0]["coverage_state"] == "partially_covered",
+        str(rows[0]),
+    )
+
+    # All samples failing is still the documented fallback, not a crash.
+    class _DeadLLM:
+        async def generate(self, system, user, **kwargs):
+            raise RuntimeError("provider down")
+
+    agent = CoverageAssessmentAgent.__new__(CoverageAssessmentAgent)
+    agent._logs = []
+    agent.llm = _DeadLLM()
+    agent._call_budget = None
+    rows = asyncio.run(
+        agent._assess_coverage(
+            [{"title": "R", "acceptance_criteria": ["one"]}],
+            [{"test_case_id": "TC-01", "title": "a case"}],
+        )
+    )
+    check("tas.all_samples_failing_falls_back", rows[0]["assessment_failed"] is True, str(rows[0]))
+    check("tas.all_samples_failing_is_uncovered", rows[0]["coverage_state"] == "uncovered", str(rows[0]))
+
+
 def test_refinement_batch_size_stays_modest():
     """A batch is discarded whole when its response is truncated, so the batch
     size is a blast radius as much as a throughput knob."""

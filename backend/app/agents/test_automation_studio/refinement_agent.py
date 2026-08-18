@@ -70,6 +70,12 @@ REFINE_BATCH_SIZE = 1
 # one item's worth of output, well inside the model's context.
 REFINE_MAX_TOKENS = 16000
 
+# Sampling temperature. Left unset, these calls ran at the provider's default
+# (1.0 on an OpenAI-compatible endpoint), which made the same input produce a
+# materially different result on every run. Pinned low for the same reason
+# every other agent family in this codebase pins one.
+REFINE_TEMPERATURE = 0.1
+
 
 class RefinedStepLLM(BaseModel):
     step_number: int
@@ -277,6 +283,7 @@ class TestCaseRefinementAgent(BaseAgent):
                                 )
                             ),
                             max_tokens=REFINE_MAX_TOKENS,
+                            temperature=REFINE_TEMPERATURE,
                         ),
                         budget,
                         what="this test case",

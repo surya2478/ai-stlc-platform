@@ -175,6 +175,49 @@ async def start_agent_run(
     return run
 
 
+async def record_served_models(
+    db: AsyncSession, run: AgentRun, models: set[str] | list[str]
+) -> AgentRun:
+    """Record which model(s) actually answered this run's LLM calls.
+
+    `llm_model` is set at run creation from the configured default, which is
+    what was *asked for*. OpenRouter reroutes to OPENROUTER_FALLBACK_MODELS
+    when the primary is rate-limited or errors, so the run could be answered by
+    a different model entirely and nothing recorded it — two assessments of one
+    document disagreed, and the audit trail showed the same model for both.
+
+    One distinct model becomes `llm_model`, because that is then simply the
+    truth. Several means the run was served by more than one, so `llm_model`
+    keeps the requested value and says so: overwriting it with whichever
+    happened to be last would be no more accurate than what it replaced. Either
+    way the full set lands in metadata.
+    """
+    served = sorted({str(model).strip() for model in models if str(model).strip()})
+    if not served:
+        return run
+
+    metadata = dict(run.metadata_ or {})
+    metadata["served_llm_models"] = served
+    metadata["requested_llm_model"] = run.llm_model
+    run.metadata_ = metadata
+
+    if len(served) == 1:
+        run.llm_model = served[0][:100]
+    else:
+        await add_log(
+            db,
+            run,
+            level="warning",
+            step="llm_route",
+            message=(
+                f"This run was served by {len(served)} different models "
+                f"({', '.join(served)}) — results from it are not reproducible."
+            ),
+        )
+    await db.flush()
+    return run
+
+
 async def find_agent_run_by_idempotency_key(
     db: AsyncSession,
     *,

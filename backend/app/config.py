@@ -512,6 +512,18 @@ class Settings(BaseSettings):
     # BRD segment is legitimately the slowest call the studio makes. Set to 0
     # to disable.
     tas_coverage_call_timeout_seconds: int = 300
+    # How many times the coverage matching pass is asked, with the answer taken
+    # per acceptance criterion by majority.
+    #
+    # Judging coverage is the one studio call whose answer is an opinion rather
+    # than a transcription, and a hosted model does not hold an opinion still:
+    # asked eight times about one fixed requirement of five criteria, it
+    # answered "four covered" five times, "two" twice and "all five" once —
+    # 40%, 80% and 100% from identical input. Nothing in the prompt or the
+    # temperature closes that; sampling it more than once and taking the
+    # majority does. Three is the smallest number that can outvote a single
+    # outlier. Set to 1 to sample once and spend a third of the calls.
+    tas_coverage_match_samples: int = 3
 
     # ── Data Retention ────────────────────────────────────────────────────────
     retention_agent_logs_days: int = 90       # archive agent run logs older than N days

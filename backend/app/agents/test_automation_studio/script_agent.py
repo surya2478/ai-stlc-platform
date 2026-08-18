@@ -55,6 +55,12 @@ SUPPORTED_FRAMEWORKS: tuple[str, ...] = ("playwright", "katalon", "appium")
 # here, so the budget is sized for that rather than for a Playwright spec.
 SCRIPT_MAX_TOKENS = 8000
 
+# Sampling temperature. Left unset, these calls ran at the provider's default
+# (1.0 on an OpenAI-compatible endpoint), which made the same input produce a
+# materially different result on every run. Pinned low for the same reason
+# every other agent family in this codebase pins one.
+SCRIPT_TEMPERATURE = 0.1
+
 
 class GeneratedScriptLLM(BaseModel):
     code: str
@@ -255,7 +261,12 @@ class ScriptGenerationAgent(BaseAgent):
 
         try:
             raw = await call_budget.with_ceiling(
-                self.llm.generate(system, _wrap(payload), max_tokens=SCRIPT_MAX_TOKENS),
+                self.llm.generate(
+                    system,
+                    _wrap(payload),
+                    max_tokens=SCRIPT_MAX_TOKENS,
+                    temperature=SCRIPT_TEMPERATURE,
+                ),
                 call_budget.resolve(call_timeout, get_settings().tas_script_call_timeout_seconds),
                 what="this script",
                 setting="TAS_SCRIPT_CALL_TIMEOUT_SECONDS",

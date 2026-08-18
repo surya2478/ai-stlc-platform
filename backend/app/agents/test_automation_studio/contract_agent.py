@@ -55,6 +55,12 @@ from app.services.script_compiler.compiler import compile_contract
 # truncation here discards the whole generation rather than one file.
 CONTRACT_MAX_TOKENS = 9000
 
+# Sampling temperature. Left unset, these calls ran at the provider's default
+# (1.0 on an OpenAI-compatible endpoint), which made the same input produce a
+# materially different result on every run. Pinned low for the same reason
+# every other agent family in this codebase pins one.
+CONTRACT_TEMPERATURE = 0.0
+
 
 def _wrap(text: str) -> str:
     return f"<user_content>\n{text}\n</user_content>"
@@ -111,7 +117,12 @@ class TasContractAgent(BaseAgent):
 
         try:
             raw = await call_budget.with_ceiling(
-                self.llm.generate(system, _wrap(payload), max_tokens=CONTRACT_MAX_TOKENS),
+                self.llm.generate(
+                    system,
+                    _wrap(payload),
+                    max_tokens=CONTRACT_MAX_TOKENS,
+                    temperature=CONTRACT_TEMPERATURE,
+                ),
                 call_budget.resolve(call_timeout, get_settings().tas_script_call_timeout_seconds),
                 what="this script contract",
                 setting="TAS_SCRIPT_CALL_TIMEOUT_SECONDS",

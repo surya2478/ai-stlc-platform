@@ -239,6 +239,8 @@ class CoverageAssessmentOut(BaseModel):
     uncovered_requirements: int
     existing_test_case_count: int
     derived_requirement_count: int
+    total_criteria: int = 0
+    covered_criteria: int = 0
     coverage_percent: int
     coverage_rows: list = Field(default_factory=list)
     extracted_test_cases: list = Field(default_factory=list)
@@ -267,6 +269,8 @@ class DerivedRequirementOut(BaseModel):
     gap_reason: str | None = None
     source_refs: list = Field(default_factory=list)
     covering_test_case_refs: list = Field(default_factory=list)
+    total_criteria: int = 0
+    covered_criteria: int = 0
     automation_relevance: str | None = None
     priority: str
     status: ApprovalStatus
