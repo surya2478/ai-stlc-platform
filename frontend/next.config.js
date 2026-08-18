@@ -11,7 +11,6 @@ if (process.env.NEXT_PUBLIC_DEV_AUTH_EMAIL || process.env.NEXT_PUBLIC_DEV_AUTH_P
 
 const nextConfig = {
   output: "standalone",
-  optimizeFonts: false,
   skipTrailingSlashRedirect: true,
   // Hides the floating "N" dev tools button Next 15 shows in `next dev`. It
   // never rendered in a production build; this just keeps it out of the way
