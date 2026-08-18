@@ -2004,6 +2004,96 @@ def test_screen_two_can_choose_the_environment_it_generates_against():
     )
 
 
+def _coverage_view_source() -> str | None:
+    """Screen 1's source, wherever the suite is being run from.
+
+    The backend container mounts only the backend at /app and the whole repo at
+    /repo, so a path relative to this file finds no frontend at all there.
+    Returns None when the frontend tree is genuinely absent — a backend-only
+    checkout is a legitimate way to run these — and the caller says so rather
+    than reporting a pass it did not make.
+    """
+    import pathlib as _pathlib
+
+    relative = "frontend/src/components/test-automation-studio/CoverageAssessmentView.tsx"
+    roots = [
+        _pathlib.Path(__file__).resolve().parents[2],
+        _pathlib.Path(__file__).resolve().parents[1],
+        _pathlib.Path.cwd(),
+        _pathlib.Path.cwd().parent,
+        _pathlib.Path("/repo"),
+    ]
+    for root in roots:
+        candidate = root / relative
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8")
+    return None
+
+
+def test_extracting_test_cases_saves_the_application_settings_first():
+    """The environment reverted to "qa" the moment extraction finished.
+
+    Application, environment and URL sit on Screen 1 as a form with no submit
+    button, and the only thing that persisted them was the Assess Coverage
+    payload — the one action a batch holding nothing but a test case sheet
+    cannot run, because there is no BRD to assess against. Typing "SIT" and
+    pressing Extract Test Cases sent none of it: the reload that follows
+    extraction put the stored "qa" back, and the refined test cases were then
+    grounded in no URL at all. Both entry points must persist what is on screen
+    before they run.
+    """
+    import re
+
+    source = _coverage_view_source()
+    if source is None:
+        check(
+            "tas.screen_one_source_unavailable",
+            True,
+            "frontend tree not present - the Screen 1 checks below did not run",
+        )
+        return
+
+    extract = source[source.index("const handleExtractTestCases") :]
+    extract = extract[: extract.index("const handleAssess")]
+    check(
+        "tas.extract_saves_settings",
+        "updateBatch(" in extract,
+        "Extract Test Cases runs without persisting the settings above it",
+    )
+    check(
+        "tas.extract_saves_before_running",
+        extract.index("updateBatch(") < extract.index("extractTestCases("),
+        "the save happens after extraction, so the reload still overwrites it",
+    )
+    check(
+        "tas.extract_saves_the_environment",
+        "application_environment" in extract,
+        "the environment is not among the fields saved",
+    )
+
+    assess = source[source.index("const handleAssess") :]
+    assess = assess[: assess.index("const handleDecide")]
+    check(
+        "tas.assess_still_sends_the_environment",
+        "application_environment" in assess,
+        "Assess Coverage stopped sending the environment",
+    )
+
+    # And the fields save on their own, so the value sticks without pressing
+    # either button — they look like a form and there is nothing to submit.
+    check(
+        "tas.settings_persist_on_change",
+        "persistSettings" in source and source.count("persistSettings(") >= 3,
+        "the application, environment and URL fields do not save when changed",
+    )
+    check(
+        "tas.settings_saver_avoids_stale_state",
+        re.search(r"persistSettings\(\{ applicationId: event\.target\.value \}\)", source)
+        is not None,
+        "the application select saves the previously selected application",
+    )
+
+
 def test_refinement_batch_size_stays_modest():
     """A batch is discarded whole when its response is truncated, so the batch
     size is a blast radius as much as a throughput knob."""

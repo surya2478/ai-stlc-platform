@@ -243,6 +243,48 @@ export function CoverageAssessmentView({
     [selectedApplication],
   );
 
+  // These three look like a form and have no submit button, so they save when
+  // they change. Until they did, the only thing that persisted them was Assess
+  // Coverage — the one action a batch holding just a test case sheet cannot
+  // run — and a value typed here survived only until the next reload.
+  //
+  // Local state is deliberately left alone on success: it already holds what
+  // was typed, and replacing the batch row with the response would rebuild the
+  // documents table under the user for no visible gain.
+  const persistSettings = useCallback(
+    async (overrides?: { applicationId?: string; environment?: string; applicationUrl?: string }) => {
+      if (!selectedBatch) return;
+      const nextApplicationId = (overrides?.applicationId ?? applicationId).trim();
+      const nextEnvironment = (overrides?.environment ?? environment).trim();
+      const nextUrl = (overrides?.applicationUrl ?? applicationUrl).trim();
+      const applicationIdValue = nextApplicationId ? Number(nextApplicationId) : null;
+      const environmentValue = nextEnvironment || selectedBatch.application_environment;
+
+      if (
+        applicationIdValue === (selectedBatch.application_id ?? null) &&
+        (nextUrl || null) === (selectedBatch.application_url || null) &&
+        environmentValue === selectedBatch.application_environment
+      ) {
+        return;
+      }
+
+      try {
+        await testAutomationStudioApi.updateBatch(selectedBatch.id, {
+          application_id: applicationIdValue,
+          application_url: nextUrl || null,
+          application_environment: environmentValue,
+        });
+      } catch (error) {
+        toast({
+          title: "Could not save the application settings",
+          description: errorMessage(error, "Please try again."),
+          variant: "error",
+        });
+      }
+    },
+    [selectedBatch, applicationId, environment, applicationUrl, toast],
+  );
+
   const handleCreateBatch = async () => {
     const name = newBatchName.trim();
     if (!name) {
@@ -343,6 +385,19 @@ export function CoverageAssessmentView({
     // One LLM pass per test case document, so the same 202-and-poll contract
     // the assessment uses.
     try {
+      // The application, environment and URL above are a form with no submit
+      // button: they were persisted only as a side effect of Assess Coverage,
+      // which is exactly the button a batch holding just a test case sheet
+      // cannot press. Typing "SIT" and pressing this one discarded it — the
+      // reload below put the stored "qa" back — and the refined test cases were
+      // then grounded in no URL at all. Saved first, so extraction and
+      // everything downstream see what is on screen.
+      await testAutomationStudioApi.updateBatch(batchId, {
+        application_id: applicationId ? Number(applicationId) : null,
+        application_url: applicationUrl.trim() || null,
+        application_environment: environment.trim() || selectedBatch.application_environment,
+      });
+
       const { data: job } = await testAutomationStudioApi.extractTestCases(batchId);
       const run = await waitForTasJob(job.agent_run_id, (update) =>
         setProgress({ percent: update.percent, message: update.message }),
@@ -769,7 +824,13 @@ export function CoverageAssessmentView({
                     <span className="mb-1 block font-medium text-gray-600">Application</span>
                     <select
                       value={applicationId}
-                      onChange={(event) => setApplicationId(event.target.value)}
+                      onChange={(event) => {
+                        setApplicationId(event.target.value);
+                        // The new value explicitly: state has not settled yet
+                        // when this fires, so reading it back would save the
+                        // application that was selected before this change.
+                        void persistSettings({ applicationId: event.target.value });
+                      }}
                       className="h-8 w-full rounded-lg border border-gray-200 bg-white px-2 text-xs"
                     >
                       <option value="">Not linked</option>
@@ -785,6 +846,7 @@ export function CoverageAssessmentView({
                     <input
                       value={environment}
                       onChange={(event) => setEnvironment(event.target.value)}
+                      onBlur={() => void persistSettings()}
                       className="h-8 w-full rounded-lg border border-gray-200 px-2 text-xs"
                       placeholder="qa"
                       // Free text still, because a batch may name an
@@ -810,6 +872,7 @@ export function CoverageAssessmentView({
                     <input
                       value={inheritedUrl ?? applicationUrl}
                       onChange={(event) => setApplicationUrl(event.target.value)}
+                      onBlur={() => void persistSettings()}
                       readOnly={Boolean(inheritedUrl)}
                       className={`h-8 w-full rounded-lg border border-gray-200 px-2 text-xs ${
                         inheritedUrl ? "bg-gray-50 text-gray-600" : ""
