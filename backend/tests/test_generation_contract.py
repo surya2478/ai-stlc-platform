@@ -174,10 +174,32 @@ def test_ui_action_cleanup_target_must_resolve_but_api_call_target_is_exempt():
     import pytest
     from pydantic import ValidationError
 
-    with pytest.raises(ValidationError, match="does not match any declared page object element"):
+    with pytest.raises(ValidationError, match="does not match any declared page object"):
         AutomationGenerationContract.model_validate(_minimal_data(
             pageObjects=[{"name": "LoginPage", "elements": []}],
             cleanupActions=[{"type": "ui_action", "description": "Log out", "target": "LoginPage.logoutButton"}],
+        ))
+
+
+def test_ui_action_cleanup_target_may_be_a_bare_declared_page_object():
+    # A live run threw away a whole generated script because the cleanup named
+    # the page it happens on ('OrderCreationForm') instead of an element. That
+    # target is never compiled — both renderers emit only the description — so
+    # rejecting it bought nothing. A DECLARED page object is accepted; an
+    # undeclared name is still rejected.
+    contract = AutomationGenerationContract.model_validate(_minimal_data(
+        pageObjects=[{"name": "OrderCreationForm", "elements": []}],
+        cleanupActions=[{"type": "ui_action", "description": "Cancel the order", "target": "OrderCreationForm"}],
+    ))
+    assert contract.cleanup_actions[0].target == "OrderCreationForm"
+
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="does not match any declared page object"):
+        AutomationGenerationContract.model_validate(_minimal_data(
+            pageObjects=[{"name": "OrderCreationForm", "elements": []}],
+            cleanupActions=[{"type": "ui_action", "description": "Cancel", "target": "SomeOtherPage"}],
         ))
 
 

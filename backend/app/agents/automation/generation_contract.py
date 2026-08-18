@@ -257,9 +257,27 @@ class AutomationGenerationContract(ContractBaseModel):
                 continue
             check(assertion.target, f"assertion '{assertion.type}'")
 
+        # A ui_action cleanup target is never compiled into anything. Both
+        # renderers emit `// Cleanup: {description}` and drop the target on the
+        # floor (playwright_renderer._render_cleanup_line, and the pytest one) —
+        # only api_call targets reach generated source. So the invalid-code
+        # hazard `check` exists to prevent cannot arise here, and running the
+        # full check discarded an entire otherwise-valid script over a field
+        # nothing reads: a live run rejected a whole contract because a cleanup
+        # named the page object it happens on ('OrderCreationForm') rather than
+        # a specific element. Grounding is still enforced — the target must name
+        # something this contract actually declares, so a hallucinated name is
+        # still caught — but a bare page object is a legitimate answer to
+        # "where does this cleanup happen".
+        page_names = {page.name for page in self.page_objects}
         for cleanup in self.cleanup_actions:
-            if cleanup.type == "ui_action":
-                check(cleanup.target, "cleanup action")
+            if cleanup.type != "ui_action" or cleanup.target is None:
+                continue
+            if cleanup.target not in valid_refs and cleanup.target not in page_names:
+                raise ValueError(
+                    f"cleanup action target '{cleanup.target}' does not match any declared "
+                    "page object or page object element"
+                )
 
         return self
 

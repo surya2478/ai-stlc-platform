@@ -112,7 +112,10 @@ Output a single JSON object with EXACTLY these keys:
 - dbValidations: list of {{"table": str, "query": {{field: value_as_string}}, "expectFound": true}} —
   only when the test case implies a DB-verifiable side effect
 - cleanupActions: list of {{"type": api_call|ui_action, "description": str, "target": str|null}} —
-  reverse any state this test creates (e.g. cancel a created order)
+  reverse any state this test creates (e.g. cancel a created order). For "api_call" the target is
+  an API path; for "ui_action" it is a "<PageObjectName>.<elementName>" reference, or the bare
+  "<PageObjectName>" when the cleanup is a page-level action — either way it must name something
+  you declared in pageObjects, never an undeclared name.
 - evidenceRequired: list of short evidence names to attach (e.g. "order-confirmation")
 
 Grounding rules:
