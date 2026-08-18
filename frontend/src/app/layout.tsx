@@ -5,7 +5,7 @@ import { AssistantWidget } from "@/components/assistant/AssistantWidget";
 import { Suspense } from "react";
 
 export const metadata: Metadata = {
-  title: "AI Quality Assurance Command Center",
+  title: "eSMART - AI Automation Studio",
   description: "AI Agent–based End-to-End Software Test Life Cycle Automation",
 };
 

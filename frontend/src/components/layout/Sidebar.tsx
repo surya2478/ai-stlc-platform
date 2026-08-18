@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -20,7 +21,6 @@ import {
   FlaskConical,
   Gauge,
   Hand,
-  Hexagon,
   Home,
   Layers,
   LayoutDashboard,
@@ -104,27 +104,16 @@ const NAV_ITEMS: NavGroup[] = [
     // and to platform admins — the server decides via /users/me/navigation and
     // this list is filtered against its answer, so the group never renders for
     // a role whose requests the backend would 404 anyway.
+    //
+    // One entry, not a group. The studio's three views are tabs on the page
+    // itself, driven by the same `?view=` parameter these children used to set,
+    // so listing them here duplicated the tab bar: two controls for one choice,
+    // disagreeing about which is selected as soon as the tabs are used.
     group: "Test Automation Studio",
     icon: TerminalSquare,
-    defaultExpanded: true,
+    href: "/test-automation-studio",
     dividerBefore: true,
-    items: [
-      {
-        label: "Requirement Coverage Assessment",
-        href: "/test-automation-studio?view=coverage",
-        icon: FileText,
-      },
-      {
-        label: "Automation TC Coverage",
-        href: "/test-automation-studio?view=test-cases",
-        icon: TestTube2,
-      },
-      {
-        label: "Automation Script Lab",
-        href: "/test-automation-studio?view=script-lab",
-        icon: Cpu,
-      },
-    ],
+    items: [],
   },
   {
     group: "Operations",
@@ -323,30 +312,64 @@ function SidebarContent() {
         collapsed ? "w-[5.25rem]" : "w-[19rem]",
       )}
       style={{
-        backgroundColor: "#170405",
+        // The login page's brand-panel gradient, one stop deeper. The angle and
+        // the ramp are the login panel's; the reds are pulled back because that
+        // panel is a short wide banner while this is a full-height column — the
+        // same stops that read as a confident accent across 386x500 become a
+        // wall of saturated red down 300x900, and every nav label sits on it.
+        // The light end lands at the bottom here rather than the right, which
+        // is also why the active markers below are white, not red.
+        backgroundColor: "#2E0405",
         backgroundImage:
-          "radial-gradient(circle at 15% 8%, rgba(183,25,32,0.32), transparent 27%), radial-gradient(circle at 88% 42%, rgba(122,11,13,0.16), transparent 34%), linear-gradient(180deg, #2a0709 0%, #170405 54%, #120304 100%)",
+          "linear-gradient(160deg, #2E0405 0%, #6E1014 55%, #96151B 100%)",
         boxShadow: "8px 0 28px -22px rgba(77,5,7,0.9), inset -1px 0 rgba(255,255,255,0.025)",
       }}
     >
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,transparent_0%,rgba(255,255,255,0.018)_36%,transparent_64%)]" />
 
-      <div className={cn("relative z-10 shrink-0 border-b border-white/10", collapsed ? "px-3 py-5" : "px-5 py-5")}>
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-4")}>
-          <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border border-[#d52b31]/45 bg-gradient-to-br from-[#a4181d] via-[#731014] to-[#3f090b] shadow-[0_14px_32px_-18px_rgba(213,43,49,0.95)]">
-            <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(circle_at_32%_24%,rgba(255,255,255,0.18),transparent_42%)]" />
-            <Hexagon className="relative h-10 w-10 stroke-[2.6] text-white" />
-            <Bot className="absolute h-[18px] w-[18px] text-white" />
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-[28px] font-black leading-none tracking-[0.08em] text-white drop-shadow-sm">QAI</p>
-              <p className="mt-2 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.14em] text-white/64">
-                Quality Assurance Intelligence
-              </p>
-            </div>
+      {/* Brand. The artwork carries the wordmark and the tagline, so nothing is
+          set in text beside it — a second "eSMART" in a system font next to the
+          logo's own lettering reads as a mismatch. The dark-surface lockup is
+          the one used here; the light-surface variant of the same lockup is at
+          /brand/esmart-logo-light.png for light backgrounds. */}
+      {/* Padding is deliberately tight. The artwork is trimmed to its own ink,
+          so any padding here reads as dead space around a floating logo rather
+          than as margin — and the lockup is wide, so every pixel given away
+          horizontally shrinks it. */}
+      <div className={cn("relative z-10 shrink-0 border-b border-white/10", collapsed ? "px-2 py-3" : "p-3")}>
+        <Link
+          href="/dashboard"
+          aria-label="eSMART AI Automation Studio - go to dashboard"
+          className="flex items-center justify-center rounded-2xl outline-none transition focus-visible:ring-2 focus-visible:ring-[#d52b31]/60"
+        >
+          {collapsed ? (
+            // Collapsed to a 5.25rem rail, the full lockup would be illegible,
+            // so the rail shows the mark alone — the part of the logo that
+            // still reads at this size. No plate behind it: the artwork is
+            // transparent, so it picks up the sidebar's own gradient, and a
+            // bordered tile would clip the mark's glow into a visible square.
+            <Image
+              src="/brand/esmart-mark.png"
+              alt="eSMART"
+              width={312}
+              height={312}
+              priority
+              className="h-16 w-16 shrink-0 object-contain"
+            />
+          ) : (
+            <Image
+              src="/brand/esmart-logo-dark.png"
+              alt="eSMART - AI Automation Studio - Build, Automate, Accelerate"
+              width={566}
+              height={184}
+              priority
+              // Fills the panel rather than sitting capped inside it: the
+              // lockup is 3:1, so a width cap costs height twice over and
+              // leaves the logo stranded in the middle of the header.
+              className="h-auto w-full object-contain"
+            />
           )}
-        </div>
+        </Link>
       </div>
 
       <nav aria-label="Primary navigation" className="relative z-10 min-h-0 flex-1 overflow-y-auto px-3 py-4 no-scrollbar">
@@ -373,7 +396,7 @@ function SidebarContent() {
                         : "text-white/82 hover:border-white/10 hover:bg-white/[0.055] hover:text-white",
                     )}
                   >
-                    {groupActive && <span aria-hidden="true" className="absolute -left-3 h-8 w-1 rounded-r-full bg-[#f0444a] shadow-[0_0_14px_rgba(240,68,74,0.8)]" />}
+                    {groupActive && <span aria-hidden="true" className="absolute -left-3 h-8 w-1 rounded-r-full bg-white shadow-[0_0_14px_rgba(255,255,255,0.75)]" />}
                     <NavIcon icon={group.icon} active={groupActive} prominent />
                     {!collapsed && (
                       <>
@@ -404,7 +427,7 @@ function SidebarContent() {
                         : "text-white/82 hover:border-white/10 hover:bg-white/[0.055] hover:text-white",
                     )}
                   >
-                    {groupActive && <span aria-hidden="true" className="absolute -left-3 h-8 w-1 rounded-r-full bg-[#f0444a] shadow-[0_0_14px_rgba(240,68,74,0.85)]" />}
+                    {groupActive && <span aria-hidden="true" className="absolute -left-3 h-8 w-1 rounded-r-full bg-white shadow-[0_0_14px_rgba(255,255,255,0.8)]" />}
                     <NavIcon icon={group.icon} active={groupActive} prominent />
                     {!collapsed && (
                       <>
@@ -464,7 +487,10 @@ function SidebarContent() {
             <ChevronRight className="h-5 w-5" />
           </button>
         ) : (
-          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-3.5 shadow-[inset_0_1px_rgba(255,255,255,0.025)]">
+          // Darkened rather than lightened: this card sits at the foot of the
+          // panel, which is now the bright end of the gradient, and a white
+          // wash there left the white text on it barely readable.
+          <div className="relative overflow-hidden rounded-2xl border border-white/15 bg-black/25 p-3.5 shadow-[inset_0_1px_rgba(255,255,255,0.05)]">
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-y-0 right-0 w-24 opacity-20"
@@ -478,7 +504,10 @@ function SidebarContent() {
               <ShieldCheck className="h-6 w-6 shrink-0 text-white/66" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[11px] font-semibold text-white/92">Secure. Governed. Intelligent.</p>
-                <p className="mt-0.5 truncate text-[9px] font-medium text-white/48">Delivering Quality with Intelligence</p>
+                {/* The brand's own strapline, matching the lockup above. */}
+                <p className="mt-0.5 truncate text-[9px] font-medium uppercase tracking-[0.1em] text-white/48">
+                  Build &middot; Automate &middot; Accelerate
+                </p>
               </div>
               <button
                 type="button"

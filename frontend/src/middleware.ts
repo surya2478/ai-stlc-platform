@@ -7,8 +7,10 @@ export function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Paths that are publicly accessible
-  const publicPaths = ["/login", "/favicon.ico", "/login_bg.png", "/api"];
+  // Paths that are publicly accessible. `/brand` holds the logo artwork: it is
+  // not protected content, it has to render on the login screen, and without
+  // it here every brand asset 307s to /login for a signed-out visitor.
+  const publicPaths = ["/login", "/favicon.ico", "/login_bg.png", "/brand", "/api"];
 
   // Check if request is for a public path
   const isPublic = publicPaths.some((path) => pathname.startsWith(path));

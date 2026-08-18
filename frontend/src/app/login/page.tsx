@@ -100,8 +100,8 @@ export default function LoginPage() {
 
         {/* Left — brand panel. One centred stack rather than the reference's
             logo-top / copy-bottom split: the mark, the eyebrow, the wordmark
-            and the strapline share an axis, so "QAI" sits centred over
-            "Command Center" instead of hanging off the left edge. */}
+            and the strapline share an axis, so "eSMART" sits centred over
+            "AI Automation Studio" instead of hanging off the left edge. */}
         <div className="relative hidden flex-col items-center justify-center bg-[linear-gradient(160deg,#4D0507_0%,#B71920_55%,#E8292E_100%)] p-10 text-center text-white lg:flex lg:w-[42%]">
           <div className="relative z-10 flex flex-col items-center">
             {brandMark}
@@ -109,10 +109,10 @@ export default function LoginPage() {
               Telecom QA Platform
             </p>
             <h1 className="text-[32px] font-bold leading-tight tracking-[-0.03em]">
-              QAI<br />Command Center
+              eSMART<br />AI Automation Studio
             </h1>
             <p className="mt-4 text-[14px] leading-7 text-white/70">
-              Enterprise-grade test management application for QA workflows.
+              Enterprise-grade AI Test Automation application for QA workflows.
             </p>
           </div>
           {/* decorative rings */}
@@ -128,7 +128,7 @@ export default function LoginPage() {
           {/* Brand mark for mobile, where the left panel is hidden */}
           <div className="mb-6 flex items-center gap-3 lg:hidden">
             {brandMark}
-            <span className="text-[15px] font-bold tracking-[-0.02em] text-app-primary">QAI Command Center</span>
+            <span className="text-[15px] font-bold tracking-[-0.02em] text-app-primary">eSMART - AI Automation Studio</span>
           </div>
 
           <div className="mb-8">
