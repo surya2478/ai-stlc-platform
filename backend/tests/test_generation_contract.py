@@ -165,6 +165,43 @@ def test_element_interaction_step_with_no_target_is_rejected():
         ))
 
 
+def test_a_navigate_step_never_keeps_a_page_object_name_as_its_path():
+    """`page.goto('HomePage')` shipped to a user and failed on line one.
+
+    navigate is exempt from the element-reference check because its target is
+    a raw path, but nothing enforced that it was one. Project 11's contract
+    carried {"action": "navigate", "value": null, "target": "HomePage"} and the
+    compiler's `step.value or step.target or "/"` turned the page object's own
+    name into an address. Clearing it lets the "/" fallback stand, which is the
+    application root the step meant all along.
+    """
+    contract = AutomationGenerationContract.model_validate(_minimal_data(
+        pageObjects=[{"name": "HomePage", "elements": [
+            {"name": "subscribeButton", "locatorStrategy": "role",
+             "locatorValue": "Subscribe", "roleHint": "button"},
+        ]}],
+        steps=[
+            {"phase": "arrange", "action": "navigate", "target": "HomePage"},
+            {"phase": "act", "action": "click", "target": "HomePage.subscribeButton"},
+        ],
+    ))
+    assert contract.steps[0].target is None
+
+    # A real path is left exactly as the contract stated it.
+    kept = AutomationGenerationContract.model_validate(_minimal_data(
+        pageObjects=[{"name": "HomePage", "elements": []}],
+        steps=[{"phase": "arrange", "action": "navigate", "target": "/esim/replacement"}],
+    ))
+    assert kept.steps[0].target == "/esim/replacement"
+
+    # An explicit value wins over the target and is never touched.
+    valued = AutomationGenerationContract.model_validate(_minimal_data(
+        pageObjects=[{"name": "HomePage", "elements": []}],
+        steps=[{"phase": "arrange", "action": "navigate", "target": "HomePage", "value": "/home"}],
+    ))
+    assert valued.steps[0].value == "/home"
+
+
 def test_ui_action_cleanup_target_must_resolve_but_api_call_target_is_exempt():
     contract = AutomationGenerationContract.model_validate(_minimal_data(
         cleanupActions=[{"type": "api_call", "description": "Delete test record", "target": "/api/records/1"}],

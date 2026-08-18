@@ -241,6 +241,26 @@ class AutomationGenerationContract(ContractBaseModel):
         # See ELEMENT_REQUIRED_ACTIONS_TUPLE above — one definition, shared with
         # UI-020's element picker so the form can never offer an unsaveable shape.
         ELEMENT_REQUIRED_ACTIONS = set(ELEMENT_REQUIRED_ACTIONS_TUPLE)
+        page_names = {page.name for page in self.page_objects}
+
+        # `navigate` is exempt from the element check below because its target
+        # is a raw path — but nothing ever made it BE one. A live run on
+        # project 11 emitted {"action": "navigate", "value": null,
+        # "target": "HomePage"} and the compiler's
+        # `path = step.value or step.target or "/"` rendered
+        # `await page.goto('HomePage')`, which resolves against baseURL to an
+        # address that does not exist, so the script failed on its first line.
+        # A declared page object's NAME is definitionally not a path, so it is
+        # cleared here and the compiler's "/" fallback — the application root,
+        # which is what navigating to a "HomePage" meant — takes over.
+        #
+        # Cleared rather than rejected: the studio validates an LLM contract
+        # once with no retry, so raising here would discard the whole script
+        # over a field that has an unambiguous correct value.
+        for step in self.steps:
+            if step.action == "navigate" and not step.value and step.target in page_names:
+                step.target = None
+
         for step in self.steps:
             if step.action in ("navigate", "custom", "wait_for_url"):
                 # navigate's target is a raw path; custom is a TODO
@@ -269,7 +289,6 @@ class AutomationGenerationContract(ContractBaseModel):
         # something this contract actually declares, so a hallucinated name is
         # still caught — but a bare page object is a legitimate answer to
         # "where does this cleanup happen".
-        page_names = {page.name for page in self.page_objects}
         for cleanup in self.cleanup_actions:
             if cleanup.type != "ui_action" or cleanup.target is None:
                 continue
