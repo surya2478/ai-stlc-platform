@@ -2862,6 +2862,53 @@ def test_an_unmatched_agent_row_is_reported_not_dropped():
 
 # Functions only, and only ones defined here: `test_data_bridge` is an
 # imported module whose name also starts with "test_".
+def test_a_resolved_url_strips_the_no_url_precondition_the_model_wrote_anyway():
+    """The prompt supplies the sentence, so the model can emit it unprompted.
+
+    Reproduced on project 11, batch 17: application "WebApp" holds a URL for
+    SIT, refinement resolved it, and the row stored
+    application_url='https://arenaplay.ae/'. TC001 still came back with
+    "Application URL not configured" as its first precondition while TC002 --
+    same run, same URL -- did not, so the test case told a reader to configure
+    a URL it had already navigated to in step 1. Whether a URL exists is known
+    for certain here, so it is no longer the model's to assert.
+    """
+    from app.services.test_automation_studio.refinement_service import (
+        NO_URL_PRECONDITION,
+        normalize_url_precondition,
+    )
+
+    emitted = [
+        "Application URL not configured - set it on the Requirement Coverage "
+        "Assessment screen or in Project Settings before running this test.",
+        "The web browser is set to Chrome in English language mode.",
+    ]
+
+    with_url = normalize_url_precondition(emitted, "https://arenaplay.ae/")
+    check(
+        "tas.resolved_url_drops_the_claim",
+        with_url == ["The web browser is set to Chrome in English language mode."],
+        str(with_url),
+    )
+
+    # A paraphrase is the same false statement and goes the same way.
+    paraphrased = normalize_url_precondition(
+        ["The application URL is not configured.", "Chrome is ready."], "https://x.dev"
+    )
+    check("tas.paraphrase_drops_too", paraphrased == ["Chrome is ready."], str(paraphrased))
+
+    # And when there genuinely is no URL the warning is present exactly once,
+    # first, whether or not the model remembered to write it.
+    for emitted_without in ([], ["Chrome is ready."], emitted):
+        without_url = normalize_url_precondition(list(emitted_without), None)
+        check(
+            "tas.missing_url_warns_once",
+            without_url[0] == NO_URL_PRECONDITION
+            and sum(1 for p in without_url if "not configured" in p) == 1,
+            str(without_url),
+        )
+
+
 TESTS = [
     value
     for name, value in list(globals().items())

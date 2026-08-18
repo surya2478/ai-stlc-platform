@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -175,6 +176,42 @@ async def _require_application_in_project(
             detail="The selected application does not belong to this project",
         )
     return application
+
+
+# The refinement prompt hands the model this exact sentence to use when no URL
+# is configured (refinement_agent.py's grounding rules), and a model holding a
+# ready-made sentence sometimes emits it whether or not the condition is true.
+# Observed on project 11, batch 17: TC001 came back carrying it while TC002 —
+# same run, same resolved URL, same prompt — did not, and the row itself
+# recorded application_url='https://arenaplay.ae/' all along. So the test case
+# told a reader to go and configure a URL that was already configured, and
+# named a real value in step 1 in the same breath.
+#
+# Whether a URL resolved is something this service knows for certain, so it is
+# not left to the model: the claim is stripped when a URL exists and restored
+# when one genuinely does not. Same principle as forcing locators back onto the
+# discovered catalog rather than trusting a model to transcribe them.
+NO_URL_PRECONDITION = (
+    "Application URL not configured - set it on the Requirement Coverage "
+    "Assessment screen or in Project Settings before running this test."
+)
+
+# Matches the model's paraphrases too ("The application URL is not configured"),
+# not just the sentence the prompt supplies.
+_NO_URL_CLAIM_RE = re.compile(r"application\s+url\s+(?:is\s+)?not\s+configured", re.IGNORECASE)
+
+
+def normalize_url_precondition(preconditions: list, app_url: str | None) -> list:
+    """Make the 'no application URL' precondition agree with reality."""
+    kept = [
+        item
+        for item in preconditions
+        if not (isinstance(item, str) and _NO_URL_CLAIM_RE.search(item))
+    ]
+    if app_url:
+        return kept
+    # Front of the list: it is a blocker, and a reader should hit it first.
+    return [NO_URL_PRECONDITION, *kept]
 
 
 async def _resolve_application_url(
@@ -832,7 +869,7 @@ async def generate_refined_test_cases(
             tc_display_id=display_id_value,
             title=title,
             objective=row.get("objective"),
-            preconditions=row.get("preconditions") or [],
+            preconditions=normalize_url_precondition(row.get("preconditions") or [], app_url),
             steps=row.get("steps") or [],
             expected_result=row.get("expected_result"),
             bdd_scenario=row.get("bdd_scenario"),
