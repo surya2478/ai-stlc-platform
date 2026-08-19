@@ -231,7 +231,7 @@ async def login(request: Request, response: Response, form_data: OAuth2PasswordR
         key="access_token",
         value=token,
         httponly=True,
-        secure=True if settings.app_env != "local" else False,
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=15 * 60,
     )
@@ -239,7 +239,7 @@ async def login(request: Request, response: Response, form_data: OAuth2PasswordR
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True if settings.app_env != "local" else False,
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=7 * 24 * 3600,
     )
@@ -355,7 +355,7 @@ async def refresh_session(request: Request, response: Response, db: DBSession):
         key="access_token",
         value=new_access_token,
         httponly=True,
-        secure=True if settings.app_env != "local" else False,
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=15 * 60,
     )
@@ -363,7 +363,7 @@ async def refresh_session(request: Request, response: Response, db: DBSession):
         key="refresh_token",
         value=new_refresh_token,
         httponly=True,
-        secure=True if settings.app_env != "local" else False,
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=7 * 24 * 3600,
     )

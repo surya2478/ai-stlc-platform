@@ -66,6 +66,16 @@ services:
       - default
       - test_targets
 
+  # ── Nginx Proxy ─────────────────────────────────────────────────────────────
+  # Publishing lives here rather than in docker-compose.yml so the production
+  # file set can publish a different set of ports — Compose cannot subtract a
+  # port declared in the base. Development still serves HTTPS from nginx.conf
+  # and the self-signed pair in certs/.
+  nginx:
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-12443}:443"
+
   # ── Next.js Frontend ────────────────────────────────────────────────────────
   frontend:
     # 3000 is off-limits on the shared host, so the dev server is published on

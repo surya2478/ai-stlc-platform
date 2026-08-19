@@ -29,10 +29,10 @@ const nextConfig = {
             key: "X-Content-Type-Options",
             value: "nosniff",
           },
-          {
-            key: "Strict-Transport-Security",
-            value: "max-age=31536000; includeSubDomains",
-          },
+          // No Strict-Transport-Security: this deployment is served over plain
+          // HTTP. Browsers ignore HSTS received over HTTP, and emitting it
+          // poisons any browser that ever reaches this host over TLS — it then
+          // force-upgrades every later http:// visit. Restore alongside TLS.
           {
             key: "Referrer-Policy",
             value: "strict-origin-when-cross-origin",

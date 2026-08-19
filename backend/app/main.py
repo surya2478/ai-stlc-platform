@@ -93,7 +93,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         # Disable legacy XSS auditor (causes XSS in IE/old Chrome; modern browsers ignore it)
         response.headers["X-XSS-Protection"] = "0"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # No Strict-Transport-Security: this deployment is served over plain
+        # HTTP. A browser ignores HSTS received over HTTP anyway, and emitting
+        # it is actively harmful the first time anyone reaches the host over
+        # TLS — that browser then force-upgrades every later http:// visit to a
+        # port nothing listens on, curable only by clearing the site's HSTS
+        # entry by hand. Restore this line together with TLS termination.
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         return response

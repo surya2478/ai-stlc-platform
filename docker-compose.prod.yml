@@ -136,16 +136,23 @@ services:
         limits:
           memory: 512m
 
-  # ── Nginx TLS Proxy ──────────────────────────────────────────────────────────
+  # ── Nginx Proxy (HTTP only) ──────────────────────────────────────────────────
   nginx:
-    # See the note in docker-compose.yml: 443 is off-limits on the target host,
-    # so HTTPS is published on HTTPS_PORT (default 12443) instead.
+    # HTTP-only deployment: nginx.prod.http.conf serves the application on
+    # port 80 instead of redirecting to TLS, so no certificate is mounted and
+    # HTTPS_PORT is not published. The TLS config is still in the repository as
+    # nginx.prod.conf — swap the mount below and restore the 443 publish to go
+    # back to it. See the header of nginx.prod.http.conf for the full list of
+    # settings that move together with this choice.
+    #
+    # The base file deliberately publishes no nginx ports (Compose appends port
+    # lists, so a base binding could never be removed here), which makes this
+    # list the whole of it. HTTP_PORT must be free on the host — 80 is the
+    # default, 12080 the fallback when it is not.
     ports:
       - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-12443}:443"
     volumes:
-      - ./nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro
+      - ./nginx.prod.http.conf:/etc/nginx/nginx.conf:ro
       - nginx_cache:/var/cache/nginx
     healthcheck:
       test: ["CMD-SHELL", "nginx -t && curl -sf http://localhost/healthz || exit 1"]

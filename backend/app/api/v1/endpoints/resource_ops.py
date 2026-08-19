@@ -120,7 +120,7 @@ async def ldap_login(request: Request, response: Response, payload: LDAPLoginReq
         key="access_token",
         value=token,
         httponly=True,
-        secure=True if settings.app_env != "local" else False,
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=15 * 60,
     )
@@ -128,7 +128,7 @@ async def ldap_login(request: Request, response: Response, payload: LDAPLoginReq
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True if settings.app_env != "local" else False,
+        secure=settings.cookie_secure,
         samesite="strict",
         max_age=7 * 24 * 3600,
     )

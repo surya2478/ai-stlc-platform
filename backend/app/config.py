@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     app_secret_key: str = Field(default="change-me", min_length=8)
     allowed_origins: str = "http://localhost:3000"
 
+    # Session cookies carry the JWT and are the only credential the browser
+    # sends (the SPA uses withCredentials, never an Authorization header), so
+    # the Secure attribute decides whether anyone can log in at all: a browser
+    # discards a Secure cookie delivered over plain HTTP, which surfaces as a
+    # successful login followed by 401 on every subsequent request. Leave unset
+    # to derive from app_env; set SESSION_COOKIE_SECURE=false only for a
+    # deliberate HTTP-only deployment on a closed network.
+    session_cookie_secure: bool | None = None
+
     # ── Database ─────────────────────────────────────────────────────────────
     database_url: str = "postgresql://user:password@db:5432/stlc_agents"
 
@@ -559,6 +568,13 @@ class Settings(BaseSettings):
                     except Exception:
                         pass
         return list(set(paths))
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Secure attribute for the session cookies. See session_cookie_secure."""
+        if self.session_cookie_secure is not None:
+            return self.session_cookie_secure
+        return self.app_env != "local"
 
     @property
     def allowed_origins_list(self) -> list[str]:

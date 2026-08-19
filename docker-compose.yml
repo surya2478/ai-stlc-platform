@@ -15,7 +15,13 @@ services:
     # values rather than replacing them — so a binding declared here is
     # published in production too, contradicting what that file says.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stlc_local}"]
+      # -d is not optional: without it libpq defaults the database name to the
+      # user name, so a POSTGRES_USER that is not also a database name (the
+      # production template pairs user stlc_prod with database stlc_production)
+      # logs `FATAL: database "stlc_prod" does not exist` every interval. The
+      # check still passed — pg_isready reports the server as up — so it was
+      # pure noise, and noise that reads like an outage.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stlc_local} -d ${POSTGRES_DB:-stlc_agents}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -167,17 +173,19 @@ services:
     image: nginx:alpine
     container_name: stlc_nginx
     restart: unless-stopped
+    # No ports block here, for the reason spelled out on db and redis: Compose
+    # APPENDS port lists rather than replacing them, so anything published here
+    # is published in every file set and no override can take it back. The dev
+    # override publishes 80 and HTTPS_PORT; docker-compose.prod.yml publishes
+    # only HTTP_PORT, because production now terminates plain HTTP.
+    #
     # Host ports are variables so a shared server can move them without editing
-    # this file. 443 is off-limits on the target host, so HTTPS defaults to
+    # these files. 443 is off-limits on the target host, so HTTPS defaults to
     # 12443. Only the left-hand (host) side moves — nginx still listens on 80
     # and 443 inside its own network namespace, where nothing can collide.
     #
-    # Changing HTTPS_PORT also means changing the redirect in nginx.conf /
-    # nginx.prod.conf, which cannot read environment variables and therefore
-    # spells the port out.
-    ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-12443}:443"
+    # Changing HTTPS_PORT also means changing the redirect in nginx.conf, which
+    # cannot read environment variables and therefore spells the port out.
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./certs:/etc/nginx/certs:ro
