@@ -2,9 +2,10 @@
 Playwright MCP session manager (Phase 3, ADR-001 / Phase-3 plan §3.1, §3.7).
 
 Wraps the `mcp` Python SDK's stdio client against a pinned `@playwright/mcp`
-Node process (invoked via `npx`). One isolated headless session per agent
-run — the process is spawned fresh and torn down at the end of every
-discovery run, never shared or reused across runs or projects.
+Node process (the `playwright-mcp` binary the image installs; see
+`resolve_server_command`). One isolated headless session per agent run — the
+process is spawned fresh and torn down at the end of every discovery run,
+never shared or reused across runs or projects.
 
 Security controls (§3.7), enforced here rather than left to the subprocess
 flags alone (the server's own --allowed-origins/--blocked-origins docs
@@ -35,9 +36,11 @@ instructions.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -49,11 +52,102 @@ from mcp.client.stdio import stdio_client
 logger = logging.getLogger(__name__)
 
 # Pinned per ADR-001 — bump deliberately (test the new version first), never
-# track @latest. Node/npx and a pre-installed Chromium are assumed present
-# (same runtime the automation_runner already requires).
-PLAYWRIGHT_MCP_PACKAGE = "@playwright/mcp@0.0.77"
+# track @latest. Keep this in step with the `npm install -g` line in
+# backend/Dockerfile: that install is what makes the server available without
+# a network fetch, and a skew between the two silently reintroduces one.
+PLAYWRIGHT_MCP_VERSION = "0.0.77"
+PLAYWRIGHT_MCP_PACKAGE = f"@playwright/mcp@{PLAYWRIGHT_MCP_VERSION}"
+# The executable `npm install -g @playwright/mcp` puts on PATH.
+PLAYWRIGHT_MCP_BIN = "playwright-mcp"
 
 _chromium_executable_path_cache: str | None | bool = False  # False = not yet resolved
+_server_command_cache: tuple[str, list[str]] | None = None
+
+
+def _installed_mcp_version(binary: str) -> str | None:
+    """Version of the @playwright/mcp behind `binary`, or None if unreadable.
+
+    `npm install -g` links <prefix>/bin/playwright-mcp at the package's
+    cli.js, so resolving the symlink and walking up to the nearest
+    package.json reads the version without spawning anything. Deliberately
+    filesystem-only for the same reason `_resolve_chromium_executable_path`
+    is a plain glob: this runs inside an async worker task, and a subprocess
+    spawned just to read one string is cost and fragility for nothing.
+    """
+    try:
+        for parent in Path(binary).resolve().parents:
+            manifest = parent / "package.json"
+            if not manifest.is_file():
+                continue
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            if data.get("name") != "@playwright/mcp":
+                return None
+            version = data.get("version")
+            return str(version) if version else None
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def resolve_server_command() -> tuple[str, list[str]]:
+    """How to start the MCP server: (command, leading args).
+
+    Prefers the `playwright-mcp` backend/Dockerfile installs, which needs no
+    network. This used to be `npx -y @playwright/mcp@<version>`
+    unconditionally, and that is a package *spec* — npx resolves it through
+    npm's install path, so every cold container fetched it from the registry
+    partway into a discovery run. On an air-gapped host that fails the run
+    outright, and the failure surfaces as an opaque MCP handshake error
+    rather than as "no network".
+
+    npx survives only as a fallback, so a bare-metal checkout that never ran
+    the image build still works (backend/AUTOMATION_RUNNER.md documents that
+    setup). It warns, because on a deployed host that path means the image is
+    missing the package.
+
+    A version mismatch also falls back: ADR-001 pins this server, and
+    silently driving an untested build is what the pin exists to prevent. An
+    *unreadable* version is not treated as a mismatch — failing closed there
+    would reintroduce the very network fetch this function removes.
+    """
+    global _server_command_cache
+    if _server_command_cache is not None:
+        return _server_command_cache
+
+    binary = shutil.which(PLAYWRIGHT_MCP_BIN)
+    if binary:
+        installed = _installed_mcp_version(binary)
+        if installed is None:
+            logger.info(
+                "Using %s at %s; its version could not be read, so the "
+                "%s pin is unverified for this process.",
+                PLAYWRIGHT_MCP_BIN,
+                binary,
+                PLAYWRIGHT_MCP_VERSION,
+            )
+        if installed is None or installed == PLAYWRIGHT_MCP_VERSION:
+            _server_command_cache = (binary, [])
+            return _server_command_cache
+        logger.warning(
+            "Installed %s is version %s but %s is pinned; falling back to "
+            "npx, which needs network access at run time. Align the "
+            "`npm install -g` line in backend/Dockerfile with "
+            "PLAYWRIGHT_MCP_PACKAGE.",
+            PLAYWRIGHT_MCP_BIN,
+            installed,
+            PLAYWRIGHT_MCP_VERSION,
+        )
+    else:
+        logger.warning(
+            "%s is not on PATH; falling back to `npx -y %s`, which fetches "
+            "from the npm registry at run time and fails on an air-gapped "
+            "host. Install the pinned package (see backend/Dockerfile).",
+            PLAYWRIGHT_MCP_BIN,
+            PLAYWRIGHT_MCP_PACKAGE,
+        )
+
+    _server_command_cache = ("npx", ["-y", PLAYWRIGHT_MCP_PACKAGE])
+    return _server_command_cache
 
 
 def _resolve_chromium_executable_path() -> str | None:
@@ -150,7 +244,10 @@ class MCPSession:
         self._session_cm = None
 
     def _build_args(self) -> list[str]:
-        args = ["-y", PLAYWRIGHT_MCP_PACKAGE, "--isolated", "--no-sandbox"]
+        """The server's own flags. How the server is *launched* — installed
+        binary or npx fallback — is `resolve_server_command`'s business, so
+        no package spec appears here."""
+        args = ["--isolated", "--no-sandbox"]
         chromium_path = _resolve_chromium_executable_path()
         if chromium_path:
             # --executable-path only overrides *where* the selected --browser
@@ -181,7 +278,8 @@ class MCPSession:
         return args
 
     async def __aenter__(self) -> "MCPSession":
-        params = StdioServerParameters(command="npx", args=self._build_args())
+        command, launch_args = resolve_server_command()
+        params = StdioServerParameters(command=command, args=launch_args + self._build_args())
         self._stdio_cm = stdio_client(params)
         read, write = await self._stdio_cm.__aenter__()
         self._session_cm = ClientSession(read, write)

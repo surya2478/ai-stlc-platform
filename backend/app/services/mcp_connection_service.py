@@ -29,7 +29,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.automation.mcp_session import PLAYWRIGHT_MCP_PACKAGE
+from app.agents.automation.mcp_session import PLAYWRIGHT_MCP_BIN, resolve_server_command
 from app.config import get_settings
 from app.models.mcp_connection import MCPConnection
 
@@ -39,7 +39,12 @@ settings = get_settings()
 TEST_TIMEOUT_SECONDS = 15.0
 
 # Package launchers only — never arbitrary binaries or absolute paths.
-ALLOWED_STDIO_COMMANDS = {"npx", "uvx", "node", "python", "python3"}
+# PLAYWRIGHT_MCP_BIN is the one non-launcher here, and only because the image
+# installs it: the built-in browser row names it now that the server is
+# vendored rather than fetched through `npx` at run time. It is still a bare
+# name, so the path-separator check below keeps this from widening into
+# "any binary on the worker".
+ALLOWED_STDIO_COMMANDS = {"npx", "uvx", "node", "python", "python3", PLAYWRIGHT_MCP_BIN}
 
 _HKDF_SALT = b"stlc-platform-mcp-connection-v1"
 _HKDF_INFO = b"mcp-connection-env"
@@ -109,7 +114,24 @@ async def ensure_builtin_browser_connection(db: AsyncSession, project_id: int) -
         )
     )
     existing = result.scalars().first()
+    resolved, launch_args = resolve_server_command()
+    # The row records how the server is launched, but deliberately as the bare
+    # executable rather than the absolute path `shutil.which` returned:
+    # `validate_launch_config` rejects any command containing a path separator,
+    # so storing the resolved path would make this row fail the validation
+    # every other row must pass the moment anyone re-saved it.
+    command = "npx" if resolved == "npx" else PLAYWRIGHT_MCP_BIN
     if existing:
+        # Refresh a row seeded before the server was installed into the image:
+        # it still says `npx --yes @playwright/mcp@…`, which is no longer what
+        # `_probe_builtin_browser` runs. The row is platform-owned, so
+        # correcting it here is cheaper and less error-prone than a migration
+        # — and a builtin row that advertises a command nobody executes is a
+        # false answer to "how does discovery reach the browser?".
+        if existing.command != command or list(existing.args or []) != launch_args:
+            existing.command = command
+            existing.args = list(launch_args)
+            await db.flush()
         return existing
     connection = MCPConnection(
         project_id=project_id,
@@ -117,8 +139,8 @@ async def ensure_builtin_browser_connection(db: AsyncSession, project_id: int) -
         connection_type="browser",
         transport="stdio",
         target="Live application browser session",
-        command="npx",
-        args=["--yes", PLAYWRIGHT_MCP_PACKAGE],
+        command=command,
+        args=list(launch_args),
         access_mode="read_write",
         available_to=["planner", "generator", "execution", "healer"],
         status="not_configured",
@@ -163,7 +185,8 @@ async def _probe_builtin_browser() -> int:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
-    params = StdioServerParameters(command="npx", args=["--yes", PLAYWRIGHT_MCP_PACKAGE, "--headless"])
+    command, launch_args = resolve_server_command()
+    params = StdioServerParameters(command=command, args=launch_args + ["--headless"])
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()

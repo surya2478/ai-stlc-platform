@@ -126,3 +126,77 @@ def test_call_routes_through_audit_hook_and_is_the_only_call_path():
         # crude but effective: each method's body must reference `self.call(`
         method_src = src.split(f"async def {method}(")[1].split("\n\n")[0]
         assert "self.call(" in method_src, f"{method} must dispatch through self.call()"
+
+
+# --- server launch command (air-gap): the discovery run must not need npm ---
+
+
+@pytest.fixture
+def _clear_server_command_cache(monkeypatch):
+    """resolve_server_command() memoises per process; each case needs a fresh
+    resolution."""
+    monkeypatch.setattr(mcp_session, "_server_command_cache", None)
+
+
+def test_resolve_server_command_uses_installed_binary_without_npx(
+    monkeypatch, _clear_server_command_cache
+):
+    # The whole point: a container with no registry access must still start
+    # the server. `npx -y @playwright/mcp@<version>` is a package spec, so npm
+    # resolves it through its install path and reaches the network.
+    monkeypatch.setattr(mcp_session.shutil, "which", lambda name: "/usr/bin/playwright-mcp")
+    monkeypatch.setattr(
+        mcp_session, "_installed_mcp_version", lambda _b: mcp_session.PLAYWRIGHT_MCP_VERSION
+    )
+    command, launch_args = mcp_session.resolve_server_command()
+    assert command == "/usr/bin/playwright-mcp"
+    assert launch_args == []
+
+
+def test_session_spawn_args_carry_no_package_spec_when_binary_installed(
+    monkeypatch, _clear_server_command_cache
+):
+    monkeypatch.setattr(mcp_session.shutil, "which", lambda name: "/usr/bin/playwright-mcp")
+    monkeypatch.setattr(
+        mcp_session, "_installed_mcp_version", lambda _b: mcp_session.PLAYWRIGHT_MCP_VERSION
+    )
+    command, launch_args = mcp_session.resolve_server_command()
+    session = MCPSession(MCPSessionConfig(allowed_hosts=["app.example.com"]))
+    full = launch_args + session._build_args()
+    assert command != "npx"
+    assert not any(a.startswith("@playwright/mcp") for a in full)
+    assert "-y" not in full
+
+
+def test_resolve_server_command_falls_back_to_npx_when_binary_missing(
+    monkeypatch, _clear_server_command_cache
+):
+    # Bare-metal checkouts that never ran the image build still work
+    # (backend/AUTOMATION_RUNNER.md documents that setup).
+    monkeypatch.setattr(mcp_session.shutil, "which", lambda name: None)
+    command, launch_args = mcp_session.resolve_server_command()
+    assert command == "npx"
+    assert launch_args == ["-y", mcp_session.PLAYWRIGHT_MCP_PACKAGE]
+
+
+def test_resolve_server_command_rejects_a_version_other_than_the_pin(
+    monkeypatch, _clear_server_command_cache
+):
+    # ADR-001 pins this server; driving an untested build silently is exactly
+    # what the pin exists to prevent, so a mismatch falls back rather than
+    # being used.
+    monkeypatch.setattr(mcp_session.shutil, "which", lambda name: "/usr/bin/playwright-mcp")
+    monkeypatch.setattr(mcp_session, "_installed_mcp_version", lambda _b: "0.0.1")
+    command, _ = mcp_session.resolve_server_command()
+    assert command == "npx"
+
+
+def test_resolve_server_command_uses_binary_when_version_unreadable(
+    monkeypatch, _clear_server_command_cache
+):
+    # Failing closed here would reintroduce the network fetch this exists to
+    # remove, so an unreadable version is not treated as a mismatch.
+    monkeypatch.setattr(mcp_session.shutil, "which", lambda name: "/usr/bin/playwright-mcp")
+    monkeypatch.setattr(mcp_session, "_installed_mcp_version", lambda _b: None)
+    command, _ = mcp_session.resolve_server_command()
+    assert command == "/usr/bin/playwright-mcp"

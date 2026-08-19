@@ -88,7 +88,22 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     # without the Node type declarations tsc fails EVERY bundle on
     # "Cannot find name 'process'" — a false block worse than the bug the check
     # exists to catch.
-    && npm install -g @playwright/test@1.44.0 typescript@5.4.5 @types/node@20.14.2 \
+    #
+    # @playwright/mcp is the discovery agent's browser layer (mcp_session.py).
+    # It MUST be installed here rather than left to the `npx -y` that
+    # mcp_session used to spawn: npx resolves a package spec through its
+    # install path, so every cold container fetched it from the npm registry
+    # at run time. That is a network dependency in the middle of a discovery
+    # run, and in an air-gapped deployment it fails the run outright. The
+    # version is pinned to PLAYWRIGHT_MCP_PACKAGE in
+    # app/agents/automation/mcp_session.py — bump both together, never one.
+    #
+    # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: this package depends on its own
+    # (alpha) playwright build, whose postinstall would pull a second
+    # Chromium into /ms-playwright. mcp_session passes --executable-path at
+    # the Chromium the 1.44 install above already provisioned, so that second
+    # copy is never launched — downloading it would only inflate the image.
+    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -g @playwright/test@1.44.0 @playwright/mcp@0.0.77 typescript@5.4.5 @types/node@20.14.2 \
     && npx --yes playwright install chromium \
     # World-readable and traversable: the runner container executes as an
     # unprivileged uid and must still be able to launch Chromium.

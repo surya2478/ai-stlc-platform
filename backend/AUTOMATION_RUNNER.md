@@ -28,8 +28,9 @@ No host install needed. Restart the backend after pulling new requirements.
 Requires Node.js + `@playwright/test` on PATH.
 
 **Docker (current default):**
-The `backend/Dockerfile` installs Node.js 20 LTS and `@playwright/test@1.44.0`
-during image build. Rebuild the backend image after this change:
+The `backend/Dockerfile` installs Node.js 20 LTS, `@playwright/test@1.44.0`
+and `@playwright/mcp@0.0.77` during image build. Rebuild the backend image
+after this change:
 
 ```sh
 docker compose build backend
@@ -51,6 +52,14 @@ sudo apt-get install -y nodejs
 sudo npm install -g @playwright/test@1.44.0
 sudo npx --yes playwright install chromium
 sudo npx --yes playwright install-deps chromium   # system libs
+
+# Browser MCP server used by Studio discovery (mcp_session.py). Not optional
+# on a host without registry access: `npx -y @playwright/mcp@<version>`
+# resolves the package spec through npm and reaches the network even when the
+# package is already installed globally, so the discovery run fails without
+# this. Keep the version equal to PLAYWRIGHT_MCP_VERSION in
+# app/agents/automation/mcp_session.py.
+sudo npm install -g @playwright/mcp@0.0.77
 ```
 
 Restart the backend and worker after the install so the cached preflight check
