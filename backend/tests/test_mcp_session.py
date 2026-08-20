@@ -200,3 +200,50 @@ def test_resolve_server_command_uses_binary_when_version_unreadable(
     monkeypatch.setattr(mcp_session, "_installed_mcp_version", lambda _b: None)
     command, _ = mcp_session.resolve_server_command()
     assert command == "/usr/bin/playwright-mcp"
+
+
+# --- chromium resolution across Playwright install layouts ---
+
+
+@pytest.fixture
+def _clear_chromium_cache(monkeypatch):
+    monkeypatch.setattr(mcp_session, "_chromium_executable_path_cache", False)
+
+
+def _make_chromium(root, build: str, linux_dir: str):
+    binary = root / f"chromium-{build}" / linux_dir / "chrome"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n")
+    return binary
+
+
+def test_resolves_chromium_in_the_pre_1_62_chrome_linux_layout(
+    tmp_path, monkeypatch, _clear_chromium_cache
+):
+    expected = _make_chromium(tmp_path, "1117", "chrome-linux")
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    assert mcp_session._resolve_chromium_executable_path() == str(expected)
+
+
+def test_resolves_chromium_in_the_1_62_chrome_linux64_layout(
+    tmp_path, monkeypatch, _clear_chromium_cache
+):
+    # 1.62 renamed the directory to chrome-linux64. Matching only
+    # `chrome-linux` made this return None, which dropped --executable-path
+    # and failed every discovery run on the missing "chrome" channel.
+    expected = _make_chromium(tmp_path, "1234", "chrome-linux64")
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    assert mcp_session._resolve_chromium_executable_path() == str(expected)
+
+
+def test_chromium_resolution_ignores_the_headless_shell(
+    tmp_path, monkeypatch, _clear_chromium_cache
+):
+    # chromium_headless_shell-<build> sits beside the real browser and is not
+    # what a discovery session should drive.
+    expected = _make_chromium(tmp_path, "1234", "chrome-linux64")
+    shell = tmp_path / "chromium_headless_shell-1234" / "chrome-linux64" / "chrome"
+    shell.parent.mkdir(parents=True)
+    shell.write_text("#!/bin/sh\n")
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", str(tmp_path))
+    assert mcp_session._resolve_chromium_executable_path() == str(expected)

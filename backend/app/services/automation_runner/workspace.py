@@ -113,12 +113,19 @@ def materialize_bundle(*, workspace: Path, compiled_files: dict[str, str]) -> No
 
 # ── Framework-specific scaffolding ───────────────────────────────────────────
 
+# Exact, not a caret range. The platform itself never installs this — the
+# workspace's node_modules is symlinked to the npm global root below — so the
+# version here is what a *downloaded* bundle resolves when someone runs
+# `npm install` outside the platform. `^1.44.0` let that resolve to whatever
+# the newest 1.x happened to be, which by 1.62 was four releases of removed
+# APIs away from what the platform actually ran the tests on. Keep this equal
+# to the `npm install -g` line in backend/Dockerfile.
 PLAYWRIGHT_PACKAGE_JSON = {
     "name": "stlc-automation-run",
     "private": True,
     "version": "0.0.0",
     "devDependencies": {
-        "@playwright/test": "^1.44.0",
+        "@playwright/test": "1.62.1",
     },
     "scripts": {
         "test": "playwright test",

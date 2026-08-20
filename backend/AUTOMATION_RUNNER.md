@@ -28,7 +28,7 @@ No host install needed. Restart the backend after pulling new requirements.
 Requires Node.js + `@playwright/test` on PATH.
 
 **Docker (current default):**
-The `backend/Dockerfile` installs Node.js 20 LTS, `@playwright/test@1.44.0`
+The `backend/Dockerfile` installs Node.js 20 LTS, `@playwright/test@1.62.1`
 and `@playwright/mcp@0.0.77` during image build. Rebuild the backend image
 after this change:
 
@@ -49,7 +49,7 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
 sudo apt-get install -y nodejs
 
 # Playwright CLI + Chromium
-sudo npm install -g @playwright/test@1.44.0
+sudo npm install -g @playwright/test@1.62.1
 sudo npx --yes playwright install chromium
 sudo npx --yes playwright install-deps chromium   # system libs
 
@@ -72,7 +72,7 @@ systemctl restart stlc-backend stlc-worker
 **Kubernetes:**
 Either bake the install into a custom backend image (same Dockerfile lines), or
 run the runner in a sidecar container using
-`mcr.microsoft.com/playwright:v1.44.0-noble`. Either way the runner code is
+`mcr.microsoft.com/playwright:v1.62.1-noble`. Either way the runner code is
 unchanged.
 
 ## Verify

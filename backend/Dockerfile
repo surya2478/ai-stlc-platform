@@ -101,9 +101,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: this package depends on its own
     # (alpha) playwright build, whose postinstall would pull a second
     # Chromium into /ms-playwright. mcp_session passes --executable-path at
-    # the Chromium the 1.44 install above already provisioned, so that second
+    # the Chromium the 1.62 install above already provisioned, so that second
     # copy is never launched — downloading it would only inflate the image.
-    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -g @playwright/test@1.44.0 @playwright/mcp@0.0.77 typescript@5.4.5 @types/node@20.14.2 \
+    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install -g @playwright/test@1.62.1 @playwright/mcp@0.0.77 typescript@5.4.5 @types/node@20.14.2 \
     && npx --yes playwright install chromium \
     # World-readable and traversable: the runner container executes as an
     # unprivileged uid and must still be able to launch Chromium.

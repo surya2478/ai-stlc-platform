@@ -166,9 +166,21 @@ def _resolve_chromium_executable_path() -> str | None:
     Playwright Sync API inside the asyncio loop" when called from this
     module's actual caller (an async Celery task), and juggling the async
     API's own driver lifecycle here just to read one path isn't worth the
-    fragility. The install layout (`<cache>/chromium-<build>/chrome-linux/
-    chrome`) is stable across Playwright versions; only the build number
-    changes, which the glob handles.
+    fragility.
+
+    The glob covers `chrome-linux` AND `chrome-linux64`. This used to match
+    only `chrome-linux`, on the stated assumption that the install layout was
+    stable across Playwright versions and only the build number moved. That
+    assumption was wrong: 1.62 ships the same binary under
+    `chromium-<build>/chrome-linux64/chrome`, so the upgrade silently
+    resolved None, --executable-path was dropped, and every discovery run
+    failed on "Chromium distribution 'chrome' is not found at
+    /opt/google/chrome/chrome" — the exact failure the flag exists to
+    prevent. Matching both keeps a pre-1.62 image working too.
+
+    `chromium_headless_shell-<build>` deliberately does NOT match: the
+    underscore keeps it outside `chromium-*`, and the headless shell is not
+    the full browser the discovery session needs.
     """
     global _chromium_executable_path_cache
     if _chromium_executable_path_cache is not False:
@@ -176,7 +188,7 @@ def _resolve_chromium_executable_path() -> str | None:
     try:
         cache_dir = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or (Path.home() / ".cache" / "ms-playwright"))
         candidates = sorted(
-            cache_dir.glob("chromium-*/chrome-linux/chrome"),
+            cache_dir.glob("chromium-*/chrome-linux*/chrome"),
             key=lambda p: p.parent.parent.name,
             reverse=True,  # highest build number (most recently installed) first
         )

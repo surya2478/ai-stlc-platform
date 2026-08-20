@@ -812,7 +812,7 @@ a verification that did not happen.
 
 **Operational prerequisite — VERIFIED 2026-07-30 (Day 1).**
 
-`backend/Dockerfile` installs Node 20, `@playwright/test@1.44.0` and Chromium
+`backend/Dockerfile` installs Node 20, `@playwright/test@1.62.1` and Chromium
 into the worker image, and `docker-compose.yml` runs the worker from that image.
 The runner and the gate execute there, so `npx` **is** available in production
 and `_syntax_check` genuinely runs rather than skipping.

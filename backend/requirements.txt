@@ -43,7 +43,7 @@ langchain-openai==1.4.1
 gTTS==2.5.4
 
 # ── Browser Automation (GAP-2: portal URL analysis) ──────────────────────────
-playwright==1.44.0
+playwright==1.62.0
 
 # ── Playwright MCP Discovery Agent (Phase 3) ─────────────────────────────────
 # Pinned per ADR-001 — never use @latest. The Node-side @playwright/mcp server
