@@ -9,7 +9,18 @@ cd "$(dirname "$0")/../.."
 
 RELEASE="${1:?usage: package-images.sh <release-tag>}"
 OUT="dist/release/${RELEASE}"
-PART_SIZE="${PART_SIZE:-1900m}"
+# 400 MiB by default, sized for the GitHub transport.
+#
+# GitHub's limits, per its own docs: a release asset must be under 2 GiB, a file
+# pushed through git is hard-blocked at 100 MiB, and a file added through the
+# browser to the repo tree is capped at 25 MiB. Git LFS on the free plan gives
+# 1 GiB of storage, which does not fit this at all.
+#
+# Release assets are therefore the channel, and 400 MiB is well inside that
+# limit rather than near it. The reason not to use one ~1.9 GiB asset is
+# resumability, on both ends: a browser upload cannot resume, and a failed
+# download on the deployment host costs one part instead of the whole archive.
+PART_SIZE="${PART_SIZE:-400m}"
 
 [ -f "${OUT}/MANIFEST.txt" ] || { echo "no manifest at ${OUT} — run build-images.sh first"; exit 1; }
 

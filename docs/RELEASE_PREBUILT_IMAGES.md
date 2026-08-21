@@ -66,33 +66,79 @@ to say later what is running.
 ./scripts/release/package-images.sh <release-tag>
 ```
 
-Writes `dist/release/<tag>/`: ~1.9 GB split parts, `SHA256SUMS`,
-`ARCHIVE.sha256`, `MANIFEST.txt`, and copies of the loader and the pin overlay.
+Writes `dist/release/<tag>/`: the archive in **400 MiB parts** (five, for a
+~1.9 GiB archive), plus `SHA256SUMS`, `ARCHIVE.sha256`, `MANIFEST.txt`, and
+copies of the loader and the pin overlay. Override with `PART_SIZE=<size>` if the
+transport ever changes; step 3 explains why 400 MiB.
 
 `docker save | gzip | split` runs as a single stream, so no full archive is ever
 written. That is a disk decision, not a style one: this machine has ~25 GB free,
 and writing the archive and then splitting it would spend ~8 GB on two copies of
 something only the parts are needed from.
 
-### 3. Upload (WinSCP)
+### 3. Publish the parts as a GitHub release
 
-Upload the whole `dist/release/<tag>/` directory to a staging directory on the
-host — **not** over the deployment tree. Use binary transfer mode.
+The artifact is delivered through a **GitHub release**, not through the git tree.
+GitHub's published limits decide this:
 
-There is no `images.tar.gz` to upload; the parts are the artifact.
+| Channel | Per-file limit |
+|---|---|
+| Release asset | **under 2 GiB**, up to 1000 assets, no total size or bandwidth limit |
+| File pushed via git | **100 MiB** hard block (50 MiB warning) |
+| File added via browser to the repo tree | **25 MiB** |
+| Git LFS, free plan | 1 GiB storage — does not fit this artifact |
 
-### 4. Load and verify (on dx12348)
+Committing the parts into the repository would work at 95 MiB each, but it
+permanently bloats the repo with ~2 GiB of binaries that cannot easily be removed
+afterwards. Release assets are stored separately and count against none of it.
+
+Parts are 400 MiB rather than one ~1.9 GiB asset. That is inside the limit with
+room to spare, and it is about resumability at both ends: a browser upload cannot
+resume, and a failed download on the deployment host costs one part instead of
+the whole archive.
+
+Create a release tagged with the release name and attach **every file** in
+`dist/release/<tag>/` — the parts, `SHA256SUMS`, `ARCHIVE.sha256`, `MANIFEST.txt`,
+`load-images.sh` and `docker-compose.pinned.yml`.
+
+> **The repository is public**, so these assets are publicly downloadable. That is
+> a deliberate choice recorded here so it is not rediscovered by accident: the
+> images contain the full built application. Moving the artifacts to a private
+> repository means downloads on the host need an authenticated request instead.
+
+### 3b. Alternative: WinSCP
+
+If GitHub is unreachable from the deployment host — its egress is filtered, which
+is the reason this whole workflow exists — upload the same directory with WinSCP
+to a staging directory, in binary transfer mode, and skip to step 4.
+
+### 4. Fetch and load (on dx12348)
+
+The host has no checkout, so fetch the download script straight from the repo:
 
 ```bash
-chmod +x load-images.sh && ./load-images.sh
+curl -fL -O https://raw.githubusercontent.com/surya2478/ai-stlc-platform/Development/scripts/release/fetch-release.sh
+chmod +x fetch-release.sh && ./fetch-release.sh <release-tag>
 ```
+
+It checks GitHub is reachable before downloading anything and fails with a clear
+message if it is not, downloads every part named in `SHA256SUMS` with resume
+enabled, and verifies them. Then:
+
+```bash
+cd <release-tag> && ./load-images.sh
+```
+
+(If the files arrived by WinSCP instead, just run `./load-images.sh` in that
+directory.)
 
 It checksums the parts, verifies they join in the right order, streams them
 straight into `docker load`, and then compares every loaded image ID against the
 manifest. Nothing is written to disk on the host either — that host is also
-short on space, and a 4 GB temp file is how a load fails at 95%. Image IDs are the point: a tag can be moved or
-left over from an earlier attempt, an ID cannot. If anything mismatches it stops
-and tells you not to deploy.
+short on space, and a 2 GB temp file is how a load fails at 95%.
+
+Image IDs are the point: a tag can be moved or left over from an earlier attempt,
+an ID cannot. If anything mismatches it stops and tells you not to deploy.
 
 ### 5. Point the deployment at the release
 
