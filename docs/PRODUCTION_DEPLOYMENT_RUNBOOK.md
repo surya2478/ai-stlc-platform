@@ -34,7 +34,9 @@ stack**, in the foreground, with no rebuild:
 - no `--build`, so the stale images from section 0 are still in place
 
 Four lines in that log prove it was the dev stack: `stlc_static_test` started
-(a fixture that exists only in the override), the frontend ran `next dev`, the
+(a fixture that at the time existed only in the override; it has since moved
+out of this repository entirely, into the sibling `stlc-static-test` project),
+the frontend ran `next dev`, the
 backend ran `uvicorn --reload` watching `/app/app`, and the worker ran as
 `uid=0` (production pins `10001:10001`).
 
@@ -383,8 +385,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 
 Expected: `stlc_db`, `stlc_redis`, `stlc_backend`, `stlc_worker`, the beat
 container, `stlc_runner_executor`, `stlc_frontend`, `stlc_nginx`.
-`stlc_static_test` must **not** be there — it is a local fixture and the
-production file set excludes it.
+`stlc_static_test` must **not** be there — it is a local fixture, and this
+repository no longer defines it in any file. It can only appear if someone
+started the sibling `stlc-static-test` project on this host.
 
 **9.2 Backend liveness:**
 
@@ -469,7 +472,7 @@ docker compose exec -T db pg_restore -U <user> -d <dbname> --clean --if-exists /
 | `database "<name>" does not exist`, once, backend cannot start | Step 6.1. `POSTGRES_DB` does nothing on an already-initialized volume. |
 | `database "<name>" does not exist`, repeating every 10 s, backend healthy | Step 6.0. It is the `db` healthcheck: `POSTGRES_USER` in `.env` disagrees with `DATABASE_URL`. Noise, not an outage. |
 | `EACCES ... '/app/.next/cache'`, frontend crash-loop | You are running the dev stack. Production declares no frontend bind mount — use the `-f docker-compose.yml -f docker-compose.prod.yml` pair (step 8.2). |
-| `stlc_static_test` appears in `ps` | Same: the override was loaded. That fixture must never run in production. |
+| `stlc_static_test` appears in `ps` | Someone started the sibling `stlc-static-test` project on this host — no file here can start it. `docker compose down` in that project. That fixture must never run in production. |
 | `set POSTGRES_PASSWORD in .env` (or REDIS_PASSWORD / DATABASE_URL / REDIS_URL / AUTOMATION_EXECUTOR_TOKEN) | Step 5.3 — interpolation reads `.env` only, never `.env.production`. |
 | `APP_SECRET_KEY must be at least 32 characters long in production` | Step 5.4. |
 | `BUILD BLOCKED: Development backdoor variables` during the frontend build | `NEXT_PUBLIC_ENABLE_DEV_AUTH` / `NEXT_PUBLIC_DEV_AUTH_*` are set. Clear them. |

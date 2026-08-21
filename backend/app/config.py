@@ -329,9 +329,10 @@ class Settings(BaseSettings):
     # one name — a bare IP literal, or any other host resolving into the same
     # subnet, is still refused.
     #
-    # Intended for a deliberately-run local test target (see
-    # fixtures/static-site). Whoever controls DNS for an exempted name can
-    # redirect it, so only name a host whose resolution you own.
+    # Intended for a deliberately-run local test target (the sibling
+    # `stlc-static-test` project, which serves the host `static-test`).
+    # Whoever controls DNS for an exempted name can redirect it, so only
+    # name a host whose resolution you own.
     url_analysis_allowed_internal_hosts: str = ""
 
     @property

@@ -148,10 +148,13 @@ services:
     command: uvicorn app.executor.main:app --host 0.0.0.0 --port 8100
 
 
-  # The static test target lives in docker-compose.override.yml. It is a local
-  # fixture, and this file is also half of the production stack
-  # (-f docker-compose.yml -f docker-compose.prod.yml), which does not load the
-  # override — so defining it here shipped a test fixture to production.
+  # The static test target is not defined in this repository at all. It lives in
+  # the sibling `stlc-static-test` project and attaches to this stack's networks
+  # from outside. It used to sit in docker-compose.override.yml, on the reasoning
+  # that this file is also half of the production stack
+  # (-f docker-compose.yml -f docker-compose.prod.yml) and defining a fixture
+  # here would ship it to production. Owning it in a separate project removes the
+  # question rather than answering it per file.
 
   # ── Next.js Frontend ────────────────────────────────────────────────────────
   frontend:
@@ -193,11 +196,14 @@ services:
       - frontend
       - backend
 
-networks:
-  # Fixed name so AUTOMATION_DOCKER_NETWORK does not have to track the compose
-  # project prefix — the executor passes this straight to `docker run --network`.
-  test_targets:
-    name: stlc_test_targets
+# No `networks:` block. `stlc_test_targets` — the network spawned runners join,
+# named in AUTOMATION_DOCKER_NETWORK — is created by the sibling
+# `stlc-static-test` project, along with the test target itself.
+#
+# It cannot usefully be declared here: no service in this stack is on it, and
+# Compose does not create a network no service uses, so the declaration this
+# replaces created nothing once the fixture moved out. Runners reach the target
+# through it; nothing in the platform does.
 
 volumes:
   pg_data:

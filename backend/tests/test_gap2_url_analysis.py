@@ -45,7 +45,8 @@ def test_allows_public_ip_literal():
 
 # ── Internal-host exemption ───────────────────────────────────────────────────
 #
-# A local test target (fixtures/static-site) resolves to a private compose
+# A local test target (the sibling `stlc-static-test` project) resolves to a
+# private compose
 # address, so the guard blocks it — correctly, by its own rule. The exemption
 # exists for that case and is keyed on the hostname, never an address range.
 
