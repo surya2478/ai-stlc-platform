@@ -106,39 +106,61 @@ Create a release tagged with the release name and attach **every file** in
 > images contain the full built application. Moving the artifacts to a private
 > repository means downloads on the host need an authenticated request instead.
 
-### 3b. Alternative: WinSCP
+### 3b. When the release step can be skipped
 
-If GitHub is unreachable from the deployment host — its egress is filtered, which
-is the reason this whole workflow exists — upload the same directory with WinSCP
-to a staging directory, in binary transfer mode, and skip to step 4.
+Publishing to GitHub is what gets the artifact from the build machine to whoever
+is deploying. If that is the same person on the same machine, the folder from
+step 2 is already the artifact — go straight to 4b and upload it with WinSCP.
 
-### 4. Fetch and load (on dx12348)
+The release is still worth creating: it is the only durable record of what was
+shipped, and it is what a rollback or a second deployer fetches later.
 
-The host has no checkout, so fetch the download script straight from the repo:
+### 4. Download to a workstation, then WinSCP it up
 
-```bash
-curl -fL -O https://raw.githubusercontent.com/surya2478/ai-stlc-platform/Development/scripts/release/fetch-release.sh
-chmod +x fetch-release.sh && ./fetch-release.sh <release-tag>
+The deployment host cannot reach GitHub — its egress is filtered, which is the
+same reason images are not built there. So the artifact takes three hops:
+**GitHub → an office workstation → WinSCP → dx12348.** The host only ever runs
+`load-images.sh`.
+
+**4a. On the workstation** (Windows, no Git Bash required):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File fetch-release.ps1 -Tag <release-tag>
 ```
 
-It checks GitHub is reachable before downloading anything and fails with a clear
-message if it is not, downloads every part named in `SHA256SUMS` with resume
-enabled, and verifies them. Then:
+Get the script itself from the repo — `scripts/release/fetch-release.ps1`, or
+straight from
+`https://raw.githubusercontent.com/surya2478/ai-stlc-platform/New-Branch/scripts/release/fetch-release.ps1`.
+
+It reads `SHA256SUMS` to learn which parts exist, downloads each one, and checks
+its hash. **Re-running is how you recover a failed download**: anything that
+already verifies is skipped, so only the missing or corrupt parts are fetched
+again. It forces TLS 1.2, because the Windows PowerShell 5.1 default is what
+corporate proxies reject — and it surfaces as "could not create SSL/TLS secure
+channel", which does not obviously mean "wrong TLS version".
+
+**4b. Upload with WinSCP** in **binary** transfer mode: the whole
+`<release-tag>` folder, into a staging directory on dx12348. Not into the
+deployment tree.
+
+**4c. On dx12348:**
 
 ```bash
-cd <release-tag> && ./load-images.sh
+cd <staging>/<release-tag> && chmod +x load-images.sh && ./load-images.sh
 ```
-
-(If the files arrived by WinSCP instead, just run `./load-images.sh` in that
-directory.)
 
 It checksums the parts, verifies they join in the right order, streams them
-straight into `docker load`, and then compares every loaded image ID against the
-manifest. Nothing is written to disk on the host either — that host is also
-short on space, and a 2 GB temp file is how a load fails at 95%.
+straight into `docker load`, and compares every loaded image ID against the
+manifest. Nothing is written to disk on the host — that host is short on space,
+and a 2 GB temp file is how a load fails at 95%.
 
-Image IDs are the point: a tag can be moved or left over from an earlier attempt,
-an ID cannot. If anything mismatches it stops and tells you not to deploy.
+Image IDs are the point: a tag can be moved or left over from an earlier
+attempt, an ID cannot. If anything mismatches it stops and tells you not to
+deploy.
+
+> If a host ever *does* have GitHub access, `scripts/release/fetch-release.sh`
+> collapses 4a–4c into one step by downloading directly onto it. It checks
+> reachability first and fails clearly if GitHub is blocked.
 
 ### 5. Point the deployment at the release
 
