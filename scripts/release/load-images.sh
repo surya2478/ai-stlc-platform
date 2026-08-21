@@ -54,8 +54,16 @@ done < <(grep '^image=' MANIFEST.txt)
 echo
 echo "==> all images match the manifest"
 echo
-echo "Deploy with (note --no-build; nothing here may build):"
-echo "  docker compose -f docker-compose.yml -f docker-compose.prod.yml \\"
-echo "                 -f docker-compose.pinned.yml up -d --no-build"
+echo "1. Put docker-compose.pinned.yml next to the other compose files."
+echo "2. Set this one line in .env:"
 echo
-echo "Then confirm AUTOMATION_DOCKER_IMAGE in .env reads: stlc_backend:${RELEASE}"
+echo "     STLC_IMAGE_TAG=${RELEASE}"
+echo
+echo "   That is the only value to change. AUTOMATION_DOCKER_IMAGE is derived"
+echo "   from it in docker-compose.pinned.yml, so it cannot lag behind a"
+echo "   release; any AUTOMATION_DOCKER_IMAGE still in .env is overridden."
+echo
+echo "3. Deploy (--no-build is required; nothing here may build):"
+echo
+echo "     docker compose -f docker-compose.yml -f docker-compose.prod.yml \\"
+echo "                    -f docker-compose.pinned.yml up -d --no-build"

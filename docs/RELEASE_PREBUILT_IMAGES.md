@@ -96,17 +96,27 @@ and tells you not to deploy.
 
 ### 5. Point the deployment at the release
 
-Copy `docker-compose.pinned.yml` next to the other compose files, and set in
-`.env`:
+Copy `docker-compose.pinned.yml` next to the other compose files, and set exactly
+one line in `.env`:
 
 ```
 STLC_IMAGE_TAG=<release-tag>
-AUTOMATION_DOCKER_IMAGE=stlc_backend:<release-tag>
 ```
 
-`AUTOMATION_DOCKER_IMAGE` matters as much as the compose tag: the executor
-passes it to `docker run` for every spawned automation run. Left on an old tag,
-the stack serves new code while its runs execute old code.
+That is the only value to change per release.
+
+`AUTOMATION_DOCKER_IMAGE` is **not** set by hand. It is the image the executor
+passes to `docker run` for every spawned automation run, and it is derived from
+`STLC_IMAGE_TAG` in `docker-compose.pinned.yml`. Maintained separately it
+silently lags a release, and the stack then serves new code while its runs
+execute old code — which presents as a stale image and gets blamed on the
+deploy. Deriving it also means a rollback rolls the runners back with it rather
+than half way. A compose `environment:` entry beats `env_file`, so any
+`AUTOMATION_DOCKER_IMAGE` still sitting in `.env` is overridden.
+
+A wrong value there does not fail the deploy: `docker run` with an absent image
+attempts a pull, which fails on this network, so it surfaces later as every
+automation run failing.
 
 ### 6. Start
 
