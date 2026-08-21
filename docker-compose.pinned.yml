@@ -1,0 +1,71 @@
+# Pin every application service to a prebuilt image, and forbid building.
+#
+# Use as the last file in the production set:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  -f docker-compose.pinned.yml up -d --no-build
+#
+# Why this file exists
+# ────────────────────
+# docker-compose.yml declares `build:` for backend, worker, runner-executor and
+# frontend, because that is how they are built in development. Compose builds a
+# service with a `build:` block whenever its image is absent — so on a host that
+# cannot reach npm or apt, a missing or mistyped tag turns a deploy into a build
+# that hangs and then fails. Naming the image here means the tag is resolved
+# from what was loaded, and `pull_policy: never` means a miss is reported as a
+# missing image instead of being chased out to a registry this host cannot see.
+#
+# `--no-build` on the command line is the third lock. Any one of the three is
+# enough; all three are here because the failure they prevent has already cost
+# this deployment two weeks.
+#
+# STLC_IMAGE_TAG is deliberately required rather than defaulted to `latest`.
+# `latest` is whatever was loaded last, which is exactly the ambiguity that
+# makes "the fix isn't taking effect" impossible to diagnose. Set it in .env to
+# the release you loaded, e.g. STLC_IMAGE_TAG=20260821-0eebf0b.
+
+services:
+  backend:
+    image: stlc_backend:${STLC_IMAGE_TAG:?set STLC_IMAGE_TAG in .env to the loaded release tag}
+    pull_policy: never
+    environment:
+      AUTOMATION_DOCKER_IMAGE: stlc_backend:${STLC_IMAGE_TAG}
+
+  worker:
+    image: stlc_backend:${STLC_IMAGE_TAG:?set STLC_IMAGE_TAG in .env to the loaded release tag}
+    pull_policy: never
+    environment:
+      AUTOMATION_DOCKER_IMAGE: stlc_backend:${STLC_IMAGE_TAG}
+
+  beat:
+    image: stlc_backend:${STLC_IMAGE_TAG:?set STLC_IMAGE_TAG in .env to the loaded release tag}
+    pull_policy: never
+
+  # Not declared in docker-compose.prod.yml at all, so without this line it is
+  # the one service still carrying a `build:` into production.
+  runner-executor:
+    image: stlc_backend:${STLC_IMAGE_TAG:?set STLC_IMAGE_TAG in .env to the loaded release tag}
+    pull_policy: never
+    # Derived from the same tag, never set by hand. This is the image the
+    # executor passes to `docker run` for every spawned automation run. Kept as
+    # its own value in .env it silently lags a release, and the stack then
+    # serves new code while its runs execute old code — which reads as a stale
+    # image and gets blamed on the deploy. Deriving it also means a rollback of
+    # STLC_IMAGE_TAG rolls the runners back with it, instead of half way.
+    #
+    # A compose `environment:` entry wins over the same key in env_file, so
+    # whatever .env still says for AUTOMATION_DOCKER_IMAGE is overridden here.
+    environment:
+      AUTOMATION_DOCKER_IMAGE: stlc_backend:${STLC_IMAGE_TAG}
+
+  frontend:
+    image: stlc_frontend:${STLC_IMAGE_TAG:?set STLC_IMAGE_TAG in .env to the loaded release tag}
+    pull_policy: never
+
+  db:
+    pull_policy: never
+
+  redis:
+    pull_policy: never
+
+  nginx:
+    pull_policy: never
