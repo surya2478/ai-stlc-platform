@@ -3,6 +3,10 @@
 Regression: the old hand-maintained list deleted execution_runs before
 test_cases, so fk_test_cases_last_execution_run_id (NO ACTION) aborted the whole
 delete with a 500 and no project could be removed.
+
+Second regression, same symptom: a SET NULL key pointing at a table that
+something else cascades into. The cascade and the set-null fired over the same
+rows in one statement and Postgres aborted the delete.
 """
 import pytest
 
@@ -18,11 +22,15 @@ class _Result:
 
 
 class _FakeCatalog:
-    """Stands in for pg_catalog: answers the two introspection queries."""
+    """Stands in for pg_catalog: answers the two introspection queries.
+
+    ``edges`` are (child, parent) or (child, parent, del_type); a pair means
+    NO ACTION, the action the ordering has always had to satisfy.
+    """
 
     def __init__(self, scoped, edges):
         self.scoped = scoped
-        self.edges = edges
+        self.edges = [e if len(e) == 3 else (*e, b"a") for e in edges]
 
     async def execute(self, statement, _params=None):
         sql = str(statement)
@@ -102,3 +110,64 @@ def test_a_foreign_key_cycle_still_emits_every_table():
     edges = [("one", "two"), ("two", "one")]
 
     assert sorted(_order_children_first(tables, edges)) == ["one", "two"]
+
+
+@pytest.mark.asyncio
+async def test_set_null_child_is_deleted_before_a_cascade_into_its_parent():
+    """The tas_ shape that made every project with refined test cases stick.
+
+    tas_refined_test_cases -> tas_source_test_cases is SET NULL, and deleting a
+    tas_intake_batches row cascades into tas_source_test_cases. Deleting the
+    batches first makes Postgres run that cascade and the set-null over the same
+    rows in one statement, which it refuses. The refined rows have to be gone
+    before the batches are touched.
+    """
+    db = _FakeCatalog(
+        scoped=[
+            ("tas_intake_batches", "project_id", b"c"),
+            ("tas_refined_test_cases", "project_id", b"c"),
+            ("tas_source_test_cases", "project_id", b"c"),
+        ],
+        edges=[
+            ("tas_source_test_cases", "tas_intake_batches", b"c"),
+            ("tas_refined_test_cases", "tas_source_test_cases", b"n"),
+            ("tas_refined_test_cases", "tas_intake_batches", b"n"),
+        ],
+    )
+
+    tables = _tables_in(await project_purge_plan(db))
+
+    assert tables.index("tas_refined_test_cases") < tables.index("tas_intake_batches")
+
+
+@pytest.mark.asyncio
+async def test_set_null_does_not_order_against_its_own_parent():
+    """Ordering those keys directly is what cycles the core schema.
+
+    A SET NULL needs no ordering against the table it points at — rewriting the
+    column is what the database is for. Only the cascade forces the issue, and
+    there is no cascade here, so name order stands.
+    """
+    db = _FakeCatalog(
+        scoped=[
+            ("execution_runs", "project_id", b"c"),
+            ("test_cases", "project_id", b"c"),
+        ],
+        edges=[("execution_runs", "test_cases", b"n")],
+    )
+
+    assert _tables_in(await project_purge_plan(db)) == [
+        "execution_runs",
+        "test_cases",
+        "projects",
+    ]
+
+
+def test_cascade_reach_follows_a_chain_and_survives_a_cycle():
+    from app.services.project_purge import _cascade_reach
+
+    reach = _cascade_reach([("source", "batch"), ("batch", "project")])
+    assert reach["source"] == {"batch", "project"}
+
+    # A cascade cycle is walked once rather than forever.
+    assert _cascade_reach([("a", "b"), ("b", "a")])["a"] == {"a", "b"}

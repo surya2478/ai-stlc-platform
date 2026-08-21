@@ -14,6 +14,25 @@ Instead of maintaining that list by hand, derive it from the live schema:
 * Deletes are ordered child-before-parent across every foreign key the database
   will *not* resolve on its own (``NO ACTION`` / ``RESTRICT``). Cascading keys
   need no ordering — the database follows them itself.
+* A row-preserving key (``SET NULL`` / ``SET DEFAULT``) is ordered against every
+  table that *cascades* into the one it points at, though not against that table
+  itself.
+
+  That last rule is the one this file was missing, and without it no project
+  holding refined test cases could be deleted at all.
+  ``tas_refined_test_cases`` points at ``tas_source_test_cases`` with ``ON
+  DELETE SET NULL``, and ``tas_intake_batches`` cascades into that same table.
+  Nothing ordered the batches, so the plan sorted the three alphabetically and
+  deleted the batches first. Postgres then ran the cascade and the set-null over
+  overlapping rows inside one statement and aborted with a foreign key violation
+  naming a parent its own cascade had just removed.
+
+  Ordering the row-preserving keys against their own parent as well looks like
+  the simpler rule and is not: those keys criss-cross the core schema, and
+  adding them puts sixteen tables into a single cycle. The name-order fallback
+  that follows a cycle then deletes ``execution_runs`` before ``test_cases`` —
+  the original bug, back again. Ordering only against the cascade keeps the
+  graph acyclic.
 
 Tables that hang off a project-scoped table without a ``project_id`` of their
 own are removed by their own parent's ``ON DELETE CASCADE``.
@@ -44,25 +63,57 @@ _PROJECT_SCOPED_TABLES = text(
     """
 )
 
-# Foreign keys the database will not resolve for us: the referencing rows have
-# to be gone before the referenced rows are deleted.
-_BLOCKING_EDGES = text(
+# Every foreign key between two different tables, with what the database does
+# to the referencing rows when the referenced row goes. Self-references are
+# excluded: a table cannot be ordered against itself, and one DELETE clears
+# both ends.
+_FOREIGN_KEYS = text(
     """
     SELECT c.conrelid::regclass::text  AS child_table,
-           c.confrelid::regclass::text AS parent_table
+           c.confrelid::regclass::text AS parent_table,
+           c.confdeltype               AS del_type
     FROM pg_constraint c
     WHERE c.contype = 'f'
-      AND c.confdeltype IN ('a', 'r')
       AND c.conrelid <> c.confrelid
     """
 )
 
+# Keys the database will not resolve for us: it aborts the delete instead, so
+# the referencing rows have to be gone first.
+_BLOCKING = frozenset({"a", "r"})
+
+_CASCADE = "c"
 _SET_NULL = "n"
 
 
 def _as_str(value: object) -> str:
     """asyncpg returns Postgres ``"char"`` columns as bytes."""
     return value.decode() if isinstance(value, (bytes, bytearray)) else str(value)
+
+
+def _cascade_reach(cascades: list[tuple[str, str]]) -> dict[str, set[str]]:
+    """For each table, every table whose deletion also removes its rows.
+
+    Follows cascade edges upwards and transitively: if deleting a batch deletes
+    a source row, and deleting a project deletes the batch, then both are in the
+    source table's reach. A cascade cycle is walked once and left at that.
+    """
+    parents_of: dict[str, set[str]] = defaultdict(set)
+    for child, parent in cascades:
+        parents_of[child].add(parent)
+
+    reach: dict[str, set[str]] = {}
+    for table in parents_of:
+        seen: set[str] = set()
+        stack = list(parents_of[table])
+        while stack:
+            parent = stack.pop()
+            if parent in seen:
+                continue
+            seen.add(parent)
+            stack.extend(parents_of.get(parent, ()))
+        reach[table] = seen
+    return reach
 
 
 def _order_children_first(tables: set[str], edges: list[tuple[str, str]]) -> list[str]:
@@ -112,10 +163,27 @@ async def project_purge_plan(db: AsyncSession) -> list[TextClause]:
             continue  # row outlives the project by design
         columns[child_table].append(child_column)
 
-    edges = [
-        (child, parent)
-        for child, parent in (await db.execute(_BLOCKING_EDGES)).all()
+    foreign_keys = [
+        (child, parent, _as_str(del_type))
+        for child, parent, del_type in (await db.execute(_FOREIGN_KEYS)).all()
     ]
+    reach = _cascade_reach(
+        [(child, parent) for child, parent, d in foreign_keys if d == _CASCADE]
+    )
+
+    edges = [(child, parent) for child, parent, d in foreign_keys if d in _BLOCKING]
+
+    # A row-preserving key (SET NULL, SET DEFAULT) needs no ordering against the
+    # table it points at: rewriting the column is exactly what the database will
+    # do, and it does it correctly. It does need ordering against whatever
+    # *cascades* into that table, because then both fire over the same rows
+    # inside one statement and the rewrite loses. Ordering the row-preserving
+    # keys directly instead would put sixteen core tables in one cycle; this
+    # keeps the graph acyclic and still empties the referencing table first.
+    for child, parent, del_type in foreign_keys:
+        if del_type == _CASCADE:
+            continue
+        edges.extend((child, table) for table in reach.get(parent, ()))
 
     plan: list[TextClause] = []
     for table in _order_children_first(set(columns), edges):
