@@ -343,25 +343,43 @@ with the self-signed pair.
 
 ---
 
-## 8. Build and start
+## 8. Load the release and start
 
-**8.1 Build every image from the current source.** The absence of this step is
-what produced yesterday's `SyntaxError`:
+**Images are no longer built on this host.** Builds fail here: npm and apt egress
+are intercepted, so a build container cannot reach its package mirrors. This
+section previously mandated `build --pull --no-cache`, and following it is what
+produced weeks of failed deploys. Images are now built where the network works
+and arrive as a file.
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build --pull --no-cache
-```
+How that artifact is produced, and why: **`docs/RELEASE_PREBUILT_IMAGES.md`**.
 
-`--no-cache` is deliberate for a release build: it guarantees the `COPY . .`
-layers and `npm run build` re-run. Expect 10–25 minutes (Chromium + Playwright).
-
-**8.2 Start detached, discarding stale anonymous volumes.**
-`--renew-anon-volumes` is what clears the empty `/app/.next` that kept the
-frontend crash-looping:
+**8.1 Load the release images**, from the staging directory they were uploaded to:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate --renew-anon-volumes
+cd ~/releases/<release-tag> && chmod +x load-images.sh && ./load-images.sh
 ```
+
+It verifies the upload, streams it into `docker load`, and compares every loaded
+image ID against `MANIFEST.txt`. If it reports a mismatch, do not deploy.
+
+**8.2 Pin the release and start.** Copy `docker-compose.pinned.yml` next to the
+other compose files, set one line in `.env`, and start with `--no-build`:
+
+```bash
+cp ~/releases/<release-tag>/docker-compose.pinned.yml .
+echo 'STLC_IMAGE_TAG=<release-tag>' >> .env
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.pinned.yml up -d --no-build --force-recreate --renew-anon-volumes
+```
+
+`--renew-anon-volumes` still matters — it clears the empty `/app/.next` that kept
+the frontend crash-looping. `--no-build` is not optional: the base compose file
+still declares `build:` for backend, worker, runner-executor and frontend, and
+the merged production config keeps it, so without the flag a missing or mistyped
+tag turns the deploy into a build that cannot succeed.
+
+Do **not** set `AUTOMATION_DOCKER_IMAGE`. It is derived from `STLC_IMAGE_TAG` in
+the overlay; set by hand it silently lags a release, and the stack then serves
+new code while its automation runs execute old code.
 
 **8.3 Watch the first minute:**
 
@@ -449,13 +467,18 @@ If verification fails and the cause is not obvious inside your change window:
 docker compose -f docker-compose.yml -f docker-compose.prod.yml down --remove-orphans
 ```
 
+Rollback is one edited line. Previous releases are still on this host, because
+`docker load` adds images rather than replacing them. There is no `git checkout`
+to do — this host has no checkout.
+
 ```bash
-git checkout <previous-commit-from-/tmp/deploy-before.txt>
+docker images --format '{{.Repository}}:{{.Tag}}' | grep '^stlc_backend:'
+sed -i 's/^STLC_IMAGE_TAG=.*/STLC_IMAGE_TAG=<previous-tag>/' .env
 ```
 
-Re-tag the images saved in step 1.3 back to the names Compose expects, then run
-step 8.2 **without** rebuilding. If a migration already ran and the old code
-cannot read the new schema, restore the dump instead:
+Then re-run step 8.2. The automation runners roll back with the API, because
+their image is derived from the same variable. If a migration already ran and the
+old code cannot read the new schema, restore the dump instead:
 
 ```bash
 docker compose exec -T db pg_restore -U <user> -d <dbname> --clean --if-exists /tmp/<your>.dump
@@ -467,7 +490,10 @@ docker compose exec -T db pg_restore -U <user> -d <dbname> --clean --if-exists /
 
 | Log line | Fix |
 |---|---|
-| `SyntaxError` / `ImportError` under `/app/app/...` | Stale image. Re-run 8.1 with `--no-cache`, and confirm step 4 actually moved the checkout. |
+| `SyntaxError` / `ImportError` under `/app/app/...` | The running image is not the release you think it is. Compare the container's image ID against `MANIFEST.txt`, and confirm `STLC_IMAGE_TAG` names the tag you actually loaded. |
+| Compose starts **building** anything | `--no-build` was omitted, or `-f docker-compose.pinned.yml` was not passed. It cannot succeed on this network — stop it and re-read section 8.2. |
+| `manifest unknown`, or a pull is attempted | The tag in `STLC_IMAGE_TAG` is not loaded on this host. Re-run 8.1 and check the spelling. |
+| Every automation run fails, application otherwise healthy | `AUTOMATION_DOCKER_IMAGE` resolved to a tag that is not present, so `docker run` attempted a pull. It should be derived — confirm `docker-compose.pinned.yml` is on the command line. |
 | `Could not find a production build in the '.next' directory` | Anonymous volume masking `.next`. Re-run 8.2 with `--renew-anon-volumes`, after a `down` that removes the old container. |
 | `database "<name>" does not exist`, once, backend cannot start | Step 6.1. `POSTGRES_DB` does nothing on an already-initialized volume. |
 | `database "<name>" does not exist`, repeating every 10 s, backend healthy | Step 6.0. It is the `db` healthcheck: `POSTGRES_USER` in `.env` disagrees with `DATABASE_URL`. Noise, not an outage. |
@@ -475,7 +501,7 @@ docker compose exec -T db pg_restore -U <user> -d <dbname> --clean --if-exists /
 | `stlc_static_test` appears in `ps` | Someone started the sibling `stlc-static-test` project on this host — no file here can start it. `docker compose down` in that project. That fixture must never run in production. |
 | `set POSTGRES_PASSWORD in .env` (or REDIS_PASSWORD / DATABASE_URL / REDIS_URL / AUTOMATION_EXECUTOR_TOKEN) | Step 5.3 — interpolation reads `.env` only, never `.env.production`. |
 | `APP_SECRET_KEY must be at least 32 characters long in production` | Step 5.4. |
-| `BUILD BLOCKED: Development backdoor variables` during the frontend build | `NEXT_PUBLIC_ENABLE_DEV_AUTH` / `NEXT_PUBLIC_DEV_AUTH_*` are set. Clear them. |
+| `BUILD BLOCKED: Development backdoor variables` during the frontend build | Only reachable while building, which no longer happens on this host — if you see it here, you are building. On the build machine, clear `NEXT_PUBLIC_ENABLE_DEV_AUTH` / `NEXT_PUBLIC_DEV_AUTH_*`. |
 | nginx exits immediately, `cannot load certificate` | You are on the TLS config. Production mounts `nginx.prod.http.conf` and needs no certificate — step 7. |
 | Login returns 200, every request after it 401s, no `access_token` cookie in devtools | `SESSION_COOKIE_SECURE` is unset or true on an HTTP deployment. Step 7.1. |
 | `bind: address already in use` on nginx | `HTTP_PORT` is taken. Step 7.2. |
@@ -487,8 +513,11 @@ docker compose exec -T db pg_restore -U <user> -d <dbname> --clean --if-exists /
 
 ## 12. The short version, once the first clean run is done
 
+Assumes the release images are already loaded (8.1) and `STLC_IMAGE_TAG` is set.
+No `git pull`: this host has no checkout, and nothing is built here.
+
 ```bash
-cd /home/aitesting/stlc-platform && git pull --ff-only origin Development && python3 -m compileall -q backend/app && docker compose -f docker-compose.yml -f docker-compose.prod.yml down --remove-orphans && docker compose -f docker-compose.yml -f docker-compose.prod.yml build --pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --force-recreate --renew-anon-volumes && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+cd <deployment-dir> && docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.pinned.yml up -d --no-build --force-recreate --renew-anon-volumes && docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.pinned.yml ps
 ```
 
 Take the backup from section 2 first, then run every check in section 9.
